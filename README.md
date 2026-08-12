@@ -52,9 +52,9 @@ actes seulement renvoient vers la pièce elle-même.
 
 ## Rejouer sur une autre commune : l'état réel
 
-Le site publie que « changer de commune tient dans un seul fichier de
-configuration ». **Ce n'est pas encore vrai, et il vaut mieux le dire ici que
-vous le laisser découvrir.**
+Le site a longtemps publié que « changer de commune tient dans un seul fichier
+de configuration ». **C'était exagéré**, et la page « Méthode » affiche
+désormais la mesure plutôt que la promesse.
 
 Ce qui est effectivement paramétré :
 
@@ -68,12 +68,17 @@ Ce qui est effectivement paramétré :
 
 Ce qui ne l'est pas :
 
-- **environ 20 fichiers du moteur** contiennent encore le nom de la commune en
-  dur (URL de scraping, cas particuliers de rattachement). `scripts/qa_loop.py`
-  les inventorie — lancez `check_hardcoded_commune` pour la liste à jour ;
-- **le site lui-même** compte une centaine d'occurrences du nom de la commune
-  dans ses titres, ses textes et ses métadonnées. Elles ne sont pas
-  paramétrées : il faut les reprendre à la main ;
+- **20 fichiers du moteur** contiennent encore le nom de la commune en dur,
+  soit 39 occurrences (URL de scraping, cas particuliers de rattachement) ;
+- **38 fichiers du site** en comptent 98 : titres, chapeaux, descriptions. Ils
+  ne sont pas paramétrés, il faut les reprendre à la main ;
+
+Ces deux chiffres ne sont pas déclaratifs : ils sont recomptés à chaque
+publication par `mesurer_replicabilite()` (analyse AST pour le moteur, afin de
+ne pas confondre une docstring qui documente un piège avec du code qui
+l'applique) et affichés sur la page « Méthode » du site. Vous pouvez les
+refaire.
+
 - les **collecteurs de sites officiels** (`events_scraper`, `cc_cac_scraper`,
   `cm_*`) sont écrits pour la structure des sites de Lasalle et de son
   intercommunalité. Un autre site demande un autre parseur. C'est la partie
