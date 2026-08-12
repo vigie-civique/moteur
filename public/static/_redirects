@@ -1,0 +1,9 @@
+# Redirections permanentes — lues par Cloudflare Pages.
+#
+# /conflits-interets → /elus-et-structures (12/08/2026)
+# L'ancienne URL circulait dans les captures d'écran et les barres d'adresse,
+# et elle affirmait exactement ce que le texte de la page prend soin de ne pas
+# dire : un lien entre un élu et une structure subventionnée n'est pas un
+# conflit d'intérêts, et la loi ne l'interdit pas. L'adresse doit être aussi
+# prudente que la rédaction.
+/conflits-interets  /elus-et-structures  301

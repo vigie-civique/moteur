@@ -1,0 +1,23 @@
+{
+  "_doc": "Copiez ce fichier en profils_locaux.json et remplissez-le. Il n'est jamais versionné : il contient des noms de personnes physiques, et selon ce que vous y mettez, des données que vous ne devez pas diffuser.",
+  "commune": {
+    "type": "service",
+    "name": "Commune de Xxx",
+    "short_name": "Mairie de Xxx",
+    "lat": 0.0, "lng": 0.0,
+    "address": "Place de la Mairie, 00000 Xxx"
+  },
+  "date_installation": "2026-03-15",
+  "listes": {
+    "nom_de_la_liste": {
+      "elus": [
+        {"firstname": "Prénom", "lastname": "NOM", "rank": 1,
+         "cm": true, "cc": true, "role": "maire", "confidence": "verified"}
+      ],
+      "non_elus": [
+        {"firstname": "Prénom", "lastname": "NOM", "rank": 12}
+      ]
+    }
+  },
+  "entourage": []
+}

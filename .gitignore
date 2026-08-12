@@ -1,0 +1,19 @@
+# ─── Données ─────────────────────────────────────────────────────────────────
+# Aucune donnée n'est versionnée ici : ni la base, ni le snapshot publié, ni les
+# fichiers nominatifs propres à une commune.
+db/*.db
+db/*.db-*
+public/static/data/
+public/static/docs/
+config/profils_locaux.json
+config/seed_local.json
+audits/
+.env
+
+# ─── Build ───────────────────────────────────────────────────────────────────
+node_modules/
+public/build/
+public/.svelte-kit/
+__pycache__/
+*.pyc
+.DS_Store

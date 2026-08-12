@@ -1,0 +1,11 @@
+{
+  "_doc": "Copiez ce fichier en seed_local.json. Données de démarrage saisies à la main : catalogue des comptes rendus, subventions votées, baux, transactions. Jamais versionné.",
+  "base_url": "https://www.exemple-commune.fr",
+  "commune": {"type": "service", "name": "Commune de Xxx", "lat": 0.0, "lng": 0.0, "address": ""},
+  "cr_catalogue": [
+    {"date": "2026-03-15", "url": "conseil-municipal-du-15-mars-2026", "note": ""}
+  ],
+  "subventions": {"2026": [["Nom de l'association", 1000]]},
+  "baux": [],
+  "transactions_saisies": []
+}

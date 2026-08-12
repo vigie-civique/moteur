@@ -1,0 +1,24 @@
+{
+  "name": "lasalle-public",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 5174",
+    "build": "vite build && node scripts/verifier_build.mjs",
+    "preview": "vite preview --port 5174",
+    "verifier": "node scripts/verifier_build.mjs"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.0",
+    "@sveltejs/kit": "^2.5.0",
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "svelte": "^4.2.0",
+    "vite": "^5.0.0"
+  }
+}
