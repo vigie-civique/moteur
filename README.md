@@ -72,17 +72,16 @@ Ce qui ne l'est pas :
   soit 39 occurrences (URL de scraping, cas particuliers de rattachement) ;
 - **38 fichiers du site** en comptent 98 : titres, chapeaux, descriptions. Ils
   ne sont pas paramétrés, il faut les reprendre à la main ;
-
-Ces deux chiffres ne sont pas déclaratifs : ils sont recomptés à chaque
-publication par `mesurer_replicabilite()` (analyse AST pour le moteur, afin de
-ne pas confondre une docstring qui documente un piège avec du code qui
-l'applique) et affichés sur la page « Méthode » du site. Vous pouvez les
-refaire.
-
 - les **collecteurs de sites officiels** (`events_scraper`, `cc_cac_scraper`,
   `cm_*`) sont écrits pour la structure des sites de Lasalle et de son
-  intercommunalité. Un autre site demande un autre parseur. C'est la partie
+  intercommunalité. Un autre site demande un autre analyseur. C'est la partie
   irréductible : il n'existe pas de format commun aux sites de mairie.
+
+Les deux premiers chiffres ne sont pas déclaratifs : ils sont recomptés à chaque
+publication par `mesurer_replicabilite()` — analyse AST pour le moteur, afin de
+ne pas confondre une docstring qui documente un piège avec du code qui
+l'applique — et affichés sur la page « Méthode » du site. Vous pouvez les
+refaire.
 
 En clair : les collecteurs nationaux (SIRENE, BODACC, DVF, OFGL, RNE, Sitadel,
 DECP) fonctionnent tels quels pour n'importe quelle commune française. Le reste

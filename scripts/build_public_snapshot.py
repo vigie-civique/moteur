@@ -1395,6 +1395,80 @@ def write_recherche_index(out: Path, public_entities, public_events,
     return len(idx)
 
 
+def mesurer_replicabilite() -> dict:
+    """Compte ce qui reste attaché à la commune, et le publie.
+
+    /methode annonçait que « changer de commune tient dans un seul fichier de
+    configuration » et que « ce site n'a pas à être modifié ». C'était faux, et
+    publier le dépôt rendait l'écart vérifiable en trente secondes. Plutôt que
+    de réécrire une promesse en la datant — elle dériverait à son tour — la page
+    affiche une mesure refaite à chaque build.
+
+    Le moteur est analysé par AST et non par expression régulière : documenter
+    un piège oblige à écrire le nom de la commune dans une docstring, et un
+    contrôle qui ne sait pas distinguer la doc du code se signale lui-même.
+    Le site, lui, est du texte éditorial : toute occurrence y compte.
+    """
+    import ast
+
+    from collectors.config import COMMUNE_NAME
+
+    MOTEUR = ["collectors", "api.py", "scripts/build_public_snapshot.py",
+              "scripts/build_public_db.py", "scripts/migrate_perimetre.py",
+              "scripts/qa_loop.py", "scripts/pipeline.py"]
+
+    fichiers_moteur, occ_moteur = 0, 0
+    for cible in MOTEUR:
+        chemin = ROOT / cible
+        for f in (sorted(chemin.rglob("*.py")) if chemin.is_dir() else [chemin]):
+            if not f.exists() or "__pycache__" in f.parts or f.name == "config.py":
+                continue
+            try:
+                arbre = ast.parse(f.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            docstrings = set()
+            for noeud in ast.walk(arbre):
+                corps = getattr(noeud, "body", None)
+                if (isinstance(noeud, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                       ast.AsyncFunctionDef))
+                        and corps and isinstance(corps[0], ast.Expr)
+                        and isinstance(corps[0].value, ast.Constant)
+                        and isinstance(corps[0].value.value, str)):
+                    docstrings.add(id(corps[0].value))
+            n = sum(1 for noeud in ast.walk(arbre)
+                    if isinstance(noeud, ast.Constant)
+                    and isinstance(noeud.value, str)
+                    and COMMUNE_NAME in noeud.value
+                    and id(noeud) not in docstrings)
+            if n:
+                fichiers_moteur += 1
+                occ_moteur += n
+
+    # Le site : titres, chapeaux, métadonnées. Commentaires exclus, ils ne
+    # partent pas en production.
+    occ_site, fichiers_site = 0, 0
+    racine_site = ROOT / "public" / "src"
+    for f in sorted(racine_site.rglob("*")):
+        if f.suffix not in (".svelte", ".js") or not f.is_file():
+            continue
+        texte = f.read_text(encoding="utf-8", errors="ignore")
+        texte = re.sub(r"<!--.*?-->", "", texte, flags=re.S)
+        texte = re.sub(r"^\s*//.*$", "", texte, flags=re.M)
+        n = texte.count(COMMUNE_NAME)
+        if n:
+            fichiers_site += 1
+            occ_site += n
+
+    return {
+        "commune": COMMUNE_NAME,
+        "moteur_fichiers": fichiers_moteur,
+        "moteur_occurrences": occ_moteur,
+        "site_fichiers": fichiers_site,
+        "site_occurrences": occ_site,
+    }
+
+
 def build_snapshot(out: Path) -> dict:
     conn = get_db()
     try:
@@ -1915,6 +1989,8 @@ def build_snapshot(out: Path) -> dict:
             "relations_public": len(public_relations),
             "events_total_private": len(event_rows),
             "events_public": len(public_events),
+            # Dette de réplication, mesurée et non promise (cf. /methode).
+            "replicabilite": mesurer_replicabilite(),
             # Répartition sur les trois axes de provenance. C'est ce qui rend
             # la promesse mesurable : sans ces compteurs, « source primaire »
             # serait une affirmation de plus, invérifiable de l'extérieur.
