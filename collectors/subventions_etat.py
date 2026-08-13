@@ -16,13 +16,10 @@ import re
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "db" / "lasalle.db"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
+from .db import pivot_ids
 
-# Entités fixes
-COMMUNE_ID   = 63    # Commune de Lasalle
-ETAT_ID      = 2044  # État français
-PREFET_ID    = 3576  # Préfecture du Gard
-CAC_ID       = 1645  # CC CAC
+# Entités structurantes — résolues par leur nom à l'exécution (cf. db.pivot_ids).
 
 # Mots-clés pour détection dans les délibérations CM
 KEYWORDS_DETR       = re.compile(r'\bDETR\b', re.I)
@@ -45,6 +42,10 @@ def run(dry_run: bool = False):
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+
+    ids = pivot_ids(conn)
+    COMMUNE_ID, ETAT_ID = ids["commune"], ids["etat"]
+    PREFET_ID, CAC_ID   = ids["prefecture"], ids["epci"]
 
     inserted_ofgl = 0
     inserted_cm   = 0
@@ -185,7 +186,7 @@ def run(dry_run: bool = False):
             montant = float(meta["montant_ht"])
 
         # Déterminer bénéficiaire / acheteur
-        to_id = COMMUNE_ID  # par défaut Lasalle
+        to_id = COMMUNE_ID  # par défaut la commune
         if "cc cac" in title.lower() or "communauté de communes" in title.lower():
             to_id = CAC_ID
 

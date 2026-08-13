@@ -1,7 +1,7 @@
 """
 budget.py — Collecteur balances comptables communes (DGFiP via data.economie.gouv.fr)
 
-Importe les agrégats budgétaires annuels de Lasalle depuis les fichiers
+Importe les agrégats budgétaires annuels de la commune depuis les fichiers
 officiels de la DGFiP publiés sur data.gouv.fr.
 
 Source : https://data.economie.gouv.fr (API ODS)
@@ -23,7 +23,7 @@ import urllib.request
 from .archive import fetch_json
 from .db import get_conn
 
-SIREN_COMMUNE = "213001407"  # Commune de Lasalle
+from .config import COMMUNE_NAME, COMMUNE_SIREN as SIREN_COMMUNE, HEADERS
 
 # Datasets disponibles par année (dataset_id sur data.economie.gouv.fr)
 DATASETS = {
@@ -73,7 +73,7 @@ COMPTES_CLES = {
 
 
 def fetch_comptes(year: int) -> list[dict]:
-    """Récupère toutes les lignes comptables pour Lasalle pour une année."""
+    """Récupère toutes les lignes comptables de la commune pour une année."""
     dataset = DATASETS.get(year)
     if not dataset:
         return []
@@ -91,7 +91,7 @@ def fetch_comptes(year: int) -> list[dict]:
         url = f"{API_BASE}/{dataset}/records?{params}"
         try:
             data = fetch_json(url, source="budget-dgfip", timeout=30,
-                              headers={"User-Agent": "LasalleOSINT/1.0"})
+                              headers=HEADERS)
         except Exception as e:
             print(f"  [erreur] {year} offset={offset} : {e}")
             break
@@ -246,7 +246,7 @@ def run(year: int | None = None, dry_run: bool = False, stats_only: bool = False
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Collecteur budget communal — Lasalle")
+    parser = argparse.ArgumentParser(description=f"Collecteur budget communal — {COMMUNE_NAME}")
     parser.add_argument("--year", type=int, default=None, help="Année (défaut: toutes)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--stats", action="store_true")

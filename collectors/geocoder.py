@@ -15,7 +15,7 @@ import time
 import urllib.parse
 import urllib.request
 import json
-from .config import CODE_POSTAL, HEADERS, REQUEST_DELAY, COMMUNE_INSEE
+from .config import COMMUNE_NAME, CODE_POSTAL, HEADERS, REQUEST_DELAY, COMMUNE_INSEE
 
 # ── APIs ──────────────────────────────────────────────────────────────────────
 # IGN Géoplateforme (data.geopf.fr, 2023+) — retourne x/y Lambert 93 nativement, sans clé
@@ -141,7 +141,7 @@ def geocode_ign(address: str, postcode: str = CODE_POSTAL) -> dict | None:
             return r
 
     feats = _ign_request(IGN_SEARCH, {
-        "q": f"{address} {postcode} Lasalle", "limit": 1,
+        "q": f"{address} {postcode} {COMMUNE_NAME}", "limit": 1,
     })
     if feats:
         r = _parse_ign(feats[0])
@@ -205,7 +205,7 @@ def geocode_parcel(cadastre_ref: str, city_code: str = COMMUNE_INSEE) -> dict | 
 # ── Fallback BAN ─────────────────────────────────────────────────────────────
 
 def _geocode_ban(address: str, postcode: str = CODE_POSTAL) -> dict | None:
-    for extra, min_score in [("", 0.5), (" Lasalle", 0.4)]:
+    for extra, min_score in [("", 0.5), (f" {COMMUNE_NAME}", 0.4)]:
         params = urllib.parse.urlencode({
             "q": f"{address}{extra}", "postcode": postcode, "limit": 1
         })

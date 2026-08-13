@@ -35,7 +35,7 @@ from collectors.config import (  # noqa: E402
     EPCI_NOM as EPCI_NOM_C2,
     EPCI_SIREN as EPCI_SIREN_C2,
 )
-DB_PATH = ROOT / "db" / "lasalle.db"
+from collectors.config import DB_PATH   # nommée dans la config
 RULES_PATH = ROOT / "config" / "publication_rules.json"
 
 
@@ -120,7 +120,7 @@ def safe_url(url: str | None) -> str | None:
 # ── Présentation des libellés publics ────────────────────────────────────────
 # Les noms viennent bruts du RNA / SIRENE, donc en capitales, et les libellés de
 # flux viennent des collecteurs, donc sans casse ni accent homogènes. Publier
-# « ASSOCIATION DE PARENTS D'ELEVES DES ECOLES PUBLIQUES DE LASALLE » à côté de
+# « ASSOCIATION DE PARENTS D'ELEVES DES ECOLES PUBLIQUES DE … » à côté de
 # « Le Grillon » donne un flux qui a l'air cassé alors que la donnée est juste.
 
 MOTS_LIAISON = {"DE", "DES", "DU", "D", "LA", "LE", "LES", "L", "ET", "EN",
@@ -486,7 +486,7 @@ def public_event_detail(metadata: dict, event_type: str) -> dict:
     return detail
 
 
-def in_lasalle_bbox(lat, lng) -> bool:
+def in_commune_bbox(lat, lng) -> bool:
     if lat is None or lng is None:
         return False
     bbox = RULES["locations"]["bbox"]
@@ -679,11 +679,11 @@ def publiable_dans_perimetre(perimetre: str | None, entity_type: str | None,
                              siege_a_l_epci: bool) -> bool:
     """Le périmètre autorise-t-il une FICHE publique pour cette entité ?
 
-    Le site public est celui de Lasalle. Depuis l'élargissement de la collecte
+    Le site public est celui de la commune. Depuis l'élargissement de la collecte
     aux 15 communes de la CC CAC (11/08/2026), la base contient 6 528 entités
     C2 pour 2 703 C1 : les publier toutes ferait passer un annuaire
     intercommunal pour l'annuaire communal, et un lecteur croirait que la
-    boulangerie de Trèves est à Lasalle.
+    boulangerie d'une commune membre est dans la commune-siège.
 
     Sont publiées en fiche :
       - C1   tout ce que les autres règles autorisent ;
@@ -751,7 +751,7 @@ def public_entity(
         location_quality = "hidden_ei_domicile"
         lat = None
         lng = None
-    elif not in_lasalle_bbox(row_data["lat"], row_data["lng"]):
+    elif not in_commune_bbox(row_data["lat"], row_data["lng"]):
         location_quality = "outside_lasalle_bbox"
         lat = None
         lng = None
@@ -1191,6 +1191,15 @@ def is_public_relation(rel: dict, public_ids: set[int],
             return True, "public_par_pertinence"
         return False, "economique_sans_lien_public"
     return False, "not_in_public_allowlist"
+
+
+def _commune_entity_id(conn) -> int | None:
+    """Id de l'entité « Commune de … », ou None si elle n'est pas en base."""
+    from collectors.config import COMMUNE_NAME
+    row = conn.execute(
+        "SELECT id FROM entities WHERE type='service' AND name=? LIMIT 1",
+        (f"Commune de {COMMUNE_NAME}",)).fetchone()
+    return row["id"] if row else None
 
 
 def provenance(event: dict, source: str | None, event_type: str | None,
@@ -1774,7 +1783,11 @@ def build_snapshot(out: Path) -> dict:
         # Cessions strictement privées (aucune des parties n'est la commune) :
         # ce sont des mutations commerciales (fonds de commerce), pas des flux
         # de finances publiques → hors périmètre de cette page.
-        COMMUNE_ID = 63
+        # Identifiant résolu par le nom : `63` était le numéro de ligne de la
+        # commune dans la base de Lasalle. Sur une autre base il désigne une
+        # entité quelconque, et le filtre des cessions privées laisse alors
+        # passer ce qu'il devait écarter — silencieusement.
+        COMMUNE_ID = _commune_entity_id(conn)
         before = len(public_flows)
         public_flows = [
             f for f in public_flows

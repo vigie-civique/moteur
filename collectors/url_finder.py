@@ -64,11 +64,11 @@ def build_query(entity: dict) -> str:
     etype = entity.get("type", "")
     clean = re.sub(r"\s*\(.*?\)\s*$", "", name).strip()
     if etype == "association":
-        return f'"{clean}" Lasalle Gard site officiel'
+        return f'"{clean}" {COMMUNE_NAME} {DEPARTEMENT} site officiel'
     elif etype == "business":
         return f'"{clean}" Gard Cévennes'
     else:
-        return f'"{clean}" Lasalle 30460'
+        return f'"{clean}" {COMMUNE_NAME} {CODE_POSTAL}'
 
 
 def score_result(entity_name: str, result: dict) -> float:
@@ -83,7 +83,7 @@ def score_result(entity_name: str, result: dict) -> float:
         score += 0.4
     if any(w in title for w in words):
         score += 0.2
-    if "lasalle" in domain or "lasalle" in title:
+    if COMMUNE_NAME.lower() in domain or COMMUNE_NAME.lower() in title:
         score += 0.1
     return min(score, 1.0)
 
@@ -251,7 +251,7 @@ def show_stats() -> None:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="url_finder — recherche sites web entités Lasalle")
+    parser = argparse.ArgumentParser(description="url_finder — recherche sites web des entités locales")
     parser.add_argument("--batch",       action="store_true", help="Mode automatique (top résultat DDG)")
     parser.add_argument("--interactive", action="store_true", help="Mode validation manuelle")
     parser.add_argument("--dry-run",     action="store_true", help="Affiche sans insérer en DB")

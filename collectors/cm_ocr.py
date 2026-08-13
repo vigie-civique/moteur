@@ -1,16 +1,16 @@
 """
 cm_ocr.py — Collecteur CR du Conseil Municipal diffusés en PDF SCANNÉ (image).
 
-Certains comptes-rendus de lasalle.fr ne sont ni du HTML (→ cm_events / cm_parser)
-ni un PDF avec couche texte (→ cm_wayback) : ce sont des PDF *scannés*. Ce collecteur
-les traite de bout en bout :
+Les procès-verbaux les plus anciens de brassac.fr (avant 2014) sont des PDF
+*scannés*, sans couche texte : `cm_brassac` les catalogue puis passe la main
+ici. Ce collecteur les traite de bout en bout :
 
   1. résout l'entrée en (PDF, url de CR, date) — page CR, url PDF, fichier local, ou --discover ;
   2. télécharge le PDF (cache data/cm_records_pdf/) ;
   3. OCR *conditionnel* : seulement si le PDF n'a pas de couche texte exploitable
      (ocrmypdf -l fra, cache .ocr.pdf) — un PDF déjà textuel est parsé tel quel ;
   4. extrait le texte (pdfplumber) et découpe en délibérations
-     (marqueurs « N° DEL AAMM_XX », repli sur le splitter de cm_parser) ;
+     (marqueurs « 48/2026 : n° 4713 », repli sur le splitter de cm_parser) ;
   5. upsert idempotent d'un event type='deliberation' par délib + un event
      ombrelle type='conseil_municipal' (titre + lien PDF).
 
@@ -24,10 +24,9 @@ installée dans le tessdata SYSTÈME (qui contient les configs hocr/txt), pas da
 TESSDATA_PREFIX isolé. Vérifier : `tesseract --list-langs` doit lister `fra`.
 
 Usage :
-  python3 -m collectors.cm_ocr --url https://www.lasalle.fr/CR/cm-du-30-juin-2026-deliberations
-  python3 -m collectors.cm_ocr --pdf-url https://.../CM.pdf --date 2026-06-30
-  python3 -m collectors.cm_ocr --file data/cm_records_pdf/CM.pdf --date 2026-06-30 --commit
-  python3 -m collectors.cm_ocr --discover                 # liste les CR PDF non parsés
+  python3 -m collectors.cm_ocr --pdf-url https://.../PV.pdf --date 2013-09-02
+  python3 -m collectors.cm_ocr --file data/cm_records_pdf/PV.pdf --date 2013-09-02 --commit
+  python3 -m collectors.cm_ocr --discover                 # PV scannés non parsés
   python3 -m collectors.cm_ocr --discover --commit --limit 3
 """
 from __future__ import annotations
@@ -43,7 +42,7 @@ from pathlib import Path
 
 import pdfplumber
 
-from .config import HEADERS
+from .config import COMMUNE_URL, HEADERS
 from .db import transaction, get_conn
 from .cm_parser import (
     categorize, extract_vote, extract_amounts, extract_names,
@@ -52,7 +51,9 @@ from .cm_parser import (
 
 ROOT = Path(__file__).resolve().parent.parent
 PDF_DIR = ROOT / "data" / "cm_records_pdf"
-LISTING_URL = "https://www.lasalle.fr/compte-rendus-des-conseils"
+# La découverte s'appuie sur le catalogue rendu par le connecteur, pas sur une
+# page de listing propre à un site.
+SOURCE = urllib.parse.urlparse(COMMUNE_URL).netloc.removeprefix("www.")
 
 # En-dessous de ce nombre de caractères extraits, on considère le PDF « scanné » → OCR.
 MIN_TEXT_CHARS = 400
@@ -61,10 +62,13 @@ MIN_TEXT_CHARS = 400
 # du 30/06/2026 sort « 2606.08 » et « 2606 _18 », et ces deux délibérations
 # passaient au travers du découpage (l'ancien motif n'admettait qu'UN caractère
 # de séparation). On tolère donc jusqu'à trois caractères parmi espace . _ -.
-DEL_RE = re.compile(r"N[°ºo]?\s*DEL\s*(\d{4})[\s._-]{0,3}(\d{2})", re.I)
+# Découpe : « 48/2026 : n° 4713 : » — la numérotation de Brassac, la même que
+# celle des PV textuels (cf. cm_brassac.ENTETE). L'OCR abîme les séparateurs,
+# d'où la tolérance sur les caractères entre les deux nombres.
+DEL_RE = re.compile(r"(\d{1,3})\s*/\s*(20\d{2})\s*[\s.:_–-]{0,3}(?:n[°ºo]\s*\d{3,5})?", re.I)
 _HEADER = re.compile(
     r"DELIBERATION|REGISTRE|REPUBLIQUE|DEPARTEMENT|CONSEIL\s+MUNICIPAL|"
-    r"^GARD$|EXTRAIT|SEANCE|SÉANCE|PRESIDENCE|CONVOCATION", re.I)
+    r"^TARN$|EXTRAIT|SEANCE|SÉANCE|PRESIDENCE|CONVOCATION", re.I)
 _TITLE_FIXES = [(r"Î\s*ERE|ÎERE|1ERE", "1ÈRE"), (r"\bSEIL\b", "CONSEIL"),
                 (r"—\s*—", "—"), (r"\s{2,}", " ")]
 
@@ -80,7 +84,7 @@ def _fetch_text(url: str) -> str:
 
 
 def _pdf_link_from_cr(cr_url: str) -> str | None:
-    """Extrait le lien .pdf d'une page CR lasalle.fr."""
+    """Extrait le lien .pdf d'une page de compte rendu."""
     html = _fetch_text(cr_url)
     m = re.search(r'href="([^"]+\.pdf[^"]*)"', html, re.I)
     if not m:
@@ -161,7 +165,7 @@ def _prefix_from_date(date: str | None) -> str | None:
 
 
 def parse_deliberations(txt: str, expected_prefix: str | None = None) -> list[dict]:
-    """Découpe par marqueurs « N° DEL AAMM_XX » ; repli sur cm_parser si absent.
+    """Découpe par marqueurs « 48/2026 : n° 4713 » ; repli sur cm_parser si absent.
 
     On ne garde que les délibérations DE CE CM : les n° DEL d'autres séances
     *cités* dans le corps sont ignorés en filtrant sur le préfixe AAMM courant
@@ -232,22 +236,24 @@ def _upsert_delib(conn, date: str, cr_url: str, pdf_url: str, d: dict) -> str:
     row = None
     if d["del_id"]:
         row = c.execute(
-            "SELECT id FROM events WHERE date=? AND source='lasalle.fr'"
+            "SELECT id FROM events WHERE date=? AND source=?"
             " AND json_extract(metadata,'$.del_id')=?",
-            (date, d["del_id"])).fetchone()
+            (date, SOURCE, d["del_id"])).fetchone()
     if row is None:
         row = c.execute("SELECT id FROM events WHERE date=? AND title=? AND type='deliberation'",
                         (date, d["titre"])).fetchone()
     if row:
         # `COALESCE(?, source_url)` : un retraitement local (--file, sans URL
         # publique) ne doit pas effacer l'URL officielle déjà enregistrée.
-        c.execute("UPDATE events SET content=?, metadata=?, source='lasalle.fr', "
+        c.execute("UPDATE events SET content=?, metadata=?, source=?, "
                   "source_url=COALESCE(?, source_url) WHERE id=?",
-                  (d["texte"], json.dumps(meta, ensure_ascii=False), cr_url, row[0]))
+                  (d["texte"], json.dumps(meta, ensure_ascii=False), SOURCE,
+                   cr_url, row[0]))
         return "maj"
     c.execute("INSERT INTO events (type,date,title,content,source,source_url,metadata) "
-              "VALUES ('deliberation',?,?,?,'lasalle.fr',?,?)",
-              (date, d["titre"], d["texte"], cr_url, json.dumps(meta, ensure_ascii=False)))
+              "VALUES ('deliberation',?,?,?,?,?,?)",
+              (date, d["titre"], d["texte"], SOURCE, cr_url,
+               json.dumps(meta, ensure_ascii=False)))
     return "new"
 
 
@@ -256,12 +262,12 @@ def _upsert_umbrella(conn, date: str, cr_url: str, pdf_url: str, delibs: list[di
     c = conn.cursor()
     if c.execute("SELECT id FROM events WHERE date=? AND type='conseil_municipal'", (date,)).fetchone():
         return "skip"
-    content = f"Conseil municipal du {date} — {len(delibs)} délibérations (source lasalle.fr) :\n" + \
+    content = f"Conseil municipal du {date} — {len(delibs)} délibérations (source {SOURCE}) :\n" + \
               "\n".join(f"- {d['titre']}" for d in delibs)
     meta = json.dumps({"pdf_url": pdf_url, "page_url": cr_url, "ocr": True}, ensure_ascii=False)
     c.execute("INSERT INTO events (type,date,title,content,source,source_url,metadata) "
-              "VALUES ('conseil_municipal',?,?,?,'lasalle.fr',?,?)",
-              (date, f"CM du {date}", content, cr_url, meta))
+              "VALUES ('conseil_municipal',?,?,?,?,?,?)",
+              (date, f"CM du {date}", content, SOURCE, cr_url, meta))
     return "new"
 
 
@@ -291,8 +297,8 @@ def _upsert_pv(conn, date: str, cr_url: str, pdf_url: str, txt: str) -> str:
                   (merged[:60000], meta, cr_url, row["id"]))
         return "enrich"
     c.execute("INSERT INTO events (type,date,title,content,source,source_url,metadata) "
-              "VALUES ('conseil_municipal',?,?,?,'lasalle.fr',?,?)",
-              (date, f"PV du CM du {date}", body, cr_url, meta))
+              "VALUES ('conseil_municipal',?,?,?,?,?,?)",
+              (date, f"PV du CM du {date}", body, SOURCE, cr_url, meta))
     return "new"
 
 
@@ -376,78 +382,27 @@ def process_cr(*, cr_url: str | None, pdf_url: str | None, file: str | None,
 # ── Découverte des CR non encore parsés ────────────────────────────────────────
 
 def discover(limit: int = 0) -> list[dict]:
-    """Liste les CR de la page listing dont aucune délibération n'est en base."""
-    html = _fetch_text(LISTING_URL)
-    crs = sorted(set(re.findall(r'href="(/CR/[^"]+)"', html, re.I)))
+    """PV catalogués sur le site dont aucune délibération n'est en base.
+
+    La version d'origine lisait une page de listing puis, pour les comptes
+    rendus délistés, balayait des dizaines de milliers d'URL à la recherche de
+    slugs plausibles (`/CR/conseil-municipal-du-3-mars-2015`). Ici tous les PV
+    depuis 2004 sont liés depuis la même page : le catalogue suffit, et le
+    balayage a été supprimé plutôt que réécrit.
+    """
+    from .cm_brassac import catalogue
+
     conn = get_conn(read_only=True)
     out = []
-    for path in crs:
-        url = urllib.parse.urljoin(LISTING_URL, path)
-        date = _date_from_filename(path)
-        if not date:
-            continue
-        # Déjà ingéré si des délibérations OU un PV/CM existent pour cette date.
+    for pv in catalogue():
         n = conn.execute(
-            "SELECT COUNT(*) FROM events WHERE date=? AND type IN ('deliberation','conseil_municipal')",
-            (date,),
+            "SELECT COUNT(*) FROM events WHERE date=? AND type='deliberation'",
+            (pv["date"],),
         ).fetchone()[0]
         if n == 0:
-            out.append({"cr_url": url, "date": date})
+            out.append({"cr_url": pv["url"], "pdf_url": pv["url"], "date": pv["date"]})
         if limit and len(out) >= limit:
             break
-    conn.close()
-    return out
-
-
-# Découverte par balayage de slugs — les vieux CR sont délistés de la page listing
-# mais restent en ligne à leur URL. Remplace cm_wayback (archive.org peu fiable).
-_MOIS_SLUG = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
-              "aout", "septembre", "octobre", "novembre", "decembre"]
-
-
-def discover_by_slug(year_from: int, year_to: int, skip_existing: bool = True) -> list[dict]:
-    """Teste /CR/conseil-municipal-du-{jour}-{mois}-{année} sur toute la plage.
-    Retourne les CR trouvés (HTTP 200), non encore en base si skip_existing."""
-    conn = get_conn(read_only=True)
-
-    def in_db(date):
-        return conn.execute(
-            "SELECT COUNT(*) FROM events WHERE date=? AND type IN ('deliberation','conseil_municipal')",
-            (date,),
-        ).fetchone()[0] > 0
-
-    # Plusieurs motifs de slug observés sur lasalle.fr selon les époques.
-    templates = [
-        "conseil-municipal-du-{d}-{mo}-{y}",
-        "cm-du-{d}-{mo}-{y}",
-        "cm-{d}-{mo}-{y}",
-        "compte-rendu-conseil-municipal-du-{d}-{mo}-{y}",
-        "compte-rendu-du-conseil-municipal-du-{d}-{mo}-{y}",
-        "compte-rendu-du-conseil-du-{d}-{mo}-{y}",
-        "conseil-municipal-{d}-{mo}-{y}",
-        "pv-du-conseil-municipal-du-{d}-{mo}-{y}",
-        "conseil-municpal-du-{d}-{mo}-{y}",  # coquille présente dans certains slugs réels
-    ]
-
-    def hit(url):
-        try:
-            return urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=6).status == 200
-        except Exception:
-            return False
-
-    out = []
-    for year in range(year_from, year_to + 1):
-        for mi, mo in enumerate(_MOIS_SLUG, 1):
-            for day in range(1, 32):
-                date = f"{year}-{mi:02d}-{day:02d}"
-                if skip_existing and in_db(date):
-                    continue
-                for tmpl in templates:
-                    url = "https://www.lasalle.fr/CR/" + tmpl.format(d=day, mo=mo, y=year)
-                    if hit(url):
-                        out.append({"cr_url": url, "date": date})
-                        print(f"  ✓ {date}  {url}")
-                        break  # un motif suffit
     conn.close()
     return out
 
@@ -457,14 +412,11 @@ def discover_by_slug(year_from: int, year_to: int, skip_existing: bool = True) -
 def main() -> None:
     ap = argparse.ArgumentParser(description="Collecteur CR CM en PDF scanné (OCR).")
     src = ap.add_mutually_exclusive_group()
-    src.add_argument("--url", help="Page CR lasalle.fr (le PDF est détecté)")
+    src.add_argument("--url", help="Page de compte rendu (le PDF est détecté)")
     src.add_argument("--pdf-url", help="URL directe du PDF")
     src.add_argument("--file", help="Chemin d'un PDF local")
     src.add_argument("--discover", action="store_true",
                      help="Repère les CR non encore parsés (via la page listing)")
-    src.add_argument("--scan-years", metavar="FROM-TO",
-                     help="Balaye les slugs /CR/ sur une plage d'années (ex. 2013-2020) "
-                          "pour retrouver les CR délistés — remplace archive.org")
     ap.add_argument("--date", help="Date du CM AAAA-MM-JJ (sinon auto)")
     ap.add_argument("--lang", default="fra", help="Langue OCR tesseract (défaut fra)")
     ap.add_argument("--no-umbrella", action="store_true", help="Ne pas créer l'event CM ombrelle")
@@ -472,27 +424,14 @@ def main() -> None:
     ap.add_argument("--commit", action="store_true", help="Écrit en base (sinon dry-run)")
     args = ap.parse_args()
 
-    if args.scan_years:
-        y1, y2 = (int(x) for x in args.scan_years.split("-"))
-        print(f"[cm_ocr] balayage des slugs CR {y1}-{y2} …")
-        cands = discover_by_slug(y1, y2)
-        print(f"\n{len(cands)} CR délistés trouvés (non en base) :")
-        for c in cands:
-            print(f"\n→ {c['cr_url']}")
-            process_cr(cr_url=c["cr_url"], pdf_url=None, file=None, date=c["date"],
-                       lang=args.lang, umbrella=not args.no_umbrella, commit=args.commit)
-        if not args.commit:
-            print("\n(dry-run — ajouter --commit pour écrire)")
-        return
-
     if args.discover:
         cands = discover(limit=args.limit)
         print(f"[cm_ocr] {len(cands)} CR sans délibération en base :")
         for c in cands:
             print(f"  {c['date']}  {c['cr_url']}")
         for c in cands:
-            print(f"\n→ {c['cr_url']}")
-            process_cr(cr_url=c["cr_url"], pdf_url=None, file=None, date=c["date"],
+            print(f"\n→ {c['pdf_url']}")
+            process_cr(cr_url=None, pdf_url=c["pdf_url"], file=None, date=c["date"],
                        lang=args.lang, umbrella=not args.no_umbrella, commit=args.commit)
         if not args.commit:
             print("\n(dry-run — ajouter --commit pour écrire)")

@@ -17,3 +17,13 @@ public/.svelte-kit/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Instance : le périmètre d'une commune n'a rien à faire dans le moteur.
+config/instance.json
+db/*.db
+db/*.db-wal
+db/*.db-shm
+data/
+territoire/
+venv/
+public/static/data/

@@ -4,7 +4,7 @@ Collecteur Pappers API — enrichit les données entreprises depuis l'API offici
 
 Ce que ça apporte :
   - Dates de création réelles (BODACC, pas SIRENE/1900)
-  - Liste des établissements : détecte les adresses Lasalle non connues
+  - Liste des établissements : détecte les adresses locales non connues
   - Dirigeants historiques : détecte ceux absents de la DB
   - Contact : téléphone et site web si disponibles dans l'API
   - Publications BODACC : événements (création, cession, fermeture)
@@ -34,10 +34,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from collectors.archive import archive_fetch
 
-DB_PATH = Path(__file__).parent.parent / "db" / "lasalle.db"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
 API_BASE = "https://api.pappers.fr/v2"
 DELAY = 0.5            # secondes entre requêtes (conservateur)
-CODE_POSTAL = "30460"  # Lasalle
+from .config import CODE_POSTAL, COMMUNE_NAME, HEADERS
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ def api_get(path: str, params: dict) -> dict | None:
     safe_url = f"{API_BASE}{path}?" + urllib.parse.urlencode(
         {k: v for k, v in clean.items() if k != "api_token"})
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "LasalleOSINT/1.0"})
+        req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read()
         archive_fetch("pappers", safe_url, raw,
@@ -85,10 +85,10 @@ def is_spurious_date(d: str | None) -> bool:
     return False
 
 
-def is_lasalle_address(addr: str | None) -> bool:
+def is_local_address(addr: str | None) -> bool:
     if not addr:
         return False
-    return CODE_POSTAL in addr or "LASALLE" in addr.upper()
+    return CODE_POSTAL in addr or COMMUNE_NAME.upper() in addr.upper()
 
 
 def get_db():
@@ -187,12 +187,12 @@ def apply_enrichment(conn, entity_id: int, data: dict, dry_run: bool = False,
         nom_com = etab.get("nom_commercial", "")
         siret   = etab.get("siret", "")
         etat    = etab.get("etat_administratif", "")
-        if is_lasalle_address(adresse) and etat == "A":
+        if is_local_address(adresse) and etat == "A":
             # Établissement actif à Lasalle → noter si pas déjà dans l'adresse principale
             current_addr = conn.execute(
                 "SELECT address FROM entities WHERE id=?", (entity_id,)
             ).fetchone()
-            note = f"Établissement Lasalle actif — SIRET {siret}"
+            note = f"Établissement {COMMUNE_NAME} actif — SIRET {siret}"
             if nom_com:
                 note += f" | Nom commercial : {nom_com}"
             note += f" | Adresse : {adresse}"
@@ -264,7 +264,8 @@ def get_targets(conn, siren_filter=None, limit=200, all_mode=False, local_only=F
     order = "b.pappers_fetched_at IS NULL DESC, (rel_count + ev_count * 2) DESC"
     lim = f"LIMIT {limit}"
     having = "" if all_mode else "HAVING (rel_count + ev_count > 0 OR b.creation_date LIKE '1900%' OR b.creation_date IS NULL)"
-    local_filter = "AND (e.address LIKE '%30460%' OR e.address LIKE '%LASALLE%' OR e.address LIKE '%Lasalle%')" if local_only else ""
+    local_filter = (f"AND (e.address LIKE '%{CODE_POSTAL}%'"
+                    f" OR UPPER(e.address) LIKE '%{COMMUNE_NAME.upper()}%')") if local_only else ""
 
     rows = conn.execute(f"""
         SELECT b.entity_id, e.name, b.siren, b.creation_date, b.pappers_fetched_at,
@@ -293,7 +294,8 @@ def main():
     parser.add_argument("--all",     action="store_true", help="Toutes les entreprises actives")
     parser.add_argument("--refetch", action="store_true", help="Re-fetcher même celles déjà traitées")
     parser.add_argument("--dry-run", action="store_true", help="Sans écrire en DB")
-    parser.add_argument("--local", action="store_true", help="Uniquement entités avec adresse Lasalle/30460")
+    parser.add_argument("--local", action="store_true",
+                        help=f"Uniquement entités avec adresse {COMMUNE_NAME}/{CODE_POSTAL}")
     args = parser.parse_args()
 
     token = get_token()

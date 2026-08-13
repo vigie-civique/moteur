@@ -32,7 +32,7 @@ from pathlib import Path
 from .archive import archive_fetch
 from .config import COMMUNES, COMMUNES_INSEE, HEADERS
 
-DB_PATH = Path(__file__).parent.parent / "db" / "lasalle.db"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
 
 # Composante DGF → mots-clés (sur en-tête normalisé sans accents) à reconnaître
 COMPOSANTES = {

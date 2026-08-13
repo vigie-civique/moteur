@@ -42,16 +42,19 @@ import argparse
 import json
 import unicodedata
 
+from .config import COMMUNES, DEPARTEMENT
 from .db import get_conn
 
-# Mots trop répandus dans le vallon pour identifier une association. Sans cette
-# liste, la similarité de noms est dominée par la géographie locale.
+# Mots trop répandus sur le territoire pour identifier une association. Sans
+# cette liste, la similarité de noms est dominée par la géographie locale.
+# Les noms des communes du registre y sont ajoutés automatiquement : ce sont
+# eux qui saturent les intitulés, et les lister à la main revenait à figer le
+# périmètre à celui d'une commune précise.
 GENERIQUES = {
     "ASSOCIATION", "ASSOC", "COMITE", "CLUB", "LES", "LE", "LA", "DE", "DES",
     "DU", "ET", "AMIS", "SOU", "POUR", "AUX", "SUR", "EN", "AU",
-    "LASALLOIS", "LASALLOISE", "LASALLE", "CEVENNES", "CEVENOL", "CEVENOLE",
-    "CEVENOLS", "GARD", "VALLON", "LOCAL", "LOCALE", "UNION", "SPORTIVE",
-    "SPORT", "SPORTS", "ANCIENS", "AVENIR", "ENSEMBLE", "SALINDRENQUE",
+    "LOCAL", "LOCALE", "UNION", "SPORTIVE",
+    "SPORT", "SPORTS", "ANCIENS", "AVENIR", "ENSEMBLE",
     # Vocabulaire des titres de délibération : présent partout, donc sans
     # pouvoir discriminant. Le laisser passer écrasait la similarité —
     # « Subvention 2025 — L'Art Scène » tombait à 0,33 face à « L'ART SCENE »
@@ -243,3 +246,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Noms de communes du périmètre : trop fréquents dans les intitulés
+# d'associations pour discriminer quoi que ce soit.
+GENERIQUES |= {mot.upper()
+               for c in COMMUNES.values()
+               for mot in c["nom"].replace("-", " ").split()
+               if len(mot) > 2}

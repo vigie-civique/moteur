@@ -1,19 +1,21 @@
 """
-marches_publics.py — Marchés publics Lasalle + CC Causses Aigoual Cévennes Terres Solidaires
+marches_publics.py — Marchés publics de la commune et de son EPCI
 
 Sources :
   1. DECP (Données Essentielles de la Commande Publique) — data.gouv.fr
      Fichiers JSON mensuels, filtrés par SIRET acheteur.
      Seuil de publication : ≥ 40 000 € (services/fournitures), ≥ 90 000 € (travaux).
-     Note : une commune de 1166 hab. publie peu dans le DECP — source principale pour CC CAC.
-  2. Site CC CAC — caussesaigoualcevennes.fr/marches-publics/
-     PDFs d'avis d'appel public à la concurrence (AAPC) publiés sur le site.
+     Note : une commune de 1 300 hab. publie peu dans le DECP — l'EPCI est la
+     source principale. Ces trois requêtes (DECP consolidé, DECP v3, DECP
+     augmenté) sont nationales : elles fonctionnent sans adaptation locale.
+  2. Sites officiels de la commune et de l'intercommunalité, via le connecteur
+     déclaré par l'instance (cf. collectors/connecteurs/).
 
 Usage :
   python3 -m collectors.marches_publics --dry-run
   python3 -m collectors.marches_publics
   python3 -m collectors.marches_publics --source decp      # DECP uniquement
-  python3 -m collectors.marches_publics --source cac       # site CC CAC uniquement
+  python3 -m collectors.marches_publics --source site      # sites officiels
   python3 -m collectors.marches_publics --years 2022-2025  # plage d'années DECP
 """
 
@@ -26,21 +28,34 @@ import urllib.request
 from pathlib import Path
 
 from .config import (
-    COMMUNE_INSEE, COMMUNE_NAME, EPCI_SIREN, HEADERS, REQUEST_DELAY
+    COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT, COMMUNE_SIREN as COMMUNE_SIREN_CFG,
+    COMMUNE_SIRET as COMMUNE_SIRET_CFG, EPCI_NOM, EPCI_SIREN,
+    HEADERS, REQUEST_DELAY
 )
 from .db import transaction, upsert_entity
 from .archive import archive_fetch
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-# SIRET Lasalle confirmé via recherche-entreprises.api.gouv.fr
-COMMUNE_SIRET  = "21300140700013"
-COMMUNE_SIREN  = "213001407"
+# SIRET/SIREN de la commune, confirmés via recherche-entreprises.api.gouv.fr
+# le 13/08/2026 (COMMUNE DE BRASSAC, siège place de l'Hôtel de Ville).
+COMMUNE_SIRET  = COMMUNE_SIRET_CFG
+COMMUNE_SIREN  = COMMUNE_SIREN_CFG
 
-# CC CAC — SIREN depuis config
-CAC_SIREN      = EPCI_SIREN          # "200034601"
-CAC_SITE_URL   = "https://caussesaigoualcevennes.fr"
-CAC_MARCHES    = CAC_SITE_URL + "/marches-publics/"
+# EPCI — SIREN depuis config
+CAC_SIREN      = EPCI_SIREN
+# Jetons de reconnaissance de l'acheteur dans les libellés en texte libre du
+# DECP et du BOAMP, où l'acheteur n'est pas toujours identifié par son SIREN.
+# Dérivés de la config : « brassac », « sidobre », « vals et plateaux ».
+# Les mots significatifs du nom de l'EPCI : « CC », « Communauté », « de »,
+# « des » n'identifient personne. Le seuil de quatre lettres écarte les
+# articles sans avoir à les énumérer.
+ACHETEUR_JETONS = tuple({COMMUNE_NAME.lower()} | {
+    mot.lower() for mot in re.split(r"[\s'’-]+", EPCI_NOM)
+    if len(mot) > 4 and mot.lower() not in ("communaute", "communauté", "commune",
+                                            "communes", "agglomeration",
+                                            "agglomération")
+})
 
 # DECP — dataset consolidé officiel data.gouv.fr
 DATAGOUV_API   = "https://www.data.gouv.fr/api/1/datasets/"
@@ -142,7 +157,7 @@ def year_from_title(title: str) -> int | None:
 
 
 def extract_marches_from_file(url: str) -> list[dict]:
-    """Télécharge et filtre un fichier DECP consolidé JSON pour Lasalle + CC CAC."""
+    """Télécharge et filtre un fichier DECP consolidé JSON sur le périmètre."""
     import io as _io
     import gzip as _gzip
     req = urllib.request.Request(url, headers=HEADERS)
@@ -183,13 +198,11 @@ def extract_marches_from_file(url: str) -> list[dict]:
         acheteur_id  = str(acheteur.get("id", ""))
         acheteur_nom = str(acheteur.get("nom", "")).lower()
 
-        is_lasalle = acheteur_id.startswith(COMMUNE_SIREN)
-        is_cac     = acheteur_id.startswith(CAC_SIREN)
-        is_name    = ("lasalle" in acheteur_nom
-                      or "causses aigoual" in acheteur_nom
-                      or "causses-aigoual" in acheteur_nom)
+        is_commune = acheteur_id.startswith(COMMUNE_SIREN)
+        is_epci    = acheteur_id.startswith(CAC_SIREN)
+        is_name    = any(j in acheteur_nom for j in ACHETEUR_JETONS)
 
-        if is_lasalle or is_cac or is_name:
+        if is_commune or is_epci or is_name:
             found.append(m)
 
     return found
@@ -231,7 +244,7 @@ def normalize_decp_marche(m: dict) -> dict:
 
 
 def fetch_decp_marches(years: list[int] | None = None) -> list[dict]:
-    """Interroge le DECP et retourne tous les marchés Lasalle/CC CAC trouvés."""
+    """Interroge le DECP et retourne tous les marchés du périmètre."""
     print("\n[DECP] Découverte des fichiers…")
     resources = discover_decp_resources()
 
@@ -257,7 +270,7 @@ def fetch_decp_marches(years: list[int] | None = None) -> list[dict]:
             seen_ids.add(m["raw_id"])
             unique.append(m)
 
-    print(f"  [DECP] {len(unique)} marchés uniques Lasalle/CC CAC")
+    print(f"  [DECP] {len(unique)} marchés uniques sur le périmètre")
     return unique
 
 
@@ -317,21 +330,23 @@ def normalize_decp_v3(rec: dict) -> dict:
 
 
 def fetch_decp_v3_marches() -> list[dict]:
-    """DECP v3 : marchés dont l'ACHETEUR est Lasalle ou la CC CAC, plus ceux
+    """DECP v3 : marchés dont l'ACHETEUR est la commune ou l'EPCI, plus ceux
     dont le LIEU D'EXÉCUTION tombe dans le périmètre — un marché du Département ou
     de la Région exécuté sur la commune intéresse autant le lecteur.
 
     Attention au lieu d'exécution : `lieuexecution_code` vaut tantôt un code
-    INSEE, tantôt un code postal, et 30140 est le code postal d'ANDUZE autant
-    que le code INSEE de Lasalle. D'où le filtre conjoint sur
-    `lieuexecution_typecode`, sans lequel on ramène les marchés du bassin
-    d'Anduze (rénovation du gymnase, etc.).
+    INSEE, tantôt un code postal, et les deux jeux se recouvrent d'un
+    département à l'autre. D'où le filtre conjoint sur `lieuexecution_typecode`,
+    sans lequel on ramène des marchés étrangers au territoire.
     """
     import urllib.parse
-    from .config import COMMUNES, COMMUNES_CP
+    from .config import CODE_POSTAL, COMMUNES, COMMUNES_CP
 
     insee = ", ".join(f'"{c}"' for c in COMMUNES)
-    cp = ", ".join(f'"{c}"' for c in COMMUNES_CP if c == "30460")
+    # Le code postal ne sert qu'en repli du code commune, et il déborde
+    # toujours : on ne retient que ceux dont la commune principale est dans le
+    # périmètre — ici le CP de la commune elle-même.
+    cp = ", ".join(f'"{c}"' for c in COMMUNES_CP if c == CODE_POSTAL)
 
     clauses = [f'startswith(acheteur_id, "{COMMUNE_SIREN}")',
                f'startswith(acheteur_id, "{CAC_SIREN}")',
@@ -413,11 +428,11 @@ def normalize_decp_eco(rec: dict) -> dict:
 
 
 def fetch_decp_eco_marches() -> list[dict]:
-    """Interroge le DECP augmenté Opendatasoft par SIREN acheteur (Lasalle + CC CAC)."""
+    """Interroge le DECP augmenté Opendatasoft par SIREN acheteur (commune + EPCI)."""
     import urllib.parse
     print("\n[DECP-eco] Requête directe par SIREN acheteur…")
     results, seen = [], set()
-    for label, siren in ((COMMUNE_NAME, COMMUNE_SIREN), ("CC CAC", CAC_SIREN)):
+    for label, siren in ((COMMUNE_NAME, COMMUNE_SIREN), (EPCI_NOM, CAC_SIREN)):
         offset = 0
         while True:
             params = urllib.parse.urlencode({
@@ -453,18 +468,22 @@ BOAMP_API = "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/da
 
 def fetch_boamp_marches() -> list[dict]:
     """
-    Interroge l'API BOAMP OpenDataSoft (sans clé) pour Lasalle et CC CAC.
+    Interroge l'API BOAMP OpenDataSoft (sans clé) pour la commune et l'EPCI.
     Couvre les avis d'appel public à la concurrence (AAPC) et attributions.
     """
     import urllib.parse
-    print("\n[BOAMP] Recherche marchés Lasalle + CC CAC…")
+    print(f"\n[BOAMP] Recherche marchés {COMMUNE_NAME} + {EPCI_NOM}…")
     results = []
     seen_ids = set()
 
+    # Le nom de l'acheteur est saisi librement par le publicateur : on
+    # interroge sur les jetons du périmètre, en bornant au département pour le
+    # nom de la commune — « Brassac » désigne aussi des communes de l'Ariège,
+    # du Puy-de-Dôme et du Tarn-et-Garonne.
     queries = [
-        'nomacheteur like "%lasalle%" and code_departement="30"',
-        'nomacheteur like "%causses aigoual%" or nomacheteur like "%causses-aigoual%"',
-    ]
+        f'nomacheteur like "%{COMMUNE_NAME.lower()}%" and code_departement="{DEPARTEMENT}"',
+    ] + [f'nomacheteur like "%{j}%"' for j in ACHETEUR_JETONS
+         if j != COMMUNE_NAME.lower()]
 
     for where in queries:
         offset = 0
@@ -493,9 +512,10 @@ def fetch_boamp_marches() -> list[dict]:
                 acheteur = hit.get("nomacheteur") or ""
                 # Déterminer acheteur_id depuis nomacheteur
                 acheteur_lower = acheteur.lower()
-                if "lasalle" in acheteur_lower:
+                if COMMUNE_NAME.lower() in acheteur_lower:
                     acheteur_id_str = COMMUNE_SIREN
-                elif "causses" in acheteur_lower:
+                elif any(j in acheteur_lower for j in ACHETEUR_JETONS
+                         if j != COMMUNE_NAME.lower()):
                     acheteur_id_str = CAC_SIREN
                 else:
                     acheteur_id_str = ""
@@ -535,129 +555,44 @@ def fetch_boamp_marches() -> list[dict]:
     return results
 
 
-# ── Source 3 : Site CC CAC ─────────────────────────────────────────────────────
+# ── Source 3 : avis publiés par la collectivité ─────────────────────────────
 
-def scrape_cac_marches() -> list[dict]:
-    """Scrape les avis de marchés publics publiés sur caussesaigoualcevennes.fr."""
-    print(f"\n[CC CAC] Scraping {CAC_MARCHES}…")
-    html = fetch_html(CAC_MARCHES)
-    if not html:
-        return []
+def fetch_avis_site() -> list[dict]:
+    """Avis de publicité publiés sur les sites officiels, via le connecteur.
 
-    # Extraire les PDFs (AAPC = Avis d'Appel Public à la Concurrence)
-    pdf_links = re.findall(
-        r'href=["\'](' + re.escape(CAC_SITE_URL) + r'/wp-content/uploads/[^"\']+\.pdf)["\']',
-        html, re.I
-    )
+    La version d'origine découpait le HTML d'un site précis à coups de
+    `re.split('<article|<div class=post')` pour retrouver titre, date et PDF.
+    Le connecteur rend ces trois champs ; il n'y a plus de structure de page à
+    deviner (cf. collectors/connecteurs/).
+    """
+    from .connecteurs import charger
 
-    # Extraire les textes de marchés depuis le HTML
-    marches = []
-    seen_urls = set()
-
-    # Chercher les blocs d'articles/posts WordPress
-    # Pattern : titre de l'article + date + lien PDF
-    blocks = re.split(r'<article|<div[^>]+class=["\'][^"\']*post[^"\']*["\']', html)
-
-    for block in blocks[1:]:
-        # Titre
-        title_m = re.search(
-            r'<h[1-4][^>]*>(.*?)</h[1-4]>', block, re.S | re.I
-        )
-        title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else ""
-
-        # Date
-        date_m = re.search(
-            r'datetime=["\'](\d{4}-\d{2}-\d{2})', block
-        ) or re.search(
-            r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})', block
-        )
-        date_str = ""
-        if date_m:
-            if date_m.lastindex == 1:
-                date_str = date_m.group(1)
-            elif date_m.lastindex == 3:
-                d, mo, y = date_m.group(1), date_m.group(2), date_m.group(3)
-                date_str = f"{y}-{int(mo):02d}-{int(d):02d}"
-
-        # PDFs dans ce bloc
-        block_pdfs = re.findall(
-            r'href=["\'](' + re.escape(CAC_SITE_URL) + r'/wp-content/[^"\']+\.pdf)["\']',
-            block, re.I
-        )
-
-        if title and len(title) > 5:
-            url = block_pdfs[0] if block_pdfs else ""
-            if url in seen_urls:
-                continue
-            if url:
-                seen_urls.add(url)
-
-            marches.append({
-                "source":      "caussesaigoualcevennes.fr",
-                "source_type": "cac_site",
-                "acheteur_id": CAC_SIREN,
-                "acheteur_nom": "CC Causses Aigoual Cévennes Terres Solidaires",
-                "objet":       title,
-                "nature":      "Marché",
-                "procedure":   "Appel d'offres",
-                "montant":     None,
-                "date_pub":    date_str,
-                "date_notif":  "",
-                "pdf_url":     url,
-                "titulaires":  [],
-                "raw_id":      url or title[:50],
-            })
-
-    # Ajouter les PDFs non capturés dans les blocs
-    # Exclure les PDFs purement informatifs (pas des avis de marché)
-    _INFO_SLUGS = ("marches-publics.info", "dematerialisation", "guide", "notice")
-    for pdf_url in pdf_links:
-        if pdf_url in seen_urls:
-            continue
-        fname_lower = Path(pdf_url).stem.lower()
-        if any(x in fname_lower for x in _INFO_SLUGS):
-            continue
-        seen_urls.add(pdf_url)
-        # Extraire infos du nom de fichier
-        fname = Path(pdf_url).stem.lower()
-        year_m = re.search(r"20\d{2}", pdf_url)
-        # Extraire date DD.MM.YYYY depuis le nom de fichier si possible
-        date_m2 = re.search(r"(\d{1,2})[.\-](\d{1,2})[.\-](20\d{2})", fname)
-        if date_m2:
-            date_str = f"{date_m2.group(3)}-{int(date_m2.group(2)):02d}-{int(date_m2.group(1)):02d}"
-        else:
-            # Extraire depuis le chemin (année/mois)
-            path_m = re.search(r"/uploads/(\d{4})/(\d{2})/", pdf_url)
-            date_str = (f"{path_m.group(1)}-{path_m.group(2)}-01"
-                        if path_m else (year_m.group(0) + "-01-01" if year_m else ""))
-        # Titre plus lisible depuis le nom de fichier
-        title = re.sub(r"[-_]", " ", Path(pdf_url).stem).title().strip()
-        marches.append({
-                "source":      "caussesaigoualcevennes.fr",
-                "source_type": "cac_site",
-                "acheteur_id": CAC_SIREN,
-                "acheteur_nom": "CC Causses Aigoual Cévennes Terres Solidaires",
-                "objet":       title,
-                "nature":      "Marché",
-                "procedure":   "Appel d'offres",
-                "montant":     None,
-                "date_pub":    date_str,
-                "date_notif":  "",
-                "pdf_url":     pdf_url,
-                "titulaires":  [],
-                "raw_id":      pdf_url,
-            })
-
-    print(f"  [CC CAC] {len(marches)} avis trouvés")
-    return marches
+    avis = charger().avis_marches()
+    print(f"\n[site] {len(avis)} avis de publicité")
+    return [{
+        "source":       a["source"],
+        "source_type":  "site_officiel",
+        "acheteur_id":  CAC_SIREN if a.get("portee") == "epci" else COMMUNE_SIREN,
+        "acheteur_nom": EPCI_NOM if a.get("portee") == "epci" else COMMUNE_NAME,
+        "objet":        a["objet"],
+        "nature":       "Avis de publicité",
+        "procedure":    "Consultation",
+        "montant":      None,
+        "date_pub":     a.get("date_pub", ""),
+        "date_notif":   "",
+        "pdf_url":      a.get("pdf_url", ""),
+        "titulaires":   [],
+        "raw_id":       a.get("raw_id", ""),
+    } for a in avis]
 
 
 # ── Insertion DB ──────────────────────────────────────────────────────────────
 
 def _get_commune_entity_id(conn) -> int:
-    """Retourne l'ID de la commune de Lasalle (acheteur)."""
+    """Retourne l'ID de l'entité « Commune de … » (acheteur)."""
     row = conn.execute(
-        "SELECT id FROM entities WHERE type='service' AND name='Commune de Lasalle' LIMIT 1"
+        "SELECT id FROM entities WHERE type='service' AND name=? LIMIT 1",
+        (f"Commune de {COMMUNE_NAME}",)
     ).fetchone()
     if row:
         return row["id"]
@@ -668,16 +603,15 @@ def _get_commune_entity_id(conn) -> int:
 
 
 def _get_cac_entity_id(conn) -> int:
-    """Retourne l'ID de la CC CAC (acheteur)."""
+    """Retourne l'ID de l'EPCI (acheteur)."""
     row = conn.execute(
-        "SELECT id FROM entities WHERE name LIKE '%Causses Aigoual%' OR name LIKE '%CC CAC%' LIMIT 1"
+        "SELECT id FROM entities WHERE type='service' AND name=? LIMIT 1",
+        (EPCI_NOM,)
     ).fetchone()
     if row:
         return row["id"]
     return upsert_entity(
-        conn, type="service",
-        name="CC Causses Aigoual Cévennes Terres Solidaires",
-        short_name="CC CAC",
+        conn, type="service", name=EPCI_NOM, short_name="CCSVP",
         confidence="verified"
     )
 
@@ -769,7 +703,7 @@ def insert_marche(conn, m: dict,
         acheteur_label = COMMUNE_NAME
     else:
         acheteur_eid   = cac_id
-        acheteur_label = "CC CAC"
+        acheteur_label = EPCI_NOM
 
     titulaires = m.get("titulaires", [])
     tit = titulaires[0] if titulaires else {}
@@ -885,7 +819,7 @@ def main(
 ) -> None:
     print(f"\n[marches_publics] dry_run={dry_run} source={source} years={years}")
     print(f"  Commune SIRET : {COMMUNE_SIRET}")
-    print(f"  CC CAC SIREN  : {CAC_SIREN}")
+    print(f"  EPCI SIREN    : {CAC_SIREN} ({EPCI_NOM})")
 
     all_marches: list[dict] = []
 
@@ -899,8 +833,8 @@ def main(
     if source in ("all", "boamp"):
         all_marches += fetch_boamp_marches()
 
-    if source in ("all", "cac"):
-        all_marches += scrape_cac_marches()
+    if source in ("all", "site"):
+        all_marches += fetch_avis_site()
 
     print(f"\n  Total : {len(all_marches)} marchés à traiter")
 
@@ -927,7 +861,7 @@ def main(
     if inserted == 0 and source in ("all", "decp"):
         print(
             "  Note : le DECP couvre les contrats ≥ 40 000 € (services) / 90 000 € (travaux).\n"
-            "  Les marchés sous seuil de Lasalle n'y figurent pas — normale pour petite commune."
+            f"  Les marchés sous seuil de {COMMUNE_NAME} n'y figurent pas — normal pour une petite commune."
         )
     # Après le commit : les marchés lus sont gardés, mais le run est marqué
     # en erreur si une partie des sources n'a pas pu être lue.
@@ -935,10 +869,10 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Marchés publics Lasalle + CC CAC")
+    parser = argparse.ArgumentParser(description="Marchés publics — commune + EPCI")
     parser.add_argument("--dry-run",  action="store_true")
     parser.add_argument("--source",   default="all",
-                        choices=["all", "decp", "decp-eco", "boamp", "cac"])
+                        choices=["all", "decp", "decp-eco", "boamp", "site"])
     parser.add_argument("--years", type=str, default=None,
                         help="Plage d'années ex: 2022-2025 ou 2024")
     args = parser.parse_args()

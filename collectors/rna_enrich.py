@@ -30,11 +30,11 @@ from pathlib import Path
 from .archive import archive_fetch
 from .config import COMMUNES_CP
 
-DB_PATH    = Path(__file__).parent.parent / "db" / "lasalle.db"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
 DATA_DIR   = Path(__file__).parent.parent / "data"
 WALDEC_URL = "https://object.files.data.gouv.fr/data-pipeline-open/rna/waldec.csv"
-CODE_POSTAL = "30460"
-HEADERS    = {"User-Agent": "Lasalle-OSINT/1.0 (veille citoyenne, données publiques)"}
+from .config import CODE_POSTAL
+from .config import HEADERS
 
 
 # ── Download + filtre ─────────────────────────────────────────────────────────

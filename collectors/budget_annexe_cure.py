@@ -1,22 +1,24 @@
 """
-budget_annexe_cure.py — Collecteur ciblé : budget annexe La Cure (Centre Culturel)
-==================================================================================
-Reconstitue le coût de RÉHABILITATION de La Cure (#3561) depuis l'open-data DGFiP
-(balances comptables des communes), section investissement, 2019-2023.
+budget_annexe_cure.py — Collecteur ciblé : un budget annexe communal
+===================================================================
+Reconstitue le coût d'investissement d'un budget annexe depuis l'open-data
+DGFiP (balances comptables des communes), section investissement, 2019-2023.
+Le budget suivi se déclare dans config/seed_local.json — sur l'instance de
+référence c'était « CENTRE CULTUREL LASALLE » (réhabilitation de La Cure).
 
 Source  : https://data.economie.gouv.fr  (datasets "balances-comptables-des-communes-en-AAAA")
-Budget  : SIREN 213001407 + lbudg="CENTRE CULTUREL LASALLE" (cbudg=3, nomenclature M4)
+Budget  : SIREN de la commune + lbudg déclaré (cbudg=3, nomenclature M4)
 Cible   : comptes d'investissement
           - 20/21/23  immobilisations (travaux)        → section invest, sens "depense"
           - 13x       subventions d'équipement reçues  → section invest, sens "recette"
           - 16x       emprunts                          → section invest, sens "recette"
-Stockage: table budget_annexe (entity_id=3561, source="DGFiP-balances", confidence="verified").
+Stockage: table budget_annexe (entity_id de l'entité déclarée, source="DGFiP-balances").
           Idempotent : purge puis réinsère uniquement les lignes de cette source.
 
 Usage :
-  ~/venvs/agents/bin/python3 -m collectors.budget_annexe_cure            # collecte + stocke
-  ~/venvs/agents/bin/python3 -m collectors.budget_annexe_cure --dry-run  # affiche sans stocker
-  ~/venvs/agents/bin/python3 -m collectors.budget_annexe_cure --summary  # synthèse coût réhab
+  venv/bin/python -m collectors.budget_annexe_cure            # collecte + stocke
+  venv/bin/python -m collectors.budget_annexe_cure --dry-run  # affiche sans stocker
+  venv/bin/python -m collectors.budget_annexe_cure --summary  # synthèse coût réhab
 """
 import argparse
 import json
@@ -25,9 +27,25 @@ import urllib.request
 
 from .db import get_conn
 
-SIREN = "213001407"
-LBUDG = "CENTRE CULTUREL LASALLE"   # = budget annexe La Cure
-CURE_ENTITY_ID = 3561
+from .config import COMMUNE_SIREN as SIREN, HEADERS
+# Le budget annexe suivi et l'entité à laquelle il se rapporte sont propres à
+# une commune : ils se déclarent dans config/seed_local.json
+# (`"budget_annexe": {"libelle": "…", "entite": "…"}`). Sans déclaration, le
+# collecteur ne fait rien — il interrogeait sinon la DGFiP pour un budget
+# « CENTRE CULTUREL LASALLE » qui n'existe pas ici, et rattachait le résultat
+# à l'entité n° 3561, quelle qu'elle soit dans cette base.
+def _declaration() -> dict:
+    import json as _json
+    from pathlib import Path as _Path
+    chemin = _Path(__file__).resolve().parent.parent / "config" / "seed_local.json"
+    try:
+        return (_json.loads(chemin.read_text(encoding="utf-8")).get("budget_annexe")
+                or {})
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+LBUDG = _declaration().get("libelle", "")
 SOURCE = "DGFiP-balances"
 API_BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
 YEARS = range(2019, 2024)
@@ -64,7 +82,7 @@ def fetch_year(year: int) -> list[dict]:
             "limit": 100, "offset": offset,
         })
         url = f"{API_BASE}/{dataset}/records?{params}"
-        req = urllib.request.Request(url, headers={"User-Agent": "LasalleOSINT/1.0"})
+        req = urllib.request.Request(url, headers=HEADERS)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 data = json.loads(r.read())
@@ -103,7 +121,16 @@ def extract_invest(records: list[dict]) -> list[dict]:
 
 
 def collect(dry_run: bool = False) -> dict:
+    decl = _declaration()
+    if not decl.get("libelle") or not decl.get("entite"):
+        print("[budget_annexe] aucun budget annexe déclaré dans seed_local.json "
+              "(clés « libelle » et « entite ») — rien à collecter.")
+        return {"_inserted": 0}
+
     conn = get_conn()
+    from .db import upsert_entity
+    CURE_ENTITY_ID = upsert_entity(conn, type="service", name=decl["entite"],
+                                   confidence="verified")
     report = {}
     try:
         if not dry_run:
@@ -163,6 +190,6 @@ if __name__ == "__main__":
     print(f"[budget_annexe_cure] budget « {LBUDG} » — DGFiP balances {YEARS.start}-{YEARS.stop-1}")
     rep = collect(dry_run=args.dry_run)
     if not args.dry_run:
-        print(f"\n✓ {rep['_inserted']} lignes d'investissement stockées (entity #{CURE_ENTITY_ID}, source={SOURCE}).")
+        print(f"\n✓ {rep['_inserted']} lignes d'investissement stockées (source={SOURCE}).")
     if args.summary or args.dry_run:
         summary(rep)

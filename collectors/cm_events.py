@@ -1,15 +1,24 @@
 """
-Importeur comptes-rendus CM — délibérations, subventions, flux financiers.
-Parse les fichiers markdown existants + fetch les CRs lasalle.fr.
+Importeur des SAISIES LOCALES — subventions votées, baux, transactions.
+
+Ce module ne va rien chercher en ligne : il charge `config/seed_local.json`,
+qui contient ce qu'un humain a relevé dans les documents. La lecture des procès-
+verbaux du conseil municipal, elle, est automatique et vit dans `cm_brassac`.
 """
 import json
-from pathlib import Path
 import re
 import time
+import urllib.parse
 import urllib.request
-from .config import LASALLE_URL, HEADERS, REQUEST_DELAY
+from pathlib import Path
+
+from .config import COMMUNE_URL, HEADERS, REQUEST_DELAY
 from .db import transaction, upsert_entity, upsert_relation
 from .cm_finances import Resolver, _clean_benef
+
+# Domaine du site officiel, tel qu'il apparaît dans events.source et dans
+# l'allowlist de publication.
+SOURCE_SITE = urllib.parse.urlparse(COMMUNE_URL).netloc.removeprefix("www.")
 
 # CRs connus avec leur contenu notable (source : scraping précédent)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -63,14 +72,19 @@ def _get_or_create_commune(conn, commune: dict | None) -> int:
 
 def _import_cr_catalogue(conn, commune_id: int, seed: dict):
     CR_CATALOGUE = seed.get("cr_catalogue") or []
-    LASALLE_URL = seed.get("base_url") or ""
+    base = seed.get("base_url") or COMMUNE_URL
     # `events` n'a aucune contrainte UNIQUE : le OR IGNORE d'origine n'ignorait
     # rien et chaque exécution réinsérait les 26 comptes rendus. Le contrôle
     # d'existence doit donc être explicite. Il porte sur l'URL source, qui
     # identifie le compte rendu — le titre, lui, est reconstruit à partir de la
     # date et se retrouverait identique sur deux séances du même jour.
     for cr in CR_CATALOGUE:
-        url = f"{LASALLE_URL}/CR/{cr['url']}"
+        # L'URL du seed est prise telle quelle si elle est absolue. La version
+        # d'origine préfixait systématiquement `{base}/CR/`, qui est le chemin
+        # des comptes rendus de lasalle.fr : ici les PV sont des PDF déposés
+        # dans /wp-content/uploads/, sans motif d'URL commun. Ce catalogue-là
+        # n'a d'ailleurs plus à être saisi : `cm_brassac` le lit sur le site.
+        url = cr["url"] if cr["url"].startswith("http") else f"{base}/{cr['url'].lstrip('/')}"
         if conn.execute(
             "SELECT 1 FROM events WHERE type='deliberation' AND source_url=?", (url,)
         ).fetchone():
@@ -81,7 +95,7 @@ def _import_cr_catalogue(conn, commune_id: int, seed: dict):
             " VALUES (?,?,?,?,?,?)",
             ("deliberation", cr["date"],
              f"CM du {cr['date']}", cr["note"],
-             "lasalle.fr", url)
+             SOURCE_SITE, url)
         )
 
 def _import_subventions(conn, commune_id: int, seed: dict):
@@ -214,7 +228,7 @@ def _import_transactions(conn, commune_id: int, seed: dict):
             " (type,date,title,content,source,source_url,metadata)"
             " VALUES (?,?,?,?,?,?,?)",
             ("deliberation", d["date"], d["title"], d.get("content"),
-             d.get("source"), (seed.get("base_url") or "") + d.get("url_suffixe", ""),
+             d.get("source"), (seed.get("base_url") or COMMUNE_URL) + d.get("url_suffixe", ""),
              json.dumps(d.get("metadata") or {}))
         )
     print(f"  [cm] {len(seed.get('transactions_saisies') or [])} transaction(s) saisie(s)")

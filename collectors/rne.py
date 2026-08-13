@@ -75,7 +75,7 @@ FICHIERS = {
         # intercommunal. On veut l'organe entier, sinon on ne montre pas qui
         # décide.
         "siren_col": "N° SIREN",
-        "siren": {"200034601"},          # CC Causses Aigoual Cévennes Terres Solidaires
+        "siren": {EPCI_SIREN} if EPCI_SIREN else set(),
     },
 }
 

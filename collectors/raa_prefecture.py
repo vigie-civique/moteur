@@ -1,17 +1,24 @@
 """
-raa_gard.py — RAA de la préfecture du Gard : mentions du vallon de la Salindrenque.
+raa_prefecture.py — RAA de la préfecture : mentions des communes du périmètre.
 
-Scanne les recueils des actes administratifs (PDF, gard.gouv.fr) : téléchargement,
-extraction texte (pdftotext, fallback pdfplumber), détection des mentions des
-7 communes / CC CAC / Salindrenque. Seuls les recueils avec mention sont
-archivés (raw_documents, source prefecture-gard) + un event 'raa_prefecture'
-avec les extraits (page + contexte). La table raa_scans trace tous les PDFs
-scannés : un recueil sans mention n'est jamais re-téléchargé.
+Scanne les recueils des actes administratifs (PDF) : téléchargement, extraction
+texte (pdftotext, fallback pdfplumber), détection des mentions des communes du
+registre et de l'EPCI. Seuls les recueils avec mention sont archivés
+(raw_documents) + un event 'raa_prefecture' avec les extraits (page + contexte).
+La table raa_scans trace tous les PDF scannés : un recueil sans mention n'est
+jamais re-téléchargé.
+
+Adapté du collecteur écrit pour gard.gouv.fr. L'arborescence n'est PAS la même
+d'une préfecture à l'autre : le Gard listait ses PDF sur la page de l'année (ou
+d'un mois), le Tarn ajoute un niveau — année → mois → page de l'acte — et
+pagine les mois par tranches de dix. Le parcours est donc devenu récursif, ce
+qui couvre les deux formes. C'est le genre de détail qui décide du temps de
+portage : la logique de détection, elle, n'a pas bougé d'une ligne.
 
 Usage :
-  python3 -m collectors.raa_gard --year 2026 --limit 5   # test
-  python3 -m collectors.raa_gard                          # année courante
-  python3 -m collectors.raa_gard --stats
+  python3 -m collectors.raa_prefecture --year 2026 --limit 5   # test
+  python3 -m collectors.raa_prefecture                          # année courante
+  python3 -m collectors.raa_prefecture --stats
 """
 import argparse
 import json
@@ -25,20 +32,39 @@ from datetime import date
 from pathlib import Path
 
 from .archive import archive_fetch
+from .config import (COMMUNES, DEPARTEMENT, EPCI_NOM, PREFECTURE_RAA_PATH,
+                     PREFECTURE_URL)
 from .db import get_conn
 
-BASE = "https://www.gard.gouv.fr"
-YEAR_PATH = "/Publications/Recueil-des-Actes-Administratifs/Recueil-des-actes-administratifs-{year}"
+BASE = PREFECTURE_URL
+YEAR_PATH = PREFECTURE_RAA_PATH
+SOURCE = f"prefecture-{DEPARTEMENT}"
+# Profondeur d'exploration sous la page de l'année (mois, puis actes).
+MAX_NIVEAUX = 3
+# Le site de la préfecture du Tarn coupe les connexions quand on enchaîne les
+# requêtes, et le blocage porte sur l'adresse IP : une exploration trop rapide
+# rend le site injoignable pour plusieurs minutes, curl compris. L'arborescence
+# à trois niveaux demandant plus de deux cents pages par année, la politesse
+# n'est pas optionnelle ici — elle conditionne le fait d'obtenir quoi que ce soit.
+DELAI_PAGE = 1.5
+MAX_PAGES = 400
 UA = {"User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36")}
 
+# Termes déclencheurs : les communes du registre et le nom de l'EPCI. Construit
+# depuis la config plutôt que saisi — une liste en dur ici se serait décorrélée
+# du périmètre au premier changement de registre.
+_TERMES = sorted({c["nom"] for c in COMMUNES.values()}
+                 | {mot for mot in re.split(r"[\s'’-]+", EPCI_NOM)
+                    if len(mot) > 5 and mot.lower() not in
+                    ("communaute", "communauté", "communes", "agglomeration",
+                     "agglomération")},
+                 key=len, reverse=True)
 MENTION_RE = re.compile(
-    r"\b(Lasalle|Salindrenque|Salendrinque|Soudorgues|Colognac|Thoiras|Corb[èe]s"
-    r"|Vabres|Sainte-Croix-de-Caderle|Saint-Bonnet-de-Salendrinque"
-    r"|Causses\s+Aigoual|Nivoul[èe]de)\b", re.IGNORECASE)
+    r"\b(" + "|".join(re.escape(t) for t in _TERMES) + r")\b", re.IGNORECASE)
 
 # Termes thématiques (eau / assainissement / urbanisme coercitif) : relevés
-# uniquement sur les pages qui mentionnent déjà une commune du vallon.
+# uniquement sur les pages qui mentionnent déjà une commune du périmètre.
 THEME_RE = re.compile(
     r"\b(assainissement|SPANC|loi sur l'eau|police de l'eau|pollution"
     r"|qualité de l'eau|mise en demeure|infraction[s]? d'urbanisme"
@@ -62,31 +88,60 @@ def ensure_table(conn):
     conn.commit()
 
 
-def _get(url: str, timeout: int = 60) -> bytes:
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+def _get(url: str, timeout: int = 60, tentatives: int = 3) -> bytes:
+    """GET avec réessais.
+
+    Le site du Tarn ferme la connexion sans réponse quand on enchaîne les
+    pages : l'arborescence à trois niveaux fait passer d'une dizaine de
+    requêtes par année (Gard) à plus de deux cents. Sans réessai, un quart des
+    recueils manquait à l'appel — et rien ne le signalait, puisque chaque échec
+    ne coûtait qu'une ligne de log.
+    """
+    dernier = None
+    for essai in range(tentatives):
+        req = urllib.request.Request(url, headers=UA)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except Exception as e:
+            dernier = e
+            time.sleep(1.5 * (essai + 1))
+    raise dernier
 
 
 def list_pdfs(year: int) -> list[str]:
-    """URLs absolues des PDFs RAA de l'année (page année + sous-pages mois)."""
-    year_url = BASE + YEAR_PATH.format(year=year)
-    pages = [year_url]
-    html = _get(year_url).decode("utf-8", errors="replace")
-    # Sous-pages (certaines années sont découpées par mois)
-    for m in re.finditer(r'href="(%s/[^"]+)"' % re.escape(YEAR_PATH.format(year=year)), html):
-        sub = BASE + m.group(1)
-        if sub not in pages:
-            pages.append(sub)
+    """URLs absolues des PDF du RAA de l'année.
 
-    pdfs: list[str] = []
-    for i, page_url in enumerate(pages):
-        page_html = html if i == 0 else _get(page_url).decode("utf-8", errors="replace")
-        for m in re.finditer(r'"(/contenu/telechargement/[^"]*\.pdf)"', page_html):
+    Descend récursivement sous la page de l'année : les préfectures découpent
+    par mois, parfois par acte, et paginent avec `/(offset)/N`. On explore donc
+    tout ce qui reste sous le chemin de l'année, en s'arrêtant à MAX_NIVEAUX.
+    """
+    racine = YEAR_PATH.format(year=year)
+    a_visiter = [(BASE + racine, 0)]
+    vues, pdfs = set(), []
+
+    while a_visiter and len(vues) < MAX_PAGES:
+        page_url, niveau = a_visiter.pop(0)
+        if page_url in vues:
+            continue
+        vues.add(page_url)
+        try:
+            html = _get(page_url).decode("utf-8", errors="replace")
+        except Exception as e:
+            print(f"  [raa][erreur] {page_url} → {e}")
+            continue
+
+        for m in re.finditer(r'"(/contenu/telechargement/[^"]*\.pdf)"', html):
             url = BASE + urllib.parse.quote(m.group(1))
             if url not in pdfs:
                 pdfs.append(url)
-        time.sleep(0.3)
+
+        if niveau < MAX_NIVEAUX:
+            for m in re.finditer(r'href="(%s/[^"#?]+)"' % re.escape(racine), html):
+                sous = BASE + m.group(1)
+                if sous not in vues:
+                    a_visiter.append((sous, niveau + 1))
+        time.sleep(DELAI_PAGE)
     return pdfs
 
 
@@ -139,11 +194,11 @@ def scan_pdf(conn, url: str, dry_run: bool = False) -> int:
     date_doc = _date_from_name(fname)
 
     if mentions and not dry_run:
-        archive_fetch("prefecture-gard", url, raw, doc_type="pdf", title=fname,
+        archive_fetch(SOURCE, url, raw, doc_type="pdf", title=fname,
                       metadata={"mentions": len(mentions)})
         exists = conn.execute(
-            "SELECT id FROM events WHERE source='prefecture-gard' AND source_url=?",
-            (url,)
+            "SELECT id FROM events WHERE source=? AND source_url=?",
+            (SOURCE, url)
         ).fetchone()
         if not exists:
             communes = sorted({m["terme"].title() for m in mentions
@@ -156,10 +211,10 @@ def scan_pdf(conn, url: str, dry_run: bool = False) -> int:
                 f"p.{m['page']} [{m['terme']}] …{m['extrait']}…" for m in mentions[:40])
             conn.execute(
                 "INSERT INTO events (type, date, title, content, source, source_url, metadata)"
-                " VALUES ('raa_prefecture', ?, ?, ?, 'prefecture-gard', ?, ?)",
-                (date_doc, f"RAA Gard {fname.removesuffix('.pdf')} — "
+                " VALUES ('raa_prefecture', ?, ?, ?, ?, ?, ?)",
+                (date_doc, f"RAA {DEPARTEMENT} {fname.removesuffix('.pdf')} — "
                            f"{len(mentions)} mention(s) : {', '.join(communes)}",
-                 content, url,
+                 content, SOURCE, url,
                  json.dumps({"mentions": mentions[:40]}, ensure_ascii=False))
             )
     if not dry_run:

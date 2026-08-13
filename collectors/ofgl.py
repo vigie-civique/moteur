@@ -1,7 +1,7 @@
 """
 ofgl.py — Collecteur OFGL (Observatoire des Finances et de la Gestion publique Locales)
 
-Importe les agrégats financiers pré-calculés de Lasalle depuis data.ofgl.fr :
+Importe les agrégats financiers pré-calculés de la commune depuis data.ofgl.fr :
 - Recettes/dépenses fonctionnement et investissement
 - Épargne brute, nette, CAF
 - Encours de dette, annuité, DGF, fiscalité
@@ -27,7 +27,7 @@ from datetime import date
 from .archive import fetch_json
 from .db import get_conn
 
-SIREN_COMMUNE = "213001407"
+from .config import COMMUNE_NAME, COMMUNE_SIREN as SIREN_COMMUNE, HEADERS
 DATASET = "ofgl-base-communes"
 API_BASE = "https://data.ofgl.fr/api/explore/v2.1/catalog/datasets"
 # OFGL publie les comptes exécutés avec ~1 an de décalage. On balaie jusqu'à
@@ -43,7 +43,7 @@ def fetch_year(year: int) -> list[dict]:
     url = f"{API_BASE}/{DATASET}/records?{params}"
     try:
         data = fetch_json(url, source="ofgl", timeout=30,
-                          headers={"User-Agent": "LasalleOSINT/1.0"})
+                          headers=HEADERS)
         return data.get("results", [])
     except Exception as e:
         print(f"  [erreur] {year} : {e}")
@@ -149,7 +149,7 @@ def run(year: int | None = None, dry_run: bool = False, stats_only: bool = False
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Collecteur OFGL — Lasalle")
+    parser = argparse.ArgumentParser(description=f"Collecteur OFGL — {COMMUNE_NAME}")
     parser.add_argument("--year", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--stats", action="store_true")

@@ -1,5 +1,5 @@
 """
-web_scraper.py — Scraper générique sites web entités locales Lasalle
+web_scraper.py — Scraper générique des sites web des entités locales
 
 Scrape ~100 sites d'associations, entreprises et lieux locaux pour :
 - Confirmer/enrichir les données DB (adresse, téléphone, email, description)
@@ -23,7 +23,7 @@ import urllib.error
 import urllib.request
 from html.parser import HTMLParser
 
-from .config import LASALLE_URL, HEADERS, REQUEST_DELAY, ROOT
+from .config import COMMUNE_NAME, COMMUNE_URL, DEPARTEMENT, HEADERS, REQUEST_DELAY, ROOT
 from .db import transaction, get_conn
 from .archive import archive_fetch
 
@@ -170,7 +170,8 @@ def gemma_analyze(entity_name: str, entity_type: str, text: str) -> str | None:
     if not text or len(text) < 100:
         return None
     prompt = (
-        f"Tu analyses le site web de '{entity_name}' ({entity_type}, Lasalle, Gard, France).\n"
+        f"Tu analyses le site web de '{entity_name}' ({entity_type}, {COMMUNE_NAME}, "
+        f"département {DEPARTEMENT}, France).\n"
         f"Voici un extrait du texte de la page :\n\n{text[:2000]}\n\n"
         f"En 3-5 phrases maximum, identifie :\n"
         f"- Les personnes nommées (dirigeants, contacts, partenaires)\n"
@@ -467,7 +468,8 @@ def scrape_entity(entity: dict, dry_run: bool = False, use_gemma: bool = False) 
         "description": parser.meta_desc or (parser.text_blocks[0] if parser.text_blocks else ""),
         "contact": contact,
         "conflict_signals": conflicts,
-        "outlinks": [l for l in parser.outlinks if "lasalle" in l.lower()][:10],
+        "outlinks": [l for l in parser.outlinks
+                     if COMMUNE_NAME.lower() in l.lower()][:10],
         "text_preview": all_text[:1000],
         "gemma_note": gemma_note,
     }
@@ -624,7 +626,7 @@ def _bilan_reseau() -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Scraper sites web entités locales Lasalle")
+    parser = argparse.ArgumentParser(description="Scraper des sites web des entités locales")
     parser.add_argument("--dry-run",     action="store_true", help="Affiche sans modifier la DB")
     parser.add_argument("--limit",  "-n", type=int,  default=0, help="Nombre max d'entités")
     parser.add_argument("--type",   "-t", default=None,

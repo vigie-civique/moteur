@@ -1,10 +1,10 @@
 {
   "project": {
-    "public_name": "Vigie Civique Lasalle",
-    "private_name": "Atelier Vigie Civique Lasalle",
-    "commune": "Lasalle",
-    "insee": "30140",
-    "postal_code": "30460"
+    "public_name": "Vigie Civique Brassac",
+    "private_name": "Atelier Vigie Civique Brassac",
+    "commune": "Brassac",
+    "insee": "81037",
+    "postal_code": "81260"
   },
   "outputs": {
     "public_snapshot_dir": "dashboard/static/public_api",
@@ -12,7 +12,7 @@
     "license": "ODbL-1.0",
     "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
     "_license_note": "Arbitré le 12/08/2026. 333 des 1 807 entités publiées sont des points d'intérêt OpenStreetMap importés tels quels, et 42 % des coordonnées publiées viennent d'un géocodage OSM : la contribution est substantielle et fondue dans le jeu, qui est donc une BASE DÉRIVÉE au sens de l'ODbL — pas une base collective séparable. Le partage à l'identique s'applique. La Licence Ouverte v2 (SIRENE, RNA, DVF, DECP, OFGL, RNE, élections) est compatible ODbL, à charge de citer source et date. Le SITE et ses visualisations sont un « Produced Work » au sens ODbL : l'attribution suffit. Le CODE relève d'une licence distincte (MIT, cf. LICENSE) — l'ODbL ne porte pas sur le logiciel.",
-    "attribution": "Vigie Civique Lasalle — vigie-civique-lasalle.pages.dev",
+    "attribution": "Vigie Civique Brassac",
     "source_attributions": [
       "Contient des informations d'OpenStreetMap, mises à disposition sous Open Database License (ODbL) — © les contributeurs OpenStreetMap",
       "Contient des données publiques sous Licence Ouverte v2 (Etalab) : SIRENE et indicateurs INSEE, RNA, DVF, BODACC, OFGL et DGFiP, DECP et BOAMP, Répertoire National des Élus, résultats électoraux du ministère de l'Intérieur, BANATIC",
@@ -32,16 +32,16 @@
   },
   "locations": {
     "bbox": {
-      "lat_min": 43.98,
-      "lat_max": 44.1,
-      "lng_min": 3.79,
-      "lng_max": 3.93
+      "lat_min": 43.5707,
+      "lat_max": 43.6527,
+      "lng_min": 2.4641,
+      "lng_max": 2.5552
     },
     "center_fallback_box": {
-      "lat_min": 44.044,
-      "lat_max": 44.047,
-      "lng_min": 3.852,
-      "lng_max": 3.856
+      "lat_min": 43.6107,
+      "lat_max": 43.6127,
+      "lng_min": 2.5087,
+      "lng_max": 2.5107
     },
     "policy": {
       "person": "hide_coordinates",
@@ -116,9 +116,8 @@
     "public_sources": [
       "BOAMP",
       "bodacc",
-      "caussesaigoualcevennes.fr",
+      "brassac.fr",
       "interieur",
-      "lasalle.fr",
       "sitadel"
     ],
     "exclude_types": [

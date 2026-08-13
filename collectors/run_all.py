@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_all.py — Orchestrateur principal des collecteurs Lasalle OSINT.
+run_all.py — Orchestrateur principal des collecteurs (instance Brassac).
 Usage : python3 -m collectors.run_all [--step STEP] [--stats]
 """
 import sys
@@ -11,21 +11,23 @@ from pathlib import Path
 # Ajouter le parent au path pour les imports relatifs
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from collectors.config        import (COMMUNES, COMMUNES_INSEE, COMMUNES_CP,
-                                      COMMUNES_ADRESSE, COMMUNES_INSEE_ADRESSE,
-                                      STEP_META)
+from collectors.config        import (COMMUNE_NAME, COMMUNES, COMMUNES_INSEE,
+                                      COMMUNES_CP, COMMUNES_ADRESSE,
+                                      COMMUNES_INSEE_ADRESSE, DB_PATH, STEP_META)
 from collectors.db            import (init_db, get_conn, stats,
                                       log_run_start, log_run_end)
 from collectors.osm           import import_osm
 from collectors.profiles      import import_profiles
 from collectors.cm_events     import import_cm_events
+from collectors.conseils      import (import_conseil_communautaire,
+                                      import_conseil_municipal)
 from collectors.sirene        import import_sirene
 from collectors.rna           import import_rna
 from collectors.bodacc        import run as run_bodacc
 from collectors.dvf           import import_dvf
 from collectors.insee_social  import run as run_insee_social
 from collectors.georisques    import run as run_georisques
-from collectors.raa_gard      import run as run_raa_gard
+from collectors.raa_prefecture import run as run_raa
 from collectors.pop_culture   import run as run_pop_culture
 from collectors.rne          import run as run_rne
 from collectors.fiscalite    import run as run_fiscalite
@@ -36,7 +38,6 @@ from collectors.dirigeants_web     import run as run_dir_web
 from collectors.events_scraper  import main as run_events_scraper
 from collectors.web_scraper    import main as run_web_scraper
 from collectors.marches_publics import main as run_marches_publics
-from collectors.cc_cac_scraper  import main as run_cc_cac
 from collectors.banatic        import run as run_banatic
 
 
@@ -44,15 +45,22 @@ STEPS = {
     "init":     ("Initialisation schéma",                lambda: init_db()),
     "osm":      ("POIs OpenStreetMap",                   import_osm),
     "profiles": ("Élus, candidats, entourage",            import_profiles),
-    "cm":       ("Comptes-rendus CM & subventions",       import_cm_events),
+    # Deux entrées distinctes : `cm` lit les PV publiés par la mairie (source
+    # primaire, automatique), `seed` importe ce qui a été saisi à la main dans
+    # config/seed_local.json (subventions, baux). Les confondre revenait à
+    # faire dépendre la collecte des PV d'un fichier local à remplir.
+    "cm":       ("Procès-verbaux du conseil municipal (PDF)", import_conseil_municipal),
+    "seed":     ("Saisies locales : subventions, baux, transactions", import_cm_events),
     # sirene et dvf sont ADRESSÉS : ils bouclent sur COMMUNES_ADRESSE, qui
-    # ajoute les éventuelles communes déléguées (vide pour Lasalle) — cf. config.
+    # ajoute les communes déléguées — ici Ferrières et Le Margnès, absorbées
+    # par Fontrieu en 2016 mais toujours indexées sous leur ancien code.
     "sirene":   ("Entreprises SIRENE (C1 — {})".format(", ".join(COMMUNES_INSEE_ADRESSE)),
                  lambda: [import_sirene(i, COMMUNES_ADRESSE[i]["nom"])
                           for i in COMMUNES_INSEE_ADRESSE]),
-    # RNA et BODACC interrogent par CODE POSTAL : le 30460 couvre 6 communes,
-    # la collecte sur-remonte puis filtre sur COMMUNES. Ne pas s'étonner du
-    # nombre d'enregistrements « hors périmètre ignorés ».
+    # RNA et BODACC interrogent par CODE POSTAL, qui ne délimite pas une
+    # commune : la collecte sur-remonte puis filtre sur COMMUNES. Ne pas
+    # s'étonner du nombre d'enregistrements « hors périmètre ignorés » — sur le
+    # 81100 (aire de Castres), ils sont la règle plutôt que l'exception.
     "rna":      ("Associations RNA/JO (C1 — CP {})".format(", ".join(COMMUNES_CP)),
                  lambda: [import_rna(cp) for cp in COMMUNES_CP]),
     "bodacc":   ("Annonces BODACC (C1 — CP {})".format(", ".join(COMMUNES_CP)),
@@ -61,8 +69,8 @@ STEPS = {
                  lambda: [import_dvf(i) for i in COMMUNES_INSEE_ADRESSE]),
     "insee":    ("Indicateurs INSEE Melodi (C1)", run_insee_social),
     "georisques": ("Risques, ICPE, CATNAT (C1)", run_georisques),
-    "raa":      ("RAA préfecture du Gard (année courante, incrémental)",
-                 lambda: run_raa_gard(__import__("datetime").date.today().year)),
+    "raa":      ("RAA de la préfecture (année courante, incrémental)",
+                 lambda: run_raa(__import__("datetime").date.today().year)),
     "patrimoine": ("Monuments historiques MH (C1)", run_pop_culture),
     # Source AUTORITAIRE des mandats (DGCL). Sert de contrôle des affirmations
     # tirées des sites municipaux, qui peuvent être périmés.
@@ -75,13 +83,14 @@ STEPS = {
     # des relations directes.
     "dir_deports": ("Dirigeants d'assos — déports du conseil", run_dir_deports),
     "dir_web":     ("Dirigeants d'assos — sites web", run_dir_web),
-    "marches":  ("Marchés publics DECP + CC CAC site",    run_marches_publics),
-    "cc_cac":   ("CC Causses Aigoual Cévennes Terres Solidaires (PV+élus)", run_cc_cac),
+    "marches":  ("Marchés publics DECP + avis des sites", run_marches_publics),
+    "cc_epci":  ("Procès-verbaux du conseil communautaire",
+                 import_conseil_communautaire),
     # Périmètre C2 : ce que l'EPCI exerce à la place de la commune.
     # Source faisant foi sur le rattachement des délégués (le RNE se trompe).
     "banatic":  ("Compétences, délégués et adhésions de l'EPCI (BANATIC)",
                  run_banatic),
-    "events":   ("Événements locaux (lasalle.fr)",        run_events_scraper),
+    "events":   ("Vie locale (sites officiels)",          run_events_scraper),
     "web":      ("Sites web entités locales",             run_web_scraper),
 }
 
@@ -145,7 +154,7 @@ def print_stats():
         print("Base vide.")
         return
     print(f"\n{'='*60}")
-    print(f"  STATISTIQUES — lasalle.db")
+    print(f"  STATISTIQUES — {DB_PATH.name}")
     print(f"{'='*60}")
     print(f"  Personnes        : {s.get('persons', 0):>6}")
     print(f"  Entreprises      : {s.get('businesses', 0):>6}")
@@ -161,7 +170,7 @@ def print_stats():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Lasalle OSINT — collecteurs")
+    parser = argparse.ArgumentParser(description=f"{COMMUNE_NAME} OSINT — collecteurs")
     parser.add_argument("--step", choices=list(STEPS.keys()),
                         help="Exécuter un seul step")
     parser.add_argument("--stats", action="store_true",
@@ -187,7 +196,7 @@ def main():
         idx = steps.index(args.from_step)
         steps = steps[idx:]
 
-    print(f"\n  LASALLE OSINT — collecte complète")
+    print(f"\n  {COMMUNE_NAME.upper()} OSINT — collecte complète")
     print(f"  {len(steps)} steps : {', '.join(steps)}")
     t_total = time.time()
 

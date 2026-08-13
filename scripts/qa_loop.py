@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from collectors.config import STEP_META            # noqa: E402  (fraîcheur des sources)
 
-DB_PATH = ROOT / "db" / "lasalle.db"
+from collectors.config import DB_PATH   # nommée dans la config
 REPORT_PATH = ROOT / "audits" / "qa_report.json"
 ELECTION_2026 = "2026-03-15"          # début de la mandature actuelle
 MANDATE_TYPES = ("élu_cm", "élu_cc", "adjoint", "maire", "délégué_cm", "délégué_cc")
@@ -574,8 +574,8 @@ def backup_db():
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = Path.home() / "Claude" / ".backups" / f"commune-qa-{ts}"
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(DB_PATH, dest / "lasalle.db")
-    return dest / "lasalle.db"
+    shutil.copy2(DB_PATH, dest / DB_PATH.name)
+    return dest / DB_PATH.name
 
 
 def write_report(findings):

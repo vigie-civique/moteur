@@ -25,7 +25,7 @@ import json
 import sys
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "db" / "lasalle.db"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
 
 # Seuil max de personnes partageant un patronyme pour suggérer un lien familial.
 # Au-delà, le patronyme est considéré trop courant (ex : MARTIN, GRANIER, ESTIENNE).

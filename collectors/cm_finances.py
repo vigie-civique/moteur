@@ -26,9 +26,7 @@ import argparse
 import re
 import unicodedata
 
-from .db import transaction, get_conn, upsert_entity
-
-COMMUNE_ID = 63
+from .db import transaction, get_conn, upsert_entity, pivot_ids
 
 
 def _clean_benef(name: str) -> str:
@@ -48,23 +46,24 @@ def _deapos(s: str) -> str:
     return s.replace("’", "'").replace("‘", "'").replace("`", "'")
 
 
-# Alias pour les cas non résolus automatiquement (nom extrait → nom d'entité exact existant).
-ALIASES = {
-    "ape": "ASSOCIATION DE PARENTS D'ELEVES DES ECOLES PUBLIQUES DE LASALLE",
-    "association des parents d'eleves": "ASSOCIATION DE PARENTS D'ELEVES DES ECOLES PUBLIQUES DE LASALLE",
-    "art'scene": "L'ART SCENE",
-    "art scene": "L'ART SCENE",
-    "brico cafe": "LE BRICOCAFE LASALLOIS",
-    "jardins d'emeraude": "LES JARDINS D'EMERAUDE JARDINS FAMILIAUX LASALLOIS",
-    "les jardins d'emeraude": "LES JARDINS D'EMERAUDE JARDINS FAMILIAUX LASALLOIS",
-    # L'apostrophe est un séparateur de tokens : « VIVALTO » donne {vivalto} et
-    # « VIV'ALTO » donne {viv, alto}. Aucune intersection, donc aucun
-    # rapprochement possible par similarité — seul un alias les réunit.
-    "vivalto": "VIV'ALTO",
-    # Le CR de 2025 écrit « Film », celui de 2024 « Filme » : un caractère
-    # d'écart suffit à faire tomber la similarité sous le seuil (0,5 < 0,6).
-    "la caravane film": "LA CARAVANE FILME",
-}
+# Alias pour les cas non résolus automatiquement (nom extrait → nom d'entité).
+# Ce registre est de la SAISIE locale : il rapprochait « ape » de
+# « ASSOCIATION DE PARENTS D'ELEVES DES ECOLES PUBLIQUES DE LASALLE ». Rejoué
+# ailleurs, il ne rapproche rien — au mieux. Il se remplit donc dans
+# config/seed_local.json, clé `alias_associations`, au fil des rapprochements
+# constatés à l'atelier.
+def _charger_alias() -> dict:
+    import json as _json
+    from pathlib import Path as _Path
+    chemin = _Path(__file__).resolve().parent.parent / "config" / "seed_local.json"
+    try:
+        seed = _json.loads(chemin.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return {}
+    return {k.lower(): v for k, v in (seed.get("alias_associations") or {}).items()}
+
+
+ALIASES = _charger_alias()
 
 
 def _norm_tokens(s: str) -> set[str]:
@@ -257,7 +256,7 @@ def run_subventions(commit: bool):
         print("\n(dry-run — relancer sans --dry-run pour insérer)")
         return
 
-    def _ins(w, year, amount, to_id, eid):
+    def _ins(w, year, amount, to_id, eid, COMMUNE_ID):
         w.execute(
             "INSERT INTO financial_flows (type,year,amount,from_id,to_id,event_id,description,source,confidence) "
             "VALUES ('subvention',?,?,?,?,?,?,?, 'verified')",
@@ -272,13 +271,14 @@ def run_subventions(commit: bool):
 
     ins = created = 0
     with transaction() as w:
+        COMMUNE_ID = pivot_ids(w)["commune"]
         for year, amount, to_id, matched, benef, eid in to_insert:
-            _ins(w, year, amount, to_id, eid); ins += 1
+            _ins(w, year, amount, to_id, eid, COMMUNE_ID); ins += 1
         for year, amount, benef, eid in to_create:
             new_id = upsert_entity(w, type="association", name=_clean_benef(benef), confidence="verified")
             w.execute("INSERT OR IGNORE INTO associations (entity_id) VALUES (?)", (new_id,))
             if not flow_exists_conn(w, year, amount, new_id):
-                _ins(w, year, amount, new_id, eid); ins += 1
+                _ins(w, year, amount, new_id, eid, COMMUNE_ID); ins += 1
             created += 1
     print(f"\n✓ {ins} subventions insérées ({created} nouvelles entités créées).")
 

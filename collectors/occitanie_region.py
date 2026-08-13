@@ -20,13 +20,13 @@ import requests
 
 from .archive import archive_fetch
 
-DB_PATH     = Path(__file__).parent.parent / "db" / "lasalle.db"
-HEADERS     = {"User-Agent": "Lasalle-OSINT/1.0 (veille citoyenne, données publiques)"}
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
+from .config import EPCI_NOM, HEADERS
+from .db import pivot_ids, upsert_entity
 
-# Entités
-REGION_ID   = 3575   # Conseil régional Occitanie
-CAC_ID      = 1645   # Communauté de Communes Causses Aigoual Cévennes Terres Solidaires
-CAC_NAME    = "COMMUNAUTE DE COMMUNES CAUSSES AIGOUAL CEVENNES"
+# Nom de l'EPCI tel qu'il apparaît dans le fichier des subventions régionales :
+# la Région écrit les bénéficiaires en capitales et sans article.
+CAC_NAME    = EPCI_NOM.upper().replace("CC ", "COMMUNAUTE DE COMMUNES ")
 
 API_BASE    = "https://data.laregion.fr/api/explore/v2.1/catalog/datasets"
 DATASET     = "subventions-du-conseil-regional"
@@ -71,6 +71,12 @@ def _flow_exists(conn, year: int, ref: str) -> bool:
 
 
 def _import_records(conn, records: list[dict], dry_run: bool = False) -> tuple[int, int]:
+    # Les deux parties du flux sont résolues par leur nom : les identifiants en
+    # dur de l'instance d'origine désignaient d'autres entités dans cette base.
+    REGION_ID = upsert_entity(conn, type="service",
+                              name="Conseil régional Occitanie",
+                              confidence="verified")
+    CAC_ID = pivot_ids(conn)["epci"]
     """Insert dédupliqué (referencedecision) — réutilisé par scripts/reparse.py."""
     inserted = 0
     skipped  = 0

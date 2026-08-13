@@ -38,7 +38,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-from .config import REQUEST_DELAY, ROOT
+from .config import COMMUNE_NAME, DEPARTEMENT, REQUEST_DELAY, ROOT
 from .db import get_conn
 from .web_scraper import PageInfoParser, fetch, find_relevant_subpages
 
@@ -248,7 +248,8 @@ def gemma_bureau(nom_asso: str, texte: str) -> list[dict]:
     if not texte or len(texte) < 120:
         return []
     prompt = (
-        f"Voici le texte du site de l'association « {nom_asso} » (Lasalle, Gard).\n\n"
+        f"Voici le texte du site de l'association « {nom_asso} » "
+        f"({COMMUNE_NAME}, département {DEPARTEMENT}).\n\n"
         f"{texte[:3000]}\n\n"
         "Liste UNIQUEMENT les personnes présentées comme dirigeantes de cette "
         "association (président, vice-président, trésorier, secrétaire, directeur). "
@@ -287,15 +288,25 @@ def gemma_bureau(nom_asso: str, texte: str) -> list[dict]:
 # fausse, cf. BUG-3 « URLs assignées à de mauvaises entités »).
 # Les réseaux sociaux nomment souvent le bureau mais sont derrière un mur
 # d'authentification : inutile de les fetcher.
+# Les sites officiels de l'instance en font partie : une page de mairie qui
+# parle d'une association n'est pas le site de cette association.
+def _domaines_officiels() -> set[str]:
+    import urllib.parse
+    from .config import COMMUNE_URL, EPCI_URL
+    return {urllib.parse.urlparse(u).netloc.removeprefix("www.")
+            for u in (COMMUNE_URL, EPCI_URL) if u}
+
+
 DOMAINES_EXCLUS = {
     "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com",
     "youtube.com", "tiktok.com", "helloasso.com",
-    "lasalle.fr", "objectifgard.com", "midilibre.fr", "monbeauvillage.fr",
+    # Annuaires et agrégateurs : ils citent l'association sans être son site.
+    "monbeauvillage.fr",
     "infonet.fr", "assoce.fr", "annuaire-mairie.fr", "acte-deces.fr",
     "entreprises.lefigaro.fr", "societe.com", "pappers.fr", "pagesjaunes.fr",
     "resultats-municipales-2026.fr", "journal-officiel.gouv.fr",
     "data.gouv.fr", "net1901.org", "repertoiredesassociations.fr",
-}
+} | _domaines_officiels()
 
 
 def _domaine(url: str) -> str:

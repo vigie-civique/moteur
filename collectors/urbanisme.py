@@ -1,5 +1,5 @@
 """
-urbanisme.py — Statut urbanistique de Lasalle + mentions CM
+urbanisme.py — Statut urbanistique de la commune + mentions dans les CM
 
 Sources :
   1. Faits connus (RNU, PLU en cours) → events + metadata structurée
@@ -17,9 +17,9 @@ import re
 import sqlite3
 from pathlib import Path
 
-DB_PATH     = Path(__file__).parent.parent / "db" / "lasalle.db"
-COMMUNE_ID  = 63
-COMMUNE_INSEE = "30140"
+from .config import DB_PATH   # la base est nommée dans la config, pas ici
+from .config import COMMUNE_INSEE, COMMUNE_NAME
+from .db import pivot_ids
 
 # Regex de détection dans le contenu des CM
 RE_PLU     = re.compile(r'\bPLU\b|\bplan local d.urbanisme\b', re.I)
@@ -50,27 +50,49 @@ def _event_exists(conn, source_ref: str) -> bool:
     ).fetchone() is not None
 
 
+def _statuts_seed() -> list[tuple]:
+    """Statut urbanistique déclaré à la main, s'il l'a été.
+
+    Format attendu dans config/seed_local.json :
+        "urbanisme": [{"ref": "RNU", "titre": "…", "metadata": {…}}]
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    chemin = _Path(__file__).resolve().parent.parent / "config" / "seed_local.json"
+    try:
+        seed = _json.loads(chemin.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    from .config import COMMUNE_NAME
+    sorties = []
+    for item in seed.get("urbanisme") or []:
+        ref = f"urbanisme:{COMMUNE_NAME.lower()}:{item['ref']}"
+        sorties.append((ref, item["titre"], item.get("metadata") or {}))
+    return sorties
+
+
 def run(dry_run: bool = False):
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
 
+    COMMUNE_ID = pivot_ids(conn)["commune"]
+
     inserted = 0
 
     # ── 1. Statut RNU / PLU en cours ─────────────────────────────────────────
+    #
+    # Ce bloc écrivait en dur « Lasalle est sous RNU, PLU en cours ». C'est un
+    # FAIT sur une commune, pas une règle de collecte : rejoué ici, il aurait
+    # inséré dans la base de Brassac le statut urbanistique d'une commune du
+    # Gard, daté et sourcé comme s'il avait été vérifié. Le statut se déclare
+    # donc dans `config/seed_local.json` (clé `urbanisme`), et sans déclaration
+    # rien n'est écrit — une lacune vaut mieux qu'un fait importé d'ailleurs.
     print("\n[1] Enregistrement statut urbanistique…")
-    ref_rnu = "urbanisme:lasalle:RNU"
-    ref_plu = "urbanisme:lasalle:PLU_en_cours"
-
-    for ref, title, meta in [
-        (ref_rnu,
-         "Lasalle — Commune sous Règlement National d'Urbanisme (RNU)",
-         {"type": "statut_urbanistique", "document": "RNU",
-          "note": "Lasalle ne dispose pas de PLU approuvé. S'applique à titre supplétif le RNU (R111-1 et s. du code de l'urbanisme)."}),
-        (ref_plu,
-         "Lasalle — PLU en cours d'élaboration",
-         PLU_STATUS),
-    ]:
+    statuts = _statuts_seed()
+    if not statuts:
+        print("  aucun statut déclaré dans seed_local.json → rien à enregistrer")
+    for ref, title, meta in statuts:
         if _event_exists(conn, ref):
             print(f"  déjà présent: {title[:60]}")
             continue
@@ -153,9 +175,10 @@ def run(dry_run: bool = False):
     print(f"  → Taxe d'aménagement mentionnée dans {len(taxe_mentions)} délibérations")
 
     # ── 3. Événement synthèse PLU ─────────────────────────────────────────────
-    ref_synthese = "urbanisme:lasalle:PLU_synthese_CM"
+    ref_synthese = f"urbanisme:{COMMUNE_NAME.lower()}:PLU_synthese_CM"
     if not _event_exists(conn, ref_synthese) and plu_mentions:
-        title_s = f"PLU Lasalle — {len(plu_mentions)} mentions dans les délibérations CM (2023-2025)"
+        title_s = (f"PLU {COMMUNE_NAME} — {len(plu_mentions)} mentions dans les "
+                   f"délibérations du conseil municipal")
         meta_s = {
             "type":             "synthese_plu",
             "nb_deliberations": len(plu_mentions),

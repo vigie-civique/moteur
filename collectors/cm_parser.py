@@ -1,21 +1,19 @@
 """
-Parseur exhaustif des comptes-rendus CM (HTML lasalle.fr).
+Analyseurs de comptes rendus de conseil municipal.
 
-Pour chaque CM archivé dans data/cm_records/ :
-  - Extrait les présents/absents/pouvoirs
-  - Découpe en délibérations individuelles (sections en MAJUSCULES)
-  - Pour chaque délibération : titre, texte complet, vote, montants, catégorie
-  - Insère dans events (1 ligne par délibération) + event_entities (présents/cités)
-  - Lie les flux financiers déjà connus aux bonnes délibérations
+Bibliothèque de fonctions, sans pipeline : catégorisation d'un titre de
+délibération, extraction du vote, des montants et des noms cités, découpage
+d'un texte en sections, rattachement des personnes à un événement.
+
+Les collecteurs qui l'utilisent — `cm_brassac`, `ccsvp_scraper`, `cm_ocr` —
+apportent chacun leur lecture de la source ; ce module ne connaît que du texte.
 """
 
-import os, re, json, sqlite3
+import re
+import json
+import sqlite3
 from datetime import datetime
 from pathlib import Path
-from bs4 import BeautifulSoup
-
-CM_DIR   = Path(__file__).parent.parent / "data" / "cm_records"
-DB_PATH  = Path(__file__).parent.parent / "db" / "lasalle.db"
 
 # ── Catégorisation des délibérations ──────────────────────────────────────────
 
@@ -255,36 +253,21 @@ def split_into_deliberations(paragraphs: list[str]) -> list[dict]:
 
 # ── Parsing d'un fichier CM ────────────────────────────────────────────────────
 
-def _paragraphs_from_html(soup) -> list[str]:
-    """
-    Extrait les paragraphes d'un CR HTML.
-    1) Voie normale : <article>/<main> via <p>/<li>/<h2..6>.
-    2) Fallback : si trop peu de paragraphes (layout en <span>, ex. CR 2026
-       lasalle.fr), on extrait tous les nœuds-feuilles porteurs de texte du body
-       (span/strong/p/li/h2..6) dans l'ordre du document.
-    """
-    article = soup.find('article')
-    if not article:
-        article = soup.find('main') or soup.body
-
-    paragraphs = []
-    if article:
-        for tag in article.find_all(['p', 'li', 'h2', 'h5', 'h6']):
-            t = tag.get_text(separator=' ').replace('\xa0', ' ').strip()
-            if t:
-                paragraphs.append(t)
-
-    if len(paragraphs) < 5:  # layout non standard → fallback spans
-        body = soup.body or soup
-        paragraphs = []
-        for tag in body.find_all(['span', 'strong', 'p', 'li', 'h2', 'h3', 'h5', 'h6']):
-            if tag.find(['span', 'strong', 'p', 'li']):  # éviter les conteneurs (doublons)
-                continue
-            t = tag.get_text(separator=' ').replace('\xa0', ' ').strip()
-            if t:
-                paragraphs.append(t)
-    return paragraphs
-
+# ── Ce qui a été retiré ───────────────────────────────────────────────────────
+#
+# `parse_cm_file`, `upsert_cm_to_db`, `upsert_deliberation` et `run_cm_parser`
+# lisaient les comptes rendus HTML déposés dans `data/cm_records/` et écrivaient
+# `source='lasalle.fr'` en dur. Rien de tout cela ne s'applique ici : les PV
+# sont des PDF catalogués sur le site et traités par `cm_brassac`. Les
+# supprimer plutôt que les garder inertes évite qu'un appel distrait ne
+# réinjecte le nom d'une autre commune comme source dans cette base.
+#
+# Ce module ne fournit plus que ses ANALYSEURS, réutilisés tels quels par
+# `cm_brassac`, `ccsvp_scraper` et `cm_ocr` : catégorisation d'un titre,
+# extraction des votes, des montants, des noms, découpage par sections en
+# capitales, et rattachement des personnes à un événement. C'est la partie qui
+# s'est portée sans retouche.
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _paragraphs_from_pdf(filepath: Path) -> list[str]:
     """Extrait les paragraphes d'un CR PDF (pdfplumber). 1 ligne non vide = 1 paragraphe."""
@@ -300,67 +283,6 @@ def _paragraphs_from_pdf(filepath: Path) -> list[str]:
     return paragraphs
 
 
-def parse_cm_file(filepath: Path) -> dict:
-    """Parse un fichier CM (HTML ou PDF). Retourne un dict complet."""
-    if filepath.suffix.lower() == '.pdf':
-        paragraphs = _paragraphs_from_pdf(filepath)
-        soup = None
-    else:
-        html = filepath.read_text(encoding='utf-8', errors='replace')
-        soup = BeautifulSoup(html, 'html.parser')
-        paragraphs = _paragraphs_from_html(soup)
-
-    # Date depuis le nom de fichier (fallback : chercher dans le texte)
-    date = _date_from_filename(filepath.name)
-    if not date:
-        for p in paragraphs[:10]:
-            m = re.search(r'(\d{1,2})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{4})', p, re.IGNORECASE)
-            if m:
-                date = _parse_french_date(m.group(0))
-                break
-
-    # Présents/absents
-    attendees = parse_attendees(paragraphs)
-
-    # Délibérations
-    deliberations = split_into_deliberations(paragraphs)
-    parsed_delibs = []
-    for d in deliberations:
-        full_text = '\n'.join(d['paragraphes'])
-        vote = extract_vote(full_text)
-        amounts = extract_amounts(full_text)
-        cat, tags = categorize(d['titre'])
-        cited_names = extract_names(full_text)
-        parsed_delibs.append({
-            'titre': d['titre'],
-            'texte': full_text[:4000],  # tronqué à 4000 chars pour la DB
-            'vote': vote,
-            'montants': amounts[:20],
-            'categorie': cat,
-            'tags': tags,
-            'personnes_citees': list(set(cited_names)),
-        })
-
-    return {
-        'date': date,
-        'fichier': filepath.name,
-        'source_url': f"https://www.lasalle.fr/CR/{filepath.stem}",
-        'presents': attendees['presents'],
-        'absents': attendees['absents'],
-        'pouvoirs': attendees['pouvoirs'],
-        'nb_deliberations': len(parsed_delibs),
-        'deliberations': parsed_delibs,
-    }
-
-
-# ── Helpers date ──────────────────────────────────────────────────────────────
-
-_MOIS = {
-    'janvier':'01','février':'02','fevrier':'02','mars':'03','avril':'04',
-    'mai':'05','juin':'06','juillet':'07','août':'08','aout':'08',
-    'septembre':'09','octobre':'10','novembre':'11','décembre':'12','decembre':'12'
-}
-
 def _parse_french_date(text: str) -> str | None:
     m = re.search(
         r'(\d{1,2})\s+(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(\d{4})',
@@ -371,6 +293,7 @@ def _parse_french_date(text: str) -> str | None:
         year = m.group(3)
         return f"{year}-{mon}-{day}"
     return None
+
 
 def _date_from_filename(name: str) -> str | None:
     # conseil-municipal-du-13-septembre-2023.html
@@ -394,88 +317,6 @@ def _date_from_filename(name: str) -> str | None:
 
 
 # ── Insertion en DB ───────────────────────────────────────────────────────────
-
-def upsert_cm_to_db(conn: sqlite3.Connection, cm: dict) -> int:
-    """
-    Insère ou met à jour le CM principal dans events.
-    Retourne l'event_id du CM principal.
-    """
-    c = conn.cursor()
-    date = cm['date']
-
-    meta = {
-        'fichier': cm['fichier'],
-        'nb_deliberations': cm['nb_deliberations'],
-        'presents': cm['presents'],
-        'absents': cm['absents'],
-        'pouvoirs': cm['pouvoirs'],
-    }
-
-    # Résumé automatique des délibérations
-    summary_lines = []
-    for d in cm['deliberations']:
-        line = d['titre']
-        if d['vote']:
-            v = d['vote']
-            if v.get('unanimite'):
-                line += ' [unanimité]'
-            else:
-                line += f" [{v.get('pour','?')} pour"
-                if v.get('abstentions'):
-                    line += f", {v['abstentions']} abst."
-                if v.get('contre'):
-                    line += f", {v['contre']} contre"
-                line += ']'
-        summary_lines.append(line)
-    content = '\n'.join(summary_lines)
-
-    # Vérifier si un event CM existe déjà pour cette date
-    c.execute("SELECT id FROM events WHERE date=? AND type='deliberation' AND title LIKE 'CM du%'", (date,))
-    row = c.fetchone()
-    if row:
-        event_id = row[0]
-        c.execute("""UPDATE events SET content=?, metadata=?, source='lasalle.fr', source_url=?
-                     WHERE id=?""",
-                  (content, json.dumps(meta, ensure_ascii=False), cm['source_url'], event_id))
-    else:
-        c.execute("""INSERT INTO events (type,date,title,content,source,source_url,metadata)
-                     VALUES ('deliberation',?,?,?,'lasalle.fr',?,?)""",
-                  (date, f"CM du {date}", content,
-                   cm['source_url'], json.dumps(meta, ensure_ascii=False)))
-        event_id = c.lastrowid
-
-    return event_id
-
-
-def upsert_deliberation(conn: sqlite3.Connection, cm_date: str, cm_url: str, delib: dict) -> int:
-    """Insère une délibération individuelle dans events. Retourne son id."""
-    c = conn.cursor()
-
-    meta = {
-        'categorie': delib['categorie'],
-        'tags': delib['tags'],
-        'vote': delib['vote'],
-        'montants': delib['montants'],
-        'personnes_citees': delib['personnes_citees'],
-    }
-
-    title = delib['titre'][:255]
-    c.execute("""SELECT id FROM events WHERE date=? AND title=? AND type='deliberation'""",
-              (cm_date, title))
-    row = c.fetchone()
-    if row:
-        eid = row[0]
-        c.execute("""UPDATE events SET content=?, metadata=?, source='lasalle.fr', source_url=?
-                     WHERE id=?""",
-                  (delib['texte'], json.dumps(meta, ensure_ascii=False), cm_url, eid))
-    else:
-        c.execute("""INSERT INTO events (type,date,title,content,source,source_url,metadata)
-                     VALUES ('deliberation',?,?,?,'lasalle.fr',?,?)""",
-                  (cm_date, title, delib['texte'],
-                   cm_url, json.dumps(meta, ensure_ascii=False)))
-        eid = c.lastrowid
-
-    return eid
 
 
 def link_persons_to_event(conn: sqlite3.Connection, event_id: int, names: list[str], role: str = 'présent'):
@@ -501,102 +342,4 @@ def link_persons_to_event(conn: sqlite3.Connection, event_id: int, names: list[s
 
 # ── Entrée principale ─────────────────────────────────────────────────────────
 
-def _peek_pdf_date(filepath: Path) -> str | None:
-    """Date d'un PDF dont le nom ne contient pas de date parsable (1ère page)."""
-    try:
-        import pdfplumber
-        with pdfplumber.open(str(filepath)) as pdf:
-            txt = (pdf.pages[0].extract_text() or "")[:1500] if pdf.pages else ""
-        return _parse_french_date(txt)
-    except Exception:
-        return None
 
-
-def run_cm_parser(verbose: bool = True) -> dict:
-    """Parse tous les CMs (HTML + PDF) et insère en DB."""
-    conn = sqlite3.connect(str(DB_PATH))
-    c = conn.cursor()
-
-    # Fichiers candidats : HTML + PDF dans cm_records/ et cm_records_pdf/
-    candidates = list(CM_DIR.glob("*.html")) + list(CM_DIR.glob("*.pdf"))
-    pdf_dir = CM_DIR.parent / "cm_records_pdf"
-    if pdf_dir.exists():
-        candidates += list(pdf_dir.glob("*.pdf"))
-    candidates = sorted(set(candidates))
-
-    # Dédupliquer par date : garder le fichier le plus volumineux (le plus complet)
-    by_date: dict[str, Path] = {}
-    for f in candidates:
-        date = _date_from_filename(f.name)
-        if not date and f.suffix.lower() == '.pdf':
-            date = _peek_pdf_date(f)
-        if date:
-            if date not in by_date or f.stat().st_size > by_date[date].stat().st_size:
-                by_date[date] = f
-
-    stats = {
-        'cms_traites': 0,
-        'deliberations_inserees': 0,
-        'event_entities_inserees': 0,
-        'erreurs': [],
-    }
-
-    for date, filepath in sorted(by_date.items()):
-        try:
-            if verbose:
-                print(f"  Parsing {date} — {filepath.name} ...")
-            cm = parse_cm_file(filepath)
-            cm['date'] = date  # forcer la date extraite du nom
-
-            # CM principal
-            cm_event_id = upsert_cm_to_db(conn, cm)
-
-            # Présents → event_entities
-            for name in cm['presents']:
-                link_persons_to_event(conn, cm_event_id, [name], 'présent')
-            for name in cm['absents']:
-                link_persons_to_event(conn, cm_event_id, [name], 'absent')
-
-            # Délibérations individuelles
-            for delib in cm['deliberations']:
-                # Filtrer les titres non-délibérations
-                if delib['titre'] in ('QUESTIONS DIVERSES', 'INFORMATIONS', 'INFORMATION'):
-                    # garder mais ne pas créer d'event individuel vide
-                    if not delib['texte'].strip():
-                        continue
-
-                eid = upsert_deliberation(conn, date, cm['source_url'], delib)
-                stats['deliberations_inserees'] += 1
-
-                # Lier les personnes citées dans la délibération
-                all_names = list(set(cm['presents'] + delib['personnes_citees']))
-                link_persons_to_event(conn, eid, all_names, 'cité')
-                stats['event_entities_inserees'] += 1
-
-            stats['cms_traites'] += 1
-            if verbose:
-                print(f"    → {cm['nb_deliberations']} délibérations, {len(cm['presents'])} présents")
-
-        except Exception as e:
-            import traceback
-            stats['erreurs'].append({'fichier': filepath.name, 'erreur': str(e)})
-            if verbose:
-                print(f"    ERREUR: {e}")
-                traceback.print_exc()
-
-    conn.commit()
-    conn.close()
-    return stats
-
-
-if __name__ == '__main__':
-    print("[cm_parser] Parsing des CMs...")
-    stats = run_cm_parser(verbose=True)
-    print(f"\n[cm_parser] Terminé :")
-    print(f"  CMs traités       : {stats['cms_traites']}")
-    print(f"  Délibérations     : {stats['deliberations_inserees']}")
-    print(f"  Event_entities    : {stats['event_entities_inserees']}")
-    if stats['erreurs']:
-        print(f"  Erreurs ({len(stats['erreurs'])}) :")
-        for e in stats['erreurs']:
-            print(f"    {e['fichier']}: {e['erreur']}")

@@ -1,15 +1,15 @@
 """
-bodacc.py — Collecteur BODACC pour les 15 communes de la CC CAC
+bodacc.py — Collecteur BODACC pour les communes de l'EPCI (registre COMMUNES)
 
 Source : API open data BODACC (bodacc-datadila.opendatasoft.com)
 Pas de clé API requise, 100 req/10s.
 
-Périmètre : les 2 codes postaux du vallon (30460 + 30140). Le CP 30140 couvre
-aussi Anduze et d'autres communes hors périmètre → filtrage par NOM de commune
-(registre COMMUNES) en plus du CP. cf. audit Phase A (session 22).
+Périmètre : les codes postaux du registre COMMUNES_CP. Un code postal déborde
+toujours du périmètre (le 81100 couvre l'aire de Castres) → filtrage par NOM de
+commune en plus du CP, et découpage annuel des CP trop volumineux.
 
 Usage :
-  python3 -m collectors.bodacc             # import complet (CP 30460 par défaut)
+  python3 -m collectors.bodacc             # import complet (1er CP du registre)
   python3 -m collectors.bodacc --since 2020-01-01
   python3 -m collectors.bodacc --dry-run
   python3 -m collectors.bodacc --stats
@@ -24,12 +24,15 @@ import urllib.request
 from datetime import datetime
 
 from .archive import fetch_json
-from .config import ROOT, COMMUNES, COMMUNES_CP
+from .config import (COMMUNES, COMMUNES_CP, COMMUNES_DELEGUEES,
+                     HEADERS, ROOT)
 from .db import get_conn
 
 API_BASE = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
-CP = "30460"
+CP = COMMUNES_CP[0]
 PAGE_SIZE = 100
+# Plafond dur d'Opendatasoft : au-delà, l'API renvoie 400 au lieu d'une page vide.
+MAX_OFFSET = 10000
 
 
 def _norm(s: str) -> str:
@@ -43,9 +46,14 @@ def _norm(s: str) -> str:
 
 # Index nom normalisé → nom officiel du registre (pour filtrer les annonces)
 _COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in COMMUNES.values()}
-# Alias commune nouvelle Thoiras-Corbès (BODACC peut encore utiliser les anciens noms)
-for _alias in ("Thoiras", "Corbès"):
-    _COMMUNE_LOOKUP[_norm(_alias)] = "Thoiras-Corbès"
+# Alias des communes déléguées : BODACC indexe encore sous les noms d'avant la
+# fusion. Sans ces alias, leurs annonces sont comptées « hors périmètre » et
+# disparaissent silencieusement. Les noms viennent de l'instance, jamais du
+# code — c'est le registre `communes_deleguees` de config/instance.json.
+for _code, _delegee in COMMUNES_DELEGUEES.items():
+    _rattachement = COMMUNES.get(_delegee.get("commune", ""), {}).get("nom")
+    if _delegee.get("nom") and _rattachement:
+        _COMMUNE_LOOKUP[_norm(_delegee["nom"])] = _rattachement
 
 
 def _match_commune(ville: str) -> str | None:
@@ -65,10 +73,13 @@ FAMILLE_TYPE = {
 }
 
 
-def fetch_page(offset: int, since: str | None = None, cp: str = CP) -> dict:
+def fetch_page(offset: int, since: str | None = None, cp: str = CP,
+               until: str | None = None) -> dict:
     filters = [f'cp="{cp}"']
     if since:
         filters.append(f'dateparution>="{since}"')
+    if until:
+        filters.append(f'dateparution<"{until}"')
     where = " AND ".join(filters)
     params = urllib.parse.urlencode({
         "where": where,
@@ -78,7 +89,7 @@ def fetch_page(offset: int, since: str | None = None, cp: str = CP) -> dict:
     })
     url = f"{API_BASE}?{params}"
     return fetch_json(url, source="bodacc", timeout=30,
-                      headers={"User-Agent": "LasalleOSINT/1.0"})
+                      headers=HEADERS)
 
 
 def parse_siren(registre) -> str | None:
@@ -272,14 +283,41 @@ def run(since: str | None = None, dry_run: bool = False, stats_only: bool = Fals
 
     print(f"Collecte BODACC CP {cp}" + (f" depuis {since}" if since else " (complet)"))
 
+    compteurs = {"lues": 0, "inserees": 0, "hors": 0}
+
+    # L'API Opendatasoft refuse offset > 10 000 (HTTP 400). Sur Lasalle aucun
+    # code postal n'atteignait ce plafond ; ici le 81100 (Burlats, dans l'aire
+    # de Castres) rend 32 807 annonces et la collecte s'arrêtait en erreur au
+    # tiers du volume, sans reprise possible. On découpe donc par année de
+    # parution : chaque fenêtre reste sous le plafond, et le total est atteint.
+    sonde = fetch_page(0, since, cp)
+    total_count = sonde.get("total_count", 0)
+    if total_count <= MAX_OFFSET:
+        fenetres = [(since, None)]
+    else:
+        debut = int((since or "2008-01-01")[:4])
+        fin = datetime.now().year
+        fenetres = [(f"{a}-01-01", f"{a + 1}-01-01") for a in range(debut, fin + 1)]
+        print(f"  {total_count} annonces > plafond {MAX_OFFSET} "
+              f"→ découpage en {len(fenetres)} fenêtres annuelles")
+
+    for f_since, f_until in fenetres:
+        _collecter_fenetre(conn, cp, f_since, f_until, dry_run, compteurs)
+
+    print(f"\nBODACC CP {cp} : {compteurs['lues']} annonces lues, "
+          f"{compteurs['hors']} hors périmètre ignorées, "
+          f"{compteurs['inserees']} insérées.")
+    conn.close()
+
+
+def _collecter_fenetre(conn, cp: str, since: str | None, until: str | None,
+                       dry_run: bool, compteurs: dict) -> None:
+    """Pagine une fenêtre de dates jusqu'à épuisement."""
     offset = 0
-    total_fetched = 0
-    total_inserted = 0
-    hors_perimetre = 0
 
     while True:
         try:
-            page = fetch_page(offset, since, cp)
+            page = fetch_page(offset, since, cp, until)
         except Exception as e:
             # NE PAS avaler : un `break` silencieux ici rend une panne réseau
             # indiscernable d'un "rien de nouveau" — c'est exactement ce qui a
@@ -297,14 +335,14 @@ def run(since: str | None = None, dry_run: bool = False, stats_only: bool = Fals
             break
 
         for rec in records:
-            total_fetched += 1
-            # Filtre par nom de commune : le CP 30140 couvre aussi Anduze & co.
+            compteurs["lues"] += 1
+            # Filtre par nom de commune : un CP déborde toujours du périmètre.
             if not _match_commune(rec.get("ville") or ""):
-                hors_perimetre += 1
+                compteurs["hors"] += 1
                 continue
             inserted = import_record(conn, rec, dry_run=dry_run)
             if inserted:
-                total_inserted += 1
+                compteurs["inserees"] += 1
                 commercant = rec.get("commercant", "")
                 date = rec.get("dateparution", "")[:10]
                 famille = rec.get("familleavis_lib", "")
@@ -314,18 +352,14 @@ def run(since: str | None = None, dry_run: bool = False, stats_only: bool = Fals
         offset += len(records)
         print(f"  [{offset}/{total_count}]")
 
-        if offset >= total_count:
+        if offset >= total_count or offset >= MAX_OFFSET:
             break
 
         time.sleep(0.3)
 
-    print(f"\nBODACC CP {cp} : {total_fetched} annonces lues, "
-          f"{hors_perimetre} hors périmètre ignorées, {total_inserted} insérées.")
-    conn.close()
-
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Collecteur BODACC — Lasalle CP 30460")
+    parser = argparse.ArgumentParser(description=f"Collecteur BODACC — CP {CP}")
     parser.add_argument("--since", default=None, help="Date minimale YYYY-MM-DD (défaut: tout)")
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans insérer")
     parser.add_argument("--stats", action="store_true", help="Affiche stats DB et quitte")

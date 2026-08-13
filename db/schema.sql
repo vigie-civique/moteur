@@ -1,6 +1,6 @@
 -- ============================================================
--- Lasalle OSINT — Schéma SQLite
--- Commune de Lasalle (30460), Gard
+-- Vigie Civique — schéma SQLite
+-- Une base par instance ; la commune est déclarée dans config/instance.json
 -- ============================================================
 
 PRAGMA journal_mode = WAL;
@@ -20,9 +20,20 @@ CREATE TABLE IF NOT EXISTS entities (
     lat         REAL,
     lng         REAL,
     address     TEXT,
-    commune     TEXT DEFAULT 'Lasalle',
+    -- AUCUN défaut : une entité dont on ignore la commune vaut NULL, et le
+    -- classement de périmètre la traitera comme telle. Le schéma a porté
+    -- `DEFAULT 'Lasalle'` jusqu'au 12/08/2026 — une entité sans commune
+    -- naissait donc lasalloise, et comme le tag n'est jamais écrasé, la
+    -- corriger après coup ne faisait rien. Trois incidents en sont sortis.
+    commune     TEXT,
     confidence  TEXT DEFAULT 'verified'
                      CHECK(confidence IN ('verified','confirmed','probable','hypothesis')),
+    -- Renseignées par le géocodeur et par scripts/classer_perimetre.py. Elles
+    -- manquaient au schéma publié alors que le script de publication les
+    -- interroge : sur une base neuve, la publication échouait sans que rien
+    -- n'indique laquelle des deux moitiés était en retard sur l'autre.
+    geocode_source TEXT,
+    perimetre   TEXT CHECK(perimetre IN ('C1','C2','C3','lien','hors')),
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     -- Nom normalisé (minuscules, sans accents, séparateurs unifiés) : sert à
@@ -38,7 +49,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_name_type
 
 -- NON UNIQUE, volontairement. Un unique sur (type, name_norm) confondrait des
 -- entités homonymes légitimes : « CENTRE COMMUNAL D'ACTION SOCIALE (CCAS) »
--- existe à Lasalle (SIREN 263000598) et à Saint-André-de-Valborgne
+-- porte le même nom dans deux communes voisines (deux SIREN distincts)
 -- (263000994). C'est `db.upsert_entity` qui arbitre, en exigeant la même
 -- commune avant de réutiliser une fiche.
 CREATE INDEX IF NOT EXISTS idx_entities_name_norm
@@ -258,7 +269,16 @@ CREATE TABLE IF NOT EXISTS financial_flows (
     event_id    INTEGER REFERENCES events(id),
     description TEXT,
     source      TEXT,
-    confidence  TEXT DEFAULT 'verified'
+    confidence  TEXT DEFAULT 'verified',
+    -- Colonnes attendues par build_public_snapshot.py :
+    --   perimetre  'detail' (par défaut) ou 'agregat' — un agrégat OFGL englobe
+    --              des flux détaillés, les additionner double le total ;
+    --   statut     'realise' (par défaut) ou 'demande' — une subvention
+    --              sollicitée n'est pas une subvention obtenue ;
+    --   type_norm  type ramené à une famille, pour les regroupements publics.
+    perimetre   TEXT DEFAULT 'detail' CHECK(perimetre IN ('detail','agregat')),
+    statut      TEXT DEFAULT 'realise' CHECK(statut IN ('realise','demande')),
+    type_norm   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_flows_year    ON financial_flows(year);
@@ -392,10 +412,10 @@ END;
 -- Chaque page/PDF/JSON scrapé est conservé tel quel sur disque (data/raw/<source>/)
 -- et indexé ici. Dédup par sha256 : une source inchangée n'est pas redupliquée,
 -- seul last_seen est mis à jour. Permet de re-parser même si la source disparaît
--- (ex : lasalle.fr ne garde que le dernier CR).
+-- (un site de mairie ne garde souvent que le dernier compte rendu en ligne).
 CREATE TABLE IF NOT EXISTS raw_documents (
     id          INTEGER PRIMARY KEY,
-    source      TEXT NOT NULL,                       -- lasalle.fr | prefecture-gard | boamp | cc-cac | ...
+    source      TEXT NOT NULL,                       -- domaine du site officiel | prefecture-NN | boamp | ...
     url         TEXT,                                -- URL d'origine (NULL si PDF déposé)
     doc_type    TEXT,                                -- html | pdf | json | csv | txt
     sha256      TEXT NOT NULL UNIQUE,                -- empreinte du contenu (dédup)
@@ -792,7 +812,11 @@ SELECT
     GROUP_CONCAT(e.name, ' | ')         AS entity_names
 FROM entities e
 WHERE e.address IS NOT NULL
-  AND e.address NOT IN ('30460 LASALLE','[ND] [ND] [ND] [ND] [ND] [ND] [ND] [ND]')
+  -- Adresses non exploitables : le remplissage par défaut de la source
+  -- (« [ND] […] ») et une adresse réduite au code postal et à la commune,
+  -- qui ne localise rien.
+  AND e.address NOT LIKE '%[ND]%'
+  AND e.address NOT GLOB '[0-9][0-9][0-9][0-9][0-9] *'
   AND e.address != ''
   AND e.type IN ('business','association','service')
 GROUP BY e.address

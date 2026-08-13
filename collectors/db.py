@@ -211,3 +211,28 @@ def stats(conn) -> dict:
     """Retourne les statistiques globales de la base."""
     row = conn.execute("SELECT * FROM v_stats").fetchone()
     return dict(row) if row else {}
+
+
+def pivot_ids(conn) -> dict:
+    """Identifiants des entités structurantes, créées si elles manquent.
+
+    Quatre collecteurs portaient ces identifiants en dur (`COMMUNE_ID = 63`,
+    `ETAT_ID = 2044`…) : c'étaient les numéros de ligne de la base de Lasalle.
+    Rejoués sur une autre base, ils désignent n'importe quelle entité — un flux
+    financier de l'État vers la commune devenait un flux entre deux entreprises
+    prises au hasard, sans que rien ne signale l'erreur. On les résout donc par
+    le nom, à l'exécution.
+    """
+    from .config import COMMUNE_NAME, DEPARTEMENT, EPCI_NOM, PREFECTURE_NOM
+    return {
+        "commune": upsert_entity(conn, type="service",
+                                 name=f"Commune de {COMMUNE_NAME}",
+                                 short_name=COMMUNE_NAME, commune=COMMUNE_NAME,
+                                 confidence="verified"),
+        "epci":    upsert_entity(conn, type="service", name=EPCI_NOM,
+                                 confidence="verified"),
+        "etat":    upsert_entity(conn, type="service", name="État français",
+                                 confidence="verified"),
+        "prefecture": upsert_entity(conn, type="service", name=PREFECTURE_NOM,
+                                    confidence="verified"),
+    }

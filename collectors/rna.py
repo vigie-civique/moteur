@@ -1,18 +1,28 @@
 """
 Collecteur RNA / Associations
 Sources :
-  1. API JO associations (Journal Officiel) — déclarations post-2009
-  2. lasalle.fr/structures — responsables nommés localement
+  1. API JO associations (Journal Officiel) — déclarations post-2009 (nationale)
+  2. les pages d'annuaire du site officiel — responsables nommés
+
+La source 2 passe par le connecteur de l'instance : la version d'origine
+scrapait une page précise d'un site précis, avec un navigateur furtif pour
+contourner l'anti-bot d'un thème Drupal. Les pages à lire se déclarent dans
+`config/instance.json` (clé `pages.commune.annuaires`).
+
+Ce que ces pages publient et que le RNA ne donne pas : le nom du responsable de
+chaque association, avec ses coordonnées. C'est collecté tel quel — la règle de
+l'atelier est de tout collecter et de filtrer à la publication, pas l'inverse —
+et rangé dans `entity_notes`, jamais dans une fiche personne.
 """
 import json
-import os
-import sys
+import re
 import time
 import urllib.parse
 import urllib.request
 import unicodedata
 from .archive import fetch_json
-from .config import JO_ASSO_API, CODE_POSTAL, HEADERS, REQUEST_DELAY, LASALLE_URL, COMMUNES
+from .config import (JO_ASSO_API, CODE_POSTAL, COMMUNE_NAME, COMMUNES,
+                     HEADERS, REQUEST_DELAY)
 
 
 def _norm(s: str) -> str:
@@ -82,65 +92,87 @@ def fetch_all_jo(cp: str = CODE_POSTAL) -> list[dict]:
 
 
 # ----------------------------------------------------------------
-# Source 2 : lasalle.fr/structures (responsables nommés)
+# Source 2 : page « associations » du site communal
 # ----------------------------------------------------------------
 
-def fetch_lasalle_structures() -> list[dict]:
-    """
-    Scrape lasalle.fr/structures pour récupérer les responsables.
-    Retourne une liste de {name, responsable, url}.
-    """
-    # Scrapling est emprunté à un autre environnement virtuel quand il n'est pas
-    # installé ici. Le chemin était codé en dur avec un nom d'utilisateur et le
-    # nom d'un projet sans rapport : inutilisable ailleurs, et indiscret dans un
-    # dépôt public. Il se déclare désormais dans l'environnement, et son absence
-    # dégrade proprement — ce collecteur est optionnel.
-    chemin_scrapling = os.environ.get("SCRAPLING_SITE_PACKAGES")
-    try:
-        if chemin_scrapling:
-            sys.path.insert(0, chemin_scrapling)
-        from scrapling.fetchers import StealthyFetcher
-    except ImportError:
-        print("  [rna] Scrapling non disponible — structures lasalle.fr ignorées")
-        return []
+# « Brassac Basket Club \n THEVENARD Raphaël \n 119 avenue du Sidobre… »
+# Le responsable est la ligne qui suit le nom, en « NOM Prénom ».
+# Le prénom composé s'écrit « Jean-François » : le tiret n'est admis que suivi
+# d'une majuscule, sinon la capture s'arrête sur « Jean- » et le responsable
+# devient une association de plus.
+_RESPONSABLE = re.compile(
+    r"^([A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}(?:\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,})*)\s+"
+    r"([A-ZÀ-Ÿ][a-zà-ÿ'’]+(?:-[A-ZÀ-Ÿ][a-zà-ÿ'’]+)*)$")
+_CONTACT = re.compile(r"(0\d[\s.]?(?:\d{2}[\s.]?){4}|[\w.+-]+@[\w-]+\.[\w.]+|https?://\S+)")
 
+
+def fetch_structures_site() -> list[dict]:
+    """Associations listées sur le site communal, avec leur responsable.
+
+    Retourne [{name, responsable, contacts, url, source}]. Le découpage se fait
+    sur les lignes : une association ouvre un bloc (ligne sans chiffre ni
+    contact), le responsable suit, puis l'adresse et les contacts.
+    """
+    from .connecteurs import charger
+    from .config import COMMUNE_URL
+    import urllib.parse
+
+    source = urllib.parse.urlparse(COMMUNE_URL).netloc.removeprefix("www.")
     structures = []
-    fetcher = StealthyFetcher()
-    base = f"{LASALLE_URL}/structures"
+    for texte in charger().pages_annuaire("commune"):
+        lignes = [l.strip() for l in texte.splitlines() if l.strip()]
+        courante = None
+        for ligne in lignes:
+            if ligne.isupper() and "ANNUAIRE" in ligne:
+                continue
+            # Une phrase d'introduction n'est pas une association : elle est
+            # longue et se termine par une ponctuation de phrase.
+            if len(ligne) > 60 or ligne.endswith((":", ".")):
+                continue
+            m = _RESPONSABLE.match(ligne)
+            if m and courante:
+                courante["responsable"] = f"{m.group(2)} {m.group(1)}"
+                continue
+            contacts = _CONTACT.findall(ligne)
+            if contacts and courante:
+                courante["contacts"] += contacts
+                continue
+            # Une ligne d'adresse commence par un numéro, ou porte le code
+            # postal de la commune.
+            if re.match(r"^[\d]", ligne) or CODE_POSTAL in ligne:
+                continue
+            courante = {"name": ligne, "responsable": None, "contacts": [],
+                        "url": COMMUNE_URL, "source": source}
+            structures.append(courante)
 
-    # Découverte des pages
-    try:
-        page = fetcher.fetch(base)
-        links = page.css("a[href*='/structures/']")
-        struct_urls = list({
-            f"{LASALLE_URL}{a.attrib['href']}"
-            if a.attrib['href'].startswith('/') else a.attrib['href']
-            for a in links
-            if '/structures/' in a.attrib.get('href', '')
-            and a.attrib.get('href', '').count('/') > 2
-        })
-        print(f"  [rna/lasalle] {len(struct_urls)} pages structures trouvées")
-    except Exception as e:
-        print(f"  [rna/lasalle] erreur index: {e}")
-        return []
-
-    for url in struct_urls[:50]:   # limite 50 pour ne pas surcharger
-        try:
-            p = fetcher.fetch(url)
-            name = p.css("h1").first
-            resp = p.find(lambda el: "responsable" in el.text.lower()
-                          or "contact" in el.text.lower(), first=True)
-            structures.append({
-                "name":        name.text.strip() if name else url.split("/")[-1],
-                "responsable": resp.text.strip() if resp else None,
-                "url":         url,
-                "source":      "lasalle.fr"
-            })
-            time.sleep(REQUEST_DELAY)
-        except Exception:
-            continue
-
+    print(f"  [rna/site] {len(structures)} associations listées, "
+          f"{sum(1 for s in structures if s['responsable'])} avec un responsable nommé")
     return structures
+
+
+def _import_structures(conn, structures: list[dict]) -> int:
+    """Rattache responsable et contacts à l'association, en note d'entité."""
+    poses = 0
+    for st in structures:
+        if not st["responsable"] and not st["contacts"]:
+            continue
+        eid = upsert_entity(conn, type="association", name=st["name"],
+                            commune=COMMUNE_NAME, confidence="probable")
+        note = json.dumps({"responsable": st["responsable"],
+                           "contacts": st["contacts"],
+                           "url": st["url"]}, ensure_ascii=False)
+        # `entity_notes` n'a pas de contrainte d'unicité : sans ce contrôle,
+        # chaque exécution ajoute une note identique de plus.
+        if conn.execute(
+            "SELECT 1 FROM entity_notes WHERE entity_id=? AND note=?",
+            (eid, note)).fetchone():
+            continue
+        conn.execute(
+            "INSERT INTO entity_notes (entity_id, note, source, confidence)"
+            " VALUES (?,?,?,?)",
+            (eid, note, st["source"], "probable"))
+        poses += 1
+    return poses
 
 
 # ----------------------------------------------------------------
@@ -174,6 +206,15 @@ def import_rna(cp: str = CODE_POSTAL):
 
     print(f"[rna] CP {cp} OK — {inserted} associations du périmètre, "
           f"{hors_perimetre} hors périmètre ignorées, {skipped} erreurs")
+
+    # Source 2 : uniquement sur le CP de la commune — la page ne liste que les
+    # associations de Brassac, la relancer pour chaque CP du registre ferait
+    # seize fois le même travail.
+    if cp == CODE_POSTAL:
+        structures = fetch_structures_site()
+        with transaction() as conn:
+            poses = _import_structures(conn, structures)
+        print(f"[rna] {poses} associations enrichies depuis le site communal")
 
 
 def _import_jo_record(conn, item: dict):
