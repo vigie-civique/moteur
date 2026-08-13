@@ -27,6 +27,9 @@ Usage :
   python3 scripts/init_instance.py 81037
   python3 scripts/init_instance.py 81037 --dry-run
   python3 scripts/init_instance.py 81037 --force     # écrase une instance
+  python3 scripts/init_instance.py 81037 --regles    # rafraîchit les règles
+                                                     # après avoir complété les
+                                                     # adresses des sites
 """
 from __future__ import annotations
 
@@ -255,7 +258,19 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="écrase une instance déjà configurée")
+    ap.add_argument("--regles", action="store_true",
+                    help="ne remet à jour que publication_rules.json, depuis "
+                         "l'instance existante — à lancer après avoir complété "
+                         "les adresses des sites officiels")
     args = ap.parse_args()
+
+    if args.regles:
+        if not INSTANCE.exists():
+            print(f"✖ {INSTANCE.relative_to(ROOT)} absent.", file=sys.stderr)
+            return 1
+        adapter_regles(json.loads(INSTANCE.read_text(encoding="utf-8")),
+                       args.dry_run)
+        return 0
 
     if INSTANCE.exists() and not args.force and not args.dry_run:
         print(f"✖ {INSTANCE.relative_to(ROOT)} existe déjà. "
