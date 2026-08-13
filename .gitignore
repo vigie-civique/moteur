@@ -27,3 +27,6 @@ data/
 territoire/
 venv/
 public/static/data/
+dashboard/node_modules/
+dashboard/dist/
+dashboard/.svelte-kit/

@@ -1,0 +1,440 @@
+<script>
+  import { onMount } from 'svelte'
+  import { api } from '$lib/api.js'
+  import { currentUser } from '$lib/stores/auth.js'
+
+  const KEY_STORAGE = 'vigie-admin-key'
+
+  let adminKey = ''
+  let status = null
+  let loading = false
+  let generating = false
+  let error = ''
+  let saved = false
+  let autoTried = false
+
+  // Connecté avec le rôle admin → JWT suffit, la clé devient un fallback
+  $: isAdmin = $currentUser?.role === 'admin'
+  $: canAct = isAdmin || !!adminKey.trim()
+  $: if (isAdmin && !status && !loading && !autoTried) {
+    autoTried = true
+    loadStatus()
+  }
+
+  $: stats = status?.stats || null
+  $: exclusions = status?.exclusions || stats?.exclusions || {}
+  $: project = status?.project || {}
+  $: synced = status?.synced || null
+
+  onMount(() => {
+    adminKey = sessionStorage.getItem(KEY_STORAGE) || ''
+    if (adminKey) loadStatus()
+  })
+
+  function rememberKey() {
+    if (adminKey.trim()) {
+      sessionStorage.setItem(KEY_STORAGE, adminKey.trim())
+      saved = true
+      setTimeout(() => saved = false, 1200)
+    }
+  }
+
+  function forgetKey() {
+    sessionStorage.removeItem(KEY_STORAGE)
+    adminKey = ''
+    status = null
+  }
+
+  async function loadStatus() {
+    if (!canAct) return
+    loading = true
+    error = ''
+    try {
+      rememberKey()
+      status = await api.publicSnapshotStatus(adminKey.trim())
+    } catch (e) {
+      error = e.message
+      status = null
+    } finally {
+      loading = false
+    }
+  }
+
+  async function generateSnapshot() {
+    if (!canAct) return
+    generating = true
+    error = ''
+    try {
+      rememberKey()
+      status = await api.generatePublicSnapshot(adminKey.trim())
+    } catch (e) {
+      error = e.message
+    } finally {
+      generating = false
+    }
+  }
+
+  function fmt(n) {
+    if (n === null || n === undefined || n === '') return '—'
+    return Number(n).toLocaleString('fr-FR')
+  }
+
+  function entries(obj) {
+    return Object.entries(obj || {})
+  }
+</script>
+
+<svelte:head>
+  <title>Atelier publication — Vigie Civique Lasalle</title>
+</svelte:head>
+
+<div class="page">
+  <section class="topbar">
+    <div>
+      <p class="eyebrow">{project.private_name || 'Atelier Vigie Civique Lasalle'}</p>
+      <h1>Publication</h1>
+    </div>
+    <div class="auth">
+      {#if isAdmin}
+        <span class="notice">Connecté admin — clé facultative</span>
+      {/if}
+      <input
+        type="password"
+        bind:value={adminKey}
+        placeholder={isAdmin ? 'Clé admin (facultative)' : 'Clé admin'}
+        on:keydown={(e) => e.key === 'Enter' && loadStatus()}
+      />
+      <button class="secondary" on:click={loadStatus} disabled={loading || !canAct}>
+        {loading ? 'Lecture...' : 'Charger'}
+      </button>
+      <button class="ghost" on:click={forgetKey}>Oublier</button>
+    </div>
+  </section>
+
+  {#if error}
+    <p class="error">{error}</p>
+  {/if}
+
+  {#if saved}
+    <p class="notice">Clé gardée pour cette session.</p>
+  {/if}
+
+  <section class="actions">
+    <div>
+      <h2>{project.public_name || 'Vigie Civique Lasalle'}</h2>
+      <p class="muted">
+        Sortie publique : {status?.output_dir || 'dashboard/static/public_api'}
+      </p>
+    </div>
+    <button class="primary" on:click={generateSnapshot} disabled={generating || !canAct}>
+      {generating ? 'Génération...' : 'Générer & synchroniser le snapshot'}
+    </button>
+  </section>
+
+  {#if synced}
+    <section class="sync">
+      <p class="sync-ok">✓ {synced.count} fichiers synchronisés vers le site public
+        <code>{synced.dest}</code></p>
+      <p class="sync-next">Prochaine étape — déployer :
+        <code>cd public &amp;&amp; npm run build</code> puis push (Cloudflare Pages build sur push).</p>
+    </section>
+  {/if}
+
+  {#if stats}
+    <section class="metrics">
+      <div class="metric">
+        <span>{fmt(stats.entities_public)}</span>
+        <small>entités publiques</small>
+        <em>{fmt(stats.entities_total_private)} privées</em>
+      </div>
+      <div class="metric">
+        <span>{fmt(stats.relations_public)}</span>
+        <small>relations publiques</small>
+        <em>{fmt(stats.relations_total_private)} privées</em>
+      </div>
+      <div class="metric">
+        <span>{fmt(stats.events_public)}</span>
+        <small>événements publics</small>
+        <em>{fmt(stats.events_total_private)} privés</em>
+      </div>
+      <div class="metric">
+        <span>{fmt(stats.map_features_public)}</span>
+        <small>points carte</small>
+        <em>{fmt(stats.urls_public_confirmed)} URLs confirmées</em>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel">
+        <h2>Qualité localisation</h2>
+        <table>
+          <tbody>
+            {#each entries(stats.location_quality) as [key, count]}
+              <tr>
+                <td>{key}</td>
+                <td>{fmt(count)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Exclusions</h2>
+        {#each entries(exclusions) as [section, values]}
+          <div class="block">
+            <h3>{section}</h3>
+            <table>
+              <tbody>
+                {#each entries(values) as [reason, count]}
+                  <tr>
+                    <td>{reason}</td>
+                    <td>{fmt(count)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/each}
+      </div>
+    </section>
+
+    <section class="rules">
+      <h2>Règles actives</h2>
+      <div class="rule-list">
+        <span>confiance : {(status?.rules?.public_confidence || []).join(', ')}</span>
+        <span>relations : {(status?.rules?.public_relation_types || []).length}</span>
+        <span>rôles personnes : {(status?.rules?.public_person_relation_types || []).length}</span>
+        <span>sources événements : {(status?.rules?.public_event_sources || []).join(', ')}</span>
+      </div>
+    </section>
+  {:else}
+    <section class="empty">
+      <p>Entrer la clé admin pour charger l’état de publication.</p>
+    </section>
+  {/if}
+</div>
+
+<style>
+  .page {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    padding: 1rem;
+    background: #0f172a;
+  }
+
+  .topbar, .actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .eyebrow {
+    font-size: .72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: .25rem;
+  }
+
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: .92rem;
+    font-weight: 700;
+    margin-bottom: .45rem;
+  }
+
+  h3 {
+    font-size: .78rem;
+    color: #93c5fd;
+    margin: .55rem 0 .25rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+
+  .auth {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  input {
+    width: 220px;
+    background: #020617;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: .42rem .55rem;
+    font-size: .82rem;
+  }
+
+  button {
+    border-radius: 6px;
+    padding: .42rem .7rem;
+    font-size: .8rem;
+    font-weight: 650;
+  }
+
+  button:disabled {
+    opacity: .45;
+    cursor: default;
+  }
+
+  .primary {
+    background: #2563eb;
+    color: white;
+  }
+
+  .secondary {
+    background: #334155;
+    color: #e2e8f0;
+  }
+
+  .ghost {
+    color: #94a3b8;
+  }
+
+  .muted, .notice {
+    color: #94a3b8;
+    font-size: .8rem;
+  }
+
+  .notice {
+    margin-bottom: .7rem;
+  }
+
+  .error {
+    background: #7f1d1d;
+    color: #fee2e2;
+    border: 1px solid #991b1b;
+    border-radius: 6px;
+    padding: .55rem .7rem;
+    margin-bottom: .8rem;
+    font-size: .82rem;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .75rem;
+    margin-bottom: 1rem;
+  }
+
+  .metric, .panel, .rules, .empty {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+  }
+
+  .metric {
+    padding: .8rem;
+  }
+
+  .metric span {
+    display: block;
+    font-size: 1.45rem;
+    font-weight: 750;
+    color: #bfdbfe;
+  }
+
+  .metric small {
+    display: block;
+    color: #e2e8f0;
+    font-size: .78rem;
+    margin-top: .1rem;
+  }
+
+  .metric em {
+    display: block;
+    color: #64748b;
+    font-size: .72rem;
+    font-style: normal;
+    margin-top: .25rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr);
+    gap: .75rem;
+  }
+
+  .panel, .rules, .empty {
+    padding: .9rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  td {
+    border-bottom: 1px solid #334155;
+    padding: .32rem 0;
+    font-size: .78rem;
+    color: #cbd5e1;
+    vertical-align: top;
+  }
+
+  td:first-child {
+    color: #94a3b8;
+    padding-right: .75rem;
+  }
+
+  td:last-child {
+    text-align: right;
+    font-weight: 700;
+  }
+
+  .rules {
+    margin-top: .75rem;
+  }
+
+  .rule-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+  }
+
+  .rule-list span {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 999px;
+    padding: .22rem .55rem;
+    color: #cbd5e1;
+    font-size: .74rem;
+  }
+
+  .empty {
+    color: #94a3b8;
+    font-size: .85rem;
+  }
+
+  @media (max-width: 900px) {
+    .topbar, .actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .auth {
+      justify-content: flex-start;
+    }
+
+    .metrics, .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .sync { margin: 1rem 0; padding: .75rem 1rem; background: #052e1a; border: 1px solid #065f46; border-radius: 8px; }
+  .sync-ok { color: #6ee7b7; margin: 0 0 .35rem; font-size: .9rem; }
+  .sync-next { color: #94a3b8; margin: 0; font-size: .82rem; }
+  .sync code { background: #0f172a; padding: 1px 6px; border-radius: 4px; color: #cbd5e1; font-size: .78rem; }
+</style>
