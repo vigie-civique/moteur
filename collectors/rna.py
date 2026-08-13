@@ -5,6 +5,8 @@ Sources :
   2. lasalle.fr/structures — responsables nommés localement
 """
 import json
+import os
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -88,9 +90,15 @@ def fetch_lasalle_structures() -> list[dict]:
     Scrape lasalle.fr/structures pour récupérer les responsables.
     Retourne une liste de {name, responsable, url}.
     """
+    # Scrapling est emprunté à un autre environnement virtuel quand il n'est pas
+    # installé ici. Le chemin était codé en dur avec un nom d'utilisateur et le
+    # nom d'un projet sans rapport : inutilisable ailleurs, et indiscret dans un
+    # dépôt public. Il se déclare désormais dans l'environnement, et son absence
+    # dégrade proprement — ce collecteur est optionnel.
+    chemin_scrapling = os.environ.get("SCRAPLING_SITE_PACKAGES")
     try:
-        import sys
-        sys.path.insert(0, '/Users/juliencolin/claudecode/rima/.venv/lib/python3.13/site-packages')
+        if chemin_scrapling:
+            sys.path.insert(0, chemin_scrapling)
         from scrapling.fetchers import StealthyFetcher
     except ImportError:
         print("  [rna] Scrapling non disponible — structures lasalle.fr ignorées")
