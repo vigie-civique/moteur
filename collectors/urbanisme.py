@@ -29,18 +29,8 @@ RE_CARTE   = re.compile(r'carte communale', re.I)
 RE_PADD    = re.compile(r'\bPADD\b|\bprojet d.aménagement et de développement', re.I)
 RE_TAXE_AM = re.compile(r'taxe d.aménagement', re.I)
 
-# Statut PLU connu au moment du dernier scraping
-PLU_STATUS = {
-    "statut":       "en_cours",
-    "document":     "PLU",
-    "doc_precedent": "RNU",
-    "commission_responsable": "Commission Urbanisme – PLU",
-    "responsable_elu": "M. Alain SERRE",
-    "bureau_etudes": "Stéphane GAZABRE",
-    "avancement":   "PADD en cours de finalisation",
-    "reunion_publique": "2024-06-07",
-    "note": "Commune sous RNU en attente d'approbation du PLU. Travaux engagés depuis 2023, ralentissements signalés. Réunion publique PADD tenue le 7 juin 2024.",
-}
+# Le statut urbanistique d'une commune se déclare dans config/seed_local.json
+# (clé `urbanisme`), jamais ici : cf. _statuts_seed() et le commentaire de run().
 
 
 def _event_exists(conn, source_ref: str) -> bool:

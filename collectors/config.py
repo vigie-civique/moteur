@@ -177,6 +177,15 @@ STEP_META = {
     "elections":  (365, 19, "elections_resultats", ""),
     "dir_deports":(30,  20, "relation_candidates", "signal='deport_conseil'"),
     "dir_web":    (90,  21, "relation_candidates", "signal='site_web_asso'"),
+    # Finances et environnement. Ces collecteurs existaient mais n'étaient
+    # appelés par personne : une collecte complète produisait une base sans
+    # budget, alors que le site en publie les pages.
+    "ofgl":       (180, 22, "ofgl_agregats",     ""),
+    "budget":     (180, 23, "budget_annuel",     ""),
+    "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
+    "cm_flux":    (30,  25, "financial_flows",   "source LIKE 'CR CM%'"),
+    "eau":        (90,  26, "eau_analyses",      ""),
+    "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
 }
 
 # ── Chemins ──────────────────────────────────────────────────────────────────

@@ -44,6 +44,14 @@ from collectors.events_scraper  import main as run_events_scraper
 from collectors.web_scraper    import main as run_web_scraper
 from collectors.marches_publics import main as run_marches_publics
 from collectors.banatic        import run as run_banatic
+from collectors.ofgl           import run as run_ofgl
+from collectors.budget         import run as run_budget
+from collectors.subventions_etat import run as run_subventions
+# main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
+# les options de run_all. On prend la fonction qu'il enveloppe.
+from collectors.cm_finances    import run_subventions as run_cm_flux
+from collectors.qualite_eau    import run as run_qualite_eau
+from collectors.urbanisme      import run as run_urbanisme
 
 
 STEPS = {
@@ -98,6 +106,23 @@ STEPS = {
                  run_banatic),
     "events":   ("Vie locale (sites officiels)",          run_events_scraper),
     "web":      ("Sites web entités locales",             run_web_scraper),
+    # ── Finances et environnement ────────────────────────────────────────────
+    # Ces six collecteurs existaient depuis longtemps et n'étaient appelés par
+    # personne : sur la v1 ils se lançaient à la main. Une commune amorcée à
+    # froid produisait donc une base sans budget, sans dotations et sans
+    # qualité de l'eau — un manque invisible tant qu'on n'a pas comparé à une
+    # base dont on connaissait le contenu (Lasalle, 14/08/2026).
+    #
+    # L'ordre compte : `subventions` lit ofgl_agregats et les délibérations,
+    # `cm_flux` lit le texte des séances. Tous deux passent donc après `ofgl`,
+    # `cm` et `events`.
+    "ofgl":     ("Agrégats financiers OFGL",              run_ofgl),
+    "budget":   ("Balances comptables DGFiP",             run_budget),
+    "subventions": ("Dotations et subventions de l'État", run_subventions),
+    "cm_flux":  ("Flux financiers extraits des séances",  lambda: run_cm_flux(commit=True)),
+    # `since=None` : reprise incrémentale depuis la dernière analyse connue.
+    "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),
+    "urbanisme": ("Statut urbanistique et mentions PLU",  run_urbanisme),
 }
 
 
