@@ -49,6 +49,11 @@ from .base import (Article, Connecteur, DocumentPublie, Portee, date_fr,
 from .datation import date_evenement
 
 # Mois en toutes lettres dans les adresses de page : « …-du-05-fevrier-2026 ».
+# Garde-fou de pagination : un listing Drupal mal borné pourrait servir la même
+# page indéfiniment. Vingt pages couvrent largement l'agenda et le catalogue des
+# séances d'une petite commune ; au-delà, c'est le site qui a un problème.
+PAGINATION_MAX = 20
+
 MOIS_SLUG = {
     "janvier": 1, "fevrier": 2, "février": 2, "mars": 3, "avril": 4, "mai": 5,
     "juin": 6, "juillet": 7, "aout": 8, "août": 8, "septembre": 9,
@@ -164,28 +169,58 @@ class ConnecteurDrupal(Connecteur):
         base = self.bases.get(portee, "")
         return chemin if chemin.startswith("http") else base + "/" + chemin.lstrip("/")
 
+    def _listing_pagine(self, url: str, extraire) -> list:
+        """Parcourt un listing Drupal paginé, et pas seulement sa première page.
+
+        Drupal pagine ses listes avec `?page=N`, N commençant à 0 — la page 0
+        étant celle servie sans paramètre. Ce connecteur ne lisait que celle-là :
+        sur l'instance d'origine, l'agenda en comptait quatre et le catalogue des
+        séances davantage. Tout ce qui suivait la première page était perdu, sans
+        erreur ni avertissement — 167 articles et la moitié des délibérations,
+        constaté en comparant une recollecte à la base de production (14/08/2026).
+
+        `extraire(url_page, html)` rend des couples (clé, objet). On avance tant
+        qu'une page apporte au moins une clé nouvelle : une page hors bornes rend
+        soit une liste vide, soit la répétition de la précédente, et les deux
+        s'arrêtent ici.
+        """
+        resultats, vus = [], set()
+        for n in range(PAGINATION_MAX):
+            page = url if n == 0 else f"{url}{'&' if '?' in url else '?'}page={n}"
+            html = self._html(page)
+            if not html:
+                break
+            nouveaux = 0
+            for cle, objet in extraire(page, html):
+                if cle in vus:
+                    continue
+                vus.add(cle)
+                resultats.append(objet)
+                nouveaux += 1
+            if nouveaux == 0:
+                break
+        return resultats
+
     # ── documents ────────────────────────────────────────────────────────────
     def catalogue_pv(self, portee: Portee = "commune") -> list[DocumentPublie]:
         chemin = (self.pages.get(portee) or {}).get("conseil")
         if not chemin or not self.bases.get(portee):
             return []
         listing = self._url(portee, chemin)
-        html = self._html(listing)
-        if not html:
-            return []
 
         # Les liens de la page de listing qui mènent à une séance. On ne retient
         # que ceux dont l'adresse porte une date : le reste est de la navigation.
-        liens, vus = [], set()
-        for href in re.findall(r'href="([^"#?]+)"', html):
-            absolu = urllib.parse.urljoin(listing, href)
-            if not absolu.startswith(self.bases[portee]) or absolu in vus:
-                continue
-            date = _date_depuis_adresse(absolu)
-            if not date:
-                continue
-            vus.add(absolu)
-            liens.append((date, absolu))
+        def _liens(page_url: str, html: str):
+            for href in re.findall(r'href="([^"#?]+)"', html):
+                absolu = urllib.parse.urljoin(page_url, href)
+                if not absolu.startswith(self.bases[portee]):
+                    continue
+                date = _date_depuis_adresse(absolu)
+                if not date:
+                    continue
+                yield absolu, (date, absolu)
+
+        liens = self._listing_pagine(listing, _liens)
 
         documents = []
         for date, page in sorted(liens, reverse=True):
@@ -216,33 +251,40 @@ class ConnecteurDrupal(Connecteur):
             return []
         sorties, vus = [], set()
         for chemin in chemins:
+            def _articles(page_url: str, html: str, chemin=chemin):
+                parseur = AgendaParser()
+                parseur.feed(html)
+                for item in parseur.items:
+                    cle = (item["titre"], item.get("date"))
+                    if cle in vus:
+                        continue
+                    lien = urllib.parse.urljoin(page_url, item["url"] or "")
+                    publie = item.get("date") or ""
+                    if depuis and publie and publie < depuis:
+                        # Filtré, mais la clé est consommée : sans ça une page
+                        # entièrement antérieure à `depuis` passerait pour vide
+                        # et arrêterait la pagination avant les suivantes.
+                        yield cle, None
+                        continue
+                    # Un agenda donne la date de l'événement : c'est le cas rare
+                    # où elle ne s'infère pas. À défaut, on retombe sur la datation
+                    # commune, qui le dira.
+                    if publie:
+                        date, origine = publie, "texte"
+                    else:
+                        date, origine = date_evenement(item["titre"], "", "")
+                    yield cle, Article(
+                        titre=item["titre"], url=lien, date=date,
+                        date_publication=publie or date, date_source=origine,
+                        contenu="", rubriques=[chemin.strip("/")],
+                        source=_domaine(lien or page_url))
+
             url = self._url(portee, chemin)
-            html = self._html(url)
-            if not html:
-                continue
-            parseur = AgendaParser()
-            parseur.feed(html)
-            for item in parseur.items:
-                cle = (item["titre"], item.get("date"))
-                if cle in vus:
+            for article in self._listing_pagine(url, _articles):
+                if article is None:      # écarté par `depuis`
                     continue
-                vus.add(cle)
-                lien = urllib.parse.urljoin(url, item["url"] or "")
-                publie = item.get("date") or ""
-                if depuis and publie and publie < depuis:
-                    continue
-                # Un agenda donne la date de l'événement : c'est le cas rare
-                # où elle ne s'infère pas. À défaut, on retombe sur la datation
-                # commune, qui le dira.
-                if publie:
-                    date, origine = publie, "texte"
-                else:
-                    date, origine = date_evenement(item["titre"], "", "")
-                sorties.append(Article(
-                    titre=item["titre"], url=lien, date=date,
-                    date_publication=publie or date, date_source=origine,
-                    contenu="", rubriques=[chemin.strip("/")],
-                    source=_domaine(lien or url)))
+                vus.add((article.titre, article.date_publication))
+                sorties.append(article)
         return sorties
 
     # ── marchés ──────────────────────────────────────────────────────────────
