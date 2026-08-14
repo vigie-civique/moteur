@@ -138,7 +138,6 @@ def run_step(name: str):
         fn()
     except Exception as e:
         status, err = "error", f"{type(e).__name__}: {e}"
-        raise
     finally:
         elapsed = time.time() - t0
         if conn is not None and run_id is not None:
@@ -149,7 +148,9 @@ def run_step(name: str):
             finally:
                 conn.close()
         flag = "✓" if status == "ok" else "✗"
-        print(f"  {flag} {name} terminé en {elapsed:.1f}s")
+        print(f"  {flag} {name} terminé en {elapsed:.1f}s"
+              + (f" — {err}" if err else ""))
+    return status, err
 
 
 def print_stats():
@@ -192,9 +193,9 @@ def main():
     if args.step:
         if args.step != "init":
             init_db()
-        run_step(args.step)
+        status, _ = run_step(args.step)
         print_stats()
-        return
+        return 0 if status == "ok" else 1
 
     # Run complet
     steps = list(STEPS.keys())
@@ -206,12 +207,27 @@ def main():
     print(f"  {len(steps)} steps : {', '.join(steps)}")
     t_total = time.time()
 
+    # Une source morte ne doit pas emporter les steps suivants : `marches` est le
+    # 20e sur 23, et un fichier DECP qui expire faisait perdre cc_epci, banatic,
+    # events et web. L'échec est retenu, affiché en fin de course, et rendu au
+    # shell par le code de sortie — collector_runs en garde la trace datée.
+    echecs: list[tuple[str, str]] = []
     for step in steps:
-        run_step(step)
+        status, err = run_step(step)
+        if status != "ok":
+            echecs.append((step, err or "?"))
 
     print(f"\n  Collecte complète en {time.time()-t_total:.0f}s")
+    if echecs:
+        print(f"\n  {len(echecs)} step(s) en échec — la collecte est partielle :")
+        for step, err in echecs:
+            print(f"    ✗ {step:12} {err}")
+        print(f"\n  Rejouer les steps en échec :")
+        for step, _ in echecs:
+            print(f"    python3 -m collectors.run_all --step {step}")
     print_stats()
+    return 1 if echecs else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

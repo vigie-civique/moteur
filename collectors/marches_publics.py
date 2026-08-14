@@ -156,17 +156,72 @@ def year_from_title(title: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def extract_marches_from_file(url: str) -> list[dict]:
+DECP_CACHE = Path(__file__).resolve().parent.parent / "data" / "raw" / "decp"
+DECP_CACHE_JOURS = 7
+DECP_ESSAIS = 3
+
+
+def _nom_cache(titre: str) -> str:
+    """Nom de fichier sûr pour le cache — pas de séparateur venu d'une URL."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", titre)[:120] or "decp.json"
+
+
+def _telecharger_decp(url: str, nom: str) -> bytes | None:
+    """Télécharge un fichier DECP consolidé, avec cache et reprise.
+
+    Les fichiers annuels pèsent plusieurs centaines de Mo et static.data.gouv.fr
+    rend la main lentement : un `read()` de 120 s expire régulièrement en milieu
+    de transfert. Trois conséquences, corrigées ici :
+
+      - un seul fichier manquant faisait échouer tout le step en fin de course
+        (`_relever_echecs_reseau`), et emportait les quatre steps suivants ;
+      - relancer la collecte retéléchargeait les 37 fichiers déjà lus ;
+      - l'échec n'était pas réessayé, alors qu'il est presque toujours passager.
+
+    Le cache est daté : au-delà de DECP_CACHE_JOURS, le fichier est repris à la
+    source. Les fichiers d'années révolues ne bougent plus, mais celui du mois
+    en cours est réécrit tous les jours.
+    """
+    DECP_CACHE.mkdir(parents=True, exist_ok=True)
+    cache = DECP_CACHE / nom
+    if cache.exists():
+        age_jours = (time.time() - cache.stat().st_mtime) / 86400
+        if age_jours < DECP_CACHE_JOURS:
+            return cache.read_bytes()
+
+    dernier = None
+    for essai in range(1, DECP_ESSAIS + 1):
+        req = urllib.request.Request(url, headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                raw = resp.read()
+            cache.write_bytes(raw)
+            return raw
+        except Exception as e:
+            dernier = e
+            if essai < DECP_ESSAIS:
+                attente = 5 * essai
+                print(f"\n    essai {essai}/{DECP_ESSAIS} échoué ({e}), "
+                      f"nouvelle tentative dans {attente}s…", end=" ", flush=True)
+                time.sleep(attente)
+
+    # Un fichier périmé vaut mieux que rien : on le signale comme tel.
+    if cache.exists():
+        print(f"\n    [réseau KO] reprise du cache local ({nom})", end=" ", flush=True)
+        return cache.read_bytes()
+
+    print(f"\n  [erreur téléchargement] {url[:60]} → {dernier}")
+    _echecs_reseau.append(f"{url[:80]} → {dernier}")
+    return None
+
+
+def extract_marches_from_file(url: str, nom: str = "") -> list[dict]:
     """Télécharge et filtre un fichier DECP consolidé JSON sur le périmètre."""
-    import io as _io
     import gzip as _gzip
-    req = urllib.request.Request(url, headers=HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = resp.read()
-    except Exception as e:
-        print(f"  [erreur téléchargement] {url[:60]} → {e}")
-        _echecs_reseau.append(f"{url[:80]} → {e}")
+    # Le nom de cache vient du titre de la ressource (decp-2025-03.json), pas de
+    # l'URL : data.gouv sert ces fichiers derrière un identifiant opaque.
+    raw = _telecharger_decp(url, _nom_cache(nom or url))
+    if raw is None:
         return []
 
     try:
@@ -257,7 +312,7 @@ def fetch_decp_marches(years: list[int] | None = None) -> list[dict]:
         title = res["title"]
         year  = year_from_title(title) or "?"
         print(f"  [{i+1}/{len(resources)}] {title}…", end=" ", flush=True)
-        marches = extract_marches_from_file(res["url"])
+        marches = extract_marches_from_file(res["url"], title)
         print(f"{len(marches)} trouvé(s)")
         all_marches.extend([normalize_decp_marche(m) for m in marches])
         time.sleep(REQUEST_DELAY)
