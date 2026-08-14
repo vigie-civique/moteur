@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import { libelleAnnee } from '$lib/actes.js'
   import Niveau from '$lib/components/Niveau.svelte'
 
@@ -26,8 +27,8 @@
   }
 </script>
 
-<svelte:head><title>Délibérations &amp; actes officiels — Vigie Civique Lasalle</title>
-  <meta name="description" content="Les {total} actes officiels de Lasalle et de son intercommunalité, année par année : délibérations du conseil municipal, procès-verbaux communautaires, votes, montants et documents source." /></svelte:head>
+<svelte:head><title>Délibérations &amp; actes officiels — {SITE_NOM}</title>
+  <meta name="description" content="Les {total} actes officiels {COMMUNE_DE} et de son intercommunalité, année par année : délibérations du conseil municipal, procès-verbaux communautaires, votes, montants et documents source." /></svelte:head>
 
 <section>
   <h1>Délibérations &amp; actes officiels</h1>

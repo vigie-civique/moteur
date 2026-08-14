@@ -44,7 +44,7 @@ export function load() {
     dvfPeriode: annees.length ? `${annees[0]}–${annees[annees.length - 1]}` : null,
     // Communes réellement comparées dans /impots — compté sur le snapshot.
     // La carte annonçait « 7 communes comparées », vestige de l'ancien
-    // périmètre du vallon : l'intercommunalité en compte 15.
+    // ancien périmètre, plus étroit que celui de l'intercommunalité.
     communes: new Set((fiscalite.taux || []).map((t) => t.commune).filter(Boolean)).size || null,
   }
 }

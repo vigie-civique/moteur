@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
 
   // Cette page répond à une seule question : qu'est-ce qui ne se décide plus
   // à la mairie, et qui le décide à la place ?
@@ -21,7 +22,7 @@
   $: obligatoires = (cc?.competences || []).filter(c => c.obligatoire)
   $: facultatives = (cc?.competences || []).filter(c => !c.obligatoire)
 
-  $: laSalle = (cc?.membres || []).find(m => m.est_commune_du_site)
+  $: communeDuSite = (cc?.membres || []).find(m => m.est_commune_du_site)
   $: totalSieges = (cc?.membres || []).reduce((s, m) => s + (m.sieges || 0), 0)
   $: maxSieges = Math.max(1, ...(cc?.membres || []).map(m => m.sieges || 0))
 
@@ -40,25 +41,25 @@
   // délégués. Ne pas revenir en arrière sur ce point.
   //
   // Le rattachement communal n'est affiché que quand il est vérifié
-  // (`commune_fiable`) : le RNE range 22 des 27 délégués sous Val-d'Aigoual,
+  // (`commune_fiable`) : le RNE range une partie des délégués sous la commune
   // commune du siège de l'intercommunalité et non leur commune d'élection.
   $: delegues = cc?.delegues || []
-  $: delegesLasalle = delegues.filter(d => d.commune_fiable && d.commune === laSalle?.nom)
-  $: delegesAutres = delegues.filter(d => !(d.commune_fiable && d.commune === laSalle?.nom))
+  $: delegesCommune = delegues.filter(d => d.commune_fiable && d.commune === communeDuSite?.nom)
+  $: delegesAutres = delegues.filter(d => !(d.commune_fiable && d.commune === communeDuSite?.nom))
 
   const nb = (n) => n?.toLocaleString('fr-FR') ?? '—'
 </script>
 
 <svelte:head>
-  <title>Intercommunalité (CC CAC) — Vigie Civique Lasalle</title>
+  <title>Intercommunalité ({EPCI_COURT}) — {SITE_NOM}</title>
   <meta name="description"
-        content="Ce que la communauté de communes Causses Aigoual Cévennes Terres Solidaires décide à la place de Lasalle : compétences transférées, délégués, poids de chaque commune." />
+        content="Ce que la {EPCI} décide à la place {COMMUNE_DE} : compétences transférées, délégués, poids de chaque commune." />
 </svelte:head>
 
 <section>
   <h1>L'intercommunalité</h1>
   <p class="sub">
-    Lasalle est membre de la <strong>communauté de communes Causses Aigoual Cévennes Terres Solidaires</strong>.
+    {COMMUNE} est membre de la <strong>{EPCI}</strong>.
     Une part des décisions qui concernent la commune ne se prend plus au conseil municipal,
     mais dans cette assemblée. Voici laquelle, et par qui.
   </p>
@@ -80,8 +81,8 @@
         <span class="libelle">compétences exercées</span>
       </div>
       <div class="repere accent">
-        <span class="chiffre">{laSalle?.sieges ?? '—'}<span class="sur">/{totalSieges}</span></span>
-        <span class="libelle">sièges pour Lasalle</span>
+        <span class="chiffre">{communeDuSite?.sieges ?? '—'}<span class="sur">/{totalSieges}</span></span>
+        <span class="libelle">sièges pour {COMMUNE}</span>
       </div>
     </div>
 
@@ -165,13 +166,13 @@
       est fixé par arrêté préfectoral et ne change pas avec le scrutin&nbsp;: il vient de BANATIC.
     </p>
 
-    {#if delegesLasalle.length}
+    {#if delegesCommune.length}
       <h3 class="ss-titre">
-        Pour Lasalle
-        <span class="compte">{delegesLasalle.length} délégué{delegesLasalle.length > 1 ? 's' : ''}</span>
+        Pour {COMMUNE}
+        <span class="compte">{delegesCommune.length} délégué{delegesCommune.length > 1 ? 's' : ''}</span>
       </h3>
       <ul class="delegues">
-        {#each delegesLasalle as d}
+        {#each delegesCommune as d}
           <li>
             <span class="nom">{d.name}</span>
             <span class="fonction">{d.fonction}</span>

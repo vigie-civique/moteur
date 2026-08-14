@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Hub « Qui décide ? » — la gouvernance et les réseaux de pouvoir.
@@ -13,11 +14,11 @@
       sub: "Participation, voix et sièges : d'où vient le mandat de ceux qui décident.",
       valeur: nombre(data.communes), unite: 'communes · municipales 2026' },
     { icone: 'conseil', titre: 'Les conseils municipaux', href: '/elus',
-      sub: "Maires, adjoints, conseillers et commissions de Lasalle et des communes de l'intercommunalité.",
+      sub: `Maires, adjoints, conseillers et commissions ${COMMUNE_DE} et des communes de l'intercommunalité.`,
       valeur: nombre(data.elus), unite: 'élus en fonction' },
-    { icone: 'intercommunalite', titre: "L'intercommunalité (CC CAC)", href: '/com-com',
-      sub: 'Délégués de Lasalle, compétences, délibérations communautaires.',
-      valeur: null, unite: 'Causses Aigoual Cévennes Terres Solidaires' },
+    { icone: 'intercommunalite', titre: `L'intercommunalité (${EPCI_COURT})`, href: '/com-com',
+      sub: `Délégués ${COMMUNE_DE}, compétences, délibérations communautaires.`,
+      valeur: null, unite: `${EPCI}` },
     { icone: 'document', titre: 'Délibérations & décisions', href: '/deliberations',
       sub: 'La chronologie des votes du conseil municipal.',
       valeur: nombre(data.deliberations), unite: 'actes publiés' },
@@ -36,8 +37,8 @@
 </script>
 
 <svelte:head>
-  <title>Qui décide ? — Vigie Civique Lasalle</title>
-  <meta name="description" content="La gouvernance de Lasalle : élus, intercommunalité, délibérations et réseaux de pouvoir." />
+  <title>Qui décide ? — {SITE_NOM}</title>
+  <meta name="description" content="La gouvernance {COMMUNE_DE} : élus, intercommunalité, délibérations et réseaux de pouvoir." />
 </svelte:head>
 
 <section class="hub">

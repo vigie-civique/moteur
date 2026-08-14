@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_DE, EPCI, SITE_NOM } from '$lib/instance.js'
   import { rangFonction, estAdjoint } from '$lib/elus.js'
 
   // Source : Répertoire National des Élus (DGCL), qui porte la commune de
@@ -7,8 +8,8 @@
   // des communes de l'intercommunalité sans le signaler — d'où deux maires côte à
   // côte. Elle datait en plus la « mandature » à la plus récente installation
   // trouvée (22/03/2026) puis écartait tout mandat antérieur : sur 110 mandats
-  // actifs il n'en restait que 14, et pas ceux de Lasalle.
-  const COMMUNE_PRINCIPALE = 'Lasalle'
+  // actifs il n'en restait que 14, et pas ceux la commune.
+  const COMMUNE_PRINCIPALE = `${COMMUNE}`
 
   // Rendu au build par +page.server.js : tout le croisement RNE × relations
   // y est fait, la page ne fait plus que filtrer et afficher.
@@ -34,8 +35,8 @@
   }
 </script>
 
-<svelte:head><title>Conseils municipaux — Vigie Civique Lasalle</title>
-  <meta name="description" content="Composition des conseils municipaux de Lasalle et des communes de la CC Causses Aigoual Cévennes Terres Solidaires : maires, adjoints, conseillers et délégués communautaires." /></svelte:head>
+<svelte:head><title>Conseils municipaux — {SITE_NOM}</title>
+  <meta name="description" content="Composition des conseils municipaux {COMMUNE_DE} et des communes de la {EPCI} : maires, adjoints, conseillers et délégués communautaires." /></svelte:head>
 
 <section>
   <h1>Conseils municipaux</h1>

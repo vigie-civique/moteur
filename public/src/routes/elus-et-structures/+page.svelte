@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   import { euros } from '$lib/data.js'
   import Niveau from '$lib/components/Niveau.svelte'
@@ -58,8 +59,8 @@
 </script>
 
 <svelte:head>
-  <title>Élus et structures subventionnées — Vigie Civique Lasalle</title>
-  <meta name="description" content="Les élus de Lasalle qui dirigent une association ou une société, et ce que la commune verse à ces structures : situations à vérifier, déports constatés, méthode et droit de réponse." />
+  <title>Élus et structures subventionnées — {SITE_NOM}</title>
+  <meta name="description" content="Les élus {COMMUNE_DE} qui dirigent une association ou une société, et ce que la commune verse à ces structures : situations à vérifier, déports constatés, méthode et droit de réponse." />
 </svelte:head>
 
 <section class="page">

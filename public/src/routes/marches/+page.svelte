@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
   import Niveau from '$lib/components/Niveau.svelte'
 
@@ -19,7 +20,7 @@
     if (s.startsWith('CR')) return 'CR'
     if (s.startsWith('DECP')) return 'DECP'
     if (s.startsWith('BOAMP')) return 'BOAMP'
-    if (s.includes('caussesaigoual')) return 'CC CAC'
+    if (s.includes('caussesaigoual')) return `${EPCI_COURT}`
     return s.slice(0, 8)
   }
 
@@ -54,8 +55,8 @@
 </script>
 
 <svelte:head>
-  <title>Marchés publics — Vigie Civique Lasalle</title>
-  <meta name="description" content="Marchés publics de la commune de Lasalle et de la CC Causses Aigoual Cévennes Terres Solidaires : attributions, titulaires, montants — recensés dans les délibérations et les données ouvertes." />
+  <title>Marchés publics — {SITE_NOM}</title>
+  <meta name="description" content="Marchés publics de la commune {COMMUNE_DE} et de la {EPCI} : attributions, titulaires, montants — recensés dans les délibérations et les données ouvertes." />
 </svelte:head>
 
 <section>
@@ -208,7 +209,7 @@
 
     <p class="foot">
       Sources : délibérations du conseil municipal (choix d'entreprises, maîtrise d'œuvre — <b>seule source pour les marchés sous le seuil de publication</b>),
-      DECP (données essentielles de la commande publique, ≥ 40 k€), BOAMP et site de la CC Causses Aigoual Cévennes Terres Solidaires.
+      DECP (données essentielles de la commande publique, ≥ 40 k€), BOAMP et site de la {EPCI}.
       Une commune de cette taille passant surtout des marchés sous le seuil DECP, les CR du CM sont la source la plus complète — provisoirement l'unique pour plusieurs marchés.
     </p>
   {/if}

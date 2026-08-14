@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_DE, EPCI, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   // « Comprendre » — la couche pédagogique (clé d'après CivLab).
   // Expliquer, pas seulement montrer : mission, mode d'emploi, institutions, fiabilité.
@@ -8,16 +9,16 @@
     { icone: 'acteurs', t: 'Qui agit ?',       d: 'L\'annuaire des acteurs du territoire, et leur carte.',                  href: '/acteurs-publics' },
   ]
   const institutions = [
-    { t: 'La commune de Lasalle',
+    { t: `La commune ${COMMUNE_DE}`,
       d: "Le conseil municipal, élu pour six ans, vote le budget et les grandes décisions. Le maire et ses adjoints les mettent en œuvre. Les délibérations sont des documents publics : c'est la trace écrite de ce qui est décidé en séance." },
-    { t: "L'intercommunalité (CC Causses Aigoual Cévennes Terres Solidaires)",
-      d: "Lasalle appartient à une communauté de communes qui exerce des compétences partagées (déchets, tourisme, développement…). Des délégués communaux y siègent. Une partie de l'argent public transite par cet échelon." },
+    { t: `L'intercommunalité (${EPCI})`,
+      d: `${COMMUNE} appartient à une communauté de communes qui exerce des compétences partagées (déchets, tourisme, développement…). Des délégués communaux y siègent. Une partie de l'argent public transite par cet échelon.` },
     { t: "D'où vient l'argent public",
       d: "Recettes locales (impôts, taxes), dotations de l'État, subventions de la Région ou du Département. Il finance le fonctionnement, l'investissement et les subventions aux associations. Le détail chiffré est dans « Où va l'argent »." },
   ]
   const fiches = [
     { icone: 'argent', t: 'Le budget communal',        d: 'Fonctionnement, investissement, dette, budgets annexes — mode d\'emploi.', href: '/comprendre/budget' },
-    { icone: 'decide', t: "L'intercommunalité",        d: 'La CC Causses Aigoual Cévennes Terres Solidaires : compétences, délégués, argent transféré.', href: '/comprendre/intercommunalite' },
+    { icone: 'decide', t: "L'intercommunalité",        d: `La ${EPCI} : compétences, délégués, argent transféré.`, href: '/comprendre/intercommunalite' },
     { icone: 'elections', t: 'Mandats & délibérations',   d: 'Conseil municipal, délégations, et comment lire une délibération.',         href: '/comprendre/mandats' },
   ]
   const liens = [
@@ -28,14 +29,14 @@
 </script>
 
 <svelte:head>
-  <title>Comprendre — Vigie Civique Lasalle</title>
-  <meta name="description" content="Mode d'emploi du site, fonctionnement des institutions locales, fiabilité et sources des données de la veille citoyenne de Lasalle." />
+  <title>Comprendre — {SITE_NOM}</title>
+  <meta name="description" content="Mode d'emploi du site, fonctionnement des institutions locales, fiabilité et sources des données de la veille citoyenne {COMMUNE_DE}." />
 </svelte:head>
 
 <article class="page">
   <header class="intro">
     <h1 class="avec-icone"><Icon name="comprendre" size={26} />Comprendre</h1>
-    <p class="lead">Ce site existe pour une raison simple : <strong>permettre à chaque habitant de Lasalle
+    <p class="lead">Ce site existe pour une raison simple : <strong>permettre à chaque habitant {COMMUNE_DE}
        de comprendre qui décide quoi, et comment l'argent public est utilisé.</strong>
        Expliquer, pas seulement montrer.</p>
   </header>

@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 import json
 import re
 import sqlite3
@@ -25,6 +26,7 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 
 # Le périmètre est décrit une seule fois, dans la config des collecteurs : le
@@ -2697,6 +2699,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build a conservative public snapshot preview")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args()
+
+    # Les libellés du site sont dérivés de la même instance que le snapshot :
+    # les régénérer ici évite qu'un site publie le nom d'une commune et les
+    # chiffres d'une autre.
+    try:
+        from generer_libelles import construire, ecrire
+        ecrire(construire())
+    except Exception as e:                      # ne doit jamais bloquer la publication
+        print(f"  [libellés] non régénérés : {e}")
 
     stats = build_snapshot(args.out)
     print(json.dumps({"out": str(args.out), **stats}, ensure_ascii=False, indent=2))

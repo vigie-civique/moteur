@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   import { TYPE_LABELS } from '$lib/data.js'
 
@@ -22,8 +23,8 @@
     .sort((a, b) => (b.citations || 0) - (a.citations || 0) || (a.name || '').localeCompare(b.name || ''))
 </script>
 
-<svelte:head><title>Acteurs publics — Vigie Civique Lasalle</title>
-  <meta name="description" content="Annuaire des services publics, associations et lieux de Lasalle et des institutions qui décident pour elle." /></svelte:head>
+<svelte:head><title>Acteurs publics — {SITE_NOM}</title>
+  <meta name="description" content="Annuaire des services publics, associations et lieux {COMMUNE_DE} et des institutions qui décident pour elle." /></svelte:head>
 
 <section>
   <header class="tete">

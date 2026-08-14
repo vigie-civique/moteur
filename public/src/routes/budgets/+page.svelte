@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_DE, INSEE, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
   import { euros } from '$lib/data.js'
 
@@ -171,8 +172,8 @@
   const pct = (n, total) => total ? Math.round(100 * n / total) + ' %' : ''
 </script>
 
-<svelte:head><title>Budget communal — Vigie Civique Lasalle</title>
-  <meta name="description" content="Budget de la commune de Lasalle : recettes, dépenses, budgets annexes et comparaison avec les communes semblables (OFGL)." /></svelte:head>
+<svelte:head><title>Budget communal — {SITE_NOM}</title>
+  <meta name="description" content="Budget de la commune {COMMUNE_DE} : recettes, dépenses, budgets annexes et comparaison avec les communes semblables (OFGL)." /></svelte:head>
 
 <section>
   <header class="head">
@@ -242,7 +243,7 @@
     {:else}
     <!-- 1 ─ Synthèse en une phrase -->
     <p class="lede">
-      En <b>{year}</b>{#if population}, Lasalle (<b>{population.toLocaleString('fr-FR')}</b> hab.){/if}
+      En <b>{year}</b>{#if population}, {COMMUNE} (<b>{population.toLocaleString('fr-FR')}</b> hab.){/if}
       a perçu <b class="in">{eurosC(recF)}</b> de recettes de fonctionnement
       et dépensé <b class="out">{eurosC(depF)}</b>,
       {#if epargne != null}dégageant <b class="save">{eurosC(epargne)}</b> d'épargne{#if epargnePct != null}{' '}({epargnePct} % des recettes){/if} pour investir et se désendetter{/if}.

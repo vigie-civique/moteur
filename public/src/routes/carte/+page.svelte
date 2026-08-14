@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import Icon from '$lib/components/Icon.svelte'
   import { loadJSON, TYPE_LABELS } from '$lib/data.js'
@@ -76,8 +77,8 @@
   })
 </script>
 
-<svelte:head><title>La carte des acteurs — Vigie Civique Lasalle</title>
-  <meta name="description" content="Carte des entreprises, associations, services publics et lieux de Lasalle, à partir des données publiques." /></svelte:head>
+<svelte:head><title>La carte des acteurs — {SITE_NOM}</title>
+  <meta name="description" content="Carte des entreprises, associations, services publics et lieux {COMMUNE_DE}, à partir des données publiques." /></svelte:head>
 
 <div class="carte">
   <div class="map" bind:this={mapEl}></div>

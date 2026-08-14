@@ -1,3 +1,4 @@
+import { COMMUNE, COMMUNE_DE } from '$lib/instance.js'
 // Chiffres des cartes du hub, lus au build dans le snapshot.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,18 +27,21 @@ export function load() {
   const deliberations = listeEvents.filter((e) =>
     ['deliberation', 'conseil_municipal', 'délibérations_cc', 'pv_cc'].includes(e.type)).length
 
-  // Conseil de Lasalle : les élus de la commune, hors délégués intercommunaux.
-  const elusLasalle = listeElus.filter((e) => (e.commune || '').toLowerCase().includes('lasalle')).length
+  // Le conseil municipal seul : les élus de la commune, hors délégués
+  // intercommunaux. Le rattachement se lit sur `commune`, comparé au nom
+  // déclaré par l'instance — pas à un nom écrit ici.
+  const elusCommune = listeElus.filter(
+    (e) => (e.commune || '').toLowerCase() === COMMUNE.toLowerCase()).length
 
   return {
     elus: listeElus.length || null,
-    elusLasalle: elusLasalle || null,
+    elusCommune: elusCommune || null,
     deliberations: deliberations || stats.events_public || null,
     relations: listeRel.length || stats.relations_public || null,
     conflits: listeConflits.length || null,
     // Compté sur le snapshot, jamais écrit en dur : la carte a annoncé « 7
     // communes » jusqu'au 12/08/2026, chiffre hérité de l'ancien périmètre du
-    // vallon, alors que l'intercommunalité en compte 15.
+    // ancien périmètre, plus étroit que celui de l'intercommunalité.
     communes: new Set((elections.resultats || []).map((r) => r.commune).filter(Boolean)).size || null,
   }
 }

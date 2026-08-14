@@ -1,3 +1,4 @@
+import { EPCI } from '$lib/instance.js'
 // Taux de fiscalité locale, comparés entre communes de l'EPCI.
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'

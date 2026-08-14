@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_A, EPCI, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // La base savait QUI avait été élu, jamais AVEC COMBIEN DE VOIX : un seul
@@ -22,8 +23,8 @@
 </script>
 
 <svelte:head>
-  <title>Les élections — Vigie Civique Lasalle</title>
-  <meta name="description" content="Résultats des élections municipales à Lasalle et dans les communes de la CC Causses Aigoual Cévennes Terres Solidaires : participation, voix par liste, sièges attribués." />
+  <title>Les élections — {SITE_NOM}</title>
+  <meta name="description" content="Résultats des élections municipales {COMMUNE_A} et dans les communes de la {EPCI} : participation, voix par liste, sièges attribués." />
 </svelte:head>
 
 <section class="page">
@@ -31,7 +32,7 @@
     <h1 class="avec-icone"><Icon name="elections" size={26} />Les élections</h1>
     <p class="chapeau">
       Participation, voix et sièges — d'où vient le mandat de ceux qui décident.
-      Lasalle et les autres communes de l'intercommunalité.
+      {COMMUNE} et les autres communes de l'intercommunalité.
     </p>
     <!-- 14 communes sur 15 : le conseil municipal de Trèves a été élu le
          07/06/2026 (date de début de mandat au RNE), après la publication des
@@ -51,7 +52,7 @@
 
       <div class="communes">
         {#each parScrutin(s) as r}
-          <article class:phare={r.commune === 'Lasalle'}>
+          <article class:phare={r.commune === '{COMMUNE}'}>
             <header class="tete">
               <h3>{r.commune}</h3>
               <span class="tour">tour {r.tour}</span>

@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   // Graphe public « qui est lié à qui » — relations déjà filtrées à l'export
   // (build_public_snapshot.py : confidence publique, allowlist, pas de marqueurs privés).
@@ -158,8 +159,8 @@
 </script>
 
 <svelte:head>
-  <title>Graphe des relations — Vigie Civique Lasalle</title>
-  <meta name="description" content="Qui est lié à qui à Lasalle : élus, associations, entreprises, subventions et commissions — relations vérifiées." />
+  <title>Graphe des relations — {SITE_NOM}</title>
+  <meta name="description" content="Qui est lié à qui {COMMUNE_A} : élus, associations, entreprises, subventions et commissions — relations vérifiées." />
 </svelte:head>
 
 <div class="head">

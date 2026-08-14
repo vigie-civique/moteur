@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import { page } from '$app/stores'
   import { goto } from '$app/navigation'
   import Icon from '$lib/components/Icon.svelte'
@@ -50,7 +51,7 @@
   <header>
     <a class="brand" href="/">
       <Icon name="decide" size={22} />
-      <span><strong>Vigie Civique</strong> <em>Lasalle</em></span>
+      <span><strong>Vigie Civique</strong> <em>{COMMUNE}</em></span>
     </a>
 
     <nav class="principale">

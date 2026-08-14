@@ -1,16 +1,17 @@
 <script>
+  import { CODE_POSTAL, COMMUNE, COMMUNE_DE, EPCI, EPCI_COURT, INSEE, SITE_NOM } from '$lib/instance.js'
   // Chiffres lus au build (cf. +page.server.js) : cette page ne doit jamais
   // citer un compteur écrit à la main.
   export let data
   import Niveau from '$lib/components/Niveau.svelte'
 </script>
 
-<svelte:head><title>Méthode &amp; sources — Vigie Civique Lasalle</title>
+<svelte:head><title>Méthode &amp; sources — {SITE_NOM}</title>
   <meta name="description" content="Comment ces données sont collectées, vérifiées et filtrées : sources officielles, règles de publication, corrections et limites connues." /></svelte:head>
 
 <section>
   <h1>Méthode &amp; sources</h1>
-  <p>Ce site agrège et croise des <strong>données publiques ouvertes</strong> pour documenter la gouvernance locale de Lasalle (30460, Gard). Aucune donnée personnelle privée n'est publiée.</p>
+  <p>Ce site agrège et croise des <strong>données publiques ouvertes</strong> pour documenter la gouvernance locale {COMMUNE_DE} ({CODE_POSTAL}). Aucune donnée personnelle privée n'est publiée.</p>
 
   <h2>Sources de données</h2>
   <table>
@@ -22,7 +23,7 @@
       <tr><td>BODACC</td><td>Annonces commerciales</td><td>Licence Ouverte v2</td></tr>
       <tr><td>OFGL / DGFiP</td><td>Budgets, agrégats financiers</td><td>Licence Ouverte v2</td></tr>
       <tr><td>DECP</td><td>Marchés publics</td><td>Licence Ouverte v2</td></tr>
-      <tr><td>Délibérations CM / CC CAC</td><td>Documents administratifs publics</td><td>CADA</td></tr>
+      <tr><td>Délibérations CM / {EPCI_COURT}</td><td>Documents administratifs publics</td><td>CADA</td></tr>
       <tr><td>OpenStreetMap</td><td>Lieux, points d'intérêt</td><td>ODbL 1.0</td></tr>
     </tbody>
   </table>
@@ -178,23 +179,23 @@
   <h2>Périmètre</h2>
   <p>
     Le site suit la <strong>chaîne de décision</strong>, pas le voisinage
-    géographique. Il couvre donc <strong>Lasalle</strong> en profondeur, et la
-    <strong>communauté de communes Causses Aigoual Cévennes Terres Solidaires</strong> — l'échelon
+    géographique. Il couvre donc <strong>{COMMUNE}</strong> en profondeur, et la
+    <strong>{EPCI}</strong> — l'échelon
     qui exerce à la place de la commune l'eau, l'assainissement, les déchets et
     le développement économique.
   </p>
   <p>
     Les quinze communes membres de cette intercommunalité sont collectées au même
-    niveau que Lasalle, mais elles ne sont <strong>pas publiées en fiches</strong> :
-    elles servent à situer Lasalle parmi ses pairs (fiscalité, population,
+    niveau que {COMMUNE}, mais elles ne sont <strong>pas publiées en fiches</strong> :
+    elles servent à situer {COMMUNE} parmi ses pairs (fiscalité, population,
     urbanisme, résultats électoraux). Seules apparaissent en fiche les
     institutions — mairies, intercommunalité, syndicats — et les personnes qui
-    siègent au conseil communautaire, parce qu'elles décident pour Lasalle.
+    siègent au conseil communautaire, parce qu'elles décident pour {COMMUNE}.
   </p>
   <p>
     Une entité située hors de ce périmètre y entre malgré tout si elle est
     <strong>rattachée à un acteur suivi</strong> : société détenue par un élu de
-    Lasalle, titulaire d'un marché de la commune. C'est le lien de décision qui
+    {COMMUNE}, titulaire d'un marché de la commune. C'est le lien de décision qui
     fait entrer une donnée, jamais la proximité.
   </p>
   <p>
@@ -209,7 +210,7 @@
        page qui en rend compte. -->
   <h2>Ce modèle est fait pour être repris</h2>
   <p>
-    Rien ici ne vaut spécifiquement pour Lasalle. Le même dispositif —
+    Rien ici ne vaut spécifiquement pour {COMMUNE}. Le même dispositif —
     collecteurs, base, règles de publication, site — est conçu pour être
     <strong>rejoué sur n'importe quelle commune française</strong>, et
     singulièrement sur les <strong>petites communes rurales</strong> : en
@@ -221,7 +222,7 @@
     configuration : la commune, son intercommunalité, ses communes membres. Les
     collecteurs, le schéma de données et ce site n'ont pas à être modifiés. Un
     contrôle automatique vérifie à chaque passage qu'aucune règle propre à
-    Lasalle ne s'est glissée dans le moteur.
+    {COMMUNE} ne s'est glissée dans le moteur.
   </p>
 
   <h2>Réutiliser les données</h2>
@@ -269,7 +270,7 @@
     Ouverte v2, sont compatibles avec ce choix.
   </p>
   <p class="attribution">
-    Vigie Civique Lasalle. Contient des informations d'OpenStreetMap
+    {SITE_NOM}. Contient des informations d'OpenStreetMap
     (© les contributeurs OpenStreetMap, ODbL), des données publiques sous
     Licence Ouverte v2 (SIRENE, INSEE, RNA, DVF, BODACC, OFGL, DGFiP, DECP,
     BOAMP, Répertoire National des Élus, ministère de l'Intérieur, BANATIC) et

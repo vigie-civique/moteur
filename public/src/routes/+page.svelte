@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, EPCI } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Accueil refondu le 11/08/2026. C'était une carte plein écran : 1 135 points
@@ -19,7 +20,7 @@
   const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
 
   // Les titres BODACC finissent par la date de l'annonce, déjà affichée dans sa
-  // propre colonne : « … — Lasalle (2026-08-09) » devient « … — Lasalle ».
+  // propre colonne : « … — la commune (2026-08-09) » devient « … — la commune ».
   const titre = (t) => (t || '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')
   const millions = (n) =>
     n == null ? '—'
@@ -36,13 +37,13 @@
 </script>
 
 <svelte:head>
-  <title>Lasalle au clair — la commune par les données publiques</title>
-  <meta name="description" content="Qui décide, où va l'argent, qui agit : Lasalle et son intercommunalité, la CC Causses Aigoual Cévennes Terres Solidaires, à partir des seules données publiques." />
+  <title>{COMMUNE} au clair — la commune par les données publiques</title>
+  <meta name="description" content="Qui décide, où va l'argent, qui agit : {COMMUNE} et son intercommunalité, la {EPCI}, à partir des seules données publiques." />
 </svelte:head>
 
 <section class="hero">
   <div class="pitch">
-    <h1>Lasalle, au clair.</h1>
+    <h1>{COMMUNE}, au clair.</h1>
     <p>
       <!-- « L'intercommunalité qui décide à sa place » était percutant mais
            juridiquement faux : les compétences sont transférées par la loi ou

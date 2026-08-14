@@ -1,9 +1,10 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 </script>
 
 <svelte:head>
-  <title>Comprendre le budget communal — Vigie Civique Lasalle</title>
+  <title>Comprendre le budget communal — {SITE_NOM}</title>
   <meta name="description" content="Fiche pédagogique : comment fonctionne le budget d'une commune — fonctionnement, investissement, recettes, dotations, dette, budgets annexes." />
 </svelte:head>
 

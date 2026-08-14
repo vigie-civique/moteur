@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Hub « Où va l'argent ? » — les finances rendues lisibles.
@@ -37,8 +38,8 @@
 </script>
 
 <svelte:head>
-  <title>Où va l'argent ? — Vigie Civique Lasalle</title>
-  <meta name="description" content="Les finances de Lasalle rendues lisibles : budget, subventions, marchés publics et foncier." />
+  <title>Où va l'argent ? — {SITE_NOM}</title>
+  <meta name="description" content="Les finances {COMMUNE_DE} rendues lisibles : budget, subventions, marchés publics et foncier." />
 </svelte:head>
 
 <section class="hub">

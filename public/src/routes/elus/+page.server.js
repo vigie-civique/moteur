@@ -1,3 +1,4 @@
+import { COMMUNE } from '$lib/instance.js'
 // Composition des conseils municipaux, assemblée au build.
 // Cf. marches/+page.server.js pour le motif de la lecture au build.
 //
@@ -40,9 +41,12 @@ export function load() {
               : idsElus.has(r.to_id) ? r.to_id : null
     const brut = pid === r.from_id ? r.to_name : r.from_name
     if (pid == null || !brut) continue
-    // « Commission Finances et budgets — Lasalle » → « Finances et budgets » :
+    // « Commission Finances et budgets — la commune » → « Finances et budgets » :
     // le préfixe et la commune sont déjà donnés par le contexte de la page.
-    const label = brut.replace(/^Commission\s+/i, '').replace(/\s+—\s+Lasalle$/, '')
+    // Le suffixe « — <commune> » est construit à l'exécution : une expression
+    // régulière littérale ne s'interpole pas.
+    const suffixeCommune = new RegExp(`\\s+—\\s+${COMMUNE}$`)
+    const label = brut.replace(/^Commission\s+/i, '').replace(suffixeCommune, '')
     commissions.set(pid, [...(commissions.get(pid) || []),
                           { label, role: r.role, precision: r.precision }])
   }

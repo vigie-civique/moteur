@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
 
   // Rendu au build par +page.server.js.
@@ -26,7 +27,7 @@
 </script>
 
 <svelte:head>
-  <title>Projets approuvés — Vigie Civique Lasalle</title>
+  <title>Projets approuvés — {SITE_NOM}</title>
   <meta name="description" content="Plans de financement votés par le conseil municipal : participations de la commune aux opérations d'éclairage public et d'électrification." />
 </svelte:head>
 

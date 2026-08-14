@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
 
   // Rendu au build par +page.server.js.
@@ -31,7 +32,7 @@
 </script>
 
 <svelte:head>
-  <title>Couverture et lacunes — Vigie Civique Lasalle</title>
+  <title>Couverture et lacunes — {SITE_NOM}</title>
   <meta name="description" content="Ce que la collecte couvre et ce qu'elle ne couvre pas : périodes par source, fraîcheur des collecteurs, documents manquants et limites connues." />
 </svelte:head>
 

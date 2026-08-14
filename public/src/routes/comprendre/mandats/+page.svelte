@@ -1,9 +1,10 @@
 <script>
+  import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 </script>
 
 <svelte:head>
-  <title>Comprendre les mandats et les délibérations — Vigie Civique Lasalle</title>
+  <title>Comprendre les mandats et les délibérations — {SITE_NOM}</title>
   <meta name="description" content="Fiche pédagogique : conseil municipal, maire, adjoints, délégations — et comment lire une délibération ou demander un document administratif." />
 </svelte:head>
 
@@ -13,7 +14,7 @@
 
   <h2>Le conseil municipal</h2>
   <p>Élu pour <strong>six ans</strong>, il compte 15 conseillers dans une commune de la taille de
-     Lasalle. C'est lui — pas le maire seul — qui vote le budget, les ventes de terrains communaux,
+     {COMMUNE}. C'est lui — pas le maire seul — qui vote le budget, les ventes de terrains communaux,
      les subventions aux associations, les créations de postes. Le maire prépare et exécute ;
      le conseil délibère.</p>
 

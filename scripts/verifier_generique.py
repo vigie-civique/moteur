@@ -23,6 +23,10 @@ Ce sont donc des FORMES qui sont interdites, pas des mots :
   5. le nom d'une commune de France de plus de 3 caractères, quand il apparaît
      dans une chaîne de caractères exécutée (pas dans un commentaire).
 
+Le contrôle porte aussi sur les fichiers non-Python du moteur : le schéma de la
+base, les sources du site public et celles de l'atelier. Pour ceux-là, seul le
+point 5 s'applique.
+
 Le point 5 demande une liste de communes ; à défaut de la charger (réseau), le
 contrôle se rabat sur les communes déclarées dans la configuration locale et le
 signale. Les quatre premiers points, eux, sont autonomes.
@@ -46,6 +50,16 @@ ROOT = Path(__file__).resolve().parent.parent
 # Le moteur : ce qui doit être générique. La configuration et les exemples en
 # sont exclus — c'est justement là que le particulier a le droit de vivre.
 MOTEUR = ["collectors", "scripts", "api.py", "api_auth.py"]
+# Fichiers non-Python du moteur : le schéma de la base et les sources du site
+# public et de l'atelier. Le schéma a porté `DEFAULT 'Lasalle'` pendant des
+# mois, et le site nommait la commune 125 fois — les exclure du contrôle, c'est
+# laisser la moitié du dispositif hors de sa portée.
+TEXTES = [
+    ("db/schema.sql", (".sql",)),
+    ("public/src", (".svelte", ".js", ".html")),
+    ("dashboard/src", (".svelte", ".js", ".html")),
+]
+TEXTES_EXCLUS = {"instance.js"}
 EXCLUS_FICHIERS = {
     "config.py",                     # la configuration de l'instance
     "verifier_generique.py",         # ce fichier : il contient les motifs
@@ -179,6 +193,48 @@ def analyser(fichier: Path, communes: set[str]) -> list[dict]:
     return constats
 
 
+def analyser_texte(fichier: Path, communes: set[str]) -> list[dict]:
+    """Contrôle d'un fichier non-Python : on ne cherche que les noms propres.
+
+    Pas d'analyse syntaxique ici : ni SQL ni Svelte ne se prêtent au découpage
+    fait sur Python, et les formes techniques (identifiants de lignes, chemins
+    de base) n'y ont pas cours. Ce qui compte, c'est qu'aucune commune n'y soit
+    nommée — le reste est du texte éditorial, et il vit dans instance.js.
+    """
+    try:
+        lignes = fichier.read_text(encoding="utf-8").splitlines()
+    except (UnicodeDecodeError, OSError):
+        return []
+    rel = str(fichier.relative_to(ROOT))
+    constats = []
+    for numero, ligne in enumerate(lignes, 1):
+        nu = ligne.strip()
+        if nu.startswith(("--", "//", "#", "*")):
+            continue          # commentaire : il documente, il ne s'affiche pas
+        for commune in communes:
+            if re.search(rf"\b{re.escape(commune)}\b", ligne, re.I):
+                constats.append({
+                    "fichier": rel, "ligne": numero, "motif": "nom_commune",
+                    "explication": f"« {commune} » nommée hors configuration",
+                    "extrait": nu[:80]})
+                break
+    return constats
+
+
+def _fichiers_texte() -> list[Path]:
+    out = []
+    for cible, suffixes in TEXTES:
+        chemin = ROOT / cible
+        if chemin.is_file():
+            out.append(chemin)
+        elif chemin.is_dir():
+            out += [f for f in sorted(chemin.rglob("*"))
+                    if f.is_file() and f.suffix in suffixes
+                    and f.name not in TEXTES_EXCLUS
+                    and not (set(f.parts) & EXCLUS_DOSSIERS)]
+    return out
+
+
 def communes_locales() -> set[str]:
     """Noms de communes déclarés par la configuration de l'instance, s'il y en a.
 
@@ -204,12 +260,14 @@ def main() -> int:
     communes = communes_locales()
     fichiers = _fichiers(args.cibles or MOTEUR)
     constats = [c for f in fichiers for c in analyser(f, communes)]
+    textes = [] if args.cibles else _fichiers_texte()
+    constats += [c for f in textes for c in analyser_texte(f, communes)]
 
     if args.json:
         print(json.dumps(constats, ensure_ascii=False, indent=2))
         return 1 if constats else 0
 
-    print(f"[générique] {len(fichiers)} fichiers du moteur analysés"
+    print(f"[générique] {len(fichiers) + len(textes)} fichiers du moteur analysés"
           + (f", {len(communes)} noms de communes issus de la configuration"
              if communes else " — configuration illisible, contrôle des noms ignoré"))
 

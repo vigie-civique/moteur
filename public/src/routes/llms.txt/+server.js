@@ -1,3 +1,4 @@
+import { CODE_POSTAL, COMMUNE_DE, EPCI, SITE_BASELINE, SITE_NOM, SITE_URL } from '$lib/instance.js'
 // llms.txt — carte du site à l'usage des agents et assistants qui lisent le web.
 //
 // Ils sont désormais une porte d'entrée réelle vers ce genre de contenu, et ils
@@ -7,7 +8,6 @@
 // fabriquerait du soupçon à partir de liens parfaitement légaux.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SITE_URL, SITE_NOM, SITE_BASELINE } from '$lib/site.js'
 
 export const prerender = true
 
@@ -21,8 +21,8 @@ export function GET() {
 
   const body = `# ${SITE_NOM} — ${SITE_BASELINE}
 
-> Observatoire citoyen de la commune de Lasalle (30460, Gard) et de son
-> intercommunalité, la CC Causses Aigoual Cévennes Terres Solidaires.
+> Observatoire citoyen de la commune ${COMMUNE_DE} (${CODE_POSTAL}) et de
+> son intercommunalité, la ${EPCI}.
 > Reconstruit à partir de documents et de données publiques uniquement.
 > Données arrêtées au ${arrete}.
 

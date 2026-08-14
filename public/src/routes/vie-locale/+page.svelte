@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Vie locale — v1 (décision 03/07/2026) : agenda et événements du territoire.
@@ -40,14 +41,15 @@
 </script>
 
 <svelte:head>
-  <title>Vie locale — Vigie Civique Lasalle</title>
-  <meta name="description" content="Agenda et événements de Lasalle : manifestations, culture, vie associative — collectés depuis les sources publiques locales." />
+  <title>Vie locale — {SITE_NOM}</title>
+  <meta name="description" content="Agenda et événements {COMMUNE_DE} : manifestations, culture, vie associative — collectés depuis les sources publiques locales." />
 </svelte:head>
 
 <section>
   <h1 class="avec-icone"><Icon name="vie" size={26} />La vie locale</h1>
   <p class="sub">Événements, manifestations et vie associative locales,
-     collectés depuis les sources publiques locales (lasalle.fr, sites des associations).</p>
+     collectés depuis les sources publiques locales : site de la commune,
+     de l'intercommunalité et des associations.</p>
 
   <div class="filters">
     <input placeholder="Rechercher un événement…" bind:value={q} />

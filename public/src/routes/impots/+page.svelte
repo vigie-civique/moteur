@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_A, COMMUNE_DE, EPCI, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // « De combien sont mes impôts locaux, et comment on se situe ? » est la
@@ -43,8 +44,8 @@
 </script>
 
 <svelte:head>
-  <title>Impôts locaux — Vigie Civique Lasalle</title>
-  <meta name="description" content="Taux d'imposition votés à Lasalle et dans les 15 communes de la CC Causses Aigoual Cévennes Terres Solidaires : foncier bâti, foncier non bâti, taxe d'habitation, ordures ménagères." />
+  <title>Impôts locaux — {SITE_NOM}</title>
+  <meta name="description" content="Taux d'imposition votés {COMMUNE_A} et dans les 15 communes de la {EPCI} : foncier bâti, foncier non bâti, taxe d'habitation, ordures ménagères." />
 </svelte:head>
 
 <section class="page">
@@ -83,7 +84,7 @@
               {@const v = ligne.vote ? val(c, ligne.vote) : null}
               {@const g = val(c, ligne.global)}
               {@const ev = ligne.vote === 'TFB_VOTE' ? evolution(c) : null}
-              <tr class:phare={c === 'Lasalle'}>
+              <tr class:phare={c === '{COMMUNE}'}>
                 <td>{c}</td>
                 {#if ligne.vote}<td class="num">{pct(v)}</td>{/if}
                 <td class="num">{pct(g)}</td>
@@ -116,7 +117,7 @@
       </p>
       <p class="liens">
         <a href="/comprendre/budget">Comprendre le budget communal</a> ·
-        <a href="/budgets">Le budget de Lasalle</a> ·
+        <a href="/budgets">Le budget {COMMUNE_DE}</a> ·
         <a href="/methode">Méthode et sources</a>
       </p>
     </div>

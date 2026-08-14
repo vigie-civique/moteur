@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { euros } from '$lib/data.js'
   import Niveau from '$lib/components/Niveau.svelte'
@@ -79,8 +80,8 @@
   }
 </script>
 
-<svelte:head><title>Urbanisme &amp; foncier — Vigie Civique Lasalle</title>
-  <meta name="description" content="Transactions foncières (DVF) et marchés publics de travaux à Lasalle." /></svelte:head>
+<svelte:head><title>Urbanisme &amp; foncier — {SITE_NOM}</title>
+  <meta name="description" content="Transactions foncières (DVF) et marchés publics de travaux {COMMUNE_A}." /></svelte:head>
 
 <section>
   <h1>Urbanisme &amp; transactions foncières</h1>

@@ -6,7 +6,7 @@
 // atteignables autrement qu'en cliquant de proche en proche.
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { SITE_URL } from '$lib/site.js'
+import { SITE_URL } from '$lib/instance.js'
 import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
 
 export const prerender = true

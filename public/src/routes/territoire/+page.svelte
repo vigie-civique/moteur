@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_A, INSEE, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
   import Icon from '$lib/components/Icon.svelte'
 
@@ -31,7 +32,8 @@
   }
   const label = (r) => r.libelle || LABELS[r.indicateur] || r.indicateur
 
-  const lasalle = (r) => r.insee === '30140'
+  // La ligne de la commune de collecte, repérée par son code INSEE.
+  const estCommune = (r) => r.insee === INSEE
 
   // `$:` et non `const` : une fonction déclarée en `const` qui lit `insee` ne
   // crée aucune dépendance réactive. `$: pop = serie('POP')` ne mentionne pas
@@ -41,13 +43,13 @@
   // deux fonctions sont recréées quand `insee` change, et tout ce qui en dépend
   // se recalcule.
   $: val = (code, annee) => {
-    const hits = insee.filter(r => lasalle(r) && r.indicateur === code
+    const hits = insee.filter(r => estCommune(r) && r.indicateur === code
                                    && (!annee || r.annee === annee))
     if (!hits.length) return null
     return hits.sort((a, b) => (b.annee || '').localeCompare(a.annee || ''))[0]
   }
   $: serie = (code) => insee
-    .filter(r => lasalle(r) && r.indicateur === code && r.valeur != null)
+    .filter(r => estCommune(r) && r.indicateur === code && r.valeur != null)
     .sort((a, b) => (a.annee || '').localeCompare(b.annee || ''))
 
   $: pop = serie('POP')
@@ -66,10 +68,10 @@
   // Pyramide des âges du dernier recensement disponible.
   const AGES = ['POP_AGE_Y_LT15', 'POP_AGE_Y15T24', 'POP_AGE_Y25T39',
                 'POP_AGE_Y40T54', 'POP_AGE_Y55T64', 'POP_AGE_Y65T79', 'POP_AGE_Y_GE80']
-  $: anneeAge = insee.filter(r => lasalle(r) && AGES.includes(r.indicateur))
+  $: anneeAge = insee.filter(r => estCommune(r) && AGES.includes(r.indicateur))
                      .reduce((mx, r) => (r.annee || '') > mx ? r.annee : mx, '')
   $: ages = AGES.map(c => {
-    const r = insee.find(x => lasalle(x) && x.indicateur === c && x.annee === anneeAge)
+    const r = insee.find(x => estCommune(x) && x.indicateur === c && x.annee === anneeAge)
     return { code: c, label: LABELS[c], valeur: r?.valeur ?? 0 }
   })
   $: ageTotal = ages.reduce((s, a) => s + a.valeur, 0)
@@ -86,7 +88,7 @@
   $: dernierVac = vacants[vacants.length - 1]
 
   // Le niveau de vie est publié pour chaque commune de l'intercommunalité : la comparaison
-  // situe Lasalle sans avoir à la chercher ailleurs.
+  // situe la commune sans avoir à la chercher ailleurs.
   $: voisines = insee
     .filter(r => r.indicateur === 'FILO_MED_SL' && r.valeur != null)
     .sort((a, b) => b.valeur - a.valeur)
@@ -100,8 +102,8 @@
 </script>
 
 <svelte:head>
-  <title>Le territoire en chiffres — Vigie Civique Lasalle</title>
-  <meta name="description" content="Population, logement, revenus et emploi à Lasalle depuis 1968 — portrait statistique du village à partir des recensements INSEE." />
+  <title>Le territoire en chiffres — {SITE_NOM}</title>
+  <meta name="description" content="Population, logement, revenus et emploi {COMMUNE_A} depuis 1968 — portrait statistique du village à partir des recensements INSEE." />
 </svelte:head>
 
 <section>
@@ -116,7 +118,7 @@
 
   {#if constat}
     <Niveau type="calcul" base="les recensements INSEE de {constat.premier.annee} à {constat.dernier.annee}">
-      Lasalle comptait <b>{constat.premier.valeur.toLocaleString('fr-FR')}</b> habitants
+      {COMMUNE} comptait <b>{constat.premier.valeur.toLocaleString('fr-FR')}</b> habitants
       en {constat.premier.annee} et <b>{constat.dernier.valeur.toLocaleString('fr-FR')}</b> en
       {constat.dernier.annee} — le même nombre à deux près, après
       {constat.premier.annee === constat.creux.annee ? 'une longue baisse' : `un creux à ${constat.creux.valeur.toLocaleString('fr-FR')} habitants en ${constat.creux.annee}`}.
@@ -251,7 +253,7 @@
         {#each voisines as v}
           <div class="agerow">
             <span class="alabel">{v.commune}</span>
-            <div class="abar"><span class:me={v.insee === '30140'}
+            <div class="abar"><span class:me={v.insee === INSEE}
                                     style="width:{(v.valeur / voisinesMax) * 100}%"></span></div>
             <span class="aval">{eur(v.valeur)}</span>
           </div>

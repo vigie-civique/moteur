@@ -1,10 +1,11 @@
 <script>
+  import { COMMUNE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 </script>
 
 <svelte:head>
-  <title>Comprendre l'intercommunalité — Vigie Civique Lasalle</title>
-  <meta name="description" content="Fiche pédagogique : la communauté de communes Causses Aigoual Cévennes Terres Solidaires — compétences, délégués, financement, et pourquoi cet échelon compte." />
+  <title>Comprendre l'intercommunalité — {SITE_NOM}</title>
+  <meta name="description" content="Fiche pédagogique : la {EPCI} — compétences, délégués, financement, et pourquoi cet échelon compte." />
 </svelte:head>
 
 <article>
@@ -14,9 +15,9 @@
   <h2>C'est quoi</h2>
   <p>Aucune commune de 100 ou 1 000 habitants ne peut gérer seule les déchets, une piscine ou le
      développement économique. La loi impose donc à chaque commune d'appartenir à un
-     <strong>EPCI</strong> (établissement public de coopération intercommunale). Pour Lasalle,
-     c'est la <strong>communauté de communes Causses Aigoual Cévennes Terres Solidaires</strong> (CC CAC), qui regroupe
-     quinze communes du massif entre Aigoual et Salindrenque.</p>
+     <strong>EPCI</strong> (établissement public de coopération intercommunale). Pour {COMMUNE},
+     c'est la <strong>{EPCI}</strong> ({EPCI_COURT}), qui regroupe
+     les communes du territoire.</p>
 
   <h2>Ce qu'elle décide à la place de la commune</h2>
   <p>Les <strong>compétences transférées</strong> ne sont plus votées au conseil municipal :
@@ -30,7 +31,7 @@
      son poids y est mécaniquement limité, et les arbitrages se jouent entre communes.</p>
 
   <h2>L'argent qui y transite</h2>
-  <p>La CC CAC lève sa propre fiscalité et reçoit ses propres dotations. Elle attribue aussi des
+  <p>La {EPCI_COURT} lève sa propre fiscalité et reçoit ses propres dotations. Elle attribue aussi des
      <strong>marchés publics</strong> et reçoit des <strong>subventions</strong> (Région, État,
      Europe/LEADER) pour des équipements utilisés par les habitants — la réhabilitation de
      bâtiments, les déchèteries, les projets touristiques. Suivre l'argent public local sans regarder
@@ -38,7 +39,7 @@
 
   <h2>Où c'est documenté ici</h2>
   <p>Les procès-verbaux et délibérations du conseil communautaire sont collectés et archivés
-     (le site de la CC CAC ne garde pas tout en ligne), ainsi que ses marchés et les subventions
+     (le site de la {EPCI_COURT} ne garde pas tout en ligne), ainsi que ses marchés et les subventions
      régionales qu'elle reçoit.</p>
 
   <p class="voir">

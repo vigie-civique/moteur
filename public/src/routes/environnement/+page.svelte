@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Eau, risques naturels et installations classées. 27 652 analyses, 75 risques
@@ -40,8 +41,8 @@
 </script>
 
 <svelte:head>
-  <title>Environnement — Vigie Civique Lasalle</title>
-  <meta name="description" content="Qualité de l'eau de la Salindrenque et des Gardons, risques naturels recensés et installations classées à Lasalle et dans son intercommunalité." />
+  <title>Environnement — {SITE_NOM}</title>
+  <meta name="description" content="Qualité de l'eau, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
 <section>

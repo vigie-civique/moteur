@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
   import { euros } from '$lib/data.js'
 
@@ -100,8 +101,8 @@
   $: periode = year == null ? '—' : String(year)
 </script>
 
-<svelte:head><title>Flux financiers publics — Vigie Civique Lasalle</title>
-  <meta name="description" content="Où va l'argent public à Lasalle : subventions versées, dotations reçues, marchés attribués." /></svelte:head>
+<svelte:head><title>Flux financiers publics — {SITE_NOM}</title>
+  <meta name="description" content="Où va l'argent public {COMMUNE_A} : subventions versées, dotations reçues, marchés attribués." /></svelte:head>
 
 <section>
   <header class="head">
@@ -308,7 +309,7 @@
       </table>
     </details>
 
-    <p class="foot">Sources : DECP (marchés), subventions État/Région, délibérations du conseil municipal. « Reçu » / « versé » = la commune (SIREN Lasalle) est respectivement destinataire ou émetteur du flux ; les flux entre tiers sont regroupés à part. Les demandes non accordées sont exclues des totaux.</p>
+    <p class="foot">Sources : DECP (marchés), subventions État/Région, délibérations du conseil municipal. « Reçu » / « versé » = la commune (SIREN {COMMUNE}) est respectivement destinataire ou émetteur du flux ; les flux entre tiers sont regroupés à part. Les demandes non accordées sont exclues des totaux.</p>
   {/if}
 </section>
 

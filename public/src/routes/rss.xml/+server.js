@@ -1,3 +1,4 @@
+import { COMMUNE_A, INSEE, SITE_NOM, SITE_URL } from '$lib/instance.js'
 // Flux RSS des nouveautés — généré au build.
 //
 // C'est ce qui transforme un visiteur de passage en veilleur régulier, sans
@@ -15,7 +16,6 @@
 // leur place dans un fil de vigie.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SITE_URL, SITE_NOM } from '$lib/site.js'
 
 export const prerender = true
 
@@ -63,7 +63,7 @@ export function GET() {
     return `    <item>
       <title>${echapper(i.titre)}</title>
       <link>${echapper(lien)}</link>
-      <guid isPermaLink="false">vigie-lasalle-${i.id ?? echapper(i.date + i.titre)}</guid>
+      <guid isPermaLink="false">vigie-${INSEE}-${i.id ?? echapper(i.date + i.titre)}</guid>
       <pubDate>${dateRfc(i.date)}</pubDate>
       <category>${echapper(GENRES[i.genre])}</category>
       <description>${echapper(desc)}</description>
@@ -76,7 +76,7 @@ export function GET() {
     <title>${SITE_NOM} — ce qui a changé</title>
     <link>${SITE_URL}/nouveautes</link>
     <atom:link href="${SITE_URL}/rss.xml" rel="self" type="application/rss+xml" />
-    <description>Les décisions, marchés, flux financiers et changements de mandat à Lasalle et dans son intercommunalité, d'après les documents publics. Agenda culturel exclu.</description>
+    <description>Les décisions, marchés, flux financiers et changements de mandat ${COMMUNE_A} et dans son intercommunalité, d'après les documents publics. Agenda culturel exclu.</description>
     <language>fr</language>
     <lastBuildDate>${dateRfc(arreteLe)}</lastBuildDate>
 ${entrees}

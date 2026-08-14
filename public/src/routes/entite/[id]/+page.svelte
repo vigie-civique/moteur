@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { TYPE_LABELS, euros } from '$lib/data.js'
 
@@ -183,7 +184,7 @@
 <!-- Maintenant que la page est prérendue, ces balises servent enfin à quelque
      chose : c'est ce qu'un moteur de recherche et un partage de lien affichent. -->
 <svelte:head>
-  <title>{entity?.name || 'Fiche'} — {entity?.commune || 'Lasalle'} | Vigie Civique Lasalle</title>
+  <title>{entity?.name || 'Fiche'} — {entity?.commune || '{COMMUNE}'} | {SITE_NOM}</title>
   <meta name="description" content={
     `${entity?.name || ''} — ${TYPE_LABELS[entity?.type] || ''}`
     + (entity?.commune ? ` à ${entity.commune}` : '')

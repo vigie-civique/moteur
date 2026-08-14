@@ -1,4 +1,8 @@
-<svelte:head><title>Contact &amp; droit de réponse — Vigie Civique Lasalle</title>
+<script>
+  import { CONTACT_EMAIL, SITE_NOM } from '$lib/instance.js'
+</script>
+
+<svelte:head><title>Contact &amp; droit de réponse — {SITE_NOM}</title>
   <meta name="description" content="Contact et exercice du droit de réponse : signaler une erreur ou demander une rectification." /></svelte:head>
 
 <section>
@@ -9,7 +13,7 @@
   </p>
 
   <div class="card">
-    <p><strong>Adresse dédiée :</strong> <a href="mailto:vigie.civique.lasalle@proton.me">vigie.civique.lasalle@proton.me</a></p>
+    <p><strong>Adresse dédiée :</strong> <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></p>
     <p>Merci d'indiquer dans votre message :</p>
     <ul>
       <li>la page ou l'entité concernée (URL) ;</li>

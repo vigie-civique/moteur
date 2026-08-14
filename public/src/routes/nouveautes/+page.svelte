@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   import { euros } from '$lib/data.js'
 
@@ -98,8 +99,8 @@
 </script>
 
 <svelte:head>
-  <title>Ce qui a changé — Vigie Civique Lasalle</title>
-  <meta name="description" content="Les dernières décisions, marchés publics, permis et versements publics à Lasalle et dans son intercommunalité." />
+  <title>Ce qui a changé — {SITE_NOM}</title>
+  <meta name="description" content="Les dernières décisions, marchés publics, permis et versements publics {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
 <section class="page">

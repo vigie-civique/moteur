@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
   import { TYPE_LABELS, loadJSON, euros } from '$lib/data.js'
@@ -58,7 +59,7 @@
   // Le champ `c` ne veut pas dire la même chose selon la catégorie : commune
   // pour un acteur, source pour un acte, acheteur pour un marché, payeur pour
   // un versement. Alimenter un filtre « communes » avec tout cela y mettait
-  // `bodacc`, `lasalle.fr` et « État - Fonds Vert » à côté de Lasalle et
+  // `bodacc`, le domaine du site communal et « État - Fonds Vert » côtoient
   // Colognac. Le filtre n'est donc proposé que sur les acteurs, où il a un sens.
   $: communes = [...new Set(
     source.filter((e) => e.k === 'acteur').map((e) => e.c).filter(Boolean)
@@ -82,8 +83,8 @@
 </script>
 
 <svelte:head>
-  <title>Rechercher — Vigie Civique Lasalle</title>
-  <meta name="description" content="Chercher dans tout le site : acteurs, délibérations, marchés publics et versements de la commune de Lasalle et de son intercommunalité." />
+  <title>Rechercher — {SITE_NOM}</title>
+  <meta name="description" content="Chercher dans tout le site : acteurs, délibérations, marchés publics et versements de la commune {COMMUNE_DE} et de son intercommunalité." />
 </svelte:head>
 
 <section class="rech">

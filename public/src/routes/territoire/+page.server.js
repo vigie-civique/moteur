@@ -1,3 +1,4 @@
+import { COMMUNE_DE, INSEE } from '$lib/instance.js'
 // Données INSEE du territoire.
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'
@@ -19,11 +20,11 @@ export function load() {
       ({ insee, indicateur, libelle, annee, valeur }))
 
   // Constat démographique. Le fichier porte les 15 communes de
-  // l'intercommunalité : filtrer sur le code INSEE de Lasalle est indispensable,
+  // l'intercommunalité : filtrer sur le code INSEE la commune est indispensable,
   // sans quoi on additionne des communes différentes — c'est l'erreur commise
   // en lisant ces données à la main le 12/08.
   const pop = insee
-    .filter((r) => r.insee === '30140' && r.indicateur === 'POP' && r.valeur != null)
+    .filter((r) => r.insee === INSEE && r.indicateur === 'POP' && r.valeur != null)
     .sort((a, b) => a.annee.localeCompare(b.annee))
 
   let constat = null

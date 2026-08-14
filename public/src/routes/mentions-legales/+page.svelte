@@ -1,4 +1,8 @@
-<svelte:head><title>Mentions légales — Vigie Civique Lasalle</title>
+<script>
+  import { CODE_POSTAL, COMMUNE_DE, CONTACT_EMAIL, EPCI, PREFECTURE, SITE_NOM } from '$lib/instance.js'
+</script>
+
+<svelte:head><title>Mentions légales — {SITE_NOM}</title>
   <meta name="description" content="Mentions légales du site : éditeur, hébergeur, traitement des données et voies de recours." /></svelte:head>
 
 <section>
@@ -11,15 +15,15 @@
     dans l'économie numérique (LCEN), l'éditeur a communiqué ses éléments d'identification
     personnelle à l'hébergeur du site.
   </p>
-  <p>Contact : <a href="mailto:vigie.civique.lasalle@proton.me">vigie.civique.lasalle@proton.me</a></p>
+  <p>Contact : <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></p>
 
   <h2>Hébergement</h2>
   <p>Site public : Cloudflare, Inc., 101 Townsend Street, San Francisco, CA 94107, USA — <a href="https://www.cloudflare.com" rel="noopener">cloudflare.com</a>.</p>
 
   <h2>Finalité</h2>
   <p>
-    Information citoyenne sur la gouvernance locale de la commune de Lasalle (30460) et de la
-    communauté de communes Causses Aigoual Cévennes Terres Solidaires, dont elle est membre : qui décide, comment
+    Information citoyenne sur la gouvernance locale de la commune {COMMUNE_DE} ({CODE_POSTAL}) et de la
+    {EPCI}, dont elle est membre : qui décide, comment
     l'argent public est utilisé, quels acteurs interviennent sur le territoire. Le traitement
     poursuit un objectif de transparence démocratique.
   </p>
@@ -35,7 +39,7 @@
   <p>
     Le site ne publie que des données issues de sources publiques officielles (SIRENE, RNA, DVF,
     BODACC, OFGL, DGFiP, Répertoire national des élus, délibérations municipales et communautaires,
-    publications de la préfecture du Gard), citées et datées. Les personnes physiques n'y figurent
+    publications de la {PREFECTURE}), citées et datées. Les personnes physiques n'y figurent
     qu'au titre d'une fonction publique, d'un mandat électif ou d'une responsabilité de structure
     inscrite dans un registre public. Aucune adresse personnelle, coordonnée privée ni donnée de
     vie privée n'est publiée. La méthode complète est décrite sur la page

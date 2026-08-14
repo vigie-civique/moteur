@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
   import { INSTITUTIONAL, libelleAnnee } from '$lib/actes.js'
   import { axesDe } from '$lib/provenance.js'
@@ -23,8 +24,8 @@
 </script>
 
 <svelte:head>
-  <title>Délibérations {libelleAnnee(annee)} — Vigie Civique Lasalle</title>
-  <meta name="description" content="Les {items.length} actes officiels de {libelleAnnee(annee)} à Lasalle et dans son intercommunalité : délibérations du conseil municipal, procès-verbaux communautaires, votes et montants." />
+  <title>Délibérations {libelleAnnee(annee)} — {SITE_NOM}</title>
+  <meta name="description" content="Les {items.length} actes officiels de {libelleAnnee(annee)} {COMMUNE_A} et dans son intercommunalité : délibérations du conseil municipal, procès-verbaux communautaires, votes et montants." />
 </svelte:head>
 
 <section>
