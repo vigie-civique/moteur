@@ -89,12 +89,29 @@ def _bbox(contour: dict) -> list[float]:
 
 
 def _sirens(insee: str, nom: str) -> tuple[str, str]:
-    """SIREN et SIRET de la collectivité, depuis le répertoire des entreprises."""
+    """SIREN et SIRET de la collectivité, depuis le répertoire des entreprises.
+
+    Le SIREN d'une commune est construit : « 21 » + code INSEE sur cinq
+    chiffres + une clé. On le calcule et on le cherche en priorité, parce que
+    le répertoire peut contenir DEUX « COMMUNE DE X » — c'est le cas d'au moins
+    une commune rencontrée, dont l'enregistrement récent côtoie l'historique.
+    Prendre le premier résultat, c'était prendre le mauvais une fois sur deux,
+    et fausser ensuite tous les marchés publics filtrés par SIREN acheteur.
+    """
+    attendu = f"21{insee}" if insee[:2].isdigit() else ""
     q = urllib.parse.urlencode({"q": f"commune de {nom}", "code_commune": insee})
     data = _get(f"{ENTREPRISES}?{q}") or {}
-    for r in data.get("results", []):
-        if r.get("nom_complet", "").upper().startswith("COMMUNE"):
-            return r.get("siren", ""), (r.get("siege") or {}).get("siret", "")
+    candidats = [r for r in data.get("results", [])
+                 if r.get("nom_complet", "").upper().startswith("COMMUNE")]
+
+    for r in candidats:
+        if attendu and r.get("siren", "").startswith(attendu):
+            return r["siren"], (r.get("siege") or {}).get("siret", "")
+    if len(candidats) > 1:
+        print(f"  ⚠ {len(candidats)} entités « COMMUNE DE … » au répertoire, "
+              "aucune au format attendu : SIREN à vérifier à la main")
+    for r in candidats:
+        return r.get("siren", ""), (r.get("siege") or {}).get("siret", "")
     return "", ""
 
 
