@@ -91,14 +91,24 @@ def _bbox(contour: dict) -> list[float]:
 def _sirens(insee: str, nom: str) -> tuple[str, str]:
     """SIREN et SIRET de la collectivité, depuis le répertoire des entreprises.
 
-    Le SIREN d'une commune est construit : « 21 » + code INSEE sur cinq
-    chiffres + une clé. On le calcule et on le cherche en priorité, parce que
-    le répertoire peut contenir DEUX « COMMUNE DE X » — c'est le cas d'au moins
-    une commune rencontrée, dont l'enregistrement récent côtoie l'historique.
-    Prendre le premier résultat, c'était prendre le mauvais une fois sur deux,
-    et fausser ensuite tous les marchés publics filtrés par SIREN acheteur.
+    Le SIREN d'une commune est construit : « 21 », puis le département sur deux
+    chiffres, puis le numéro de commune sur quatre (complété d'un zéro), puis
+    une clé. Vérifié sur trois communes de trois départements :
+
+        30140 → 213001407      81037 → 218100378      26289 → 212602890
+
+    On le calcule et on le cherche en priorité, parce que le répertoire peut
+    contenir DEUX « COMMUNE DE X » — c'est le cas d'au moins une commune
+    rencontrée, dont un enregistrement récent côtoie l'historique. Prendre le
+    premier résultat, c'était fausser ensuite tout le filtrage des marchés
+    publics par SIREN acheteur, sans qu'aucun contrôle ne s'en aperçoive.
+
+    La règle ne vaut pas pour la Corse ni l'outre-mer, dont les codes ne
+    s'alignent pas ainsi : on y retombe sur le premier résultat, en le signalant.
     """
-    attendu = f"21{insee}" if insee[:2].isdigit() else ""
+    attendu = ("21" + insee[:2] + "0" + insee[2:]
+               if insee[:2].isdigit() and not insee.startswith(("97", "98"))
+               else "")
     q = urllib.parse.urlencode({"q": f"commune de {nom}", "code_commune": insee})
     data = _get(f"{ENTREPRISES}?{q}") or {}
     candidats = [r for r in data.get("results", [])
