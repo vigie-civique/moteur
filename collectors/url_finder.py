@@ -19,7 +19,7 @@ import sqlite3
 
 from ddgs import DDGS
 
-from .config import DB_PATH
+from .config import CODE_POSTAL, COMMUNE_NAME, DB_PATH, DEPARTEMENT
 
 DELAY = 1.0  # secondes entre requêtes (ddgs gère son propre rate limiting)
 
@@ -66,7 +66,9 @@ def build_query(entity: dict) -> str:
     if etype == "association":
         return f'"{clean}" {COMMUNE_NAME} {DEPARTEMENT} site officiel'
     elif etype == "business":
-        return f'"{clean}" Gard Cévennes'
+        # Une entreprise se cherche sur son territoire, pas sur sa commune :
+        # beaucoup ont une adresse dans un hameau ou la commune voisine.
+        return f'"{clean}" {DEPARTEMENT} {COMMUNE_NAME}'
     else:
         return f'"{clean}" {COMMUNE_NAME} {CODE_POSTAL}'
 
