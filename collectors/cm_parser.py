@@ -165,16 +165,47 @@ def parse_attendees(lines: list[str]) -> dict:
 
 # ── Découpage en délibérations ─────────────────────────────────────────────────
 
+# Bruit PROPRE À UNE SOURCE : en-têtes de colonnes qui portent le nom d'une
+# commune voisine, patronymes d'agents qui reviennent à chaque page, intitulés
+# d'équipements locaux. Ces motifs dépendent de la mise en page des PV d'une
+# mairie donnée, pas du français. Ils se déclarent dans `config/instance.json`
+# sous `bruit_pv` et n'ont rien à faire dans le moteur : cinq patronymes y ont
+# figuré en dur jusqu'au 14/08/2026, dans un dépôt destiné à la publication.
+def _bruit_local() -> str:
+    """Alternative de motifs locale, vide si l'instance n'en déclare pas.
+
+    Les entrées sont des FRAGMENTS d'expression régulière et non du texte
+    littéral : les motifs d'origine mêlaient formes ancrées en fin de ligne
+    (`COLOGNAC\\s*$`, un nom de commune seul en tête de colonne) et formes
+    libres (`STE\\s+CROIX`). Les échapper aurait changé le découpage sans que
+    rien ne le signale. Un fragment invalide est ignoré plutôt que de casser
+    l'analyse de tous les PV.
+    """
+    try:
+        from .config import BRUIT_PV
+    except Exception:      # module lu hors instance : il reste utilisable
+        return ""
+    valides = []
+    for fragment in BRUIT_PV:
+        if not fragment:
+            continue
+        try:
+            re.compile(fragment)
+        except re.error:
+            continue
+        valides.append(fragment)
+    return "".join(f"{f}|" for f in valides)
+
+
 _NOISE_PATTERNS = re.compile(
     r'^(PRÉSENTS?|ABSENTS?|PROCÈS-VERBAL|SECTION\s+D|SECTION\s+DE|RECETTES?|DÉPENSES?|TOTAL|'
-    r'PAR\s+MOIS|FONCTIONNEMENT|INVESTISSEMENT|SOLDE|PARC\s+LOCAT|CHAUFFERIE\s+BOIS|'
-    r'COMMUNE\s*:|CENTRE\s+(CULTUREL|DE|LOISIRS)|CG\s+EAU|SIAEP|EAU\s+SECT|'
+    r'PAR\s+MOIS|FONCTIONNEMENT|INVESTISSEMENT|SOLDE|'
+    r'COMMUNE\s*:|CG\s+EAU|SIAEP|EAU\s+SECT|'
     r'INESTISSEMENT|EXERCICE\s*$|A\s+REPRENDRE\s*$|SECTIONS?\s*$|RÉSULTAT\s*$|'
-    r'COLOGNAC\s*$|LANUEJOLS\s*$|SOUDORGUES\s*$|VABRES\s*$|STE\s+CROIX|'
+    + _bruit_local() +
     r'DU\s+\d+\s+\w+\s+\d{4}|DU\s+\d{1,2}\s+\w+\s+\d{4}|'  # "DU 15 NOVEMBRE 2023"
     r'CANDIDATS\s*$|CLASSEMENT\s*$|DENOMINATION\s*$|'
-    r'ANSEAUME|GARCIA|ARTIGUES|PIERESCHI|GIRAUD|COLAS\s+FRANCE|'
-    r'PÔLE\s+MÉNAGE|PÉRIODE\s+SCOLAIRE|PÉRISCOLAIRE\s*$|SERVICE\s+(ADMIN|TECH|CULT)|'
+    r'PÉRIODE\s+SCOLAIRE|PÉRISCOLAIRE\s*$|SERVICE\s+(ADMIN|TECH|CULT)|'
     r'ENSEMBLE\s+DE\s+LA\s+COLLECT|'
     r'\[CD\d\]|\[CC\d\]|'
     r'DEPENSES\s*$|RECETTES\s*$|__+)',

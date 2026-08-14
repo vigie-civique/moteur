@@ -681,36 +681,73 @@ def publiable_dans_perimetre(perimetre: str | None, entity_type: str | None,
                              siege_a_l_epci: bool) -> bool:
     """Le périmètre autorise-t-il une FICHE publique pour cette entité ?
 
-    Le site public est celui de la commune. Depuis l'élargissement de la collecte
-    aux 15 communes de la CC CAC (11/08/2026), la base contient 6 528 entités
-    C2 pour 2 703 C1 : les publier toutes ferait passer un annuaire
-    intercommunal pour l'annuaire communal, et un lecteur croirait que la
-    boulangerie d'une commune membre est dans la commune-siège.
+    Le site public est celui de la commune. La collecte, elle, porte sur toute
+    l'intercommunalité : sur une instance ordinaire la base contient deux à
+    quatre fois plus d'entités C2 que de C1. Les publier toutes ferait passer un
+    annuaire intercommunal pour l'annuaire communal, et un lecteur croirait que
+    la boulangerie d'une commune membre est dans la commune-siège.
 
     Sont publiées en fiche :
       - C1   tout ce que les autres règles autorisent ;
       - C2   les institutions (mairies, EPCI, syndicats) et les seules
              personnes qui SIÈGENT au conseil communautaire — celles-là votent
-             le budget et les compétences qui s'appliquent à Lasalle, les
+             le budget et les compétences qui s'appliquent à la commune, les
              masquer amputerait la chaîne de décision de sa moitié
              intercommunale. En revanche, publier les conseils municipaux
-             entiers des 14 autres communes serait à la fois hors sujet et
+             entiers des autres communes membres serait à la fois hors sujet et
              difficilement justifiable au regard du RGPD : ces élus n'ont
-             aucun pouvoir de décision sur Lasalle ;
+             aucun pouvoir de décision sur la commune ;
       - C3   les institutions supra-communales, même raison ;
-      - lien les entités rattachées à un acteur de Lasalle (SCI d'élus,
+      - lien les entités rattachées à un acteur de la commune (SCI d'élus,
              titulaires de marchés) : matériau du graphe d'influence, les
              règles de pertinence existantes s'appliquent inchangées.
 
     Les données des communes C2 restent publiées de façon AGRÉGÉE
     (`intercommunalite.json`, `fiscalite.json`, `territoire.json`) : comparer
-    Lasalle à ses pairs informe, lister leurs commerces non.
+    la commune à ses pairs informe, lister leurs commerces non.
+
+    NULL n'est pas C1. Une entité non classée est une entité dont on ignore si
+    elle appartient au territoire : la publier par défaut, c'est publier toute
+    l'intercommunalité le jour où le classement n'a pas tourné. Mesuré le
+    14/08/2026 sur deux instances neuves : 4 944 fiches publiées au lieu de
+    1 807, et un site de commune dont 57 % des fiches relevaient d'une voisine.
+    Le classement absent doit produire un site vide et un message, pas un
+    annuaire de vallée — `exiger_perimetre_classe()` s'en charge en amont.
     """
-    if perimetre in (None, "C1", "lien"):
+    if perimetre in ("C1", "lien"):
         return True
     if perimetre in ("C2", "C3"):
         return entity_type in TYPES_INSTITUTIONNELS or siege_a_l_epci
     return False
+
+
+class PerimetreNonClasse(RuntimeError):
+    """`entities.perimetre` n'a jamais été renseignée sur cette base."""
+
+
+def exiger_perimetre_classe(conn) -> int:
+    """Refuse de construire un snapshot sur une base jamais classée.
+
+    Retourne le nombre d'entités sans périmètre (exclues silencieusement de la
+    publication, ce qui est le comportement sûr). Lève si AUCUNE ne l'a : ce
+    n'est plus une lacune, c'est une étape qui n'a pas eu lieu, et le snapshot
+    produit serait vide sans que rien ne le dise.
+    """
+    total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
+    if not total:
+        return 0
+    classees = conn.execute(
+        "SELECT COUNT(*) FROM entities WHERE perimetre IS NOT NULL").fetchone()[0]
+    if not classees:
+        raise PerimetreNonClasse(
+            f"{total} entités en base, aucune classée par périmètre.\n"
+            "  Le snapshot serait vide : sans classement, aucune entité n'est\n"
+            "  publiable (et le défaut inverse publierait l'intercommunalité).\n"
+            "  Lancer :  python3 scripts/classer_perimetre.py\n"
+            "  Le step `perimetre` de `python3 -m collectors.run_all` le fait\n"
+            "  en fin de collecte."
+        )
+    return total - classees
 
 
 def public_entity(
@@ -1420,71 +1457,66 @@ def mesurer_replicabilite() -> dict:
     contrôle qui ne sait pas distinguer la doc du code se signale lui-même.
     Le site, lui, est du texte éditorial : toute occurrence y compte.
     """
-    import ast
+    import importlib.util
 
     from collectors.config import COMMUNE_NAME
 
-    MOTEUR = ["collectors", "api.py", "scripts/build_public_snapshot.py",
-              "scripts/build_public_db.py", "scripts/migrate_perimetre.py",
-              "scripts/qa_loop.py", "scripts/pipeline.py"]
+    # La mesure est déléguée à `verifier_generique.py`, qui est le contrôle
+    # d'admission du kit : deux définitions du mot « moteur » finiraient par
+    # diverger, et c'est arrivé. Celle d'ici listait `build_public_db.py`,
+    # `migrate_perimetre.py` et `pipeline.py`, absents du dépôt depuis la
+    # généricisation, sautés en silence par un `if not f.exists(): continue` —
+    # la page /methode publiait donc une dette mesurée sur les trois quarts du
+    # moteur. Elle ne comptait par ailleurs que le nom de la commune COURANTE,
+    # là où le risque réel est le nom de la commune d'ORIGINE.
+    chemin = ROOT / "scripts" / "verifier_generique.py"
+    spec = importlib.util.spec_from_file_location("verifier_generique", chemin)
+    vg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vg)
 
-    fichiers_moteur, occ_moteur = 0, 0
-    for cible in MOTEUR:
-        chemin = ROOT / cible
-        for f in (sorted(chemin.rglob("*.py")) if chemin.is_dir() else [chemin]):
-            if not f.exists() or "__pycache__" in f.parts or f.name == "config.py":
-                continue
-            try:
-                arbre = ast.parse(f.read_text(encoding="utf-8"))
-            except SyntaxError:
-                continue
-            docstrings = set()
-            for noeud in ast.walk(arbre):
-                corps = getattr(noeud, "body", None)
-                if (isinstance(noeud, (ast.Module, ast.ClassDef, ast.FunctionDef,
-                                       ast.AsyncFunctionDef))
-                        and corps and isinstance(corps[0], ast.Expr)
-                        and isinstance(corps[0].value, ast.Constant)
-                        and isinstance(corps[0].value.value, str)):
-                    docstrings.add(id(corps[0].value))
-            n = sum(1 for noeud in ast.walk(arbre)
-                    if isinstance(noeud, ast.Constant)
-                    and isinstance(noeud.value, str)
-                    and COMMUNE_NAME in noeud.value
-                    and id(noeud) not in docstrings)
-            if n:
-                fichiers_moteur += 1
-                occ_moteur += n
+    communes = vg.communes_locales()
+    constats_moteur = [c for f in vg._fichiers(vg.MOTEUR)
+                       for c in vg.analyser(f, communes)
+                       if c["motif"] == "nom_commune"]
+    textes = [c for f in vg._fichiers_texte()
+              for c in vg.analyser_texte(f, communes)]
+    # Le site public et l'atelier sont deux dettes distinctes : l'une part en
+    # production, l'autre non. Les additionner gonflerait le chiffre publié
+    # d'un travail que le lecteur du site ne voit jamais.
+    constats_site = [c for c in textes if c["fichier"].startswith("public/")]
+    constats_atelier = [c for c in textes if c["fichier"].startswith("dashboard/")]
 
-    # Le site : titres, chapeaux, métadonnées. Commentaires exclus, ils ne
-    # partent pas en production.
-    occ_site, fichiers_site = 0, 0
-    racine_site = ROOT / "public" / "src"
-    for f in sorted(racine_site.rglob("*")):
-        if f.suffix not in (".svelte", ".js") or not f.is_file():
-            continue
-        texte = f.read_text(encoding="utf-8", errors="ignore")
-        texte = re.sub(r"<!--.*?-->", "", texte, flags=re.S)
-        texte = re.sub(r"^\s*//.*$", "", texte, flags=re.M)
-        n = texte.count(COMMUNE_NAME)
-        if n:
-            fichiers_site += 1
-            occ_site += n
+    def _compte(constats):
+        return len({c["fichier"] for c in constats}), len(constats)
+
+    moteur_f, moteur_o = _compte(constats_moteur)
+    site_f, site_o = _compte(constats_site)
+    atelier_f, atelier_o = _compte(constats_atelier)
 
     return {
         "commune": COMMUNE_NAME,
-        "moteur_fichiers": fichiers_moteur,
-        "moteur_occurrences": occ_moteur,
-        "site_fichiers": fichiers_site,
-        "site_occurrences": occ_site,
+        "moteur_fichiers": moteur_f,
+        "moteur_occurrences": moteur_o,
+        "site_fichiers": site_f,
+        "site_occurrences": site_o,
+        "atelier_fichiers": atelier_f,
+        "atelier_occurrences": atelier_o,
+        # Ce que la mesure couvre, publié avec elle : un chiffre de dette sans
+        # son périmètre se lit comme une garantie qu'il n'est pas.
+        "noms_recherches": sorted(communes),
     }
 
 
 def build_snapshot(out: Path) -> dict:
     conn = get_db()
     try:
+        # Avant toute lecture : une base non classée ne produit pas un snapshot,
+        # elle produit une erreur. Cf. `publiable_dans_perimetre`.
+        sans_perimetre = exiger_perimetre_classe(conn)
+
         confirmed_urls = load_confirmed_urls()
         counters = Counter()
+        counters["entities_sans_perimetre"] = sans_perimetre
         exclusions = defaultdict(Counter)
         revue = charger_revue(conn)
         counters["revue_annotations"] = sum(len(v) for v in revue.values())
@@ -1993,12 +2025,15 @@ def build_snapshot(out: Path) -> dict:
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "entities_total_private": len(entity_rows),
             "entities_public": len(public_entities),
-            # Contrôle de publication : un site de Lasalle qui publierait
+            # Contrôle de publication : un site communal qui publierait
             # massivement du C2 aurait changé de nature sans qu'on le décide.
             "entities_public_par_perimetre": dict(
                 Counter(e.get("perimetre") or "non_classe" for e in public_entities)),
             "entities_privees_par_perimetre": dict(
                 Counter(e.get("perimetre") or "non_classe" for e in entity_rows)),
+            # Entités jamais classées : exclues de la publication, comptées ici
+            # pour que la lacune se voie au lieu de se deviner.
+            "entities_sans_perimetre": counters["entities_sans_perimetre"],
             "conseil_communautaire": len(ids_conseil_communautaire),
             "relations_total_private": len(relation_rows),
             "relations_public": len(public_relations),
@@ -2558,7 +2593,7 @@ def build_snapshot(out: Path) -> dict:
         # disait rien du contenu des fichiers. Un jeu de données sans
         # dictionnaire n'est pas réutilisable, quelle que soit sa qualité.
         markdown = [
-            "# Données publiques — Vigie Civique Lasalle",
+            f"# Données publiques — {RULES['project']['public_name']}",
             "",
             f"Généré le {stats['generated_at']} depuis la base de travail, "
             "sans la modifier.",
@@ -2709,9 +2744,16 @@ def main() -> None:
     except Exception as e:                      # ne doit jamais bloquer la publication
         print(f"  [libellés] non régénérés : {e}")
 
-    stats = build_snapshot(args.out)
+    # Une étape de collecte qui manque n'est pas une panne du programme : elle
+    # se dit en une phrase, pas en pile d'appels.
+    try:
+        stats = build_snapshot(args.out)
+    except PerimetreNonClasse as e:
+        print(f"\n✖ snapshot refusé — {e}", file=sys.stderr)
+        return 2
     print(json.dumps({"out": str(args.out), **stats}, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

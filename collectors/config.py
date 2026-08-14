@@ -94,6 +94,15 @@ COMMUNES_DELEGUEES: dict[str, dict] = _I.get("communes_deleguees", {})
 COMMUNES_ADRESSE = {**COMMUNES, **COMMUNES_DELEGUEES}
 COMMUNES_INSEE_ADRESSE = list(COMMUNES_ADRESSE)
 
+# ── Bruit propre à la mise en page des PV de cette mairie ─────────────────────
+# En-têtes de colonnes, intitulés d'équipements, patronymes d'agents qui
+# reviennent à chaque page : `cm_parser` les écarte du découpage en
+# délibérations. Ils ne relèvent pas du français mais d'un gabarit de document,
+# et parfois ils NOMMENT des personnes — ils ne peuvent donc pas vivre dans le
+# moteur, qui est publié. Liste vide par défaut : sans elle, le découpage est
+# seulement un peu plus bruyant.
+BRUIT_PV: list[str] = _I.get("bruit_pv", [])
+
 # ── C2 — l'intercommunalité ──────────────────────────────────────────────────
 # Suivie comme INSTITUTION : conseil communautaire et délégués, compétences
 # transférées, budget principal et annexes, marchés, délibérations.
@@ -186,6 +195,11 @@ STEP_META = {
     "cm_flux":    (30,  25, "financial_flows",   "source LIKE 'CR CM%'"),
     "eau":        (90,  26, "eau_analyses",      ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
+    # Pas une source : une dérivation de ce que les autres ont écrit. Journalisée
+    # quand même, parce qu'un classement qui n'a pas tourné bloque la publication
+    # et doit se lire dans collector_runs comme n'importe quelle panne. Fraîcheur
+    # alignée sur le collecteur le plus fréquent : il se périme avec eux.
+    "perimetre":  (7,   28, "entities",          "perimetre IS NOT NULL"),
 }
 
 # ── Chemins ──────────────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ import urllib.request
 import unicodedata
 from .archive import fetch_json
 from .config import (JO_ASSO_API, CODE_POSTAL, COMMUNE_NAME, COMMUNES,
-                     HEADERS, REQUEST_DELAY)
+                     COMMUNES_DELEGUEES, HEADERS, REQUEST_DELAY)
 
 
 def _norm(s: str) -> str:
@@ -36,9 +36,16 @@ def _norm(s: str) -> str:
 
 # Index nom normalisé → nom officiel du registre (pour taguer/filtrer les assos)
 _COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in COMMUNES.values()}
-# Alias commune nouvelle Thoiras-Corbès (le JO peut encore utiliser les anciens noms)
-for _alias in ("Thoiras", "Corbès"):
-    _COMMUNE_LOOKUP[_norm(_alias)] = "Thoiras-Corbès"
+# Communes déléguées : le JO des associations continue d'écrire l'ancien nom
+# des communes fusionnées, parfois des décennies après. La correspondance
+# « ancien nom → commune actuelle » se lit dans `communes_deleguees` de
+# config/instance.json, où chaque entrée porte le code INSEE de sa commune de
+# rattachement. Elle a été écrite en dur pendant des mois : le moteur
+# connaissait ainsi une fusion précise, et une seule.
+for _delegee in COMMUNES_DELEGUEES.values():
+    _parent = COMMUNES.get(_delegee.get("commune", ""), {}).get("nom")
+    if _parent:
+        _COMMUNE_LOOKUP[_norm(_delegee["nom"])] = _parent
 
 
 def _match_commune(ville: str) -> str | None:

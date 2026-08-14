@@ -1,9 +1,17 @@
 """
-occitanie_region.py — Subventions Région Occitanie à la CC CAC
+occitanie_region.py — Subventions de la Région Occitanie à l'intercommunalité.
 
 Source : data.laregion.fr — dataset subventions-du-conseil-regional
-  Bénéficiaire : COMMUNAUTE DE COMMUNES CAUSSES AIGOUAL CEVENNES (SIREN 200034601)
-  Note : Lasalle commune absente (trop petite), subventions transitent par l'EPCI
+
+Le bénéficiaire cherché est l'EPCI et non la commune : en dessous d'un certain
+seuil de population, une commune n'apparaît pas dans ce jeu et ses subventions
+régionales transitent par l'intercommunalité.
+
+Ce collecteur reste RÉGIONAL : il n'a de sens qu'en Occitanie, et n'est pas
+appelé par `run_all`. Une instance d'une autre région doit écrire l'équivalent
+pour la sienne — les portails régionaux n'ont ni schéma ni adresse communs.
+Ce qui est générique ici, c'est le nom du bénéficiaire, tiré de la
+configuration.
 
 Usage :
   python3 -m collectors.occitanie_region
@@ -17,6 +25,18 @@ import time
 from pathlib import Path
 
 import requests
+
+from .config import EPCI_NOM
+
+# Les portails Opendatasoft écrivent les raisons sociales en toutes lettres et
+# de façon instable (« COMMUNAUTE DE COMMUNES X », « CC X »). On cherche donc le
+# nom de l'EPCI amputé de sa forme juridique, qui est la partie stable.
+_MOTIF_BENEFICIAIRE = " ".join(
+    mot for mot in EPCI_NOM.split()
+    if mot.lower() not in {"cc", "ca", "cu", "communauté", "communaute", "de",
+                           "des", "du", "d'agglomération", "communes",
+                           "d'agglomeration", "urbaine"}
+) or EPCI_NOM
 
 from .archive import archive_fetch
 
@@ -43,7 +63,7 @@ def _fetch_all_cac(session: requests.Session) -> list[dict]:
             params={
                 "limit":  limit,
                 "offset": offset,
-                "where":  f'nombeneficiaire LIKE "%Causses Aigoual%"',
+                "where":  f'nombeneficiaire LIKE "%{_MOTIF_BENEFICIAIRE}%"',
                 "order_by": "date_de_decision ASC",
             },
             timeout=20,

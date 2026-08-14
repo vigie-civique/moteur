@@ -173,6 +173,59 @@ def check_file(fp, rep, base):
         check_events_file(data, rep, loc)
 
 
+# ── Invariant de périmètre ───────────────────────────────────────────────────
+# Le site d'une commune publie les fiches de cette commune. Si la majorité des
+# fiches publiées relève d'ailleurs, le classement C1/C2 n'a pas tourné et le
+# site est devenu l'annuaire de l'intercommunalité — c'est arrivé le 14/08/2026
+# sur deux instances neuves.
+#
+# Mesuré ce jour-là sur quatre snapshots : instances correctes 94,4 % et 94,6 %,
+# instances non classées 23,8 % et 57,4 %. Le seuil bloquant est donc placé à la
+# majorité simple, qui est aussi la règle éditoriale énonçable : un site
+# communal doit publier majoritairement sa commune. L'avertissement à 80 %
+# signale la dérive avant qu'elle ne devienne bloquante.
+#
+# Le contrôle lit `entity_index.json` et la commune déclarée dans les règles :
+# il ne touche pas à la base et n'importe pas le builder — même principe que le
+# reste de ce fichier. Il porte donc sur le RÉSULTAT publié, et attraperait une
+# fuite même si le builder classait correctement puis publiait de travers.
+PART_MIN_BLOQUANTE = 0.50
+PART_MIN_AVERTISSEMENT = 0.80
+
+
+def check_perimetre(base, rep):
+    fp = base / "entity_index.json"
+    if not fp.is_file():
+        return
+    commune = (RULES.get("project") or {}).get("commune")
+    if not commune:
+        rep.warn("périmètre non vérifiable",
+                 f"{fp.name}: publication_rules.project.commune absent")
+        return
+    try:
+        entities = json.loads(fp.read_text()).get("entities") or []
+    except json.JSONDecodeError:
+        return  # déjà signalé par check_file
+
+    communes = [e.get("c") for e in entities if e.get("c")]
+    if not communes:
+        return
+    par_commune = {}
+    for c in communes:
+        par_commune[c] = par_commune.get(c, 0) + 1
+    part = par_commune.get(commune, 0) / len(communes)
+    top, n_top = max(par_commune.items(), key=lambda kv: kv[1])
+
+    detail = (f"{commune} = {par_commune.get(commune, 0)}/{len(communes)} "
+              f"({part:.1%}) ; commune la plus publiée : {top} ({n_top})")
+    if top != commune or part < PART_MIN_BLOQUANTE:
+        rep.error(
+            "le site publie majoritairement une autre commune "
+            "(classement de périmètre non appliqué ?)", detail)
+    elif part < PART_MIN_AVERTISSEMENT:
+        rep.warn("part de la commune inférieure aux instances de référence", detail)
+
+
 def check_dir(base, rep):
     for fp in sorted(base.rglob("*")):
         if not fp.is_file():
@@ -186,6 +239,7 @@ def check_dir(base, rep):
         rep.files += 1
         if fp.suffix in (".json", ".geojson", ".html", ".js", ".txt", ".md", ".css"):
             check_file(fp, rep, base)
+    check_perimetre(base, rep)
 
 
 def main(argv):

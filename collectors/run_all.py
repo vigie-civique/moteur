@@ -64,6 +64,26 @@ from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
 
 
+def run_perimetre():
+    """Classe les entités en C1/C2/C3/lien/hors — `scripts/classer_perimetre.py`.
+
+    Chargé par chemin et non par import : `scripts/` est un répertoire d'outils,
+    pas un paquet, et en faire un paquet pour cette seule ligne créerait un
+    cycle (le script importe collectors.config et collectors.db).
+
+    Ce step ferme la collecte. Il ne va chercher aucune donnée : il dérive de
+    ce que les collecteurs viennent d'écrire. Le laisser en dehors de run_all a
+    produit, le 14/08/2026, deux instances entièrement NULL dont le snapshot
+    publiait l'intercommunalité au lieu de la commune.
+    """
+    import importlib.util
+    chemin = Path(__file__).parent.parent / "scripts" / "classer_perimetre.py"
+    spec = importlib.util.spec_from_file_location("classer_perimetre", chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run()
+
+
 STEPS = {
     "init":     ("Initialisation schéma",                lambda: init_db()),
     "osm":      ("POIs OpenStreetMap",                   import_osm),
@@ -133,6 +153,12 @@ STEPS = {
     # `since=None` : reprise incrémentale depuis la dernière analyse connue.
     "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),
     "urbanisme": ("Statut urbanistique et mentions PLU",  run_urbanisme),
+    # DERNIER, et il doit le rester : il classe ce que tous les autres ont
+    # écrit. Sans lui, `entities.perimetre` reste NULL et aucune fiche n'est
+    # publiable — le snapshot refuse de se construire plutôt que de publier
+    # l'intercommunalité entière.
+    "perimetre": ("Classement C1/C2/C3/lien des entités collectées",
+                  run_perimetre),
 }
 
 

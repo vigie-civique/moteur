@@ -27,13 +27,17 @@ Le contrôle porte aussi sur les fichiers non-Python du moteur : le schéma de l
 base, les sources du site public et celles de l'atelier. Pour ceux-là, seul le
 point 5 s'applique.
 
-Le point 5 demande une liste de communes ; à défaut de la charger (réseau), le
-contrôle se rabat sur les communes déclarées dans la configuration locale et le
-signale. Les quatre premiers points, eux, sont autonomes.
+Le point 5 demande une liste de noms : `COMMUNES_DE_REFERENCE` (les communes sur
+lesquelles le moteur a été développé, seules à pouvoir avoir été écrites en dur)
+plus celles de la configuration locale. Il ne prouve donc rien à lui seul — ce
+sont les points 1 à 4, qui interdisent des formes et non des mots, qui portent
+la garantie. Le chercher uniquement dans la configuration locale rendait le
+contrôle inopérant hors de sa commune d'origine.
 
 Usage :
   python3 scripts/verifier_generique.py            # tout le moteur
   python3 scripts/verifier_generique.py --json     # sortie machine
+  python3 scripts/verifier_generique.py --commune Untel
   python3 scripts/verifier_generique.py collectors/rna.py
 """
 from __future__ import annotations
@@ -237,18 +241,47 @@ def _fichiers_texte() -> list[Path]:
     return out
 
 
-def communes_locales() -> set[str]:
-    """Noms de communes déclarés par la configuration de l'instance, s'il y en a.
+# ── Communes de référence ────────────────────────────────────────────────────
+# Les seules communes dont le nom risque d'être écrit en dur dans le moteur sont
+# celles sur lesquelles il a été développé. Ne chercher que les communes de
+# l'instance COURANTE rendait le contrôle inopérant partout ailleurs : le
+# 14/08/2026, il annonçait « aucune particularité locale » sur deux instances
+# dont le code contenait 96 fois le nom de la commune d'origine — il ne le
+# cherchait pas, puisque ce nom n'était pas dans leur configuration.
+#
+# Cette liste est donc une liste de REFUS, et c'est sa place : ce fichier est le
+# seul du moteur exclu de sa propre analyse. Elle grandit quand une commune sert
+# au développement, jamais quand une commune déploie le kit — un déployeur n'a
+# rien à y ajouter, ses propres noms viennent de sa configuration.
+COMMUNES_DE_REFERENCE = {
+    # Instance d'origine et sa communauté de communes.
+    "Lasalle", "Soudorgues", "Thoiras", "Corbès", "Vabres", "Trèves",
+    "Causse-Bégon", "Val-d'Aigoual", "Saint-André-de-Majencoules",
+    "Aigoual", "Cévennes",
+    # Communes ayant servi de portage et de contrôle.
+    "Brassac", "Sidobre", "Saillans", "Crest", "Aouste-sur-Sye",
+}
 
-    Le contrôle vise le moteur : si la configuration nomme Brassac, alors
-    « Brassac » n'a rien à faire ailleurs que dans la configuration.
+
+def communes_locales(supplement: set[str] | None = None) -> set[str]:
+    """Noms de communes qui n'ont rien à faire dans le moteur.
+
+    Trois apports : les communes de référence ci-dessus, celles déclarées par la
+    configuration de l'instance courante (si la configuration nomme Brassac,
+    « Brassac » n'a rien à faire ailleurs que dans la configuration), et celles
+    passées en `--commune`.
+
+    Ce contrôle ne vaut que ce que vaut cette liste, et il le dit en sortie :
+    aucune liste de noms ne prouve qu'un code est générique. Ce sont les points
+    1 à 4 — des formes, pas des mots — qui portent la garantie.
     """
+    noms = set(COMMUNES_DE_REFERENCE) | set(supplement or ())
     try:
         sys.path.insert(0, str(ROOT))
         from collectors.config import COMMUNE_NAME, COMMUNES, EPCI_NOM
     except Exception:
-        return set()
-    noms = {COMMUNE_NAME} | {c["nom"] for c in COMMUNES.values()}
+        return {n for n in noms if len(n) > 3}
+    noms |= {COMMUNE_NAME} | {c["nom"] for c in COMMUNES.values()}
     noms |= {mot for mot in EPCI_NOM.split() if len(mot) > 4}
     return {n for n in noms if len(n) > 3}
 
@@ -257,9 +290,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Le moteur ne doit connaître aucune commune")
     ap.add_argument("cibles", nargs="*", default=None)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--commune", action="append", default=[],
+                    help="nom supplémentaire à refuser dans le moteur")
     args = ap.parse_args()
 
-    communes = communes_locales()
+    communes = communes_locales(set(args.commune))
     fichiers = _fichiers(args.cibles or MOTEUR)
     constats = [c for f in fichiers for c in analyser(f, communes)]
     textes = [] if args.cibles else _fichiers_texte()
@@ -270,11 +305,14 @@ def main() -> int:
         return 1 if constats else 0
 
     print(f"[générique] {len(fichiers) + len(textes)} fichiers du moteur analysés"
-          + (f", {len(communes)} noms de communes issus de la configuration"
-             if communes else " — configuration illisible, contrôle des noms ignoré"))
+          + (f", {len(communes)} noms refusés "
+             f"({len(COMMUNES_DE_REFERENCE)} de référence + configuration locale)"
+             if communes else " — aucun nom de commune à refuser"))
 
     if not constats:
         print("\n✓ aucune particularité locale dans le moteur.")
+        print("  (les points 1 à 4 sont exhaustifs ; le point 5 ne vaut que pour"
+              " les noms listés ci-dessus)")
         return 0
 
     par_motif: dict[str, list[dict]] = {}

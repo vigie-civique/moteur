@@ -77,34 +77,51 @@ def patronymes() -> set[str]:
         print(f"  [avertissement] patronymes non vérifiés : {e}", file=sys.stderr)
         return set()
 
-EXCLUS = {".git", "node_modules", "__pycache__", ".svelte-kit", "build",
-          ".DS_Store", "data", "venv", "territoire",
-          # Sorties d'instance : rapports d'audit et instantané publié. Ils
-          # contiennent les noms des personnes documentées par la commune.
-          "audits", "public_api"}
 # Fichiers d'INSTANCE : ils décrivent une commune précise et n'ont rien à faire
-# dans un kit. `instance.js` est de toute façon régénéré au premier build.
+# dans un kit. `instance.js` est de toute façon régénéré au premier build. Ce
+# filet est redondant avec .gitignore — c'est voulu : deux règles indépendantes
+# valent mieux qu'une, et un fichier peut avoir été versionné par erreur.
 EXCLUS_FICHIERS = {"instance.json", "instance.js", "seed_local.json",
                    "profils_locaux.json", "publication_rules.json"}
-# Journaux SQLite : `-wal` et `-shm` accompagnent une base et contiennent ses
-# écritures récentes. Exclure `.db` sans eux laissait passer des données.
-SUFFIXES_EXCLUS = (".db", ".pyc", ".db-wal", ".db-shm", ".sqlite", ".sqlite3")
+# Répertoires versionnés qui n'ont pas à entrer dans l'archive. `public/static/kit`
+# contient l'archive précédente : l'y remettre la ferait grossir à chaque
+# publication et distribuerait une version périmée du dépôt à l'intérieur de la
+# version courante.
+EXCLUS_CHEMINS = ("public/static/kit/",)
 
 
 def fichiers(source: Path) -> list[Path]:
+    """Ce que le dépôt VERSIONNE, moins les fichiers d'instance.
+
+    La liste vient de `git ls-files` et non d'un parcours du disque. C'est la
+    seule source qui ne se désynchronise pas de `.gitignore` : une énumération
+    manuelle de suffixes a laissé passer, le 14/08/2026, trois sauvegardes de
+    base nommées `<insee>.db.avant-<date>` — 175 Mo de données nominatives —
+    parce que le test portait sur `.db` en fin de nom. Ce qui n'est pas
+    versionné n'est pas distribué : la règle est unique et vérifiable.
+    """
+    try:
+        sortie = subprocess.run(
+            ["git", "-C", str(source), "ls-files", "-z"],
+            capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        raise SystemExit(
+            f"✖ {source} n'est pas un dépôt git exploitable : {e}\n"
+            "  Le kit se construit à partir des fichiers versionnés. Sans git,\n"
+            "  il faudrait réénumérer à la main ce qu'il ne faut pas distribuer\n"
+            "  — c'est précisément ce qui a laissé fuir des bases."
+        )
+
     out = []
-    donnees_publiees = source / "public" / "static" / "data"
-    for p in sorted(source.rglob("*")):
-        if not p.is_file():
+    for rel in sortie.decode().split("\0"):
+        if not rel:
             continue
-        if any(part in EXCLUS for part in p.relative_to(source).parts):
+        if rel.startswith(EXCLUS_CHEMINS) or Path(rel).name in EXCLUS_FICHIERS:
             continue
-        if donnees_publiees in p.parents:
-            continue
-        if p.name.endswith(SUFFIXES_EXCLUS) or p.name in EXCLUS_FICHIERS:
-            continue
-        out.append(p)
-    return out
+        p = source / rel
+        if p.is_file():      # un fichier supprimé mais encore indexé
+            out.append(p)
+    return sorted(out)
 
 
 def verifier(source: Path, liste: list[Path]) -> list[str]:
@@ -118,8 +135,15 @@ def verifier(source: Path, liste: list[Path]) -> list[str]:
         rel = f.relative_to(source)
         try:
             texte = f.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue  # binaire : rien à lire
+        except (UnicodeDecodeError, OSError) as e:
+            # Un fichier qu'on ne sait pas lire est un fichier qu'on ne sait pas
+            # contrôler. Passer son chemin revenait à distribuer sans regarder :
+            # une base SQLite est illisible en UTF-8, et c'est exactement ce que
+            # ce contrôle est censé arrêter. Le dépôt ne versionne aucun binaire ;
+            # le jour où il en versionnera un, ce refus demandera une décision
+            # explicite plutôt qu'un silence.
+            problemes.append(f"{rel} — contenu non contrôlable ({type(e).__name__})")
+            continue
 
         for motif, quoi in INTERDITS:
             # Les motifs de DÉTECTION (le code qui bloque les chemins locaux)

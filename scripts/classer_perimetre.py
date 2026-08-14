@@ -2,12 +2,14 @@
 """
 classer_perimetre.py — Renseigne `entities.perimetre` (C1 / C2 / C3 / lien / hors).
 
-Le kit exporté ne contient pas ce classement : la colonne n'existe pas dans son
-`schema.sql`, et le script qui la remplissait (`migrate_perimetre.py`) n'a pas
-été publié. Or `build_public_snapshot.publiable_dans_perimetre()` traite une
-valeur NULL comme un C1 : sans classement, les 5 700 entités des quinze autres
-communes de l'intercommunalité seraient publiées comme si elles étaient de la
-commune-siège — exactement ce que cette règle existe pour empêcher.
+Sans ce classement, aucune entité n'est publiable : `publiable_dans_perimetre()`
+refuse les valeurs NULL, et `build_public_snapshot` s'arrête net si la base n'a
+jamais été classée. Le défaut inverse — NULL traité comme C1 — a tenu jusqu'au
+14/08/2026 et publiait l'intercommunalité entière à la place de la commune.
+
+Ce classement se périme : il dérive de `entities.commune` et des relations, que
+chaque collecte modifie. Il est donc rejoué en fin de `run_all` (step
+`perimetre`) et n'a pas à être lancé à la main dans le cours normal.
 
 Le classement suit la définition de `collectors/config.PERIMETRES` :
 
@@ -126,11 +128,14 @@ def classer(conn) -> dict[int, str]:
     return classement
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Classe les entités par périmètre")
-    ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+def run(dry_run: bool = False) -> dict[str, int]:
+    """Classe et écrit. Point d'entrée du step `perimetre` de run_all.
 
+    Le classement dérive de l'état de la base : il doit donc être rejoué APRÈS
+    chaque collecte, sinon les entités créées entre-temps restent NULL et le
+    snapshot les écarte. C'est pour ça qu'il est un step et plus un script
+    qu'on se rappelle de lancer.
+    """
     conn = get_conn()
     classement = classer(conn)
     repartition = Counter(classement.values())
@@ -139,15 +144,24 @@ def main() -> None:
     for p in ("C1", "C2", "C3", "lien", "hors"):
         print(f"  {p:5} {repartition.get(p, 0):6}")
 
-    if args.dry_run:
+    if dry_run:
         print("\n(dry-run — rien écrit)")
-        return
+        conn.close()
+        return dict(repartition)
 
     conn.executemany("UPDATE entities SET perimetre=? WHERE id=?",
                      [(p, i) for i, p in classement.items()])
     conn.commit()
     conn.close()
     print("\n[perimetre] écrit en base")
+    return dict(repartition)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Classe les entités par périmètre")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    run(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

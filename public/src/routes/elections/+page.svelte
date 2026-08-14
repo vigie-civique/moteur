@@ -9,6 +9,7 @@
   export let data
   $: resultats = data.resultats
   $: listes = data.listes
+  $: communesAbsentes = data.communesAbsentes || []
 
   $: scrutins = [...new Set(resultats.map(r => r.scrutin))].sort().reverse()
   const listesDe = (r) => listes
@@ -34,14 +35,18 @@
       Participation, voix et sièges — d'où vient le mandat de ceux qui décident.
       {COMMUNE} et les autres communes de l'intercommunalité.
     </p>
-    <!-- 14 communes sur 15 : le conseil municipal de Trèves a été élu le
-         07/06/2026 (date de début de mandat au RNE), après la publication des
-         fichiers nationaux des deux tours de mars. L'absence est réelle, pas
-         un trou de collecte : mieux vaut la nommer que la laisser deviner. -->
-    <p class="source">
-      Trèves n'y figure pas&nbsp;: son conseil municipal a été élu en juin 2026,
-      après les fichiers nationaux des deux tours de mars.
-    </p>
+    <!-- L'absence est réelle, pas un trou de collecte : mieux vaut la nommer
+         que la laisser deviner. Les communes concernées sont calculées au build
+         (cf. +page.server.js) — les nommer en dur rendait la phrase fausse au
+         scrutin suivant. -->
+    {#if communesAbsentes.length}
+      <p class="source">
+        {communesAbsentes.length === 1 ? 'Une commune n’y figure pas' :
+         `${communesAbsentes.length} communes n’y figurent pas`}&nbsp;:
+        {communesAbsentes.join(', ')}. Un conseil municipal élu en dehors des
+        deux tours n’apparaît dans aucun des fichiers nationaux publiés.
+      </p>
+    {/if}
   </header>
 
   {#if !resultats.length}<p class="etat">Aucun résultat disponible.</p>
