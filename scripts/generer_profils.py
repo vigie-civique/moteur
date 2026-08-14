@@ -251,9 +251,42 @@ def entourage(conn, noms_elus: set[tuple]) -> list[dict]:
         """, tuple(structures)):
             _ajouter(r, motif)
 
-    sortie = sorted(resultats.values(),
-                    key=lambda e: (e["lastname"], e["firstname"]))
-    return sortie
+    if not resultats:
+        _pourquoi_vide(conn)
+    return sorted(resultats.values(), key=lambda e: (e["lastname"], e["firstname"]))
+
+
+def _pourquoi_vide(conn) -> None:
+    """Un entourage vide n'est pas une commune sans responsables : c'est une
+    chaîne interrompue. Autant la nommer plutôt que rendre un fichier muet.
+
+    Les dirigeants d'associations ne sont pas en open data — ni SIRENE, ni le JO
+    des associations, ni la déclaration en préfecture ne les publient. Ils
+    arrivent par une seule voie, et elle passe par l'atelier :
+
+        url_finder → entity_websites (candidate) → validation humaine
+                   → dirigeants_web → relation_candidates → arbitrage
+    """
+    n_assos = conn.execute(
+        "SELECT count(*) FROM entities WHERE type='association'").fetchone()[0]
+    n_urls = conn.execute("SELECT count(*) FROM entity_websites").fetchone()[0] \
+        if _table_existe(conn, "entity_websites") else 0
+    validées = conn.execute(
+        "SELECT count(*) FROM entity_websites WHERE status='validated'"
+    ).fetchone()[0] if n_urls else 0
+
+    print("  [entourage] vide — la chaîne est interrompue :")
+    print(f"     {n_assos} associations, {n_urls} URL en file, {validées} validées")
+    if not n_urls:
+        print("     → lancer  python3 -m collectors.url_finder --batch --limit 50")
+        print("       puis valider les URL dans l'atelier (/atelier/queue/websites)")
+    elif not validées:
+        print("     → valider les URL dans l'atelier (/atelier/queue/websites)")
+    else:
+        print("     → lancer  python3 -m collectors.dirigeants_web")
+    print("     Les structures subventionnées et titulaires de marchés sont, elles,")
+    print("     des entités distinctes de leurs homologues SIRENE : aucun de leurs")
+    print("     noms ne s'apparie, donc aucun dirigeant ne remonte par cette voie.")
 
 
 # ── Recherche web ────────────────────────────────────────────────────────────
