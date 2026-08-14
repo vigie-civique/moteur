@@ -7,6 +7,16 @@ collectors.config. Rien ici ne doit la nommer, commentaires compris : un
 exemple écrit avec le nom d'une commune se lit vite comme une règle.
 
 Usage : python3 -m collectors.run_all [--step STEP] [--stats]
+
+Ce que run_all ne fait PAS, et qui reste à lancer à la main :
+
+  url_finder      cherche les sites des entités et les dépose en `candidate`
+                  dans entity_websites. Une URL n'est utilisée qu'une fois
+                  validée dans l'atelier (/atelier/queue/websites) — d'où un
+                  step `web` qui ne trouve rien tant que personne n'a validé.
+  dgf_notifications  ingère un fichier exporté à la main du portail DGCL.
+  pappers         API payante : ne doit pas se déclencher toute seule.
+  occitanie_region  une région et un EPCI nommés : pas encore générique.
 """
 import sys
 import time

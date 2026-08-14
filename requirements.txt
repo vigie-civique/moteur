@@ -20,6 +20,7 @@ cryptography==50.0.0
 requests==2.32.5
 beautifulsoup4==4.15.0
 numpy==1.26.4
+ddgs==9.14.4          # url_finder : recherche des sites des entités locales
 
 # ─── Lecture des procès-verbaux (PDF, puis OCR si le PDF est une image) ──────
 pdfplumber==0.11.10
