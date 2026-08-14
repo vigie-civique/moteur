@@ -44,6 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INSTANCE = ROOT / "config" / "instance.json"
 REGLES = ROOT / "config" / "publication_rules.json"
+REGLES_EXEMPLE = ROOT / "config" / "publication_rules.exemple.json"
 
 GEO = "https://geo.api.gouv.fr"
 ENTREPRISES = "https://recherche-entreprises.api.gouv.fr/search"
@@ -244,8 +245,16 @@ def adapter_regles(inst: dict, dry_run: bool) -> None:
     leurs coordonnées, sans erreur ni avertissement.
     """
     if not REGLES.exists():
-        print("  [regles] publication_rules.json absent — étape ignorée")
-        return
+        # Le moteur ne livre que l'exemple : les règles d'une commune ne sont
+        # pas versionnées. Une instance neuve part donc de l'exemple, qu'on
+        # adapte ensuite comme n'importe quelles règles existantes. Sans ça,
+        # l'amorçage laissait l'instance sans filtre de publication.
+        if not REGLES_EXEMPLE.exists():
+            print("  [regles] ni publication_rules.json ni son exemple — étape ignorée")
+            return
+        REGLES.write_text(REGLES_EXEMPLE.read_text(encoding="utf-8"),
+                          encoding="utf-8")
+        print(f"  [regles] créées depuis {REGLES_EXEMPLE.name}")
     r = json.loads(REGLES.read_text(encoding="utf-8"))
     r["project"] = {
         "public_name": f"Vigie Civique {inst['commune_nom']}",
