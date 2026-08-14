@@ -199,6 +199,10 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
             return raw
         except Exception as e:
             dernier = e
+            # Un 404 ou un 403 ne s'améliorera pas en attendant : seules les
+            # coupures et les erreurs serveur méritent un nouvel essai.
+            if isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429:
+                break
             if essai < DECP_ESSAIS:
                 attente = 5 * essai
                 print(f"\n    essai {essai}/{DECP_ESSAIS} échoué ({e}), "
