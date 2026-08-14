@@ -39,6 +39,7 @@ dashboard/.svelte-kit/
 # commune. Le dépôt en livre les exemples.
 config/publication_rules.json
 public/src/lib/instance.js
+dashboard/src/lib/instance.js
 
 # Sauvegardes de collecte (vigie_collecte.sh) et journaux d'exécution.
 db/*.db.*

@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import { authFetch } from '$lib/stores/auth.js'
 
   let question  = ''
@@ -49,7 +50,7 @@
   function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }
 </script>
 
-<svelte:head><title>IA — Atelier Lasalle</title></svelte:head>
+<svelte:head><title>IA — Atelier {COMMUNE}</title></svelte:head>
 
 <div class="ia-page">
   <div class="page-header">

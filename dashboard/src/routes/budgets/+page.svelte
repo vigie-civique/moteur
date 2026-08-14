@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import * as d3 from 'd3'
   import { api } from '$lib/api.js'
@@ -61,7 +62,7 @@
   $: annexeSections = [...new Set(annexeFiltered.map(r => r.section))]
 </script>
 
-<svelte:head><title>Budgets — Vigie Civique Lasalle</title></svelte:head>
+<svelte:head><title>Budgets — {SITE_NOM}</title></svelte:head>
 
 <div class="budgets-page">
   <div class="page-header">

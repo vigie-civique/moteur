@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM, SITE_NOM_ATELIER } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
   import { currentUser } from '$lib/stores/auth.js'
@@ -85,13 +86,13 @@
 </script>
 
 <svelte:head>
-  <title>Atelier publication — Vigie Civique Lasalle</title>
+  <title>Atelier publication — {SITE_NOM}</title>
 </svelte:head>
 
 <div class="page">
   <section class="topbar">
     <div>
-      <p class="eyebrow">{project.private_name || 'Atelier Vigie Civique Lasalle'}</p>
+      <p class="eyebrow">{project.private_name || SITE_NOM_ATELIER}</p>
       <h1>Publication</h1>
     </div>
     <div class="auth">
@@ -121,7 +122,7 @@
 
   <section class="actions">
     <div>
-      <h2>{project.public_name || 'Vigie Civique Lasalle'}</h2>
+      <h2>{project.public_name || SITE_NOM}</h2>
       <p class="muted">
         Sortie publique : {status?.output_dir || 'dashboard/static/public_api'}
       </p>

@@ -325,10 +325,26 @@ def main() -> int:
     INSTANCE.write_text(json.dumps(inst, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8")
     print(f"\n✓ {INSTANCE.relative_to(ROOT)} écrit")
+
+    # Les libellés des deux applications SvelteKit sont générés depuis
+    # l'instance et ne sont pas versionnés. Sans eux, `npm run build` échoue sur
+    # un ENOENT illisible : le module manque, mais rien ne dit qu'il se génère.
+    # Les écrire ici évite d'avoir à le savoir.
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from generer_libelles import construire, ecrire, CIBLES
+        ecrire(construire())
+        for cible in CIBLES:
+            print(f"✓ {cible.relative_to(ROOT)} généré")
+    except Exception as exc:
+        print(f"  [libellés] non générés : {exc}\n"
+              "  Lancer :  python3 scripts/generer_libelles.py")
+
     print("\nÀ faire à la main avant la première collecte :")
     for tache in inst["_a_faire"]:
         print(f"  - {tache}")
-    print("\nPuis :  python3 -m collectors.run_all --step init")
+    print("\nPuis :  python3 -m collectors.run_all")
+    print("        (le dernier step, `perimetre`, conditionne la publication)")
     return 0
 
 

@@ -1,9 +1,10 @@
 <script>
+  import { COMMUNE_URL, LA_COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { stats } from '$lib/stores/app.js'
 </script>
 
 <svelte:head>
-  <title>Méthodologie — Vigie Civique Lasalle</title>
+  <title>Méthodologie — {SITE_NOM}</title>
 </svelte:head>
 
 <div class="page">
@@ -40,7 +41,7 @@
         </div>
         <div class="src-card">
           <h3>Conseil municipal</h3>
-          <p>Comptes-rendus publies sur lasalle.fr. Parsing automatique des deliberations, votes, subventions.</p>
+          <p>Comptes-rendus publiés sur {COMMUNE_URL || 'le site de la mairie'}. Analyse automatique des délibérations, votes, subventions.</p>
           <p class="src-url">Donnees : deliberations, montants, votes, presences.</p>
         </div>
         <div class="src-card">
@@ -77,7 +78,7 @@
       <h2>Limites connues</h2>
       <ul>
         <li>Les noms des dirigeants d'associations ne sont plus disponibles dans le RNA depuis 2016 (retrait JOAFE pour raisons de vie privee).</li>
-        <li>La commune de Lasalle est sous le seuil de 20 000 habitants : les declarations HATVP ne sont pas obligatoires pour les elus.</li>
+        <li>{LA_COMMUNE} est sous le seuil de 20 000 habitants : les declarations HATVP ne sont pas obligatoires pour les elus.</li>
         <li>Les marches publics sous 25 000 EUR ne sont pas publies (DECP/BOAMP).</li>
         <li>Les PDFs des comptes-rendus du conseil municipal ne sont pas accessibles directement (protection serveur). Le texte est extrait des pages HTML.</li>
       </ul>

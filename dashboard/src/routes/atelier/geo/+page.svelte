@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch } from '$lib/stores/auth.js'
 
@@ -40,7 +41,7 @@
   <header>
     <div>
       <h1>Correction géolocalisation — entités exposées</h1>
-      <p class="sub">Top 150 des entités physiques de Lasalle, triées par exposition. Objectif : précision &lt;5 m sur fond Ortho/Cadastre IGN.</p>
+      <p class="sub">Top 150 des entités physiques {COMMUNE_DE}, triées par exposition. Objectif : précision &lt;5 m sur fond Ortho/Cadastre IGN.</p>
     </div>
     <div class="stats">
       <span class="pill red">{tofix.length} à corriger</span>

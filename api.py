@@ -168,6 +168,26 @@ def stats():
     finally:
         conn.close()
 
+@app.get("/api/pivots")
+def pivots():
+    """Identifiants des entités structurantes : commune, EPCI, État, préfecture.
+
+    L'atelier les portait en dur — `const CC_CAC_ID = 1645` — c'est-à-dire un
+    numéro de ligne de la base d'origine. Sur une autre base, la page de
+    l'intercommunalité affichait une entité prise au hasard. `pivot_ids` les
+    résout par le NOM, à l'exécution ; cette route ne fait que l'exposer.
+
+    Lecture seule côté client : la résolution peut créer l'entité manquante, on
+    ouvre donc la base en écriture, comme les collecteurs.
+    """
+    from collectors.db import get_conn, pivot_ids
+    conn = get_conn()
+    try:
+        return pivot_ids(conn)
+    finally:
+        conn.close()
+
+
 # ─── /api/entities ─────────────────────────────────────────────────────────────
 
 # Périmètre — cf. collectors/config.py et memory-bank/decisions.md.

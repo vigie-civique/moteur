@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { goto } from '$app/navigation'
   import { currentUser } from '$lib/stores/auth.js'
 
@@ -34,7 +35,7 @@
   }
 </script>
 
-<svelte:head><title>Connexion — Atelier Lasalle</title></svelte:head>
+<svelte:head><title>Connexion — Atelier {COMMUNE}</title></svelte:head>
 
 <div class="login-wrap">
   <div class="login-card">
@@ -42,7 +43,7 @@
       <span class="dot"></span>
       <div>
         <h1>Atelier</h1>
-        <p>Vigie Civique Lasalle — accès restreint</p>
+        <p>{SITE_NOM} — accès restreint</p>
       </div>
     </div>
 

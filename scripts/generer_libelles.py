@@ -37,7 +37,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INSTANCE = ROOT / "config" / "instance.json"
 REGLES = ROOT / "config" / "publication_rules.json"
-CIBLE = ROOT / "public" / "src" / "lib" / "instance.js"
+# Deux applications SvelteKit distinctes, une seule identité. L'atelier est resté
+# hors du dispositif pendant que le site public en sortait : il nommait encore la
+# commune d'origine 40 fois dans 21 fichiers, jusque dans les titres de pages et
+# un identifiant d'entité en dur. Écrire le même module aux deux endroits évite
+# d'avoir à choisir lequel des deux fait foi.
+CIBLES = [
+    ROOT / "public" / "src" / "lib" / "instance.js",
+    ROOT / "dashboard" / "src" / "lib" / "instance.js",
+]
+CIBLE = CIBLES[0]
 
 VOYELLES = "aeiouyàâäéèêëîïôöûüÿ"
 
@@ -106,6 +115,10 @@ def construire() -> dict:
     f = formes(nom)
     epci = inst.get("epci_nom", "")
     editeur = inst.get("editeur", {})
+    # `centroid` est un couple [lat, lng]. Défaut : le centre de la France
+    # métropolitaine — visiblement faux plutôt que discrètement faux.
+    _c = inst.get("centroid") or []
+    centroide = (list(_c) + [46.6, 2.5])[:2] if len(_c) < 2 else list(_c)
 
     return {
         "COMMUNE": nom,
@@ -135,6 +148,17 @@ def construire() -> dict:
         "EDITEUR_STATUT": editeur.get("statut", ""),
         "HEBERGEUR": editeur.get("hebergeur", ""),
         "PREFECTURE": inst.get("prefecture_nom", ""),
+        # Site officiel de la mairie, cité par la page « méthode » comme source
+        # des comptes rendus. Il y était écrit en dur.
+        "COMMUNE_URL": inst.get("commune_url", ""),
+        # Centre de la carte de l'atelier, qui portait les coordonnées de la
+        # commune d'origine en dur. `init_instance.py` renseigne le centroïde ;
+        # sans lui, la carte s'ouvre sur le centre de la France métropolitaine
+        # plutôt que sur une commune du Gard.
+        "CENTROID_LAT": centroide[0],
+        "CENTROID_LNG": centroide[1],
+        "SITE_NOM_ATELIER": (projet.get("private_name")
+                             or f"Atelier Vigie Civique {nom}"),
     }
 
 
@@ -153,7 +177,7 @@ def ecrire(valeurs: dict) -> None:
         "",
     ]
     for cle, valeur in valeurs.items():
-        if isinstance(valeur, int):
+        if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
             lignes.append(f"export const {cle} = {valeur}")
         else:
             echappe = str(valeur).replace("\\", "\\\\").replace("'", "\\'")
@@ -167,14 +191,17 @@ def ecrire(valeurs: dict) -> None:
         "export const L_EPCI = EPCI || \"l'intercommunalité\"",
         "",
     ]
-    CIBLE.parent.mkdir(parents=True, exist_ok=True)
-    CIBLE.write_text("\n".join(lignes), encoding="utf-8")
+    contenu = "\n".join(lignes)
+    for cible in CIBLES:
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        cible.write_text(contenu, encoding="utf-8")
 
 
 def main() -> int:
     valeurs = construire()
     ecrire(valeurs)
-    print(f"✓ {CIBLE.relative_to(ROOT)}")
+    for cible in CIBLES:
+        print(f"✓ {cible.relative_to(ROOT)}")
     for cle in ("COMMUNE", "COMMUNE_DE", "COMMUNE_A", "EPCI", "EPCI_COURT",
                 "SITE_NOM", "CONTACT_EMAIL"):
         print(f"    {cle:16} {valeurs[cle] or '— à renseigner dans instance.json'}")

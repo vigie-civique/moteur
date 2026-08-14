@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE, COMMUNE_A, EPCI, EPCI_NB_AUTRES } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch } from '$lib/stores/auth.js'
 
@@ -20,8 +21,8 @@
   const TYPES    = ['person', 'business', 'association', 'place', 'service']
 
   const PERIMETRES = [
-    { key: 'C1',   label: 'La commune',    tip: 'Lasalle — le cœur du projet' },
-    { key: 'C2',   label: 'Interco',       tip: "La CC Causses Aigoual Cévennes Terres Solidaires et ses 14 autres communes membres. Collectées pour la comparaison, publiées seulement en agrégat." },
+    { key: 'C1',   label: 'La commune',    tip: `${COMMUNE} — le cœur du projet` },
+    { key: 'C2',   label: 'Interco',       tip: `${EPCI} et ses ${EPCI_NB_AUTRES} autres communes membres. Collectées pour la comparaison, publiées seulement en agrégat.` },
     { key: 'C3',   label: 'Supra',         tip: 'Préfecture, département, région, agences d\'État' },
     { key: 'lien', label: 'Rattaché',      tip: "Hors du territoire mais lié à un acteur suivi — SCI d'élu, titulaire de marché" },
     { key: '',     label: 'Tout',          tip: 'Tous périmètres confondus' },
@@ -98,7 +99,7 @@
   }
 </script>
 
-<svelte:head><title>File de travail — Atelier Lasalle</title></svelte:head>
+<svelte:head><title>File de travail — Atelier {COMMUNE}</title></svelte:head>
 
 <div class="page">
 
@@ -108,7 +109,7 @@
       <h1>File de travail</h1>
       {#if stats.total !== undefined}
         <span class="total">
-          {stats.perimetre?.C1?.toLocaleString('fr-FR') ?? '—'} à Lasalle
+          {stats.perimetre?.C1?.toLocaleString('fr-FR') ?? '—'} {COMMUNE_A}
           <span class="total-sub">sur {stats.total?.toLocaleString('fr-FR')} en base</span>
         </span>
       {/if}

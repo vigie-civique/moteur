@@ -59,6 +59,14 @@ def _norm(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+# Les marqueurs sont comparés à un nom NORMALISÉ (sans accents, tirets défaits).
+# Écrits accentués et comparés à du texte désaccentué, « état français » et
+# « département » ne pouvaient jamais correspondre : l'État tombait en `lien`
+# faute de mieux, et une préfecture écrite « Préfecture » aussi.
+# L'espace final de « ars » est un délimiteur : sans lui, le marqueur attrape
+# « Parsons » et « Mars ». `_norm` le mange, on le remet.
+SUPRA = tuple(_norm(m) + (" " if m.endswith(" ") else "") for m in SUPRA)
+
 _C1 = {_norm(COMMUNE_NAME)}
 _C2_COMMUNES = {_norm(c["nom"]) for c in COMMUNES.values()} - _C1
 _C2_COMMUNES |= {_norm(c["nom"]) for c in COMMUNES_DELEGUEES.values()}

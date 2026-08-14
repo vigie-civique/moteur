@@ -8,6 +8,7 @@
   } from '$lib/stores/app.js'
   import { timelineYear, timelineMode, timelineRange } from '$lib/stores/timeline.js'
   import TimelineSlider from '$lib/components/TimelineSlider.svelte'
+  import { CENTROID_LAT, CENTROID_LNG, LA_COMMUNE } from '$lib/instance.js'
 
   let mapEl
   let map
@@ -24,13 +25,24 @@
   let rawDvf = []
 
   const LAYER_ORDER = ['businesses', 'associations', 'services', 'places', 'persons']
-  const CENTER = [44.045588, 3.854624]
+  const CENTER = [CENTROID_LAT, CENTROID_LNG]
   const ZOOM   = 14
 
-  // Entités clés toujours visibles, non clusterisées
-  const PINNED_ENTITIES = [
-    { id: 63, lat: 44.045588, lng: 3.854624, label: 'Mairie — Commune de Lasalle' }
-  ]
+  // Mairie : toujours visible, jamais clusterisée. Elle était épinglée par son
+  // identifiant de ligne (`id: 63`) et les coordonnées de la commune d'origine
+  // — sur toute autre base, ce numéro désigne une entité quelconque. Elle est
+  // maintenant RETROUVÉE dans la couche des services publics déjà chargée.
+  const _EST_MAIRIE = /^(mairie|commune de |h[oô]tel de ville)/i
+
+  function mairieEpinglee() {
+    const services = (rawFeatures.services || []).map(f => f.properties)
+    const trouvee = services.find(e => _EST_MAIRIE.test(e.name || ''))
+    if (trouvee) return [{ id: trouvee.id, lat: trouvee.lat, lng: trouvee.lng,
+                           label: trouvee.name }]
+    // Pas de mairie géolocalisée en base : le repère reste utile, le lien non.
+    return [{ id: null, lat: CENTROID_LAT, lng: CENTROID_LNG,
+              label: `Mairie — ${LA_COMMUNE}` }]
+  }
 
   // ── Icônes ──────────────────────────────────────────────────
   function makeIcon(type, color) {
@@ -199,13 +211,17 @@
   function renderPinned() {
     if (!map) return
     if (mairieMarker) { map.removeLayer(mairieMarker); mairieMarker = null }
-    PINNED_ENTITIES.forEach(p => {
+    mairieEpinglee().forEach(p => {
       const icon = mairieIcon()
       const m = L.marker([p.lat, p.lng], { icon, zIndexOffset: 1000 })
-      m.bindPopup(`<strong>${p.label}</strong><br/><button onclick="window._openEntity(${p.id})">Détail →</button>`, { maxWidth: 220 })
-      m.on('click', () => {
-        api.entity(p.id).then(e => { selectedEntity.set(e); activeTab.set('entity') })
-      })
+      const lien = p.id == null ? ''
+        : `<br/><button onclick="window._openEntity(${p.id})">Détail →</button>`
+      m.bindPopup(`<strong>${p.label}</strong>${lien}`, { maxWidth: 220 })
+      if (p.id != null) {
+        m.on('click', () => {
+          api.entity(p.id).then(e => { selectedEntity.set(e); activeTab.set('entity') })
+        })
+      }
       m.addTo(map)
       mairieMarker = m
     })

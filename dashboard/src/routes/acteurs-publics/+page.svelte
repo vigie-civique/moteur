@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
 
@@ -41,12 +42,12 @@
   const TYPE_COLORS = { service: '#92400e', place: '#4c1d95', association: '#065f46' }
 </script>
 
-<svelte:head><title>Acteurs publics — Vigie Civique Lasalle</title></svelte:head>
+<svelte:head><title>Acteurs publics — {SITE_NOM}</title></svelte:head>
 
 <div class="ap-page">
   <div class="page-header">
     <h1>Acteurs publics</h1>
-    <span class="subtitle">Services, lieux publics et associations de Lasalle</span>
+    <span class="subtitle">Services, lieux publics et associations {COMMUNE_DE}</span>
   </div>
 
   <div class="controls">

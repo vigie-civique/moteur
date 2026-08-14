@@ -1,8 +1,12 @@
 <script>
+  import { COMMUNE, COMMUNE_DE, EPCI, EPCI_COURT, EPCI_NB_COMMUNES, L_EPCI, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
 
-  const CC_CAC_ID = 1645
+  // L'identifiant de l'intercommunalité était écrit en dur (`1645`) : un numéro
+  // de ligne de la base d'origine, qui désigne une entité quelconque ailleurs.
+  // Il est résolu par son nom au chargement, comme côté collecteurs.
+  let epciId = null
 
   let entity   = null
   let events   = []
@@ -15,9 +19,11 @@
   onMount(async () => {
     loading = true
     try {
+      const pivots = await api.pivots()
+      epciId = pivots.epci
       const [e, m] = await Promise.all([
-        api.entity(CC_CAC_ID),
-        api.marches({ acheteur: 'Communauté de Communes', limit: 200 }).catch(() => []),
+        api.entity(epciId),
+        api.marches({ acheteur: EPCI, limit: 200 }).catch(() => []),
       ])
       entity  = e
       events  = Array.isArray(e.events) ? e.events : []
@@ -43,18 +49,18 @@
 
   const TABS = [
     { id: 'presentation', label: 'Présentation' },
-    { id: 'delegues',     label: 'Délégués Lasalle' },
+    { id: 'delegues',     label: `Délégués ${COMMUNE}` },
     { id: 'deliberations',label: 'Délibérations' },
     { id: 'marches',      label: 'Marchés' },
   ]
 </script>
 
-<svelte:head><title>CC Causses Aigoual Cévennes Terres Solidaires — Vigie Civique Lasalle</title></svelte:head>
+<svelte:head><title>{EPCI} — {SITE_NOM}</title></svelte:head>
 
 <div class="comcom-page">
   <div class="page-header">
     <h1>Communauté de Communes</h1>
-    <span class="subtitle">Causses Aigoual Cévennes Terres Solidaires (CC CAC)</span>
+    <span class="subtitle">{EPCI} ({EPCI_COURT})</span>
   </div>
 
   {#if error}<p class="err">{error}</p>{/if}
@@ -79,22 +85,21 @@
         <div class="info-card">
           <div class="card-title">Présentation</div>
           <p class="card-body">
-            La Communauté de Communes Causses Aigoual Cévennes Terres Solidaires (CC CAC) est l'intercommunalité
-            de Lasalle. Elle regroupe plusieurs communes du Gard et de la Lozère.
+            {EPCI} ({EPCI_COURT}) est l'intercommunalité {COMMUNE_DE}.
+            Elle regroupe {entity?.membres?.length ?? EPCI_NB_COMMUNES} communes.
           </p>
           <dl>
-            <dt>SIREN</dt><dd>243000809</dd>
-            <dt>Siège</dt><dd>Saint-Hippolyte-du-Fort</dd>
-            <dt>Délégués Lasalle</dt><dd>{delegues.length} élu(s)</dd>
+            <dt>SIREN</dt><dd>{entity?.siren ?? '—'}</dd>
+            <dt>Délégués {COMMUNE}</dt><dd>{delegues.length} élu(s)</dd>
             <dt>Délibérations</dt><dd>{delibs.length} documentées</dd>
             <dt>Marchés</dt><dd>{marches.length} référencés</dd>
           </dl>
-          <a href="/entite/{CC_CAC_ID}" class="card-link">Voir la fiche entité →</a>
+          <a href="/entite/{epciId}" class="card-link">Voir la fiche entité →</a>
         </div>
         <div class="info-card">
-          <div class="card-title">Lasalle dans la CC CAC</div>
+          <div class="card-title">{COMMUNE} dans {L_EPCI}</div>
           <p class="card-body muted">
-            Lasalle dispose de {delegues.length} délégué(s) au conseil communautaire.
+            {COMMUNE} dispose de {delegues.length} délégué(s) au conseil communautaire.
             Les délibérations documentées couvrent les marchés publics, budgets, projets
             intercommunaux et subventions reçues.
           </p>
@@ -111,7 +116,7 @@
             {#each delegues as r}
               <tr>
                 <td>
-                  {#if r.from_id !== CC_CAC_ID}
+                  {#if r.from_id !== epciId}
                     <a href="/entite/{r.from_id}" class="ent-link">{r.from_name}</a>
                   {:else}
                     <a href="/entite/{r.to_id}"   class="ent-link">{r.to_name}</a>
@@ -157,7 +162,7 @@
 
     {:else if activeTab === 'marches'}
       {#if !marches.length}
-        <p class="muted-center">Aucun marché référencé pour la CC CAC.</p>
+        <p class="muted-center">Aucun marché référencé pour {L_EPCI}.</p>
       {:else}
         <table class="data-table">
           <thead><tr><th>Objet</th><th>Titulaire</th><th>Montant</th><th>Date</th><th>Nature</th></tr></thead>

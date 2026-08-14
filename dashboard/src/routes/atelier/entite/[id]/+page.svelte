@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
   import { goto } from '$app/navigation'
@@ -386,7 +387,7 @@
 </script>
 
 <svelte:head>
-  <title>{entity ? entity.name : 'Éditeur'} — Atelier Lasalle</title>
+  <title>{entity ? entity.name : 'Éditeur'} — Atelier {COMMUNE}</title>
 </svelte:head>
 
 <div class="editor-page">

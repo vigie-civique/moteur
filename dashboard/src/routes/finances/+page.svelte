@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import * as d3 from 'd3'
   import { api } from '$lib/api.js'
@@ -177,7 +178,7 @@
 </script>
 
 <svelte:head>
-  <title>Finances — Lasalle</title>
+  <title>Finances — {COMMUNE}</title>
 </svelte:head>
 
 <div class="page">

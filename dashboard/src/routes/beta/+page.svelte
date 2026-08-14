@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
 
   let stats = null
@@ -53,14 +54,14 @@
 </script>
 
 <svelte:head>
-  <title>Vigie Civique Lasalle — bêta publique</title>
+  <title>{SITE_NOM} — bêta publique</title>
 </svelte:head>
 
 <div class="public-page">
   <section class="hero">
     <div>
       <p class="eyebrow">Bêta confidentielle</p>
-      <h1>Vigie Civique Lasalle</h1>
+      <h1>{SITE_NOM}</h1>
       <p class="lede">Veille locale, décisions publiques, événements et données utiles à la vie citoyenne.</p>
     </div>
     {#if stats?.generated_at}

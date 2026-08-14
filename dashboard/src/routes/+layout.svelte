@@ -4,6 +4,7 @@
   import { stats } from '$lib/stores/app.js'
   import { api } from '$lib/api.js'
   import { currentUser, initAuth } from '$lib/stores/auth.js'
+  import { COMMUNE, COMMUNE_DE, LA_COMMUNE, CODE_POSTAL, SITE_NOM } from '$lib/instance.js'
   import 'leaflet/dist/leaflet.css'
   import 'leaflet.markercluster/dist/MarkerCluster.css'
   import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -40,12 +41,20 @@
   const PUBLIC_URL = 'http://localhost:5174'
 </script>
 
+<svelte:head>
+  <!-- Descriptions communes à tout l'atelier. Elles vivaient dans app.html, qui
+       est du HTML statique et ne sait rien de l'instance. -->
+  <meta name="description" content="Veille citoyenne sur la vie politique et municipale {COMMUNE_DE} ({CODE_POSTAL}) — conseil municipal, finances, entreprises, associations." />
+  <meta property="og:title" content="{COMMUNE} — Veille citoyenne" />
+  <meta property="og:description" content="Données publiques structurées sur {LA_COMMUNE}" />
+</svelte:head>
+
 <div class="app">
   <header data-pagefind-ignore>
     <a href="/atelier" class="brand">
       <span class="dot"></span>
-      <span class="title">Vigie Civique Lasalle</span>
-      <span class="sub">30460 — atelier de veille</span>
+      <span class="title">{SITE_NOM}</span>
+      <span class="sub">{CODE_POSTAL} — atelier de veille</span>
     </a>
 
     <nav>

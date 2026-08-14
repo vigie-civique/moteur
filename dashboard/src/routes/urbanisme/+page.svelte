@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
 
@@ -58,7 +59,7 @@
   ]
 </script>
 
-<svelte:head><title>Urbanisme & foncier — Vigie Civique Lasalle</title></svelte:head>
+<svelte:head><title>Urbanisme & foncier — {SITE_NOM}</title></svelte:head>
 
 <div class="urb-page">
   <div class="page-header">

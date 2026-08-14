@@ -1,4 +1,5 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch } from '$lib/stores/auth.js'
 
@@ -72,7 +73,7 @@
   ]
 </script>
 
-<svelte:head><title>Analyses croisées — Atelier Lasalle</title></svelte:head>
+<svelte:head><title>Analyses croisées — Atelier {COMMUNE}</title></svelte:head>
 
 <div class="analyses-page">
   <div class="page-header">

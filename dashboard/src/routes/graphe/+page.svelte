@@ -1,11 +1,12 @@
 <script>
+  import { COMMUNE } from '$lib/instance.js'
   import SearchBar from '$lib/components/SearchBar.svelte'
   import GraphView from '$lib/components/GraphView.svelte'
   import SidePanel from '$lib/components/SidePanel.svelte'
 </script>
 
 <svelte:head>
-  <title>Graphe de relations — Lasalle</title>
+  <title>Graphe de relations — {COMMUNE}</title>
 </svelte:head>
 
 <div class="page-graph">

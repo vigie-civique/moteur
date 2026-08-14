@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
   import { feedItems, selectedEntity, mapFocus } from '$lib/stores/app.js'
@@ -26,7 +27,7 @@
 </script>
 
 <svelte:head>
-  <title>Carte — Vigie Civique Lasalle</title>
+  <title>Carte — {SITE_NOM}</title>
 </svelte:head>
 
 <div class="page-carte">

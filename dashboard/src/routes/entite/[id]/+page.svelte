@@ -1,4 +1,5 @@
 <script>
+  import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
   import { api } from '$lib/api.js'
@@ -76,7 +77,7 @@
 </script>
 
 <svelte:head>
-  <title>{entity?.name ?? 'Entité'} — Vigie Civique Lasalle</title>
+  <title>{entity?.name ?? 'Entité'} — {SITE_NOM}</title>
 </svelte:head>
 
 {#if loading}

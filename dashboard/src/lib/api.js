@@ -72,6 +72,10 @@ function qs(params) {
 
 export const api = {
   stats: () => get('/stats'),
+  // Entités structurantes résolues par leur nom côté serveur : la commune,
+  // l'intercommunalité, l'État, la préfecture. À utiliser partout où un
+  // identifiant d'entité serait autrement écrit en dur.
+  pivots: () => get('/pivots'),
 
   entities: (params = {}) => get('/entities' + qs(params)),
 
