@@ -109,8 +109,40 @@ class Site:
         return self._paginer("posts", params)
 
     def page(self, slug: str) -> dict | None:
+        """Une page, par l'API si elle est ouverte, sinon par son adresse.
+
+        Un plugin de sécurité peut fermer le seul endpoint `pages` en laissant
+        `posts` ouvert : constaté sur une commune où 877 articles sont lisibles
+        et où `/wp-json/wp/v2/pages` répond 401. Le repli lit la page à son
+        adresse publique et rend la même structure, ce qui laisse le reste du
+        connecteur indifférent au refus.
+        """
         data, _ = self._get("pages", {"slug": slug, "status": "publish"})
-        return data[0] if data else None
+        if data:
+            return data[0]
+        return self._page_html(slug)
+
+    def _page_html(self, slug: str) -> dict | None:
+        from ..archive import archive_fetch
+        from ..config import HEADERS, REQUEST_DELAY
+
+        url = f"{self.base}/{slug.strip('/')}/"
+        req = urllib.request.Request(url, headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req, timeout=25) as r:
+                brut = r.read()
+                archive_fetch(self.source, url, brut,
+                              r.headers.get_content_type(), r.status)
+                html = brut.decode(r.headers.get_content_charset("utf-8"),
+                                   errors="replace")
+        except (urllib.error.URLError, TimeoutError, ValueError) as e:
+            print(f"  [wp][erreur] {url} → {e}")
+            return None
+        finally:
+            time.sleep(REQUEST_DELAY)
+        print(f"  [wp] page « {slug} » lue en HTML (API fermée)")
+        return {"content": {"rendered": html}, "link": url,
+                "title": {"rendered": slug}}
 
     def categories(self) -> dict[str, dict]:
         data, _ = self._get("categories", {"per_page": PER_PAGE})
