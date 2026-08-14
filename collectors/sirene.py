@@ -1,7 +1,7 @@
 """
 Collecteur SIRENE — recherche-entreprises.api.gouv.fr
 Importe toutes les entités (entreprises, EI, asso, SCI...) dont le siège
-est à Lasalle (code_commune=30140).
+est dans la commune de l'instance (code_commune=COMMUNE_INSEE).
 """
 import json
 import time

@@ -1,9 +1,10 @@
 """
 urbanisme_sitadel.py — Autorisations d'urbanisme (Sitadel, SDES via API DIDO).
 
-**Pourquoi.** La base ne comptait que 3 événements `urbanisme` alors que le
-foncier est le sujet le plus sensible du territoire : 30,7 % de résidences
-secondaires à Lasalle, un marché DVF actif, et un dossier terrain déjà ouvert.
+**Pourquoi.** Sur l'instance d'origine, la base ne comptait que 3 événements
+`urbanisme` alors que le foncier était le sujet le plus sensible du territoire :
+30,7 % de résidences secondaires, un marché DVF actif, un dossier déjà ouvert.
+Le rapport vaut pour toute commune où la pression foncière existe.
 Sitadel donne chaque permis depuis 2013, avec **la référence cadastrale** et
 **le SIREN du demandeur** quand c'est une personne morale — donc deux
 croisements exacts, sans rapprochement approximatif :

@@ -1,5 +1,11 @@
-# Commune Lasalle — API atelier (VPS). Versions figées depuis le venv de réf.
+# Vigie Civique — dépendances Python. Versions figées depuis le venv de référence.
 # Installer : python3 -m venv venv && venv/bin/pip install -r requirements.txt
+#
+# Une instance amorcée depuis ce fichier doit pouvoir collecter, pas seulement
+# servir l'API : les paquets de collecte étaient commentés, et un clone neuf
+# échouait au premier import de BeautifulSoup.
+
+# ─── API de l'atelier ────────────────────────────────────────────────────────
 fastapi==0.128.8
 uvicorn==0.44.0
 pydantic==2.12.5
@@ -8,10 +14,21 @@ slowapi==0.1.9
 bcrypt==5.0.0
 python-jose==3.5.0
 python-dotenv==1.2.1
-numpy==1.26.4
-requests==2.32.5
+cryptography==50.0.0
 
-# Collecteurs (lancés sur le Mac, hors VPS) — décommenter si la collecte tourne ici :
-# beautifulsoup4==4.14.3
-# pdfplumber==0.11.9
-# ddgs==9.14.4
+# ─── Collecte ────────────────────────────────────────────────────────────────
+requests==2.32.5
+beautifulsoup4==4.15.0
+numpy==1.26.4
+
+# ─── Lecture des procès-verbaux (PDF, puis OCR si le PDF est une image) ──────
+pdfplumber==0.11.10
+pdfminer.six==20260107
+pypdfium2==5.13.0
+pillow==12.3.0
+
+# ─── Hors pip ────────────────────────────────────────────────────────────────
+# ocrmypdf + tesseract avec la langue française, pour les PV scannés :
+#   brew install ocrmypdf   puis   tesseract --list-langs   doit lister « fra »
+# Scrapling, pour les sources protégées (RNA) : chemin lu dans l'environnement,
+# pas installé ici — cf. collectors/rna.py.

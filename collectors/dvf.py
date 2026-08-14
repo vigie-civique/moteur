@@ -1,7 +1,7 @@
 """
 Collecteur DVF — Demandes de Valeurs Foncières
 Source : API DVF+ Cerema (api-dvf.cerema.fr) ou fichier bulk data.gouv.fr
-Commune : Lasalle 30140
+Périmètre : les communes de config/instance.json, via COMMUNE_INSEE.
 """
 import json
 import time

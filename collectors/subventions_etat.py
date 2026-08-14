@@ -1,5 +1,5 @@
 """
-subventions_etat.py — Subventions d'État reçues par Lasalle + CC CAC
+subventions_etat.py — Subventions d'État reçues par la commune et son EPCI
 
 Sources :
   1. ofgl_agregats → DGF, Concours de l'État, Autres dotations (agrégés annuels)

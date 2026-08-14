@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-run_all.py — Orchestrateur principal des collecteurs (instance Brassac).
+run_all.py — Orchestrateur principal des collecteurs.
+
+La commune sur laquelle il tourne vient de config/instance.json, lu par
+collectors.config. Rien ici ne doit la nommer, commentaires compris : un
+exemple écrit avec le nom d'une commune se lit vite comme une règle.
+
 Usage : python3 -m collectors.run_all [--step STEP] [--stats]
 """
 import sys
@@ -52,8 +57,9 @@ STEPS = {
     "cm":       ("Procès-verbaux du conseil municipal (PDF)", import_conseil_municipal),
     "seed":     ("Saisies locales : subventions, baux, transactions", import_cm_events),
     # sirene et dvf sont ADRESSÉS : ils bouclent sur COMMUNES_ADRESSE, qui
-    # ajoute les communes déléguées — ici Ferrières et Le Margnès, absorbées
-    # par Fontrieu en 2016 mais toujours indexées sous leur ancien code.
+    # ajoute les communes déléguées — celles qu'une fusion a absorbées mais que
+    # les répertoires indexent toujours sous leur ancien code INSEE. Les oublier
+    # fait disparaître des établissements et des mutations d'un territoire.
     "sirene":   ("Entreprises SIRENE (C1 — {})".format(", ".join(COMMUNES_INSEE_ADRESSE)),
                  lambda: [import_sirene(i, COMMUNES_ADRESSE[i]["nom"])
                           for i in COMMUNES_INSEE_ADRESSE]),
