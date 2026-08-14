@@ -132,6 +132,9 @@ COMMUNE_URL = _I.get("commune_url", "")
 EPCI_URL    = _I.get("epci_url", "")
 CONNECTEUR  = _I.get("connecteur", "wordpress_rest")
 PAGES       = _I.get("pages", {})     # slugs des pages utiles, par connecteur
+# Particularités de mise en forme des procès-verbaux (convention d'écriture des
+# noms, notamment) : cf. collectors/conseils.py.
+FORMAT_PV   = _I.get("format_pv", {})
 
 # ── Préfecture — recueil des actes administratifs ────────────────────────────
 # L'arborescence diffère d'une préfecture à l'autre (page annuelle, ou année →

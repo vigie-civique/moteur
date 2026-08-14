@@ -50,16 +50,28 @@ PORTEES = {
     "commune": {
         "seance": "conseil_municipal",
         "delib": "deliberation",
-        "ordre_noms": "prenom_nom",
         "titre": "Conseil municipal du {date}",
     },
     "epci": {
         "seance": "conseil_communautaire",
         "delib": "deliberation_cc",
-        "ordre_noms": "nom_prenom",
         "titre": "Conseil communautaire du {date}",
     },
 }
+
+# Comment le document écrit les noms des présents. Trois conventions observées,
+# et c'est une propriété du DOCUMENT, pas du moteur : elle se déclare dans
+# config/instance.json, clé `format_pv`.
+#   prenom_nom    « Delphine BARTHÈS »        (défaut)
+#   nom_prenom    « BARTHÈS Delphine »
+#   civilite_nom  « Mme BARTHÈS », sans prénom
+ORDRE_NOMS_DEFAUT = {"commune": "prenom_nom", "epci": "nom_prenom"}
+
+
+def _ordre_noms(portee: str) -> str:
+    from .config import FORMAT_PV
+    return (FORMAT_PV.get(portee) or {}).get("ordre_noms",
+                                            ORDRE_NOMS_DEFAUT[portee])
 
 
 # ── Récupération ─────────────────────────────────────────────────────────────
@@ -195,7 +207,7 @@ def traiter(conn, doc, portee: str, verbose: bool = True) -> dict:
         return {"statut": "sans_couche_texte", "delibs": 0}
 
     delibs = deliberations(texte)
-    pres = presences(texte, p["ordre_noms"])
+    pres = presences(texte, _ordre_noms(portee))
     seance_id = enregistrer_seance(conn, doc, portee,
                                    {"nb_deliberations": len(delibs), **pres})
 

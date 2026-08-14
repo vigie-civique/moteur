@@ -22,14 +22,20 @@ couvrant vingt-deux ans, et un quatrième sur celui de l'intercommunalité :
                séance est alors enregistrée avec son texte intégral et le fait
                que le découpage a échoué.
 
-`deliberations()` essaie les trois premiers dans l'ordre et rend une liste vide
-plutôt qu'un découpage inventé.
+    capitales  titres en capitales, séparés du corps par un filet ou un saut.
+               Découpage acceptable, mais silencieux sur ses limites : un
+               intertitre en capitales devient une délibération de plus.
+
+`deliberations()` essaie les quatre régimes dans l'ordre et rend une liste vide
+plutôt qu'un découpage inventé. L'ordre compte : un identifiant d'acte est une
+preuve, une mise en capitales n'est qu'un indice.
 """
 from __future__ import annotations
 
 import re
 
-from .cm_parser import categorize, extract_amounts, extract_vote
+from .cm_parser import (categorize, extract_amounts, extract_vote,
+                        split_into_deliberations)
 
 # ── Régime « numéroté » : NN/AAAA [: n° NNNN] ────────────────────────────────
 # Le séparateur entre les deux numéros a été « : », « – n° », « - n° » selon les
@@ -52,7 +58,7 @@ PUCE = re.compile(r"^\s*(?:\(cid:\d+\)|[•▪–])\s*(.{6,150}?)\s*:\s", re.M)
 
 def deliberations(texte: str) -> list[dict]:
     """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique."""
-    for analyseur in (_numerote, _acte_final, _puces):
+    for analyseur in (_numerote, _acte_final, _puces, _capitales):
         sorties = analyseur(texte)
         if sorties:
             return sorties
@@ -144,6 +150,55 @@ def _puces(texte: str) -> list[dict]:
     return sorties
 
 
+def _sans_entetes(texte: str) -> str:
+    """Retire les lignes répétées d'un PDF : en-tête et pied de page.
+
+    Un procès-verbal de vingt-quatre pages répète son en-tête vingt-quatre
+    fois. Le découpeur par capitales en fait autant de titres, et la séance
+    ressort avec deux fois plus de délibérations qu'elle n'en a pris.
+    """
+    from collections import Counter
+    lignes = texte.splitlines()
+    compte = Counter(l.strip() for l in lignes if l.strip())
+    repetees = {l for l, n in compte.items() if n >= 4 and len(l) < 60}
+    return "\n".join(l for l in lignes if l.strip() not in repetees)
+
+
+def _apres_entete(texte: str) -> str:
+    """Le corps commence après le bloc de présences, jamais avant.
+
+    Sans cette borne, la liste des présents — en capitales, elle aussi — ouvre
+    une première « délibération » intitulée du nom des conseillers.
+    """
+    for motif in (r"[Ss]ecrétaire de séance", r"^_{5,}$", r"ORDRE DU JOUR"):
+        m = re.search(motif, texte, re.M)
+        if m:
+            return texte[m.end():]
+    return texte
+
+
+def _capitales(texte: str) -> list[dict]:
+    """Dernier recours : les titres sont en capitales, le corps ne l'est pas.
+
+    S'appuie sur le découpeur historique du dispositif, éprouvé sur les procès-
+    verbaux de l'instance de référence — le seul des quatre régimes qui ne
+    dispose d'aucun identifiant d'acte pour se vérifier. On l'essaie en dernier
+    pour cette raison.
+    """
+    propre = _apres_entete(_sans_entetes(texte))
+    blocs = split_into_deliberations([l for l in propre.splitlines() if l.strip()])
+    sorties = []
+    for bloc in blocs:
+        titre = re.sub(r"\s+", " ", bloc["titre"]).strip(" :;.-")
+        if len(titre) < 6 or len(re.findall(r"\b(?:M\.|Mme|Mlle)\s", titre)) >= 2:
+            continue
+        sorties.append(_enrichir({
+            "regime": "capitales", "numero_seance": None, "numero_acte": None,
+            "titre": titre[:255], "texte": "\n".join(bloc["paragraphes"]),
+        }))
+    return sorties
+
+
 # ── Présences ────────────────────────────────────────────────────────────────
 #
 # Deux conventions d'écriture, qui exigent deux lectures :
@@ -164,15 +219,25 @@ PRENOM_NOM = re.compile(
 NOM_PRENOM = re.compile(
     r"\b([A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{1,}(?:\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{1,})*)\s+"
     r"([A-ZÀ-Ÿ][a-zà-ÿ'’]+(?:[- ][A-ZÀ-Ÿ][a-zà-ÿ'’]+)*)")
+# « PRÉSENTS : M. NOM, Mme NOM, … » — la civilité tient lieu de prénom, qui
+# n'est pas donné. Le rapprochement avec la table des personnes se fera sur le
+# seul patronyme, ce qui est moins sûr : deux homonymes ne se distinguent plus.
+CIVILITE_NOM = re.compile(
+    r"\b(?:M\.|Mme|Mlle|MM\.|Mmes)\s+((?:de\s+|d')?[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}"
+    r"(?:\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,})?)")
 NOM_INVERSE_CIVILITE = re.compile(
     r"(?:Monsieur|Madame)\s+([A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ][A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ'’\-]{2,})"
     r"\s+([A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ][a-zà-ÿ]+)")
 
 # « a donné procuration à », « ayant donné procuration à », et — vu en 2019 —
 # « ayant donné procuration » sans préposition. Le « à » est donc optionnel.
+# Quatre formulations rencontrées : « a donné procuration à », « ayant donné
+# procuration à », « ayant donné procuration » sans préposition, et « donne
+# pouvoir pour voter en son nom à ».
 PROCURATION = re.compile(
-    r"(?:Monsieur|Madame|M\.|Mme)?\s*([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40}?)\s+(?:a|ayant)\s+"
-    r"donné\s+procuration\s+(?:à\s+)?(?:Monsieur|Madame|M\.|Mme)?\s*"
+    r"(?:Monsieur|Madame|M\.|Mme)?\s*([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40}?)\s+"
+    r"(?:(?:a|ayant)\s+donné\s+procuration|donne\s+pouvoir(?:\s+pour\s+voter"
+    r"\s+en\s+son\s+nom)?)\s+(?:à\s+)?(?:Monsieur|Madame|M\.|Mme)?\s*"
     r"([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40})", re.I)
 REPRESENTATION = re.compile(
     r"([A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\- ]+ [A-ZÀ-Ÿ][a-zà-ÿ\-]+)\s+représenté?e?\s+par\s+"
@@ -229,7 +294,9 @@ def noms(bloc: str, ordre: str = "prenom_nom") -> list[str]:
     bloc = bloc.replace("-\n", "-").replace("\n", " ")
 
     trouves = []
-    if ordre == "prenom_nom":
+    if ordre == "civilite_nom":
+        trouves += [n.strip() for n in CIVILITE_NOM.findall(bloc)]
+    elif ordre == "prenom_nom":
         trouves += [f"{p} {n}" for n, p in NOM_INVERSE_CIVILITE.findall(bloc)]
         bloc = NOM_INVERSE_CIVILITE.sub(" ", bloc)
         for c in CIVILITES:
