@@ -22,6 +22,9 @@ couvrant vingt-deux ans, et un quatrième sur celui de l'intercommunalité :
                séance est alors enregistrée avec son texte intégral et le fait
                que le découpage a échoué.
 
+    liste      « Délibérations : » puis une ligne par acte, le vote en fin de
+               ligne (« approuvé à l'unanimité »). Découpage fiable tant que
+               l'en-tête est là — c'est lui qui l'autorise, pas la mise en page.
     capitales  titres en capitales, séparés du corps par un filet ou un saut.
                Découpage acceptable, mais silencieux sur ses limites : un
                intertitre en capitales devient une délibération de plus.
@@ -58,7 +61,7 @@ PUCE = re.compile(r"^\s*(?:\(cid:\d+\)|[•▪–])\s*(.{6,150}?)\s*:\s", re.M)
 
 def deliberations(texte: str) -> list[dict]:
     """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique."""
-    for analyseur in (_numerote, _acte_final, _puces, _capitales):
+    for analyseur in (_numerote, _acte_final, _puces, _liste, _capitales):
         sorties = analyseur(texte)
         if sorties:
             return sorties
@@ -177,6 +180,49 @@ def _apres_entete(texte: str) -> str:
     return texte
 
 
+# « Délibérations : » ouvre la liste ; la levée de séance ou la signature la
+# ferme. L'en-tête est le marqueur : sans lui on ne découpe pas, car une suite
+# de lignes n'est pas en soi une suite de délibérations.
+OUVERTURE_LISTE = re.compile(r"^\s*-?\s*D[ée]lib[ée]rations?\s*:\s*$", re.M | re.I)
+FERMETURE_LISTE = re.compile(
+    r"(La séance est levée|Fait et délibéré|Le Maire,|La Présidente,|Le Président,)",
+    re.I)
+# Le vote clôt la ligne : « … approuvé à l'unanimité », « … à la majorité ».
+VOTE_EN_FIN = re.compile(
+    r"[,\s]+((?:approuv|adopt|rejet|refus|valid)[eé]{1,2}s?\s+)?"
+    r"[àa]\s+(?:l['’]unanimité|la majorité)[^.]*$", re.I)
+
+
+def _liste(texte: str) -> list[dict]:
+    """Une ligne par délibération, sous un en-tête qui l'annonce."""
+    ouverture = OUVERTURE_LISTE.search(texte)
+    if not ouverture:
+        return []
+    corps = texte[ouverture.end():]
+    fin = FERMETURE_LISTE.search(corps)
+    if fin:
+        corps = corps[:fin.start()]
+
+    sorties = []
+    for ligne in corps.splitlines():
+        ligne = re.sub(r"\s+", " ", ligne).strip(" -–—\t")
+        if len(ligne) < 12:
+            continue
+        # Une ligne qui commence en minuscule prolonge la précédente : le PDF a
+        # replié un titre trop long, ce n'est pas une délibération de plus.
+        if ligne[0].islower() and sorties:
+            sorties[-1]["texte"] = (sorties[-1]["texte"] + " " + ligne).strip()
+            continue
+        titre = VOTE_EN_FIN.sub("", ligne).strip(" ,;:.")
+        if len(titre) < 8:
+            continue
+        sorties.append(_enrichir({
+            "regime": "liste", "numero_seance": None, "numero_acte": None,
+            "titre": titre[:255], "texte": ligne,
+        }))
+    return sorties
+
+
 def _capitales(texte: str) -> list[dict]:
     """Dernier recours : les titres sont en capitales, le corps ne l'est pas.
 
@@ -235,7 +281,7 @@ NOM_INVERSE_CIVILITE = re.compile(
 # procuration à », « ayant donné procuration » sans préposition, et « donne
 # pouvoir pour voter en son nom à ».
 PROCURATION = re.compile(
-    r"(?:Monsieur|Madame|M\.|Mme)?\s*([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40}?)\s+"
+    r"(?:Monsieur|Madame|M\.|Mme)?\s*([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40}?)\s*\(?\s*"
     r"(?:(?:a|ayant)\s+donné\s+procuration|donne\s+pouvoir(?:\s+pour\s+voter"
     r"\s+en\s+son\s+nom)?)\s+(?:à\s+)?(?:Monsieur|Madame|M\.|Mme)?\s*"
     r"([A-ZÀ-Ÿa-zà-ÿ'’\- ]{4,40})", re.I)
