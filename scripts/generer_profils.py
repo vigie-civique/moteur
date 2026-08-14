@@ -219,20 +219,36 @@ def entourage(conn, noms_elus: set[tuple]) -> list[dict]:
         _ajouter(r, "association")
 
     # 2. Dirigeants d'une structure liée à la commune par l'argent public.
-    #    On part des relations de la commune vers la structure, puis on remonte
-    #    à ses dirigeants — l'inverse ferait entrer toute la base SIRENE.
+    #    Ces relations ne vont pas toutes dans le même sens : `subventionné`
+    #    part de la commune vers le bénéficiaire, `prestataire` part du
+    #    titulaire vers la commune. Filtrer sur un seul côté ne rendait rien.
+    #    On collecte donc l'autre extrémité, quelle qu'elle soit.
+    commune_id = (conn.execute(
+        "SELECT id FROM entities WHERE type='service' AND name LIKE ?"
+        " ORDER BY length(name) LIMIT 1", (f"Commune de {COMMUNE_NAME}%",)
+    ).fetchone() or {"id": -1})["id"]
+
     for motif in ("subventionné", "prestataire", "bailleur_commune",
                   "locataire_commune"):
-        for r in conn.execute("""
+        structures = set()
+        for r in conn.execute(
+            "SELECT from_id, to_id FROM relations WHERE relation_type=?", (motif,)
+        ):
+            for côté in (r["from_id"], r["to_id"]):
+                if côté != commune_id:
+                    structures.add(côté)
+        if not structures:
+            continue
+        trous = ",".join("?" * len(structures))
+        for r in conn.execute(f"""
             SELECT p.firstname, p.lastname, rd.relation_type, rd.source,
                    e2.name AS organisation
-              FROM relations rl
-              JOIN entities e2 ON e2.id       = rl.to_id
-              JOIN relations rd ON rd.to_id   = e2.id
+              FROM relations rd
+              JOIN entities e2 ON e2.id       = rd.to_id
               JOIN persons  p  ON p.entity_id = rd.from_id
-             WHERE rl.relation_type = ?
+             WHERE rd.to_id IN ({trous})
                AND rd.relation_type IN ('président','dirigeant','gérant')
-        """, (motif,)):
+        """, tuple(structures)):
             _ajouter(r, motif)
 
     sortie = sorted(resultats.values(),
