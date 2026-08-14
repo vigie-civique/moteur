@@ -28,6 +28,8 @@ import json
 import re
 import urllib.parse
 import urllib.request
+import shutil
+import subprocess
 from pathlib import Path
 
 import pdfplumber
@@ -192,7 +194,42 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     return cur.lastrowid
 
 
-def traiter(conn, doc, portee: str, verbose: bool = True) -> dict:
+def ocr(chemin: Path, langue: str = "fra") -> str:
+    """Texte d'un PDF scanné, par reconnaissance optique.
+
+    Le PDF reconnu est écrit à côté de l'original et conservé : l'OCR coûte
+    plusieurs dizaines de secondes par document, et la relecture d'un corpus ne
+    doit pas les repayer. L'original n'est jamais remplacé — c'est la pièce.
+
+    Certaines communes scannent la totalité de leurs procès-verbaux : sur l'une
+    des trois instances, 34 séances sur 48 sont des images. Sans cette étape,
+    le dispositif y catalogue des documents qu'il ne sait pas lire.
+    """
+    cible = chemin.with_suffix(".ocr.pdf")
+    if cible.exists() and cible.stat().st_size > 0:
+        return texte_pdf(cible)
+    if not shutil.which("ocrmypdf"):
+        print("  [ocr] ocrmypdf introuvable — `brew install ocrmypdf`")
+        return ""
+    langues = subprocess.run(["tesseract", "--list-langs"],
+                             capture_output=True, text=True).stdout
+    if langue not in langues:
+        print(f"  [ocr] langue tesseract « {langue} » absente")
+        return ""
+    print(f"  [ocr] {chemin.name} …", flush=True)
+    try:
+        subprocess.run(
+            ["ocrmypdf", "-l", langue, "--force-ocr", "--output-type", "pdf",
+             "--optimize", "0", "--jobs", "4", str(chemin), str(cible)],
+            check=True, capture_output=True, timeout=900)
+    except (subprocess.SubprocessError, OSError) as e:
+        print(f"  [ocr][échec] {chemin.name} → {e}")
+        return ""
+    return texte_pdf(cible)
+
+
+def traiter(conn, doc, portee: str, verbose: bool = True,
+            avec_ocr: bool = False) -> dict:
     """Télécharge, lit et enregistre un procès-verbal."""
     p = PORTEES[portee]
     chemin = telecharger(doc.url, doc.source)
@@ -200,16 +237,21 @@ def traiter(conn, doc, portee: str, verbose: bool = True) -> dict:
         return {"statut": "inaccessible", "delibs": 0}
 
     texte = texte_pdf(chemin)
+    ocrise = False
+    if len(texte) < MIN_TEXT_CHARS and avec_ocr:
+        texte = ocr(chemin)
+        ocrise = bool(texte)
     if len(texte) < MIN_TEXT_CHARS:
-        # Pas d'OCR ici : `cm_ocr --pdf-url … --date …` est fait pour ça, et le
-        # signaler vaut mieux que produire une séance vide qui passe pour lue.
+        # Sans reconnaissance optique, le signaler vaut mieux que produire une
+        # séance vide qui passerait pour lue.
         enregistrer_seance(conn, doc, portee)
         return {"statut": "sans_couche_texte", "delibs": 0}
 
     delibs = deliberations(texte)
     pres = presences(texte, _ordre_noms(portee))
-    seance_id = enregistrer_seance(conn, doc, portee,
-                                   {"nb_deliberations": len(delibs), **pres})
+    seance_id = enregistrer_seance(
+        conn, doc, portee,
+        {"nb_deliberations": len(delibs), "ocr": ocrise, **pres})
 
     if not delibs:
         conn.execute(
@@ -235,7 +277,7 @@ def traiter(conn, doc, portee: str, verbose: bool = True) -> dict:
 
 def collecter(portee: str = "commune", depuis: str | None = None,
               limit: int = 0, commit: bool = True,
-              catalogue_seul: bool = False) -> None:
+              catalogue_seul: bool = False, avec_ocr: bool = False) -> None:
     instance = COMMUNE_NAME if portee == "commune" else (EPCI_NOM or "EPCI")
     print(f"\n[conseils] {instance} — catalogue des procès-verbaux")
 
@@ -271,13 +313,15 @@ def collecter(portee: str = "commune", depuis: str | None = None,
                 enregistrer_seance(conn, doc, portee)
                 resume["ok"] += 1
                 continue
-            r = traiter(conn, doc, portee)
+            r = traiter(conn, doc, portee, avec_ocr=avec_ocr)
             resume[r["statut"]] += 1
             resume["delibs"] += r["delibs"]
 
+    reste = resume["sans_couche_texte"]
     print(f"\n[conseils] {resume['ok']} séances lues, {resume['delibs']} "
-          f"délibérations, {resume['sans_couche_texte']} sans couche texte "
-          f"(→ cm_ocr), {resume['inaccessible']} inaccessibles")
+          f"délibérations, {reste} sans couche texte"
+          + ("" if avec_ocr else " (relancer avec --ocr)")
+          + f", {resume['inaccessible']} inaccessibles")
 
 
 def import_conseil_municipal() -> None:
@@ -298,6 +342,8 @@ if __name__ == "__main__":
     ap.add_argument("--catalogue", action="store_true",
                     help="enregistrer les séances sans lire les PDF")
     ap.add_argument("--commit", action="store_true", help="écrire en base")
+    ap.add_argument("--ocr", action="store_true",
+                    help="reconnaissance optique des PDF scannés (ocrmypdf)")
     ap.add_argument("--url", help="traiter un seul document (URL du PDF)")
     ap.add_argument("--date", help="date du document passé par --url")
     args = ap.parse_args()
@@ -311,9 +357,10 @@ if __name__ == "__main__":
         if not args.commit:
             raise SystemExit("  [dry-run] rien écrit")
         with transaction() as conn:
-            print(traiter(conn, doc, args.portee))
+            print(traiter(conn, doc, args.portee, avec_ocr=args.ocr))
     else:
         depuis = args.depuis
         if depuis and len(depuis) == 4:
             depuis = f"{depuis}-01-01"
-        collecter(args.portee, depuis, args.limit, args.commit, args.catalogue)
+        collecter(args.portee, depuis, args.limit, args.commit, args.catalogue,
+                  avec_ocr=args.ocr)

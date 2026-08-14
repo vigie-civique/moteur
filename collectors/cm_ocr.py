@@ -390,17 +390,17 @@ def discover(limit: int = 0) -> list[dict]:
     depuis 2004 sont liés depuis la même page : le catalogue suffit, et le
     balayage a été supprimé plutôt que réécrit.
     """
-    from .cm_brassac import catalogue
+    from .connecteurs import charger
 
     conn = get_conn(read_only=True)
     out = []
-    for pv in catalogue():
+    for pv in charger().catalogue_pv('commune'):
         n = conn.execute(
             "SELECT COUNT(*) FROM events WHERE date=? AND type='deliberation'",
-            (pv["date"],),
+            (pv.date,),
         ).fetchone()[0]
         if n == 0:
-            out.append({"cr_url": pv["url"], "pdf_url": pv["url"], "date": pv["date"]})
+            out.append({"cr_url": pv.url, "pdf_url": pv.url, "date": pv.date})
         if limit and len(out) >= limit:
             break
     conn.close()
