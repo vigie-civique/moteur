@@ -30,3 +30,4 @@ public/static/data/
 dashboard/node_modules/
 dashboard/dist/
 dashboard/.svelte-kit/
+config/publication_rules.json

@@ -82,7 +82,9 @@ INTERDITS = [
     ),
     (
         "base_nommee",
-        re.compile(r"\.db$"),
+        # Un NOM de base, pas le suffixe seul : `".db"` figure légitimement dans
+        # les listes d'extensions à exclure.
+        re.compile(r"[A-Za-z0-9_-]+\.db$"),
         "nom de base de données en dur — utiliser config.DB_PATH",
     ),
     (

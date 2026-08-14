@@ -95,7 +95,7 @@ def fetch_all_jo(cp: str = CODE_POSTAL) -> list[dict]:
 # Source 2 : page « associations » du site communal
 # ----------------------------------------------------------------
 
-# « Brassac Basket Club \n THEVENARD Raphaël \n 119 avenue du Sidobre… »
+# « Club sportif \n NOM Prénom \n 119 avenue … »
 # Le responsable est la ligne qui suit le nom, en « NOM Prénom ».
 # Le prénom composé s'écrit « Jean-François » : le tiret n'est admis que suivi
 # d'une majuscule, sinon la capture s'arrête sur « Jean- » et le responsable

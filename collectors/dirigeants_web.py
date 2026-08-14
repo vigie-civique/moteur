@@ -52,7 +52,7 @@ RELATION_DEFAUT = "dirigeant"
 # capté par lui. Et les variantes **accentuées ET féminines** doivent toutes être
 # listées : la regex est bâtie sur ces chaînes littérales, si bien qu'oublier
 # « présidente » ou « trésorière » fait rater silencieusement la moitié des
-# bureaux d'association (constaté au test : « Mme Sophie BERGER (présidente) »
+# bureaux d'association (constaté au test : « Mme Prénom NOM (présidente) »
 # et « Trésorière : Marie Martin » n'étaient pas détectés).
 ROLES = [
     ("vice-présidente", "membre_bureau"),
@@ -137,7 +137,7 @@ _FAUX_NOMS = {
 # comme un « vrai » mot pour juger de la plausibilité.
 _PARTICULES = {"DE", "DU", "DES", "LE", "LA", "VON", "VAN", "D", "L"}
 
-# Civilités à retirer du nom capturé : « Mme Sophie BERGER » → « Sophie BERGER ».
+# Civilités à retirer du nom capturé : « Mme Prénom NOM » → « Prénom NOM ».
 _CIVILITES = re.compile(r"^(?:M\.|MM\.|Mme|Mmes|Mlle|Monsieur|Madame|"
                         r"Mademoiselle)\s+", re.IGNORECASE)
 

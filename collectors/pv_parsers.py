@@ -147,8 +147,8 @@ def _puces(texte: str) -> list[dict]:
 # ── Présences ────────────────────────────────────────────────────────────────
 #
 # Deux conventions d'écriture, qui exigent deux lectures :
-#   « Présents : Mesdames Delphine X, Christine Y et Messieurs Stéphane Z »
-#   « Présents : PAILHE FERNANDEZ Brigitte, ALIBERT Nicolas, … »
+#   « Présents : Mesdames Prénom NOM, Prénom NOM et Messieurs Prénom NOM »
+#   « Présents : NOM COMPOSÉ Prénom, NOM Prénom, … »
 # La seconde met le patronyme d'abord et peut lui donner deux mots.
 
 CIVILITES = ("Mesdames", "Messieurs", "Madame", "Monsieur", "Mmes", "Mme",

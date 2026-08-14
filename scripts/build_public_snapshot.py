@@ -336,7 +336,7 @@ def compilateur_redaction(conn, ids_publics: set[int]):
 
     Le filtre entités écarte bien un particulier du graphe, mais son nom
     ressortait quand même par les libellés : « Aide façade — M. Farget »,
-    « Cession … à Nathalie FOURNIER (veuve COURRENT) ». Le texte est une sortie
+    « Cession … à Prénom NOM (veuve NOM) ». Le texte est une sortie
     comme une autre, il doit passer le même filtre.
 
     On ne masque que des formes non ambiguës — nom complet, ou civilité + nom
@@ -371,8 +371,8 @@ def compilateur_redaction(conn, ids_publics: set[int]):
     if not motifs:
         return (lambda t: t), Counter()
 
-    # Les formes longues d'abord : sinon « Nathalie FOURNIER » consomme le
-    # texte avant que « Nathalie FOURNIER (veuve COURRENT) » ait sa chance.
+    # Les formes longues d'abord : sinon « Prénom NOM » consomme le texte
+    # avant que « Prénom NOM (veuve NOM) » ait sa chance.
     # `(?<!\w)` / `(?!\w)` plutôt que `\b` : certains noms d'usage finissent par
     # une parenthèse — « AEMMER (HAUSLER) » — devant laquelle `\b` ne matche pas.
     motif = re.compile(
@@ -1153,7 +1153,7 @@ def relation_pertinente(rel: dict, civic_ids: set[int],
     reçu de l'argent public (on publie alors qui dirige la structure payée).
 
     Exception : les **entreprises individuelles**. Une EI n'est pas une personne
-    morale distincte de son exploitant : « Irène LAFONT dirige IRENE LAFONT » est
+    morale distincte de son exploitant : « Prénom NOM dirige PRENOM NOM » est
     une tautologie issue de SIRENE, qui n'informe personne et re-expose un
     particulier. Le projet traite déjà l'EI comme une donnée personnelle
     (679 domiciles masqués sur la carte) ; on reste cohérent.
@@ -1162,7 +1162,7 @@ def relation_pertinente(rel: dict, civic_ids: set[int],
       - forme juridique 1000 (907 entités) ;
       - **même nom normalisé aux deux bouts** — indispensable car 10 entités ont
         un `legal_form_code` NULL (l'enrichissement SIRENE ne l'a pas rempli) et
-        passaient donc le premier filtre : « Marc ESTIENNE → MARC ESTIENNE »,
+        passaient donc le premier filtre : « Prénom NOM → PRENOM NOM »,
         « Philippe BRISSAC → PHILIPPE BRISSAC »…
     """
     bouts = {rel.get("from_id"), rel.get("to_id")} - {None}

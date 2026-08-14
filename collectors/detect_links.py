@@ -28,7 +28,7 @@ from pathlib import Path
 from .config import DB_PATH   # la base est nommée dans la config, pas ici
 
 # Seuil max de personnes partageant un patronyme pour suggérer un lien familial.
-# Au-delà, le patronyme est considéré trop courant (ex : MARTIN, GRANIER, ESTIENNE).
+# Au-delà, le patronyme est considéré comme trop courant sur le territoire.
 MAX_SURNAME_FREQ = 5
 
 # IDs des entités "fantômes" créées pour les subventions (à matcher avec vraies entités)
@@ -50,7 +50,7 @@ def normalize(s: str) -> str:
 def parse_married_name(full_name: str):
     """
     Extrait le nom de naissance (entre parenthèses) d'un nom SIRENE.
-    "Irene LAFONT (DE CAZENOVE)" → ("Irene LAFONT", "DE CAZENOVE")
+    "Prénom NOM (NOM DE NAISSANCE)" → ("Prénom NOM", "NOM DE NAISSANCE")
     Retourne (None, None) si pas de parenthèses.
     """
     m = re.search(r"\(([^)]+)\)\s*$", full_name.strip())
@@ -124,7 +124,7 @@ def detect_entity_duplicates(cur, entities) -> int:
 def detect_maiden_names(cur, persons) -> int:
     """
     Signal maiden_name : personne avec nom marital (parenthèses SIRENE).
-    "LAFONT (DE CAZENOVE)" → liens vers tous les porteurs du nom DE CAZENOVE.
+    "NOM (NOM DE NAISSANCE)" → liens vers tous les porteurs du nom de naissance.
     Score élevé : le signal est très fiable (source officielle SIRENE).
     """
     count = 0
@@ -211,7 +211,7 @@ def detect_rare_surnames(cur, persons) -> int:
     """
     Signal same_surname : patronyme rare (≤ MAX_SURNAME_FREQ) partagé entre personnes.
     Score faible — hypothèse à confirmer, non applicable aux patronymes courants
-    (ESTIENNE, GRANIER, MARTIN…).
+    (les trois ou quatre plus répandus de la commune).
     """
     surname_map: dict[str, dict] = {}
     for p in persons:
@@ -246,7 +246,7 @@ def detect_rare_surnames(cur, persons) -> int:
 def detect_toponyms(cur, entities) -> int:
     """
     Signal toponym : un nom de lieu (place) apparaît dans le nom d'une autre entité.
-    Ex : "Château de Solier" (place) ↔ "SCI DU SOLIER" (business).
+    Ex : "Château de X" (place) ↔ "SCI DU X" (business).
     """
     places = [e for e in entities if e["type"] == "place" and len(e["name"]) >= 4]
     count = 0
