@@ -30,4 +30,5 @@ public/static/data/
 dashboard/node_modules/
 dashboard/dist/
 dashboard/.svelte-kit/
-config/publication_rules.json
+config/publication_rules.json    # écrit par init_instance ; l'exemple est versionné
+public/src/lib/instance.js
