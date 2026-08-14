@@ -30,5 +30,7 @@ public/static/data/
 dashboard/node_modules/
 dashboard/dist/
 dashboard/.svelte-kit/
-config/publication_rules.json    # écrit par init_instance ; l'exemple est versionné
+# Écrits par l'amorçage et le générateur de libellés : ils décrivent une
+# commune. Le dépôt en livre les exemples.
+config/publication_rules.json
 public/src/lib/instance.js
