@@ -5,8 +5,8 @@ Bibliothèque de fonctions, sans pipeline : catégorisation d'un titre de
 délibération, extraction du vote, des montants et des noms cités, découpage
 d'un texte en sections, rattachement des personnes à un événement.
 
-Les collecteurs qui l'utilisent — `cm_brassac`, `ccsvp_scraper`, `cm_ocr` —
-apportent chacun leur lecture de la source ; ce module ne connaît que du texte.
+Les collecteurs qui l'utilisent — `conseils`, `cm_ocr` — apportent chacun leur
+lecture de la source ; ce module ne connaît que du texte.
 """
 
 import re
@@ -289,12 +289,12 @@ def split_into_deliberations(paragraphs: list[str]) -> list[dict]:
 # `parse_cm_file`, `upsert_cm_to_db`, `upsert_deliberation` et `run_cm_parser`
 # lisaient les comptes rendus HTML déposés dans `data/cm_records/` et écrivaient
 # `source='lasalle.fr'` en dur. Rien de tout cela ne s'applique ici : les PV
-# sont des PDF catalogués sur le site et traités par `cm_brassac`. Les
+# sont des PDF catalogués sur le site et traités par `conseils`. Les
 # supprimer plutôt que les garder inertes évite qu'un appel distrait ne
 # réinjecte le nom d'une autre commune comme source dans cette base.
 #
 # Ce module ne fournit plus que ses ANALYSEURS, réutilisés tels quels par
-# `cm_brassac`, `ccsvp_scraper` et `cm_ocr` : catégorisation d'un titre,
+# `conseils` et `cm_ocr` : catégorisation d'un titre,
 # extraction des votes, des montants, des noms, découpage par sections en
 # capitales, et rattachement des personnes à un événement. C'est la partie qui
 # s'est portée sans retouche.

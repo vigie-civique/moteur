@@ -3,7 +3,7 @@ Importeur des SAISIES LOCALES — subventions votées, baux, transactions.
 
 Ce module ne va rien chercher en ligne : il charge `config/seed_local.json`,
 qui contient ce qu'un humain a relevé dans les documents. La lecture des procès-
-verbaux du conseil municipal, elle, est automatique et vit dans `cm_brassac`.
+verbaux du conseil municipal, elle, est automatique et vit dans `conseils`.
 """
 import json
 import re
@@ -83,7 +83,7 @@ def _import_cr_catalogue(conn, commune_id: int, seed: dict):
         # d'origine préfixait systématiquement `{base}/CR/`, qui est le chemin
         # des comptes rendus de lasalle.fr : ici les PV sont des PDF déposés
         # dans /wp-content/uploads/, sans motif d'URL commun. Ce catalogue-là
-        # n'a d'ailleurs plus à être saisi : `cm_brassac` le lit sur le site.
+        # n'a d'ailleurs plus à être saisi : `conseils` le lit sur le site.
         url = cr["url"] if cr["url"].startswith("http") else f"{base}/{cr['url'].lstrip('/')}"
         if conn.execute(
             "SELECT 1 FROM events WHERE type='deliberation' AND source_url=?", (url,)

@@ -2,7 +2,7 @@
 cm_ocr.py — Collecteur CR du Conseil Municipal diffusés en PDF SCANNÉ (image).
 
 Les procès-verbaux les plus anciens de brassac.fr (avant 2014) sont des PDF
-*scannés*, sans couche texte : `cm_brassac` les catalogue puis passe la main
+*scannés*, sans couche texte : `conseils` les catalogue puis passe la main
 ici. Ce collecteur les traite de bout en bout :
 
   1. résout l'entrée en (PDF, url de CR, date) — page CR, url PDF, fichier local, ou --discover ;
@@ -63,7 +63,7 @@ MIN_TEXT_CHARS = 400
 # passaient au travers du découpage (l'ancien motif n'admettait qu'UN caractère
 # de séparation). On tolère donc jusqu'à trois caractères parmi espace . _ -.
 # Découpe : « 48/2026 : n° 4713 : » — la numérotation de Brassac, la même que
-# celle des PV textuels (cf. cm_brassac.ENTETE). L'OCR abîme les séparateurs,
+# celle des PV textuels lus par `conseils`. L'OCR abîme les séparateurs,
 # d'où la tolérance sur les caractères entre les deux nombres.
 DEL_RE = re.compile(r"(\d{1,3})\s*/\s*(20\d{2})\s*[\s.:_–-]{0,3}(?:n[°ºo]\s*\d{3,5})?", re.I)
 _HEADER = re.compile(
