@@ -134,8 +134,15 @@ def verifier(source: Path, liste: list[Path]) -> list[str]:
     for f in liste:
         rel = f.relative_to(source)
         try:
-            texte = f.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError) as e:
+            octets = f.read_bytes()
+            # L'octet nul est le marqueur de binaire, et il est décodable en
+            # UTF-8 : s'en remettre au seul échec de décodage laissait passer
+            # tout format qui n'a pas de séquence invalide. Aucun fichier source
+            # n'en contient.
+            if b"\x00" in octets:
+                raise ValueError("octet nul — fichier binaire")
+            texte = octets.decode("utf-8")
+        except (UnicodeDecodeError, ValueError, OSError) as e:
             # Un fichier qu'on ne sait pas lire est un fichier qu'on ne sait pas
             # contrôler. Passer son chemin revenait à distribuer sans regarder :
             # une base SQLite est illisible en UTF-8, et c'est exactement ce que

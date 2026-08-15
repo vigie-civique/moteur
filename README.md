@@ -169,6 +169,20 @@ cd public && npm install && cd ..
 ./deploy/publier-site.sh
 ```
 
+### Contrôles
+
+```bash
+pip install pytest
+python3 -m pytest                        # 74 tests, ~2 s, sans réseau ni base
+python3 scripts/verifier_generique.py    # le moteur ne nomme aucune commune
+```
+
+Ils portent sur les trois fonctions qui décident de ce qui sort du dispositif :
+le filtre de publication, le classement de périmètre, et la liste des fichiers
+distribués. Chacune a laissé passer un défaut réel en août 2026. La même chose
+tourne en intégration continue à chaque envoi, avec en plus la chaîne complète
+sur une commune factice — base, snapshot, contrôle d'étanchéité, site.
+
 `init_instance.py` liste en fin d'exécution ce qui reste à renseigner à la main
 — typiquement l'adresse du site de la mairie et le connecteur qui sait le lire.
 

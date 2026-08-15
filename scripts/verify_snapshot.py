@@ -15,12 +15,17 @@ Sortie : rapport groupé par règle, exit 1 à la moindre violation bloquante.
 À câbler à la fin de toute génération/déploiement : un build qui fuit échoue.
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RULES = json.loads((ROOT / "config" / "publication_rules.json").read_text())
+# `VIGIE_RULES` — même surcharge que dans le builder : les tests tournent sur
+# l'exemple versionné. Le contrôleur reste indépendant du builder, il lit
+# seulement le même fichier de règles.
+RULES = json.loads(Path(os.environ.get("VIGIE_RULES")
+                        or ROOT / "config" / "publication_rules.json").read_text())
 
 PUBLIC_CONFIDENCE = set(RULES["confidence"]["public"])
 PRIVATE_MARKERS = [m.lower() for m in RULES["relations"]["private_markers"]]

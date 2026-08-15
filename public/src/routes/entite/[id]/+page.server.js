@@ -17,10 +17,20 @@ export const prerender = true
 
 const DATA_DIR = join(process.cwd(), 'static', 'data')
 
-/** Liste des pages à prérendre : les acteurs présents dans l'index public. */
+/** Liste des pages à prérendre : les acteurs présents dans l'index public.
+ *
+ * Snapshot absent → aucune fiche à prérendre, pas un build cassé. C'était la
+ * seule route à ne pas tolérer cette absence : le reste du site se construit
+ * vide et le dit, celle-ci s'arrêtait sur un ENOENT. Un dépôt fraîchement
+ * cloné n'a pas de données — c'est même son état normal.
+ */
 export function entries() {
-  const index = JSON.parse(readFileSync(join(DATA_DIR, 'entity_index.json'), 'utf8'))
-  return (index.entities || []).map((e) => ({ id: String(e.id) }))
+  try {
+    const index = JSON.parse(readFileSync(join(DATA_DIR, 'entity_index.json'), 'utf8'))
+    return (index.entities || []).map((e) => ({ id: String(e.id) }))
+  } catch {
+    return []
+  }
 }
 
 /**

@@ -29,14 +29,20 @@ après avoir changé le nom public du site ou le courriel de contact :
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INSTANCE = ROOT / "config" / "instance.json"
-REGLES = ROOT / "config" / "publication_rules.json"
+# Mêmes surcharges que le reste du moteur (`VIGIE_INSTANCE`, `VIGIE_RULES`) :
+# l'intégration continue construit le site sur l'instance factice, un dépôt
+# public n'ayant ni instance ni règles à lui.
+INSTANCE = Path(os.environ.get("VIGIE_INSTANCE")
+                or ROOT / "config" / "instance.json")
+REGLES = Path(os.environ.get("VIGIE_RULES")
+              or ROOT / "config" / "publication_rules.json")
 # Deux applications SvelteKit distinctes, une seule identité. L'atelier est resté
 # hors du dispositif pendant que le site public en sortait : il nommait encore la
 # commune d'origine 40 fois dans 21 fichiers, jusque dans les titres de pages et

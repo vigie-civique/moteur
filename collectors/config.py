@@ -20,14 +20,22 @@ Amorcer une instance :
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-INSTANCE = ROOT / "config" / "instance.json"
+
+# `VIGIE_INSTANCE` désigne un autre fichier de périmètre. Utilisé par les tests,
+# qui doivent tourner sur une instance factice sans qu'un dépôt fraîchement
+# cloné ait à en configurer une vraie — et utilisable pour vérifier un périmètre
+# avant de l'installer. En dehors de ces deux cas, il n'y a qu'une instance par
+# copie du moteur, et c'est voulu.
+INSTANCE = pathlib.Path(
+    os.environ.get("VIGIE_INSTANCE") or ROOT / "config" / "instance.json")
 
 if not INSTANCE.exists():
     raise SystemExit(
-        f"Aucune instance configurée : {INSTANCE.relative_to(ROOT)} est absent.\n"
+        f"Aucune instance configurée : {INSTANCE} est absent.\n"
         "Amorcer avec :  python3 scripts/init_instance.py <code INSEE>\n"
         "Exemple      :  python3 scripts/init_instance.py 81037"
     )
@@ -205,7 +213,11 @@ STEP_META = {
 # ── Chemins ──────────────────────────────────────────────────────────────────
 # La base porte le code INSEE et non le nom de la commune : deux communes
 # françaises peuvent s'appeler pareil, leurs codes non.
-DB_PATH     = ROOT / "db" / f"{COMMUNE_INSEE}.db"
+#
+# `VIGIE_DB` la déplace ailleurs — les tests s'en servent pour travailler sur
+# une base jetable plutôt que d'écrire dans le dépôt.
+DB_PATH     = pathlib.Path(
+    os.environ.get("VIGIE_DB") or ROOT / "db" / f"{COMMUNE_INSEE}.db")
 SCHEMA_PATH = ROOT / "db" / "schema.sql"
 TERRITOIRE  = ROOT / "territoire"
 PROFILS_DIR = ROOT / "profils"

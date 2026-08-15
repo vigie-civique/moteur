@@ -1,0 +1,31 @@
+[project]
+name = "vigie-civique"
+version = "1.0.0"
+description = "Observatoire citoyen des décisions publiques d'une petite commune"
+readme = "README.md"
+license = { file = "LICENSE" }
+# 3.11 pour la syntaxe `X | None` en annotation d'exécution et `tomllib`.
+# Le moteur tourne en 3.14 sur la machine de développement ; la borne basse est
+# ce qui a été vérifié par l'intégration continue, pas ce qui devrait marcher.
+requires-python = ">=3.11"
+
+[project.urls]
+Source = "https://github.com/"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `-q` par défaut : une suite qui déroule 74 lignes vertes ne se lit pas.
+addopts = "-q"
+# L'instance factice et l'exemple de règles sont posés par tests/conftest.py,
+# pas ici : ça éviterait une dépendance de plus (pytest-env) pour deux
+# variables, et surtout ça marche aussi quand un test est lancé à la main.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Erreurs réelles seulement : ce dépôt a une convention de commentaires dense et
+# de nommage français que le style anglo-saxon par défaut signalerait à tort.
+select = ["E9", "F", "B"]
+ignore = ["E501"]

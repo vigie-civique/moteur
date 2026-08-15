@@ -1,0 +1,104 @@
+name: contrôles
+
+# Ce que cette CI vérifie, et pourquoi elle est courte : les trois fonctions qui
+# décident ce qui sort du dispositif — le filtre de publication, le classement
+# de périmètre, et la liste des fichiers distribués. Chacune a laissé passer un
+# défaut réel en août 2026, aucune n'était couverte.
+#
+# Elle ne collecte rien : pas de réseau, pas de clé, pas d'Ollama. Les tests
+# tournent sur une instance factice et une base construite depuis db/schema.sql.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # La borne basse est celle qu'on annonce dans pyproject ; la haute est
+        # proche de la machine de développement. Entre les deux, c'est vérifié.
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Dépendances de test
+        # Pas requirements.txt : la suite ne doit dépendre ni des collecteurs ni
+        # de l'API. Si un test se met à réclamer requests, c'est qu'il sort sur
+        # le réseau, et il ne devrait pas.
+        run: pip install pytest
+      - name: Tests
+        run: python -m pytest
+
+  generique:
+    # Séparé des tests : ce contrôle est l'admission du kit. Le voir échouer
+    # seul dit immédiatement qu'une particularité locale est entrée dans le
+    # moteur, sans avoir à lire un rapport de suite.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Le moteur ne nomme aucune commune
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+        run: python scripts/verifier_generique.py
+
+  kit:
+    # Fabrique l'archive distribuable sur un dépôt sans instance ni base : c'est
+    # l'état d'un clone public. Une archive qui ne se construit pas là ne se
+    # construira pas chez celui qui la reprend.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: L'archive se construit et ne contient rien d'interdit
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+        run: python scripts/build_kit.py
+
+  site:
+    # La chaîne complète sur une commune qui n'existe pas : base vierge au
+    # schéma réel, snapshot, contrôle d'étanchéité, build. Elle ne publie rien,
+    # elle vérifie que rien ne casse entre la base et le HTML — c'est le
+    # parcours qu'un dépôt fraîchement cloné doit pouvoir suivre.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: public/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Base d'épreuve
+        env:
+          VIGIE_DB: db/ci.db
+        run: python tests/amorcer_base_ci.py
+      - name: Snapshot et contrôle d'étanchéité
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+          VIGIE_RULES: config/publication_rules.exemple.json
+          VIGIE_DB: db/ci.db
+        run: |
+          python scripts/build_public_snapshot.py
+          python scripts/verify_snapshot.py public/static/data
+      - name: Build
+        working-directory: public
+        run: |
+          npm ci
+          npm run build

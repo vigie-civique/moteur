@@ -1,0 +1,36 @@
+{
+  "_doc": "Instance FACTICE, réservée aux tests. Aucune commune réelle : les codes INSEE 99xxx n'existent pas, les noms non plus. Un test qui échouerait ne doit jamais faire douter d'une vraie collecte, et un dépôt fraîchement cloné doit pouvoir lancer sa suite sans configurer de périmètre.",
+  "commune_insee": "99001",
+  "commune_nom": "Testonville",
+  "code_postal": "99000",
+  "departement": "99",
+  "commune_siren": "219900017",
+  "commune_siret": "21990001700011",
+  "communes": {
+    "99001": {"nom": "Testonville", "cp": "99000", "population": 900},
+    "99002": {"nom": "Voisinbourg", "cp": "99000", "population": 400},
+    "99003": {"nom": "Les Essarts-d'Épreuve", "cp": "99010", "population": 250}
+  },
+  "communes_deleguees": {
+    "99004": {"nom": "Ancienville", "cp": "99000", "population": 0, "commune": "99002"}
+  },
+  "bruit_pv": ["MOTIF\\s+DE\\s+BRUIT\\s*$"],
+  "epci_nom": "CC des Épreuves Réunies",
+  "epci_siren": "209900019",
+  "commune_url": "https://exemple.invalid",
+  "epci_url": "https://epci.exemple.invalid",
+  "connecteur": "wordpress_rest",
+  "pages": {},
+  "prefecture_nom": "Préfecture de l'Épreuve",
+  "prefecture_url": "https://prefecture.exemple.invalid",
+  "prefecture_raa_path": "/raa",
+  "centroid": [45.0, 3.0],
+  "bbox": {"lat_min": 44.9, "lat_max": 45.1, "lng_min": 2.9, "lng_max": 3.1},
+  "site_url": "https://vigie.exemple.invalid",
+  "editeur": {
+    "nom": "Collectif d'épreuve",
+    "statut": "association",
+    "email": "contact@exemple.invalid",
+    "hebergeur": "Hébergeur d'épreuve"
+  }
+}

@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import json
 import re
@@ -38,7 +39,11 @@ from collectors.config import (  # noqa: E402
     EPCI_SIREN as EPCI_SIREN_C2,
 )
 from collectors.config import DB_PATH   # nommée dans la config
-RULES_PATH = ROOT / "config" / "publication_rules.json"
+# `VIGIE_RULES` désigne d'autres règles de publication — les tests s'en servent
+# pour tourner sur l'exemple versionné, un dépôt fraîchement cloné n'ayant pas
+# encore de règles à lui.
+RULES_PATH = Path(os.environ.get("VIGIE_RULES")
+                  or ROOT / "config" / "publication_rules.json")
 
 
 def load_rules(path: Path = RULES_PATH) -> dict:
