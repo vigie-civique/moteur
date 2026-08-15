@@ -41,6 +41,12 @@ config/publication_rules.json
 public/src/lib/instance.js
 dashboard/src/lib/instance.js
 
+# L'archive du kit : reconstruite à la demande par scripts/build_kit.py, jamais
+# versionnée. Elle l'a été jusqu'au 15/08/2026, quand le dépôt était le seul
+# canal de distribution — une copie du dépôt à l'intérieur du dépôt, qui
+# dérivait de HEAD à chaque commit sans que personne ne la refasse.
+public/static/kit/
+
 # Sauvegardes de collecte (vigie_collecte.sh) et journaux d'exécution.
 db/*.db.*
 logs/

@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
-"""Fabrique l'archive du kit réplicable, servie depuis le site public.
+"""Fabrique une archive du dispositif, et contrôle ce qu'elle contiendrait.
 
 Le kit est ce dépôt lui-même, moins ce qui appartient à une instance : sa
 configuration, ses données, sa base. Le contrôle de généricité
 (`verifier_generique.py`) est passé AVANT l'empaquetage — un kit qui nomme une
 commune n'est pas un kit.
 
-Pourquoi une archive et pas une forge : la création d'un compte sur un service
-d'hébergement de code avec une adresse de messagerie chiffrée est bloquée par
-les filtres anti-abus de ces plateformes. Plutôt que d'attendre le déblocage,
-le kit est distribué depuis le site lui-même — qui est déjà en ligne, déjà
-sous notre contrôle, et n'ajoute aucune dépendance.
+À quoi elle sert, maintenant que le code est publié : à emporter le dispositif
+là où un dépôt distant n'est pas commode — une machine sans réseau, un transfert
+par clé, un envoi à quelqu'un qui n'utilise pas git. Ce n'est plus le canal de
+distribution, c'est un utilitaire.
 
-Ce que ça coûte, et il faut le savoir : ni issues, ni contributions, ni
-historique consultable. C'est une première étape, pas une fin.
+Son autre usage, le plus important, est d'être un CONTRÔLE : elle refuse de se
+construire si un nom de personne, un secret, un chemin personnel ou un fichier
+binaire non identifié s'est glissé dans ce qui serait distribué. À ce titre elle
+tourne en intégration continue, même quand personne n'a besoin de l'archive.
 
-L'archive est reconstruite à chaque publication depuis le dépôt réduit, et son
-empreinte SHA-256 est publiée à côté : un fichier téléchargé doit pouvoir être
-vérifié.
+L'archive n'est PAS versionnée : elle l'a été jusqu'au 15/08/2026, copie du
+dépôt à l'intérieur du dépôt, qui dérivait de HEAD à chaque commit.
+
+Elle porte son empreinte SHA-256 à côté d'elle : un fichier transmis doit
+pouvoir être vérifié.
 
     python3 scripts/build_kit.py [--source ~/Claude/vigie-civique]
 """

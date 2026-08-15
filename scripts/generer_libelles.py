@@ -157,6 +157,10 @@ def construire() -> dict:
         # Site officiel de la mairie, cité par la page « méthode » comme source
         # des comptes rendus. Il y était écrit en dur.
         "COMMUNE_URL": inst.get("commune_url", ""),
+        # Dépôt d'où vient le code, cité par la page « répliquer ». Vide tant
+        # qu'une instance n'a pas le sien : la page invite alors à écrire plutôt
+        # que de pointer vers une adresse fausse.
+        "DEPOT_URL": inst.get("depot_url", ""),
         # Centre de la carte de l'atelier, qui portait les coordonnées de la
         # commune d'origine en dur. `init_instance.py` renseigne le centroïde ;
         # sans lui, la carte s'ouvre sur le centre de la France métropolitaine

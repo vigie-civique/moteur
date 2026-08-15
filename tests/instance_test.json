@@ -27,6 +27,7 @@
   "centroid": [45.0, 3.0],
   "bbox": {"lat_min": 44.9, "lat_max": 45.1, "lng_min": 2.9, "lng_max": 3.1},
   "site_url": "https://vigie.exemple.invalid",
+  "depot_url": "https://github.example.invalid/vigie-civique",
   "editeur": {
     "nom": "Collectif d'épreuve",
     "statut": "association",

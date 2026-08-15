@@ -108,6 +108,7 @@
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
       <a href="/methode">Méthode &amp; sources</a>
+      <a href="/repliquer">Répliquer</a>
       <a href="/mentions-legales">Mentions légales</a>
       <a href="/contact">Droit de réponse</a>
     </nav>

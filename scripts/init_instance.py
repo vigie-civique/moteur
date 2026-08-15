@@ -222,11 +222,17 @@ def construire(insee: str) -> dict:
         "prefecture_raa_path": "",
         "centroid": [centre[1], centre[0]] if centre[0] else [],
         "bbox": _bbox(commune["contour"]) if commune.get("contour") else [],
+        # Dépôt d'où vient ce code. Cité par la page « répliquer » du site :
+        # une instance qui a forké doit renvoyer vers SON dépôt, pas vers celui
+        # dont elle est partie. Vide, la page invite à écrire plutôt que de
+        # pointer une adresse fausse.
+        "depot_url": "",
         "_a_faire": [
             "vérifier commune_url et renseigner epci_url",
             "choisir le connecteur (cf. collectors/connecteurs/) et ses pages",
             "renseigner prefecture_raa_path (chemin des recueils des actes)",
             "confirmer le nom des communes déléguées, s'il y en a",
+            "renseigner depot_url si le code est publié quelque part",
         ],
     }
 

@@ -233,11 +233,17 @@ des personnes doit être tenu à la même règle que le site qu'il produit.
 Les fichiers `config/instance.json`, `config/profils_locaux.json` et
 `config/seed_local.json` restent sur la machine qui fait tourner la collecte.
 
-`scripts/build_kit.py` fabrique une archive distribuable de ce dépôt. Sa liste
-de fichiers vient de `git ls-files` et non d'un parcours du disque : ce qui
-n'est pas versionné n'est pas distribué, une règle unique et vérifiable. Un
-fichier qu'il ne sait pas lire est **refusé**, pas ignoré — une base SQLite est
-illisible en UTF-8, et c'est exactement ce que ce contrôle doit arrêter.
+`scripts/build_kit.py` fabrique une archive du dispositif — utile pour
+l'emporter là où un dépôt distant n'est pas commode. Sa liste de fichiers vient
+de `git ls-files` et non d'un parcours du disque : ce qui n'est pas versionné
+n'est pas distribué, une règle unique et vérifiable. Un fichier qu'il ne sait
+pas lire est **refusé**, pas ignoré.
+
+Son usage principal est cependant d'être un **contrôle** : il refuse de
+construire si un nom de personne, un secret, un chemin personnel ou un binaire
+non identifié s'est glissé dans ce qui serait distribué. Il tourne à ce titre en
+intégration continue, même quand personne n'a besoin de l'archive. L'archive
+elle-même n'est pas versionnée.
 
 ---
 

@@ -250,6 +250,10 @@
     une question technique, c'est une question d'accès à ce qu'on a choisi de ne
     pas publier.
   </p>
+  <p>
+    Le code est réutilisable, sous licence MIT&nbsp;:
+    <a href="/repliquer">répliquer sur votre commune</a>.
+  </p>
 
   <h2>Réutiliser les données</h2>
   <p>
