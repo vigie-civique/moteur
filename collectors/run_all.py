@@ -68,7 +68,20 @@ from collectors.budget         import run as run_budget
 from collectors.subventions_etat import run as run_subventions
 # main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
 # les options de run_all. On prend la fonction qu'il enveloppe.
-from collectors.cm_finances    import run_subventions as run_cm_flux
+from collectors.cm_finances    import run_subventions as _run_subv_cm
+from collectors.cm_finances    import run_baux as _run_baux
+
+
+def run_cm_flux(commit: bool = True):
+    """Les deux flux que le texte des séances porte : subventions et loyers.
+
+    Les baux ne sont dans aucun registre — ils sont votés en conseil et
+    présentés en tableau dans le procès-verbal. Ils avaient été saisis à la
+    main sur l'instance d'origine, la délibération citée en source : la matière
+    était donc déjà collectée, seule l'extraction manquait.
+    """
+    _run_subv_cm(commit=commit)
+    _run_baux(commit=commit)
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme

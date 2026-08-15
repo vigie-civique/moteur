@@ -24,6 +24,12 @@ base est consigné dans `audits/commissions_non_resolues.json` : injecter des
 patronymes tirés d'une expression régulière serait exactement ce que le reste
 du dispositif refuse de faire.
 
+Ces non-résolus ne sont pas du déchet, et le fichier le dit. Deux cas s'y
+mêlent : un élu d'une mandature antérieure, que le RNE ne donne pas puisqu'il
+ne porte que les mandats en cours ; et un membre NON ÉLU — les commissions
+extramunicipales en comptent, et c'est justement ce qu'aucune autre source ne
+publie. Le relever a de la valeur. L'inscrire d'office n'en aurait pas.
+
 **Comment il lit.** Trois formes stables d'un PV à l'autre :
 
     Finances – Budgets                    ← le titre, seul sur sa ligne
@@ -316,12 +322,33 @@ def run(dry_run: bool = False) -> dict:
                      90 if s["role"] == "responsable" else 80))
                 sieges_ecrits += cur.rowcount
 
+    # Regroupé par personne, avec ses commissions : la liste sert à quelqu'un
+    # qui arbitre, et une même personne revient dans plusieurs délibérations.
+    par_nom: dict[str, dict] = {}
+    for n in non_resolus:
+        e = par_nom.setdefault(n["nom"], {"nom": n["nom"], "occurrences": 0,
+                                          "commissions": []})
+        e["occurrences"] += 1
+        entree = {"commission": n["commission"], "delib": n["delib"],
+                  "event_id": n["event_id"]}
+        if entree not in e["commissions"]:
+            e["commissions"].append(entree)
+
     AUDITS.mkdir(parents=True, exist_ok=True)
     (AUDITS / "commissions_non_resolues.json").write_text(json.dumps({
         "note": "Noms lus dans une délibération de composition de commission, "
                 "sans personne correspondante en base. Aucune entité n'est "
                 "créée automatiquement : à arbitrer dans l'atelier.",
-        "noms": non_resolus,
+        "deux_cas_distincts": [
+            "un élu d'une mandature antérieure, absent de la base parce que le "
+            "RNE ne donne que les mandats en cours ;",
+            "un membre NON ÉLU — les commissions extramunicipales en comptent, "
+            "et c'est précisément ce qu'aucune autre source ne dit. Le relever "
+            "a de la valeur ; l'inscrire d'office n'en aurait pas.",
+        ],
+        "total": len(non_resolus),
+        "personnes": sorted(par_nom.values(),
+                            key=lambda x: (-x["occurrences"], x["nom"])),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[commissions] {ecrits} commission(s) créée(s) en `probable`, "

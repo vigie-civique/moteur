@@ -283,6 +283,158 @@ def run_subventions(commit: bool):
     print(f"\n✓ {ins} subventions insérées ({created} nouvelles entités créées).")
 
 
+# ── Baux et loyers communaux ──────────────────────────────────────────────────
+#
+# Les délibérations de tarifs présentent les loyers en tableau, une ligne par
+# local, le montant en fin de ligne :
+#
+#     81 rue de la Place - Appart.                            486.75
+#     Filature de Fer - Atelier Mme Nolwenn TESSIER               60.49
+#     116 rue de la Gravière - Comité des Fêtes                46.57
+#     Local Stade - Vélo Club                                  27.33
+#
+# L'occupant, quand il est nommé, suit le dernier tiret. Il est résolu contre
+# les entités DÉJÀ en base — jamais créé : un nom tiré d'une ligne de tableau
+# n'est pas une preuve d'existence.
+#
+# Ces flux entrent en `probable` : ils ne sont pas publiés, ils attendent
+# l'atelier. Deux raisons — le découpage local/occupant est une lecture, et la
+# PÉRIODICITÉ n'est pas toujours écrite. Le montant est enregistré TEL QU'IL
+# EST LU, sans annualisation : multiplier par douze un chiffre dont on ignore
+# s'il est mensuel, ce serait fabriquer une donnée.
+
+TITRE_BAUX = re.compile(r"LOYERS?|BAIL|BAUX|TARIFS?\s+LOCATION|LOCATION\s+", re.I)
+
+# Une ligne de tableau : un libellé, puis un montant en fin de ligne. Les
+# montants s'écrivent « 486.75 » ou « 461,05 ».
+# Les milliers sont tantôt séparés par une espace, tantôt collés : « 1 417,73 »
+# et « 1417.73 » désignent le même loyer. N'accepter que la forme groupée
+# écartait silencieusement les montants à quatre chiffres — c'est-à-dire les
+# plus gros.
+LIGNE_BAIL = re.compile(
+    r"^(?P<local>.{6,90}?)\s+"
+    r"(?P<montant>\d{1,3}(?:[\s ]\d{3})+|\d{1,7})[.,](?P<centimes>\d{2})\s*$")
+# Le PV dit parfois sa périodicité — « PAR MOIS » sur sa propre ligne.
+PERIODE_MOIS = re.compile(r"^\s*(PAR\s+MOIS|/\s*mois|mensuel)\s*$", re.I)
+# Lignes qui ressemblent à un tableau sans en être : totaux, indices, dates.
+BRUIT_BAIL = re.compile(r"^(total|indice|soit|montant|soit\s)", re.I)
+# Mots qui désignent un LOCAL et non son occupant. Ils apparaissent après le
+# même tiret que les noms d'occupants — « 81 rue de la Place - Appart. »,
+# « Lotissement les Glycines - Villa N° » — et un tableau de loyers en est plein.
+MOTS_DE_LOCAL = {
+    "appart", "appartement", "atelier", "bureau", "cave", "chambre", "dependance",
+    "dépendance", "etage", "étage", "garage", "grange", "hangar", "local", "locaux",
+    "logement", "maison", "parking", "rez", "salle", "studio", "terrain",
+    "terrasse", "terrasses", "villa", "villas", "gauche", "droite",
+}
+
+
+def extract_baux(conn) -> list[dict]:
+    """Lignes de loyer lues dans les délibérations de tarifs.
+
+    Chaque entrée : {annee, local, occupant, montant, mensuel, event_id}.
+    `occupant` peut être vide : beaucoup de lignes ne désignent qu'un logement.
+    """
+    out, vus = [], set()
+    for r in conn.execute(
+        "SELECT id, date, title, content FROM events "
+        "WHERE type IN ('deliberation','conseil_municipal') AND content IS NOT NULL"
+    ):
+        if not TITRE_BAUX.search(r["title"] or ""):
+            continue
+        annee = int((r["date"] or "0")[:4]) or None
+        if not annee:
+            continue
+        mensuel = False
+        for ligne in (r["content"] or "").splitlines():
+            nu = ligne.strip()
+            if PERIODE_MOIS.match(nu):
+                mensuel = True
+                continue
+            m = LIGNE_BAIL.match(nu)
+            if not m or BRUIT_BAIL.match(nu):
+                continue
+            local = " ".join(m.group("local").split()).strip(" -–")
+            montant = _to_float(f"{m.group('montant')},{m.group('centimes')}")
+            if montant <= 0 or montant > 100000:
+                continue
+            # L'occupant suit le dernier tiret, s'il y en a un — sauf quand ce
+            # dernier segment désigne encore le LOCAL. « Lotissement les
+            # Glycines - Villa N° » se résolvait sinon vers une entreprise
+            # nommée « LAURENT VILLA », à qui la base aurait attribué un loyer
+            # de 1 418 € : une erreur nominative, la seule espèce que ce
+            # dispositif ne peut pas se permettre.
+            occupant = ""
+            morceaux = re.split(r"\s+[-–]\s+", local)
+            if len(morceaux) > 1 and len(morceaux[-1]) >= 3:
+                candidat = morceaux[-1].strip()
+                premier = re.split(r"\W+", candidat.lower())[0]
+                if premier not in MOTS_DE_LOCAL:
+                    occupant = candidat
+            cle = (annee, local.lower())
+            if cle in vus:
+                continue
+            vus.add(cle)
+            out.append({"annee": annee, "local": local, "occupant": occupant,
+                        "montant": montant, "mensuel": mensuel,
+                        "event_id": r["id"]})
+    return out
+
+
+def run_baux(commit: bool) -> int:
+    conn = get_conn()
+    res = Resolver(conn)
+    lignes = extract_baux(conn)
+    print(f"\n[baux] {len(lignes)} ligne(s) de loyer extraites des CR")
+
+    a_inserer, sans_occupant, non_resolus = [], 0, []
+    for b in lignes:
+        if not b["occupant"]:
+            sans_occupant += 1
+            continue
+        to_id, matched = res.resolve(b["occupant"])
+        if to_id is None:
+            non_resolus.append(b)
+            continue
+        a_inserer.append({**b, "entity_id": to_id, "matched": matched})
+
+    print(f"  occupant résolu : {len(a_inserer)}  |  local sans occupant nommé : "
+          f"{sans_occupant}  |  occupant non résolu : {len(non_resolus)}")
+    for b in a_inserer[:12]:
+        unite = "€/mois" if b["mensuel"] else "€"
+        print(f"    {b['annee']}  {b['montant']:>8.2f} {unite:6} "
+              f"{b['local'][:44]:44} → {b['matched'][:28]}")
+
+    if not commit:
+        print("  (dry-run — rien écrit)")
+        conn.close()
+        return 0
+
+    commune_id = pivot_ids(conn)["commune"]
+    conn.close()
+    inseres = 0
+    with transaction() as w:
+        for b in a_inserer:
+            montant = int(round(b["montant"]))
+            if w.execute(
+                "SELECT 1 FROM financial_flows WHERE type='bail' AND year=? "
+                "AND from_id=? AND to_id=? AND amount=?",
+                (b["annee"], b["entity_id"], commune_id, montant)
+            ).fetchone():
+                continue
+            periode = "par mois" if b["mensuel"] else "périodicité non précisée"
+            w.execute(
+                "INSERT INTO financial_flows"
+                " (type,year,amount,from_id,to_id,event_id,description,source,confidence)"
+                " VALUES ('bail',?,?,?,?,?,?,?,'probable')",
+                (b["annee"], montant, b["entity_id"], commune_id, b["event_id"],
+                 f"{b['local']} — loyer {b['annee']} tel que lu ({periode})",
+                 f"CR CM {b['annee']}"))
+            inseres += 1
+    print(f"  ✓ {inseres} bail/baux insérés en `probable` (non publiés)")
+    return inseres
+
+
 def flow_exists_conn(conn, year, amount, to_id) -> bool:
     return conn.execute(
         "SELECT 1 FROM financial_flows WHERE type='subvention' AND year=? AND amount=? AND to_id=?",

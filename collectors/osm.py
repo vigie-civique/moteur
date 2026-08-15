@@ -24,7 +24,15 @@ from .db import transaction, upsert_entity
 # Clés OSM retenues : ce qui relève d'un service, d'un commerce, d'un lieu
 # public ou du patrimoine. Le reste (bâti, voirie, nature) n'a pas d'usage
 # civique et gonflerait la base sans rien documenter.
-CLES = ("amenity", "shop", "tourism", "leisure", "historic", "office", "craft")
+#
+# `place` a été ajoutée le 15/08/2026 : elle porte les hameaux, lieux-dits et
+# écarts — Le Valat, Sauveplane, La Borie, Prumeiren. Dans une commune rurale
+# étendue, c'est la toponymie qui permet de situer une délibération de voirie ou
+# une parcelle ; sans elle, la carte ne montre que le bourg. Mesuré sur la base
+# historique de l'instance d'origine : 109 des 263 lieux non catégorisés en
+# portaient un.
+CLES = ("amenity", "shop", "tourism", "leisure", "historic", "office", "craft",
+        "place")
 
 GABARIT = """[out:json][timeout:180];
 area["ref:INSEE"="{insee}"]["boundary"="administrative"]->.a;
@@ -98,7 +106,13 @@ def _telecharger(insee: str, nom: str) -> list[dict] | None:
     TERRITOIRE.mkdir(parents=True, exist_ok=True)
     cache = TERRITOIRE / f"pois_{insee}.geojson"
     if cache.exists() and cache.stat().st_size > 0:
-        return json.loads(cache.read_bytes()).get("features", [])
+        donnees = json.loads(cache.read_bytes())
+        # Le cache porte les clés qui l'ont produit : élargir CLES sans le dire
+        # laissait le cache répondre pour l'ancienne requête, et le changement
+        # restait sans effet jusqu'à ce que quelqu'un vide le répertoire.
+        if list(donnees.get("cles") or ()) == list(CLES):
+            return donnees.get("features", [])
+        print(f"  [osm] {nom} — clés élargies, cache réinterrogé")
 
     raw = _interroger(insee, nom)
     # La temporisation vaut aussi après un échec : sans elle, une série
@@ -137,7 +151,8 @@ def _telecharger(insee: str, nom: str) -> list[dict] | None:
                 "tags": tags,
             },
         })
-    cache.write_text(json.dumps({"type": "FeatureCollection", "features": features},
+    cache.write_text(json.dumps({"type": "FeatureCollection", "cles": list(CLES),
+                                 "features": features},
                                 ensure_ascii=False), encoding="utf-8")
     return features
 
