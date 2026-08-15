@@ -59,21 +59,61 @@ def _requete(insee: str) -> str:
     return GABARIT.format(insee=insee, filtres=filtres)
 
 
-def _telecharger(insee: str, nom: str) -> list[dict]:
-    """POIs d'une commune, en cache local. Retourne des features GeoJSON."""
+# Overpass est une ressource partagée et bridée. Elle répond 429 puis coupe la
+# connexion quand on la sollicite trop vite : le 14/08/2026, une collecte a
+# obtenu 2 communes sur 15 — dont pas la commune principale — parce que le
+# collecteur enchaînait les requêtes toutes les 2 secondes et abandonnait à la
+# première erreur. Le site s'est donc retrouvé sans aucun lieu, et le step
+# était enregistré « ok ».
+ATTENTE_ENTRE_REQUETES = 4      # secondes, même après un échec
+TENTATIVES = 4
+ATTENTE_APRES_REFUS = 30        # 429 ou connexion coupée : on laisse retomber
+
+
+def _interroger(insee: str, nom: str) -> bytes | None:
+    """Une requête Overpass, avec temporisation croissante sur refus."""
+    donnees = urllib.parse.urlencode({"data": _requete(insee)}).encode()
+    for tentative in range(1, TENTATIVES + 1):
+        req = urllib.request.Request(OVERPASS, data=donnees, headers=HEADERS)
+        try:
+            with urllib.request.urlopen(req, timeout=200) as r:
+                return r.read()
+        except Exception as e:
+            dernier = tentative == TENTATIVES
+            print(f"  [osm][{tentative}/{TENTATIVES}] {nom} ({insee}) → {e}"
+                  + ("" if dernier else f", nouvelle tentative dans "
+                     f"{ATTENTE_APRES_REFUS * tentative} s"))
+            if dernier:
+                return None
+            time.sleep(ATTENTE_APRES_REFUS * tentative)
+    return None
+
+
+def _telecharger(insee: str, nom: str) -> list[dict] | None:
+    """POIs d'une commune, en cache local.
+
+    Retourne None si la commune n'a pas pu être interrogée — à distinguer d'une
+    commune réellement sans POI, qui rend une liste vide.
+    """
     TERRITOIRE.mkdir(parents=True, exist_ok=True)
     cache = TERRITOIRE / f"pois_{insee}.geojson"
     if cache.exists() and cache.stat().st_size > 0:
         return json.loads(cache.read_bytes()).get("features", [])
 
-    donnees = urllib.parse.urlencode({"data": _requete(insee)}).encode()
-    req = urllib.request.Request(OVERPASS, data=donnees, headers=HEADERS)
+    raw = _interroger(insee, nom)
+    # La temporisation vaut aussi après un échec : sans elle, une série
+    # d'erreurs martèle le serveur plus vite qu'une série de succès.
+    time.sleep(max(REQUEST_DELAY, ATTENTE_ENTRE_REQUETES))
+    if raw is None:
+        return None
     try:
-        with urllib.request.urlopen(req, timeout=200) as r:
-            raw = r.read()
-    except Exception as e:
-        print(f"  [osm][erreur] {nom} ({insee}) → {e}")
-        return []
+        json.loads(raw)
+    except json.JSONDecodeError:
+        # Overpass rend une page d'erreur en HTML quand il refuse : elle serait
+        # tombée hors du filet précédent, qui n'entourait que l'appel réseau.
+        print(f"  [osm][erreur] {nom} ({insee}) → réponse illisible "
+              f"({raw[:60]!r})")
+        return None
     archive_fetch("osm", OVERPASS, raw, "application/json", 200, doc_type="json",
                   title=f"overpass {nom}")
     elements = json.loads(raw).get("elements", [])
@@ -99,17 +139,22 @@ def _telecharger(insee: str, nom: str) -> list[dict]:
         })
     cache.write_text(json.dumps({"type": "FeatureCollection", "features": features},
                                 ensure_ascii=False), encoding="utf-8")
-    time.sleep(max(REQUEST_DELAY, 2))   # Overpass est une ressource partagée
     return features
 
 
 def import_osm():
     features = []
+    echecs = []
     for insee, commune in COMMUNES.items():
         lot = _telecharger(insee, commune["nom"])
+        if lot is None:
+            echecs.append(f"{commune['nom']} ({insee})")
+            print(f"  [osm] {commune['nom']:26}    ? non interrogée")
+            continue
         print(f"  [osm] {commune['nom']:26} {len(lot):4} POIs")
         features += lot
-    print(f"[osm] {len(features)} POIs sur {len(COMMUNES)} communes")
+    print(f"[osm] {len(features)} POIs sur "
+          f"{len(COMMUNES) - len(echecs)}/{len(COMMUNES)} communes")
 
     inserted = skipped = 0
 
@@ -165,4 +210,17 @@ def import_osm():
 
             inserted += 1
 
-    print(f"[osm] OK — {inserted} POIs importés, {skipped} sans nom ignorés")
+    print(f"[osm] {inserted} POIs importés, {skipped} sans nom ignorés")
+
+    # Une collecte partielle n'est pas une collecte. Le 14/08/2026, ce step a
+    # rendu « ok » avec 13 communes sur 15 en échec — dont la commune
+    # principale — et le site publié n'avait aucun lieu. Le journal
+    # `collector_runs` doit porter l'échec, pas le nombre de lignes écrites.
+    # Les communes obtenues sont conservées en cache : rejouer le step ne
+    # réinterroge que celles qui manquent.
+    if echecs:
+        raise RuntimeError(
+            f"{len(echecs)} commune(s) sur {len(COMMUNES)} non interrogées "
+            f"(Overpass limite le débit) : {', '.join(echecs[:6])}"
+            + (" …" if len(echecs) > 6 else "")
+            + " — relancer le step, le cache évite de refaire le travail fait.")

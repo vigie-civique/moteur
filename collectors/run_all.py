@@ -8,6 +8,15 @@ exemple écrit avec le nom d'une commune se lit vite comme une règle.
 
 Usage : python3 -m collectors.run_all [--step STEP] [--stats]
 
+Les steps DÉRIVÉS lisent ce que les autres ont écrit : `subventions` et
+`cm_flux` relisent le texte des séances, `perimetre` relit les rattachements.
+Une exécution complète les place après leurs sources, mais un rattrapage step
+par step ne le garantit pas : le 14/08/2026, `cm_flux` a tourné à 15 h 39 sur
+309 procès-verbaux, et la seconde passe de `cm` en a ajouté 636 à 16 h 06. Les
+subventions de 2020 à 2024 n'ont jamais été extraites, et le site publié en
+comptait 44 au lieu de 123. Après avoir rejoué un collecteur de documents,
+rejouer aussi les steps qui en dérivent.
+
 Ce que run_all ne fait PAS, et qui reste à lancer à la main :
 
   url_finder      cherche les sites des entités et les dépose en `candidate`
