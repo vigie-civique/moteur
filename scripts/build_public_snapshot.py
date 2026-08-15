@@ -108,7 +108,7 @@ def safe_url(url: str | None) -> str | None:
     """Garde-fou : aucun chemin local ne doit sortir dans le snapshot public.
 
     Un `file:///Users/...` est à la fois un lien mort pour le lecteur et une
-    fuite de l'arborescence personnelle. Voir scripts/fix_file_urls.py pour la
+    fuite de l'arborescence personnelle. Une reprise ponctuelle a fait la
     correction en base ; ici on refuse simplement de publier le reliquat.
     """
     if not url:
@@ -2240,7 +2240,7 @@ def build_snapshot(out: Path) -> dict:
         #
         # 1. `until` — les mandats de source BANATIC (état du 15/10/2025) et du
         #    site de la CC (mandat 2020-2026) sont clos au 15/03/2026 par
-        #    `scripts/fix_conseil_communautaire_2026.py`. Sans ce filtre, la page
+        #    une reprise ponctuelle des mandats. Sans ce filtre, la page
         #    annonçait Gilles BEAUMANOIR président et Irène CHAPUIS
         #    vice-présidente : trois des quatre premiers noms de la liste
         #    n'étaient plus délégués depuis les municipales de mars 2026.

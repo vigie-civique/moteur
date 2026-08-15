@@ -307,7 +307,7 @@ def check_silent_source(c):
        l'API répondait normalement — 577 jours de données foncières figées sans
        le moindre signal. Un jeu qui répond n'est pas un jeu à jour.
 
-    Le seuil est 1,5 × TTL : le TTL déclenche la relance (collect_loop), pas
+    Le seuil est 1,5 × TTL : le TTL déclenche la relance de la collecte, pas
     l'alerte. On n'alerte que si la relance elle-même n'a rien produit.
     """
     findings = []
@@ -346,7 +346,7 @@ def check_silent_source(c):
                 findings.append(finding(
                     "silent_source", "warning",
                     f"collecteur « {name} » n'a aucun run journalisé — "
-                    f"fraîcheur non vérifiable (lancer scripts/collect_loop.py --run)",
+                    f"fraîcheur non vérifiable (lancer python3 -m collectors.run_all pour la produire)",
                     ref={"collector": name}))
             continue
 
@@ -403,67 +403,48 @@ def check_confidence_values(c):
 # le code moteur. Il ne bloque rien — certaines occurrences sont légitimes
 # (scripts d'import ponctuels déjà exécutés) — mais une dette non comptée
 # grossit sans bruit.
-MOTEUR = [
-    "collectors", "api.py",
-    # Les scripts one-shot d'import (create_*, import_*, fix_*) décrivent des
-    # faits lasallois : ils n'ont pas vocation à être rejoués ailleurs.
-    "scripts/build_public_snapshot.py", "scripts/build_public_db.py",
-    "scripts/migrate_perimetre.py", "scripts/qa_loop.py", "scripts/pipeline.py",
-]
+# Une troisième implémentation de ce contrôle vivait ici, avec sa propre liste
+# de fichiers « moteur » — dont trois n'existaient plus, sautés en silence — et
+# ne cherchait que le nom de la commune COURANTE, donc rien du tout sur une
+# instance portée. Le contrôle est désormais unique : `verifier_generique.py`,
+# qui sert aussi d'admission au kit. Trois définitions du mot « moteur »
+# finissent par diverger ; celle-ci avait déjà divergé.
 
 
 def check_hardcoded_commune(_c):
-    """Occurrences littérales du nom de la commune dans le code moteur.
+    """Particularités locales trouvées dans le code moteur, par fichier.
 
-    Analyse par AST, pas par expression régulière : documenter le piège du
-    défaut de schéma oblige à écrire le nom de la commune dans une docstring,
-    et un check qui ne sait pas distinguer la doc du code se signale lui-même.
-    Seules comptent les chaînes littérales ÉVALUÉES à l'exécution.
+    Inventaire de dette, pas alarme : `info`, jamais bloquant. Le contrôle
+    bloquant est `scripts/verifier_generique.py`, appelé avant de fabriquer un
+    kit.
     """
-    import ast
+    import importlib.util
+    from collections import Counter
 
-    from collectors.config import COMMUNE_NAME
+    chemin = ROOT / "scripts" / "verifier_generique.py"
+    spec = importlib.util.spec_from_file_location("verifier_generique", chemin)
+    vg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vg)
+
+    communes = vg.communes_locales()
+    constats = [c for f in vg._fichiers(vg.MOTEUR) for c in vg.analyser(f, communes)]
+    constats += [c for f in vg._fichiers_texte() for c in vg.analyser_texte(f, communes)]
+
+    par_fichier: dict[str, list] = {}
+    for c in constats:
+        par_fichier.setdefault(c["fichier"], []).append(c)
 
     findings = []
-    for cible in MOTEUR:
-        chemin = ROOT / cible
-        fichiers = sorted(chemin.rglob("*.py")) if chemin.is_dir() else [chemin]
-        for f in fichiers:
-            # La config d'instance est le bon endroit pour nommer la commune.
-            if not f.exists() or "__pycache__" in f.parts or f.name == "config.py":
-                continue
-            try:
-                arbre = ast.parse(f.read_text(encoding="utf-8"))
-            except SyntaxError:
-                continue
-            # Les docstrings sont des expressions-chaînes en tête de module, de
-            # classe ou de fonction : on les repère pour les écarter.
-            docstrings = set()
-            for noeud in ast.walk(arbre):
-                if isinstance(noeud, (ast.Module, ast.ClassDef,
-                                      ast.FunctionDef, ast.AsyncFunctionDef)):
-                    corps = getattr(noeud, "body", [])
-                    if (corps and isinstance(corps[0], ast.Expr)
-                            and isinstance(corps[0].value, ast.Constant)
-                            and isinstance(corps[0].value.value, str)):
-                        docstrings.add(id(corps[0].value))
-            lignes = sorted({
-                noeud.lineno for noeud in ast.walk(arbre)
-                if isinstance(noeud, ast.Constant)
-                and isinstance(noeud.value, str)
-                and COMMUNE_NAME in noeud.value
-                and id(noeud) not in docstrings
-            })
-            # Un finding par FICHIER, pas par ligne : c'est un inventaire de
-            # dette, pas une alarme. 46 lignes séparées noieraient le rapport
-            # QA sans rien dire de plus qu'un compte par fichier.
-            if lignes:
-                findings.append(finding(
-                    "hardcoded_commune", "info",
-                    f"{f.relative_to(ROOT)} — {len(lignes)} occurrence(s) de "
-                    f"« {COMMUNE_NAME} » en dur (lignes {', '.join(map(str, lignes[:8]))}"
-                    f"{'…' if len(lignes) > 8 else ''}) : à lire depuis collectors.config",
-                    ref={"file": str(f.relative_to(ROOT)), "lines": lignes}))
+    for fichier, liste in sorted(par_fichier.items()):
+        motifs = ", ".join(f"{m}×{n}" for m, n in
+                           Counter(c["motif"] for c in liste).most_common())
+        lignes = sorted({c["ligne"] for c in liste})
+        findings.append(finding(
+            "hardcoded_commune", "info",
+            f"{fichier} — {len(liste)} constat(s) ({motifs}), "
+            f"lignes {', '.join(map(str, lignes[:8]))}"
+            f"{'…' if len(lignes) > 8 else ''} : à lire depuis la configuration",
+            ref={"file": fichier, "lines": lignes}))
     return findings
 
 
@@ -471,7 +452,7 @@ def check_commune_sans_preuve(c):
     """Entités taguées de la commune C1 sans aucune preuve d'ancrage.
 
     Séquelle du `DEFAULT 'Lasalle'` retiré du schéma le 12/08/2026
-    (`scripts/migrate_commune_sans_defaut.py`) : les entités créées AVANT cette
+    par une migration ponctuelle : les entités créées AVANT cette
     date portent peut-être un tag que personne n'a jamais posé sciemment.
 
     Le tri ne s'automatise pas. Sur les 971 entités taguées sans adresse ni

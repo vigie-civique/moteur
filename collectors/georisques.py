@@ -8,7 +8,7 @@ sans clé) pour les communes du registre de collecte (config.COMMUNES).
                              naturelle publiés au JO — inondations cévenoles…)
 
 Réponses archivées (raw_documents, source georisques) et rejouables via
-scripts/reparse.py.
+une réanalyse depuis raw_documents.
 
 Usage :
   python3 -m collectors.georisques

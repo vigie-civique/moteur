@@ -124,7 +124,7 @@ def apply_enrichment(conn, entity_id: int, data: dict, dry_run: bool = False,
                      result: dict | None = None) -> dict:
     """
     Enrichit la DB depuis une réponse Pappers /entreprise (déjà fetchée ou
-    rejouée depuis raw_documents via scripts/reparse.py).
+    rejouée depuis raw_documents).
     """
     if result is None:
         result = {"siren": data.get("siren"), "updated": [], "notes": [], "error": None}

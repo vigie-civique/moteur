@@ -186,7 +186,7 @@
                   <span class="perim-badge" style="--pc:{PERIM_COLORS[item.perimetre] ?? '#334155'}"
                         title={item.commune ?? 'commune inconnue'}>{item.perimetre}</span>
                 {:else}
-                  <span class="perim-badge unset" title="non classé — relancer scripts/migrate_perimetre.py">?</span>
+                  <span class="perim-badge unset" title="non classé — relancer python3 -m collectors.run_all --step perimetre">?</span>
                 {/if}
               </td>
               <td class="name-cell">

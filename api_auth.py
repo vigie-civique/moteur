@@ -55,7 +55,8 @@ def _get(conn, sql, params=()):
 
 def _make_token(sub: str, kind: str, minutes: int) -> str:
     if not _SECRET:
-        raise RuntimeError("JWT_SECRET absent — lance scripts/migrate_sprint1.py")
+        raise RuntimeError("JWT_SECRET absent : le renseigner dans .env "
+                           "(cp deploy/env.exemple .env, puis openssl rand -hex 32)")
     exp = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     return jwt.encode({"sub": sub, "kind": kind, "exp": exp}, _SECRET, algorithm=_ALGO)
 

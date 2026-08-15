@@ -111,7 +111,7 @@ def upsert_entity(conn, *, type, name, short_name=None,
     schéma portait `DEFAULT 'Lasalle'` : une entité sans commune naissait
     lasalloise, et comme le tag n'est jamais écrasé, la corriger après coup ne
     faisait rien. Trois incidents en sont sortis, cf.
-    `scripts/migrate_commune_sans_defaut.py`.
+    d'une migration ponctuelle, non versionnée.
     """
     row = _entite_existante(conn, type, name, commune)
     if row is None:

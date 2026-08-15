@@ -26,7 +26,9 @@ from pathlib import Path
 
 import requests
 
-from .config import EPCI_NOM
+from .archive import archive_fetch
+from .config import DB_PATH, EPCI_NOM, HEADERS   # la base est nommée dans la config
+from .db import pivot_ids, upsert_entity
 
 # Les portails Opendatasoft écrivent les raisons sociales en toutes lettres et
 # de façon instable (« COMMUNAUTE DE COMMUNES X », « CC X »). On cherche donc le
@@ -38,22 +40,12 @@ _MOTIF_BENEFICIAIRE = " ".join(
                            "d'agglomeration", "urbaine"}
 ) or EPCI_NOM
 
-from .archive import archive_fetch
-
-from .config import DB_PATH   # la base est nommée dans la config, pas ici
-from .config import EPCI_NOM, HEADERS
-from .db import pivot_ids, upsert_entity
-
-# Nom de l'EPCI tel qu'il apparaît dans le fichier des subventions régionales :
-# la Région écrit les bénéficiaires en capitales et sans article.
-CAC_NAME    = EPCI_NOM.upper().replace("CC ", "COMMUNAUTE DE COMMUNES ")
-
 API_BASE    = "https://data.laregion.fr/api/explore/v2.1/catalog/datasets"
 DATASET     = "subventions-du-conseil-regional"
 
 
-def _fetch_all_cac(session: requests.Session) -> list[dict]:
-    """Récupère toutes les subventions Occitanie → CC CAC."""
+def _fetch_toutes(session: requests.Session) -> list[dict]:
+    """Récupère toutes les subventions de la Région à l'intercommunalité."""
     results = []
     limit = 100
     offset = 0
@@ -91,13 +83,13 @@ def _flow_exists(conn, year: int, ref: str) -> bool:
 
 
 def _import_records(conn, records: list[dict], dry_run: bool = False) -> tuple[int, int]:
+    """Insert dédupliqué sur `referencedecision` — rejouable sans dupliquer."""
     # Les deux parties du flux sont résolues par leur nom : les identifiants en
     # dur de l'instance d'origine désignaient d'autres entités dans cette base.
     REGION_ID = upsert_entity(conn, type="service",
                               name="Conseil régional Occitanie",
                               confidence="verified")
-    CAC_ID = pivot_ids(conn)["epci"]
-    """Insert dédupliqué (referencedecision) — réutilisé par scripts/reparse.py."""
+    EPCI_ID = pivot_ids(conn)["epci"]
     inserted = 0
     skipped  = 0
 
@@ -123,7 +115,7 @@ def _import_records(conn, records: list[dict], dry_run: bool = False) -> tuple[i
         conn.execute(
             "INSERT INTO financial_flows (type, year, amount, from_id, to_id, description, source, confidence)"
             " VALUES ('subvention_region', ?, ?, ?, ?, ?, 'occitanie_region', 'verified')",
-            (year, int(montant) if montant else None, REGION_ID, CAC_ID, description)
+            (year, int(montant) if montant else None, REGION_ID, EPCI_ID, description)
         )
         inserted += 1
 
@@ -134,8 +126,8 @@ def run(dry_run: bool = False):
     session = requests.Session()
     session.headers.update(HEADERS)
 
-    print("\n[1] Récupération subventions Région Occitanie → CC CAC…")
-    records = _fetch_all_cac(session)
+    print(f"\n[1] Récupération subventions Région Occitanie → {EPCI_NOM}…")
+    records = _fetch_toutes(session)
     print(f"  {len(records)} subventions trouvées")
 
     conn = sqlite3.connect(str(DB_PATH))

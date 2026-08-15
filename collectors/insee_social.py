@@ -12,7 +12,7 @@ Jeux collectés (headline par commune, table insee_indicateurs) :
   - DS_BPE                   : équipements par type (commerces, santé, écoles…)
 
 Chaque réponse API est archivée (raw_documents, source insee-melodi) et
-rejouable via scripts/reparse.py. Insert : INSERT OR REPLACE (donnée officielle
+rejouable depuis raw_documents. Insert : INSERT OR REPLACE (donnée officielle
 rafraîchie, UNIQUE(insee, dataset, indicateur, annee)).
 
 Usage :
@@ -163,7 +163,7 @@ def _extract(dataset: str, obs: dict) -> tuple[str, str, float, dict] | None:
 
 
 def import_observations(conn, dataset: str, insee: str, observations: list[dict]) -> int:
-    """Insert idempotent — réutilisé par scripts/reparse.py."""
+    """Insert idempotent — rejouable sans dupliquer."""
     commune = COMMUNES.get(insee, {}).get("nom")
     inserted = 0
     for obs in observations:

@@ -88,7 +88,7 @@ def fetch_dataset(dataset: str, insee_list: list[str]) -> list[dict]:
 
 
 def import_records(conn, dataset: str, records: list[dict]) -> int:
-    """Insert idempotent — réutilisable par scripts/reparse.py."""
+    """Insert idempotent — rejouable sans dupliquer."""
     cols = [(c, ind, lib, portee) for d, c, ind, lib, portee in INDICATEURS if d == dataset]
     inserted = 0
     for rec in records:

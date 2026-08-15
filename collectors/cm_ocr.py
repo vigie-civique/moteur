@@ -324,7 +324,7 @@ def process_cr(*, cr_url: str | None, pdf_url: str | None, file: str | None,
         # PAS de `pdf.as_uri()` en repli : un `file:///Users/...` finissait en
         # `source_url` des délibérations, c'est-à-dire un lien mort côté public
         # et une fuite de l'arborescence personnelle. Le cas s'était déjà produit
-        # (cf. scripts/fix_file_urls.py) et retraiter un PDF en cache avec
+        # (repris une fois en base) et retraiter un PDF en cache avec
         # `--file` réécrasait la réparation. Sans URL publique, on n'en écrit pas.
         if not pdf_url:
             print("  ⚠ --file sans --pdf-url : aucune URL publique ne sera "

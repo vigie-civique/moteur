@@ -1,13 +1,26 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
   import { authFetch } from '$lib/stores/auth.js'
+  import { onMount } from 'svelte'
 
   let question  = ''
   let loading   = false
   let answer    = null
   let error     = ''
   let sources   = []
-  let mode      = 'ask'  // ask | search
+  let mode      = 'search'  // search | ask — la recherche d'abord, cf. plus bas
+  let config    = null      // {enabled, embed_model, chat_model, chunks}
+
+  // L'interface annonçait « nomic-embed-text + Gemma 3 » en dur et proposait la
+  // recherche quel que soit l'état réel : fonction désactivée, index jamais
+  // construit et index prêt donnaient la même page, et la même erreur de
+  // connexion incompréhensible. Les trois états sont maintenant distingués.
+  onMount(async () => {
+    try {
+      const r = await authFetch('/rag/config')
+      if (r.ok) config = await r.json()
+    } catch { /* API muette : la page le dira */ }
+  })
 
   const SOURCE_LABELS = {
     entity_notes:    'Note',
@@ -54,14 +67,32 @@
 
 <div class="ia-page">
   <div class="page-header">
-    <h1>Recherche IA</h1>
-    <span class="muted">RAG — nomic-embed-text + Gemma 3</span>
+    <h1>Recherche par sens</h1>
+    {#if config}
+      <span class="muted">
+        {config.embed_model}{#if config.chunks} · {config.chunks.toLocaleString('fr-FR')} extraits indexés{/if}
+      </span>
+    {/if}
   </div>
 
   <div class="mode-toggle">
-    <button class:active={mode === 'ask'}    on:click={() => mode='ask'}>Demander (RAG complet)</button>
-    <button class:active={mode === 'search'} on:click={() => mode='search'}>Recherche sémantique</button>
+    <button class:active={mode === 'search'} on:click={() => mode='search'}>Chercher</button>
+    <button class:active={mode === 'ask'}    on:click={() => mode='ask'}>Faire résumer</button>
   </div>
+  {#if mode === 'ask'}
+    <!-- Mesuré le 15/08/2026 : à « combien la commune a-t-elle versé de
+         subventions en 2024 », le modèle a répondu 350 € en résumant fidèlement
+         les six extraits qu'on lui avait donnés. La base en comptait 56, pour
+         445 213 €. Le résumé n'était pas faux, la question ne se répondait pas
+         par ressemblance. L'avertissement est dans l'interface parce que la
+         réponse, elle, a l'air sûre d'elle. -->
+    <p class="garde">
+      Un résumé de quelques extraits, pas une réponse. Sur une question qui
+      demande un compte ou un total, il sera faux&nbsp;: le modèle ne voit que
+      les extraits les plus ressemblants, jamais toutes les lignes. Pour compter,
+      passer par les pages chiffrées.
+    </p>
+  {/if}
 
   <div class="search-box">
     <textarea
@@ -84,7 +115,7 @@
 
   {#if answer}
     <div class="answer-block">
-      <div class="answer-header">Réponse Gemma 3</div>
+      <div class="answer-header">Réponse {config?.chat_model ?? 'du modèle'} — à vérifier</div>
       <div class="answer-text">{answer}</div>
     </div>
   {/if}
@@ -110,10 +141,21 @@
     </div>
   {/if}
 
-  {#if !loading && sources.length === 0 && !answer && !error}
+  {#if config && !config.enabled}
     <p class="hint muted">
-      L'index RAG doit être construit d'abord :<br>
-      <code>~/venvs/agents/bin/python3 scripts/build_rag_index.py</code>
+      L'assistance par modèle est désactivée sur cet atelier.<br>
+      Elle demande un Ollama joignable en local&nbsp;: <code>RAG_ENABLED=1</code> dans <code>.env</code>.
+    </p>
+  {:else if config && config.chunks === 0}
+    <p class="hint muted">
+      L'index n'a pas encore été construit&nbsp;: il n'y a rien à chercher.<br>
+      <code>python3 scripts/build_rag_index.py</code>
+    </p>
+  {:else if !loading && sources.length === 0 && !answer && !error}
+    <p class="hint muted">
+      La recherche par sens retrouve une notion même quand le mot n'y est
+      pas&nbsp;: «&nbsp;conflit d'intérêt&nbsp;» ramène les récusations au conseil.<br>
+      Pour un mot qui s'écrit tel quel, la recherche ordinaire est plus sûre.
     </p>
   {/if}
 </div>
@@ -147,6 +189,8 @@
   .btn-submit:disabled { opacity: .5; cursor: default; }
 
   .err { color: #f87171; font-size: .8rem; margin-bottom: .5rem; }
+  .garde { font-size: .74rem; color: #fbbf24; background: #2a1f06; border: 1px solid #78350f;
+    border-radius: 6px; padding: .45rem .65rem; margin: 0 0 .6rem; line-height: 1.5; }
 
   .answer-block {
     background: #0f2a1e; border: 1px solid #166534; border-radius: 8px;

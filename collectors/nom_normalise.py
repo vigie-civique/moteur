@@ -18,7 +18,7 @@ illisible depuis le client `sqlite3`.
 
 Conséquence à connaître : les scripts qui écrivent dans `entities` SANS passer
 par `upsert_entity` (imports ponctuels de `scripts/`) laissent `name_norm` vide.
-`scripts/migrate_nom_normalise.py --reparer` recalcule ce qui manque ; le pire
+Un recalcul groupé rattrape ce qui manque ; le pire
 qu'une valeur absente puisse produire est un doublon, jamais une confusion.
 
 Règle : minuscules, sans accents, tirets/apostrophes/points → espace, espaces

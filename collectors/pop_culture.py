@@ -7,8 +7,8 @@ pop_culture.py — Patrimoine protégé (data.culture.gouv.fr) pour le périmèt
     collecté quand même : future-proof)
 
 Le patrimoine non protégé (inventaire général, filatures, temples…) passe par
-le canal documentaire scripts/ingest_docs.py. Réponses archivées (source
-culture-mh) et rejouables via scripts/reparse.py.
+le canal documentaire de l'atelier. Réponses archivées (source
+culture-mh) et rejouables depuis raw_documents.
 
 Usage :
   python3 -m collectors.pop_culture

@@ -38,10 +38,16 @@ COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
                 "lat_max": BBOX[2], "lng_max": BBOX[3]} if len(BBOX) == 4 else {
     "lat_min": -90.0, "lat_max": 90.0, "lng_min": -180.0, "lng_max": 180.0}
 
-# RAG_ENABLED : True en local (Mac + Ollama), False sur l'atelier hébergé (VPS sans Ollama).
-# Contrôle via env var RAG_ENABLED=0 pour désactiver sur le VPS.
-# Les endpoints /api/rag/* retournent 503 si désactivé.
-RAG_ENABLED = os.environ.get("RAG_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+# Assistance par modèle de langage : DÉSACTIVÉE par défaut.
+#
+# Elle suppose un Ollama joignable en local — vrai sur une machine de collecte
+# équipée, faux partout ailleurs. Le défaut inverse faisait qu'une instance
+# neuve annonçait la fonction dans son interface et échouait à la première
+# question, sur une erreur de connexion que rien n'expliquait. Une fonction
+# absente se comprend ; une fonction qui plante ressemble à une panne.
+#
+# RAG_ENABLED=1 dans .env sur la machine qui a Ollama.
+RAG_ENABLED = os.environ.get("RAG_ENABLED", "0").strip().lower() not in ("0", "false", "no")
 
 app = FastAPI(title=f"Vigie Civique — atelier {COMMUNE_NAME}")
 
@@ -2401,10 +2407,36 @@ def analyse_familles(min_personnes: int = 2, user=Depends(require_auth)):
 import numpy as np
 import requests as _requests
 
-_OLLAMA_EMBED = "http://localhost:11434/api/embeddings"
-_OLLAMA_CHAT  = "http://localhost:11434/api/chat"
-_EMBED_MODEL  = "nomic-embed-text"
-_CHAT_MODEL   = "gemma3:4b"
+# Adresse et modèles sont des réglages, pas des constantes du dispositif :
+# l'interface les affichait en dur — « nomic-embed-text + Gemma 3 » — et
+# continuait de les afficher après un changement de modèle.
+_OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+_OLLAMA_EMBED = f"{_OLLAMA_URL}/api/embeddings"
+_OLLAMA_CHAT  = f"{_OLLAMA_URL}/api/chat"
+_EMBED_MODEL  = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+_CHAT_MODEL   = os.environ.get("OLLAMA_CHAT_MODEL", "gemma3:4b")
+
+
+@app.get("/api/rag/config")
+def rag_config(user=Depends(require_auth)):
+    """Ce que l'atelier doit savoir pour décrire honnêtement sa recherche.
+
+    Sert aussi à distinguer les trois états que l'interface confondait : la
+    fonction désactivée, l'index jamais construit, et l'index prêt.
+    """
+    conn = get_db()
+    try:
+        chunks = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+    except sqlite3.Error:
+        chunks = 0        # table absente : l'index n'a jamais été construit
+    finally:
+        conn.close()
+    return {
+        "enabled": RAG_ENABLED,
+        "embed_model": _EMBED_MODEL,
+        "chat_model": _CHAT_MODEL,
+        "chunks": chunks,
+    }
 
 
 def _embed(text: str) -> np.ndarray:
@@ -2413,14 +2445,21 @@ def _embed(text: str) -> np.ndarray:
     return np.array(r.json()["embedding"], dtype=np.float32)
 
 
-def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
-    denom = np.linalg.norm(a) * np.linalg.norm(b)
-    return float(np.dot(a, b) / denom) if denom > 1e-8 else 0.0
-
-
 @app.get("/api/rag/search")
 def rag_search(q: str, limit: int = 8, user=Depends(require_auth)):
-    """Recherche sémantique dans l'index RAG (pas de génération). LOCAL UNIQUEMENT."""
+    """Recherche sémantique dans l'index (pas de génération). LOCAL UNIQUEMENT.
+
+    Ce qu'elle apporte, et qu'aucune recherche plein texte ne peut donner :
+    retrouver une notion quand on n'en a pas le vocabulaire — « conflit
+    d'intérêt » ramène les récusations au conseil, où ce mot ne figure pas.
+    Pour tout ce qui s'écrit en toutes lettres, le FTS5 déjà en base est plus
+    rapide et plus prévisible.
+
+    L'index entier est chargé et comparé en mémoire à chaque question, sans
+    index approximatif. Mesuré le 15/08/2026 sur 18 176 chunks : 0,10 s de
+    lecture et 0,03 s de calcul. À l'échelle d'une commune, la simplicité vaut
+    mieux qu'une structure d'index à tenir à jour.
+    """
     if not RAG_ENABLED:
         raise HTTPException(503, "RAG désactivé sur cet atelier (RAG_ENABLED=0). "
                                  "Interroger localement avec Ollama.")
@@ -2437,17 +2476,27 @@ def rag_search(q: str, limit: int = 8, user=Depends(require_auth)):
     finally:
         conn.close()
 
-    scored = []
-    for source_table, source_id, entity_id, chunk_text, vec_bytes in db_rows:
-        vec = np.frombuffer(vec_bytes, dtype=np.float32)
-        sim = _cosine_sim(q_vec, vec)
-        scored.append((sim, source_table, source_id, entity_id, chunk_text))
+    if not db_rows:
+        return []
 
-    scored.sort(key=lambda x: -x[0])
+    # Un seul produit matriciel plutôt qu'une boucle Python : la boucle coûtait
+    # une à deux secondes sur 18 000 chunks, la matrice 0,03 s. C'est ce qui
+    # rend l'index brut suffisant à l'échelle d'une commune — aucun index
+    # approximatif n'est nécessaire ici.
+    matrice = np.frombuffer(
+        b"".join(r[4] for r in db_rows), dtype=np.float32
+    ).reshape(len(db_rows), -1)
+    normes = np.linalg.norm(matrice, axis=1) * np.linalg.norm(q_vec)
+    sims = np.divide(matrice @ q_vec, normes,
+                     out=np.zeros(len(db_rows), dtype=np.float32),
+                     where=normes > 1e-8)
+
+    meilleurs = np.argsort(-sims)[:limit]
     return [
-        {"score": round(s, 4), "source_table": st, "source_id": sid,
-         "entity_id": eid, "chunk_text": text}
-        for s, st, sid, eid, text in scored[:limit]
+        {"score": round(float(sims[i]), 4),
+         "source_table": db_rows[i][0], "source_id": db_rows[i][1],
+         "entity_id": db_rows[i][2], "chunk_text": db_rows[i][3]}
+        for i in meilleurs
     ]
 
 
@@ -2774,62 +2823,13 @@ def push_embeddings(
         conn.close()
     return {"ok": True, "saved": saved, "skipped": skipped}
 
-# ─── /api/ask — interrogation en langage naturel de la base PUBLIQUE ───────────
+# ─── Interrogation en langage naturel : RETIRÉE du moteur le 15/08/2026 ───────
 #
-# Distinct de /api/synthesize, qui injecte un contexte choisi par mots-clés et ne
-# sait donc rien répondre en dehors de ceux-ci. Ici, la question est traduite en
-# SQL, la requête est validée puis exécutée, et la réponse cite la requête : elle
-# est vérifiable. Voir scripts/ask.py pour les garde-fous.
-#
-# La base interrogée est `db/public.db`, dérivée du snapshot filtré : aucune
-# donnée privée n'y figure. C'est une propriété du fichier, pas une promesse du
-# code — même une requête malveillante ne peut atteindre que du déjà-publié.
+# Deux routes (`/api/ask`, `/api/ask/schema`) traduisaient une question en SQL
+# et l'exécutaient sur une base publique dérivée du snapshot. Le dispositif
+# était bien construit — isolation physique, EXPLAIN avant exécution, requête
+# affichée — mais ni `scripts/ask.py` ni `scripts/build_public_db.py` n'ont été
+# portés, et la recherche du site public est en texte clair, sans modèle.
+# Deux routes qui répondaient 503 et 500 valaient moins que leur absence.
+# L'assistance par modèle reste côté atelier : voir /api/rag/*.
 
-class AskRequest(BaseModel):
-    question: str
-    rediger: bool = True
-
-
-@app.post("/api/ask")
-@limiter.limit("10/minute;100/hour")
-def ask(request: StarletteRequest, req: AskRequest):
-    question = (req.question or "").strip()
-    if not question:
-        raise HTTPException(400, "question vide")
-    if len(question) > 500:
-        raise HTTPException(400, "question trop longue (500 caractères maximum)")
-
-    sys.path.insert(0, str(BASE_DIR / "scripts"))
-    try:
-        import ask as ask_mod
-    except Exception as e:
-        raise HTTPException(503, f"module d'interrogation indisponible : {e}")
-
-    if not ask_mod.PUBLIC_DB.exists():
-        raise HTTPException(503, "base publique absente — lancer "
-                                 "scripts/build_public_db.py")
-    try:
-        return ask_mod.demander(question, rediger_reponse=req.rediger)
-    except ask_mod.RequeteRefusee as e:
-        # 422 et non 500 : la question est recevable, c'est la traduction en SQL
-        # qui n'a pas abouti. Le message est rendu tel quel pour que l'atelier
-        # voie ce qui a été refusé.
-        raise HTTPException(422, str(e))
-    except Exception as e:
-        raise HTTPException(500, f"{type(e).__name__}: {e}")
-
-
-@app.get("/api/ask/schema")
-def ask_schema():
-    """Schéma public interrogeable — utile pour l'atelier et la page /ia."""
-    sys.path.insert(0, str(BASE_DIR / "scripts"))
-    import ask as ask_mod
-    if not ask_mod.PUBLIC_DB.exists():
-        raise HTTPException(503, "base publique absente")
-    conn = ask_mod.connexion()
-    try:
-        return {"schema": ask_mod.schema_texte(conn),
-                "tables": sorted(ask_mod.TABLES_AUTORISEES),
-                "limite_lignes": ask_mod.LIMITE_LIGNES}
-    finally:
-        conn.close()
