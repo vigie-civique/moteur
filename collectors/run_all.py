@@ -69,6 +69,7 @@ from collectors.subventions_etat import run as run_subventions
 # main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
 # les options de run_all. On prend la fonction qu'il enveloppe.
 from collectors.cm_finances    import run_subventions as run_cm_flux
+from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
 
@@ -162,6 +163,11 @@ STEPS = {
     # `since=None` : reprise incrémentale depuis la dernière analyse connue.
     "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),
     "urbanisme": ("Statut urbanistique et mentions PLU",  run_urbanisme),
+    # Dérivé, comme cm_flux : relit le texte des séances déjà collectées. Les
+    # compositions ne sortent d'aucun registre — elles ne sont publiées qu'après
+    # arbitrage dans l'atelier.
+    "commissions": ("Composition des commissions communales (PV)",
+                    run_commissions),
     # DERNIER, et il doit le rester : il classe ce que tous les autres ont
     # écrit. Sans lui, `entities.perimetre` reste NULL et aucune fiche n'est
     # publiable — le snapshot refuse de se construire plutôt que de publier

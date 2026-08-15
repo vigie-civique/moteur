@@ -207,7 +207,8 @@ STEP_META = {
     # quand même, parce qu'un classement qui n'a pas tourné bloque la publication
     # et doit se lire dans collector_runs comme n'importe quelle panne. Fraîcheur
     # alignée sur le collecteur le plus fréquent : il se périme avec eux.
-    "perimetre":  (7,   28, "entities",          "perimetre IS NOT NULL"),
+    "commissions":(180, 28, "relation_candidates", "signal='commission_pv'"),
+    "perimetre":  (7,   29, "entities",          "perimetre IS NOT NULL"),
 }
 
 # ── Chemins ──────────────────────────────────────────────────────────────────
