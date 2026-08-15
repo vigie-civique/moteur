@@ -4,7 +4,7 @@ Un observatoire citoyen des décisions publiques d'une petite commune, construit
 à partir de données et de documents publics uniquement.
 
 Instance de référence : **[Lasalle (Gard, 30460)](https://vigie-civique-lasalle.pages.dev)**
-— 1 807 acteurs, 4 333 actes, 78 marchés publics, budget et foncier.
+— environ 1 800 acteurs, 4 300 actes, les marchés publics, le budget et le foncier.
 
 En dessous de 3 500 habitants, l'obligation légale d'ouvrir ses données ne
 s'applique pas. C'est précisément là que rien n'est publié, et c'est le trou que
@@ -15,18 +15,30 @@ ce dispositif cherche à combler.
 ## Ce que fait le dispositif
 
 Des **collecteurs** interrogent des sources publiques (SIRENE, RNA, BODACC, DVF,
-OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, sites
-officiels de la commune et de l'intercommunalité) et alimentent une base SQLite.
+OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, Hub'Eau,
+sites officiels de la commune et de l'intercommunalité) et alimentent une base
+SQLite. `python3 -m collectors.run_all` en enchaîne 31.
 
 Un **script de publication** (`scripts/build_public_snapshot.py`) en extrait un
 snapshot JSON filtré, qui alimente un **site statique** SvelteKit sans backend
 ni base de données en ligne.
 
+Un **atelier** (`dashboard/` + `api.py`) permet de corriger, valider et annoter
+la base. Il est **facultatif** et ne se met pas en ligne à la légère : voir
+« Les deux moitiés » plus bas.
+
 Le filtrage n'est pas un détail : c'est le cœur du dispositif. Il écarte les
 personnes physiques sans rôle civique public, les pistes de travail non
 établies, les liens de famille, les domiciles et les dates de naissance. Sur
-l'instance de Lasalle, il exclut environ 3 850 personnes, 4 500 relations et
-59 entités de la base de travail.
+l'instance de Lasalle, il écarte environ 3 800 personnes et 4 500 relations de
+la base de travail.
+
+**Une entité non classée n'est pas publiée.** Le classement de périmètre
+(C1 la commune, C2 l'intercommunalité, C3 le supra-communal, `lien` le
+rattachement) est le dernier step de la collecte, et le snapshot refuse de se
+construire sur une base qui ne l'a jamais reçu. Le défaut inverse — publier ce
+qu'on n'a pas classé — a tenu jusqu'au 14/08/2026 : sur une instance neuve, il
+publiait 10 735 fiches dont 6 151 relevaient d'une commune voisine.
 
 ## Ce que le dispositif dit de lui-même
 
@@ -50,42 +62,84 @@ actes seulement renvoient vers la pièce elle-même.
 
 ---
 
+## Les deux moitiés : le site public et l'atelier
+
+|  | **Site public** | **Atelier** |
+|---|---|---|
+| Sert | le snapshot filtré | la base de travail entière, **non filtrée** |
+| Hébergement | fichiers statiques, aucun backend | un serveur — ou rien du tout |
+| Nécessaire ? | c'est l'objet du dispositif | **non** |
+
+L'atelier lit et écrit la base de travail : celle qui contient ce que le site
+public écarte. Le mettre sur l'internet public, c'est exposer ce que le filtre
+retient. Trois usages possibles, par ordre de prudence :
+
+1. **en local**, le temps d'une session de travail, sur la machine qui porte la
+   base — rien n'est exposé, aucun secret à gérer. C'est le mode par défaut, et
+   il suffit tant qu'une seule personne tient l'instance ;
+2. **derrière un accès restreint** (VPN, réseau local) pour travailler à
+   plusieurs ;
+3. **en ligne avec TLS et comptes nommés**, quand plusieurs personnes
+   contribuent depuis des lieux différents.
+
+Le troisième cas n'est pas une décision technique : c'est une décision sur qui a
+accès à des données qu'on a choisi de ne pas publier. `deploy/README.md` détaille
+les trois, et ce que le dispositif fait — et ne fait pas — pour vous.
+
+---
+
 ## Rejouer sur une autre commune : l'état réel
 
 Le site a longtemps publié que « changer de commune tient dans un seul fichier
-de configuration ». **C'était exagéré**, et la page « Méthode » affiche
-désormais la mesure plutôt que la promesse.
+de configuration ». C'était exagéré. Voici où en est la mesure, refaite à
+chaque publication par `mesurer_replicabilite()` :
+
+| | fichiers nommant une commune | occurrences |
+|---|---|---|
+| moteur (collecteurs, scripts, API) | 0 | 0 |
+| site public | 0 | 0 |
+| atelier | 0 | 0 |
+
+Ces chiffres sont produits par `scripts/verifier_generique.py`, qui est aussi le
+contrôle d'admission du kit : le moteur est analysé par AST — pour ne pas
+confondre une docstring qui documente un piège avec le code qui l'applique — et
+le site, qui est du texte éditorial, ligne à ligne. Vous pouvez les refaire :
+
+```bash
+python3 scripts/verifier_generique.py
+```
+
+Le contrôle interdit des **formes** et pas seulement des mots : un code INSEE ou
+un SIREN littéral, un identifiant d'entité en dur (`XXX_ID = 63` — c'est un
+numéro de ligne, il désigne n'importe quoi dans une autre base), une URL de site
+officiel, un nom de base de données. Ces quatre règles-là sont exhaustives. La
+cinquième, qui cherche des noms de communes, ne vaut que ce que vaut sa liste.
 
 Ce qui est effectivement paramétré :
 
-| Où | Quoi |
-|---|---|
-| `collectors/config.py` | commune, code INSEE, EPCI, communes membres, périmètres |
-| `config/publication_rules.json` | règles de publication, sources autorisées, axes de provenance |
-| `config/profils_locaux.json` | élus et candidats (non versionné) |
-| `config/seed_local.json` | catalogue des comptes rendus, subventions, baux (non versionné) |
-| `public/src/lib/site.js` | nom du site, adresse canonique |
+| Où | Quoi | Versionné ? |
+|---|---|---|
+| `config/instance.json` | commune, INSEE, EPCI, communes membres, centroïde, éditeur | non |
+| `config/publication_rules.json` | règles de publication, sources autorisées, axes de provenance | non (exemple fourni) |
+| `config/profils_locaux.json` | élus et candidats | non |
+| `config/seed_local.json` | catalogue des comptes rendus, subventions, baux | non |
+| `public/src/lib/instance.js`, `dashboard/src/lib/instance.js` | libellés du site et de l'atelier | non — **générés** |
 
-Ce qui ne l'est pas :
+Les deux `instance.js` ne s'éditent pas : `scripts/generer_libelles.py` les
+écrit depuis l'instance, et calcule les formes grammaticales — « d'Alès » et non
+« de Alès », « au Bez » et non « à Le Bez ». Une chaîne « de {COMMUNE} » écrite
+à la main finit toujours par produire une faute sur la commune suivante.
 
-- **20 fichiers du moteur** contiennent encore le nom de la commune en dur,
-  soit 39 occurrences (URL de scraping, cas particuliers de rattachement) ;
-- **38 fichiers du site** en comptent 98 : titres, chapeaux, descriptions. Ils
-  ne sont pas paramétrés, il faut les reprendre à la main ;
-- les **collecteurs de sites officiels** (`events_scraper`, `cc_cac_scraper`,
-  `cm_*`) sont écrits pour la structure des sites de Lasalle et de son
-  intercommunalité. Un autre site demande un autre analyseur. C'est la partie
-  irréductible : il n'existe pas de format commun aux sites de mairie.
+Ce qui reste irréductible : les **collecteurs de sites officiels**
+(`events_scraper`, `cm_*`, connecteurs) dépendent de la structure du site de
+chaque mairie. Le moteur fournit des connecteurs pour deux familles courantes
+(WordPress via son API REST, Drupal en HTML) ; hors de là, il faut écrire
+l'analyseur. Il n'existe pas de format commun aux sites de mairie.
 
-Les deux premiers chiffres ne sont pas déclaratifs : ils sont recomptés à chaque
-publication par `mesurer_replicabilite()` — analyse AST pour le moteur, afin de
-ne pas confondre une docstring qui documente un piège avec du code qui
-l'applique — et affichés sur la page « Méthode » du site. Vous pouvez les
-refaire.
-
-En clair : les collecteurs nationaux (SIRENE, BODACC, DVF, OFGL, RNE, Sitadel,
-DECP) fonctionnent tels quels pour n'importe quelle commune française. Le reste
-demande du travail. Comptez plutôt quelques jours qu'une heure.
+En clair : les collecteurs nationaux (SIRENE, RNA, BODACC, DVF, OFGL, RNE,
+Sitadel, DECP, élections, Hub'Eau) fonctionnent tels quels pour n'importe quelle
+commune française. Le reste demande du travail. Comptez plutôt quelques jours
+qu'une heure.
 
 ---
 
@@ -93,21 +147,66 @@ demande du travail. Comptez plutôt quelques jours qu'une heure.
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
-sqlite3 db/commune.db < db/schema.sql
+
+# 1. Amorcer l'instance depuis le code INSEE de la commune.
+#    Interroge geo.api.gouv.fr et recherche-entreprises.api.gouv.fr, écrit
+#    config/instance.json, adapte les règles de publication, et génère les
+#    libellés du site et de l'atelier.
+venv/bin/python scripts/init_instance.py 30140
+
+#    → relire config/instance.json : c'est le SEUL endroit du dispositif où une
+#      donnée de commune a le droit d'exister. Renseigner la clé « editeur »
+#      (nom, statut, courriel, hébergeur) : les mentions légales l'affichent.
 
 cp config/profils_locaux.exemple.json config/profils_locaux.json
 cp config/seed_local.exemple.json config/seed_local.json
-# → renseigner collectors/config.py (commune, INSEE, EPCI)
 
-venv/bin/python -m collectors            # collecte
-venv/bin/python scripts/build_public_snapshot.py   # → snapshot JSON
+# 2. Collecter. Le step « init » crée la base, le step « perimetre » la classe.
+venv/bin/python -m collectors.run_all
 
-cd public && npm install && npm run build          # → build/
+# 3. Publier : snapshot filtré → contrôles → site statique dans public/build/
+cd public && npm install && cd ..
+./deploy/publier-site.sh
 ```
 
-`npm run build` échoue si une page est livrée sans son contenu : voir
-`public/scripts/verifier_build.mjs`. Les données étant figées au build, chaque
-page lit le snapshot dans son `+page.server.js` — rien n'est chargé côté client.
+`init_instance.py` liste en fin d'exécution ce qui reste à renseigner à la main
+— typiquement l'adresse du site de la mairie et le connecteur qui sait le lire.
+
+Pour l'atelier, en local :
+
+```bash
+venv/bin/python scripts/create_user.py add --email vous@exemple.org --role admin
+venv/bin/uvicorn api:app --port 8765            # l'API
+cd dashboard && npm install && npm run dev      # l'interface
+```
+
+L'API refuse par défaut : toute route `/api/` sans jeton valide répond 401.
+`JWT_SECRET` doit être défini (`cp deploy/env.exemple .env`), sinon
+l'authentification répond 503 plutôt que de signer avec une clé vide.
+
+---
+
+## Publier
+
+`./deploy/publier-site.sh` enchaîne trois étapes, et chacune peut refuser :
+
+1. **le snapshot** — s'arrête si le périmètre n'a jamais été classé ;
+2. **les invariants** (`scripts/verify_snapshot.py`) — un contrôle écrit comme
+   un adversaire, qui **n'importe pas le builder** et attaque le répertoire
+   publié : confidences privées, relations hors liste, coordonnées de personnes,
+   secrets, chemins locaux, et part de la commune dans ce qui est publié. Si le
+   builder et le contrôleur partageaient du code, ils partageraient leurs bugs ;
+3. **le build** — `npm run build` échoue si une page est livrée sans son contenu
+   (`public/scripts/verifier_build.mjs`). Les données étant figées au build,
+   chaque page lit le snapshot dans son `+page.server.js` : rien n'est chargé
+   côté client.
+
+Le résultat est un site statique ordinaire dans `public/build/`, à téléverser où
+vous voulez. Le script sait pousser vers Cloudflare Pages
+(`CF_PROJECT=… ./deploy/publier-site.sh --deployer`) ; pour tout autre
+hébergeur, rien à changer avant la dernière étape.
+
+Détails, atelier sur serveur, secrets et durcissement : **`deploy/README.md`**.
 
 ---
 
@@ -117,8 +216,14 @@ Ni base de données, ni snapshot publié, ni notes d'enquête, ni fichiers
 nominatifs. Ce n'est pas un oubli : un dépôt public d'un projet qui documente
 des personnes doit être tenu à la même règle que le site qu'il produit.
 
-Les fichiers `config/*_local*.json` et `config/profils_locaux.json` restent sur
-la machine qui fait tourner la collecte.
+Les fichiers `config/instance.json`, `config/profils_locaux.json` et
+`config/seed_local.json` restent sur la machine qui fait tourner la collecte.
+
+`scripts/build_kit.py` fabrique une archive distribuable de ce dépôt. Sa liste
+de fichiers vient de `git ls-files` et non d'un parcours du disque : ce qui
+n'est pas versionné n'est pas distribué, une règle unique et vérifiable. Un
+fichier qu'il ne sait pas lire est **refusé**, pas ignoré — une base SQLite est
+illisible en UTF-8, et c'est exactement ce que ce contrôle doit arrêter.
 
 ---
 
@@ -131,6 +236,10 @@ sur le site qu'au titre d'une fonction publique, d'un mandat électif ou d'une
 responsabilité inscrite dans un registre public. Un droit de réponse est ouvert,
 et toute rectification est appliquée puis signalée comme telle — la donnée
 collectée étant conservée à côté de la rectification, jamais remplacée.
+
+La note de licence de `config/publication_rules.json` décrit le jeu de données
+de l'instance dont l'exemple est tiré : elle doit être relue et réécrite avant
+publication, pas recopiée.
 
 Si vous rejouez ce dispositif ailleurs : la partie difficile n'est pas
 technique. C'est de décider ce qu'il est légitime de faire dire aux données, et

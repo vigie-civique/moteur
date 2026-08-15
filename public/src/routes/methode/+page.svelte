@@ -218,11 +218,37 @@
     s'applique pas, et c'est précisément là que rien n'est publié.
   </p>
   <p>
-    Concrètement, changer de commune tient dans un seul fichier de
-    configuration : la commune, son intercommunalité, ses communes membres. Les
-    collecteurs, le schéma de données et ce site n'ont pas à être modifiés. Un
-    contrôle automatique vérifie à chaque passage qu'aucune règle propre à
-    {COMMUNE} ne s'est glissée dans le moteur.
+    Le périmètre d'une instance — la commune, son intercommunalité, ses communes
+    membres — tient dans un fichier de configuration. Le reste demande du
+    travail : les collecteurs nationaux fonctionnent tels quels partout, mais le
+    site officiel de chaque mairie a sa propre structure et réclame son propre
+    analyseur. Comptez quelques jours, pas une heure.
+  </p>
+  {#if data.replicabilite}
+    <p>
+      Ce que cette page affirme est mesuré, pas promis. Un contrôle automatique
+      recompte à chaque publication les endroits où le nom d'une commune s'est
+      glissé dans le code plutôt que dans la configuration&nbsp;:
+      <strong>{data.replicabilite.moteur_occurrences}</strong> dans le moteur,
+      <strong>{data.replicabilite.site_occurrences}</strong> dans ce site,
+      <strong>{data.replicabilite.atelier_occurrences}</strong> dans l'outil
+      d'édition. Il interdit des formes autant que des mots&nbsp;: un code INSEE
+      écrit en dur, un identifiant de ligne pris pour une constante, l'adresse
+      d'un site officiel. La mesure a longtemps manqué&nbsp;: le contrôle ne
+      cherchait que le nom de la commune courante, et donnait un feu vert
+      trompeur partout ailleurs.
+    </p>
+  {/if}
+  <p>
+    Le dispositif a deux moitiés. <strong>Ce site</strong> ne sert que des
+    données filtrées, il est entièrement statique et n'interroge aucune base.
+    <strong>L'outil d'édition</strong>, lui, travaille sur la base complète —
+    celle qui contient les pistes non vérifiées et les personnes sans rôle
+    public, tout ce que le filtre écarte. Il n'a pas vocation à être en ligne&nbsp;:
+    chaque instance décide s'il tourne seulement sur la machine de collecte, sur
+    un réseau restreint, ou sur l'internet avec des comptes nommés. Ce n'est pas
+    une question technique, c'est une question d'accès à ce qu'on a choisi de ne
+    pas publier.
   </p>
 
   <h2>Réutiliser les données</h2>

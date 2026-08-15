@@ -330,10 +330,15 @@ def main() -> int:
     # l'instance et ne sont pas versionnés. Sans eux, `npm run build` échoue sur
     # un ENOENT illisible : le module manque, mais rien ne dit qu'il se génère.
     # Les écrire ici évite d'avoir à le savoir.
+    # Importé sous alias : `construire` est aussi le nom d'une fonction de ce
+    # module, appelée plus haut dans main(). Un import local du même nom la rend
+    # locale pour TOUTE la fonction, y compris avant l'import — l'appel de la
+    # ligne 316 levait alors un UnboundLocalError.
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
-        from generer_libelles import construire, ecrire, CIBLES
-        ecrire(construire())
+        from generer_libelles import (construire as _libelles,
+                                      ecrire as _ecrire_libelles, CIBLES)
+        _ecrire_libelles(_libelles())
         for cible in CIBLES:
             print(f"✓ {cible.relative_to(ROOT)} généré")
     except Exception as exc:

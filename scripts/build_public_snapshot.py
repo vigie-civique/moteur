@@ -1507,6 +1507,53 @@ def mesurer_replicabilite() -> dict:
     }
 
 
+def synchroniser_site_public(src: Path, root: Path) -> dict:
+    """Recopie le snapshot là où le site public le lit.
+
+    Le builder écrit dans `outputs.public_snapshot_dir` (l'atelier le sert
+    depuis là), le site public lit `public/static/data`. Le raccord entre les
+    deux a longtemps vécu dans `api.py`, appelé depuis un script de
+    déploiement qui n'était pas livré avec le moteur : une instance suivait le
+    README, produisait un snapshot, et se retrouvait avec un site vide sans
+    qu'aucune étape n'ait échoué.
+
+    `entite/` est mis en MIROIR, pas seulement copié : une entité retirée de la
+    publication doit voir sa page disparaître, sinon elle reste en ligne.
+    """
+    import shutil
+
+    dest = root / "public" / "static" / "data"
+    (dest / "layers").mkdir(parents=True, exist_ok=True)
+    (dest / "entite").mkdir(parents=True, exist_ok=True)
+    copied = []
+    for f in sorted(src.glob("*.json")):
+        shutil.copy2(f, dest / f.name)
+        copied.append(f.name)
+    # Le README est le dictionnaire de données : il accompagne les JSON, il ne
+    # reste pas dans le dépôt. Il était exclu de la synchro, si bien que
+    # `public/static/data/README.md` annonçait des chiffres faux à côté de
+    # fichiers à jour.
+    readme = src / "README.md"
+    if readme.exists():
+        shutil.copy2(readme, dest / "README.md")
+        copied.append("README.md")
+    for f in sorted((src / "layers").glob("*.geojson")):
+        shutil.copy2(f, dest / "layers" / f.name)
+        copied.append(f"layers/{f.name}")
+
+    fiches = {f.name for f in (src / "entite").glob("*.json")}
+    for f in sorted((src / "entite").glob("*.json")):
+        shutil.copy2(f, dest / "entite" / f.name)
+        copied.append(f"entite/{f.name}")
+    retirees = []
+    for f in sorted((dest / "entite").glob("*.json")):
+        if f.name not in fiches:
+            f.unlink()
+            retirees.append(f.name)
+    return {"dest": str(dest), "files": copied, "count": len(copied),
+            "fiches_retirees": retirees}
+
+
 def build_snapshot(out: Path) -> dict:
     conn = get_db()
     try:
@@ -2733,6 +2780,8 @@ def build_snapshot(out: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build a conservative public snapshot preview")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--no-sync", action="store_true",
+                        help="ne pas recopier le snapshot vers public/static/data")
     args = parser.parse_args()
 
     # Les libellés du site sont dérivés de la même instance que le snapshot :
@@ -2751,6 +2800,14 @@ def main() -> None:
     except PerimetreNonClasse as e:
         print(f"\n✖ snapshot refusé — {e}", file=sys.stderr)
         return 2
+
+    # Produire le snapshot sans le porter jusqu'au site, c'était la moitié du
+    # travail — et la moitié invisible : le site restait tel quel, sans erreur.
+    if not args.no_sync:
+        sync = synchroniser_site_public(args.out, ROOT)
+        stats["site_public_fichiers"] = sync["count"]
+        stats["site_public_fiches_retirees"] = len(sync["fiches_retirees"])
+
     print(json.dumps({"out": str(args.out), **stats}, ensure_ascii=False, indent=2))
     return 0
 

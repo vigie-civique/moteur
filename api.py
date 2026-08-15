@@ -1011,46 +1011,10 @@ def _public_snapshot_status():
         "rules": report.get("rules", {}),
     }
 
-def _sync_public_static(src, root) -> dict:
-    """Copie les fichiers servables du snapshot (public-data/) vers
-    public/static/data/ — l'app publique les sert tels quels.
-    Élimine l'étape manuelle `cp public-data/* public/static/data/`."""
-    import shutil
-
-    dest = root / "public" / "static" / "data"
-    (dest / "layers").mkdir(parents=True, exist_ok=True)
-    (dest / "entite").mkdir(parents=True, exist_ok=True)
-    copied = []
-    for f in sorted(src.glob("*.json")):
-        shutil.copy2(f, dest / f.name)
-        copied.append(f.name)
-    # Le README est le dictionnaire de données : il accompagne les JSON, il ne
-    # reste pas dans le dépôt. Il était exclu de la synchro, si bien que
-    # `public/static/data/README.md` datait du 26/07/2026 et annonçait des
-    # chiffres faux à côté de fichiers à jour.
-    readme = src / "README.md"
-    if readme.exists():
-        shutil.copy2(readme, dest / "README.md")
-        copied.append("README.md")
-    for f in sorted((src / "layers").glob("*.geojson")):
-        shutil.copy2(f, dest / "layers" / f.name)
-        copied.append(f"layers/{f.name}")
-
-    # `entite/` était absent de la synchro : les fiches acteurs servies par le
-    # site public dataient de la dernière copie manuelle, et une entité retirée
-    # de la publication gardait sa page en ligne. Ce répertoire est donc mis en
-    # MIROIR — copie + suppression de ce qui n'est plus publié.
-    fiches = {f.name for f in (src / "entite").glob("*.json")}
-    for f in sorted((src / "entite").glob("*.json")):
-        shutil.copy2(f, dest / "entite" / f.name)
-        copied.append(f"entite/{f.name}")
-    retirees = []
-    for f in sorted((dest / "entite").glob("*.json")):
-        if f.name not in fiches:
-            f.unlink()
-            retirees.append(f.name)
-    return {"dest": str(dest), "files": copied, "count": len(copied),
-            "fiches_retirees": retirees}
+# Le raccord snapshot → site public vit avec le builder : il doit être
+# appelable par le script de déploiement sans démarrer l'API.
+from scripts.build_public_snapshot import (  # noqa: E402
+    synchroniser_site_public as _sync_public_static)
 
 @app.get("/api/admin/public-snapshot")
 def public_snapshot_status(x_admin_key: Optional[str] = Header(default=None),

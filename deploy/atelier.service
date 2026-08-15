@@ -1,0 +1,47 @@
+# systemd — API de l'atelier (FastAPI/uvicorn).
+#
+# L'atelier est FACULTATIF : il ne sert qu'à ceux qui veulent corriger et
+# annoter à plusieurs, depuis ailleurs que la machine de collecte. Lire
+# deploy/README.md § « L'atelier, et pourquoi vous n'en avez peut-être pas
+# besoin » avant de l'installer — le mettre en ligne, c'est exposer une base de
+# travail NON filtrée.
+#
+# Installer :
+#   sudo cp deploy/atelier.service /etc/systemd/system/vigie-atelier.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now vigie-atelier
+#
+# À adapter : User, WorkingDirectory, et le chemin du venv — créé SUR LE SERVEUR,
+# jamais recopié depuis la machine de collecte.
+
+[Unit]
+Description=Vigie Civique — API de l'atelier (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=vigie
+WorkingDirectory=/opt/vigie
+# Les secrets ne sont pas dans l'unité : un fichier d'unité est lisible par tous.
+# Ce fichier-là doit être en 0600 et appartenir à l'utilisateur du service.
+EnvironmentFile=/opt/vigie/.env
+# venv créé sur le serveur :
+#   python3 -m venv /opt/vigie/venv && /opt/vigie/venv/bin/pip install -r requirements.txt
+#
+# --host 127.0.0.1 : l'API n'est JAMAIS exposée directement. nginx termine le
+# TLS et proxifie. Une API en 0.0.0.0 rend la base de travail accessible à qui
+# connaît le port, quel que soit le pare-feu qu'on croit avoir.
+ExecStart=/opt/vigie/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5
+
+# Durcissement
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Seul le répertoire de l'instance est accessible en écriture : la base, les
+# journaux et le snapshot y vivent.
+ReadWritePaths=/opt/vigie
+
+[Install]
+WantedBy=multi-user.target

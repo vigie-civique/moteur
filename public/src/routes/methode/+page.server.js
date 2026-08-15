@@ -35,5 +35,11 @@ export function load() {
       events: s.events_public ?? null,
       flux: s.flows_public ?? null,
     },
+    // Dette de réplication, recomptée à chaque publication par le même contrôle
+    // qui sert d'admission au kit (scripts/verifier_generique.py). La page
+    // affirmait « changer de commune tient dans un seul fichier de
+    // configuration » ; elle affiche maintenant la mesure, qui peut être
+    // refaite par quiconque a le dépôt.
+    replicabilite: s.replicabilite || null,
   }
 }
