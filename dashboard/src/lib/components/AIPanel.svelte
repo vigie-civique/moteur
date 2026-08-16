@@ -1,6 +1,13 @@
 <script>
+  import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
   import { selectedEntity, stats } from '$lib/stores/app.js'
+
+  // Le modèle est un réglage du serveur, pas une constante de l'interface :
+  // le bouton nommait un fournisseur en dur et continuait de le nommer après
+  // en avoir changé. On demande à l'API ce qui tourne réellement.
+  let ia = null
+  onMount(async () => { ia = await api.iaConfig() })
 
   let topic    = 'synthèse générale'
   let context  = ''
@@ -52,9 +59,22 @@
       rows="3"
     ></textarea>
 
-    <button on:click={synthesize} disabled={loading}>
-      {loading ? 'Analyse en cours…' : '⚡ Analyser avec Claude'}
+    <button on:click={synthesize} disabled={loading || (ia && !ia.configuree)}>
+      {loading ? 'Analyse en cours…' : '⚡ Analyser'}
     </button>
+
+    {#if ia && !ia.configuree}
+      <p class="hint">
+        Aucun modèle configuré. Régler <code>IA_URL</code> et <code>IA_MODELE</code>
+        dans <code>.env</code> — le fournisseur est libre, local compris
+        (cf. <code>deploy/env.exemple</code>).
+      </p>
+    {:else if ia?.modele}
+      <p class="hint">
+        Modèle : <code>{ia.modele}</code>
+        {#if ia.locale}— local, aucune donnée ne sort de la machine{:else}— service distant : les extraits envoyés sortent de la machine{/if}
+      </p>
+    {/if}
   </div>
 
   {#if error}
@@ -136,4 +156,10 @@
   .result p { margin-bottom: .5rem; }
 
   .hint { color: #475569; font-size: .82rem; }
+  .hint code {
+    background: #0f172a;
+    border-radius: 3px;
+    color: #94a3b8;
+    padding: 0 .25rem;
+  }
 </style>

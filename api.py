@@ -788,7 +788,41 @@ def synthesis(entity_id: int = FPath(..., ge=1)):
         raise HTTPException(404, "Synthèse non disponible")
     return json.loads(path.read_text())
 
-# ─── /api/synthesize (Claude API live) ─────────────────────────────────────────
+# ─── /api/synthesize — synthèse par modèle de langage ─────────────────────────
+#
+# Le fournisseur est un RÉGLAGE, pas un choix du dispositif. Deux fournisseurs
+# étaient nommés en dur dans le code — clés, modèles et ordre de repli — ce qui
+# imposait à qui reprend le kit d'ouvrir un compte chez l'un des deux, ou de
+# modifier le moteur. Tout passe désormais par quatre variables, et rien n'est
+# installé : l'appel se fait en HTTP direct, sans bibliothèque de fournisseur.
+#
+#   IA_URL        racine de l'API (sans /chat/completions ni /messages)
+#   IA_MODELE     identifiant du modèle, tel que le fournisseur l'attend
+#   IA_CLE        jeton d'authentification — VIDE pour un modèle local
+#   IA_PROTOCOLE  « openai » (défaut) ou « anthropic »
+#
+# Le protocole « openai » n'engage pas OpenAI : c'est le format de requête que
+# parlent aussi Ollama, llama.cpp, vLLM, LM Studio, Groq, Mistral, DeepSeek et
+# les passerelles type OpenRouter. Un modèle qui tourne sur la machine de
+# collecte se règle comme un service distant, et ne fait sortir aucune donnée.
+#
+# Rien n'est configuré par défaut : la fonction est absente tant qu'on ne la
+# demande pas, et le reste de l'atelier fonctionne sans elle.
+
+_IA_URL       = os.environ.get("IA_URL", "").strip().rstrip("/")
+_IA_MODELE    = os.environ.get("IA_MODELE", "").strip()
+_IA_CLE       = os.environ.get("IA_CLE", "").strip()
+_IA_PROTOCOLE = os.environ.get("IA_PROTOCOLE", "openai").strip().lower()
+
+_IA_PROTOCOLES = ("openai", "anthropic")
+
+
+def _ia_configuree() -> bool:
+    """Une URL et un modèle suffisent. La clé ne fait pas partie du minimum :
+    un modèle local n'en demande pas, et l'exiger fermait la porte au seul
+    fournisseur qui ne coûte rien et ne publie rien."""
+    return bool(_IA_URL and _IA_MODELE)
+
 
 class SynthesizeRequest(BaseModel):
     topic: str
@@ -882,15 +916,77 @@ def _build_user_msg(req: SynthesizeRequest, db_ctx: str = "") -> str:
     parts.append(f"DEMANDE : {req.topic}")
     return "\n\n".join(parts)
 
+def _appel_openai(user_msg: str) -> str:
+    """Format « chat completions ». Parlé par Ollama, llama.cpp, vLLM, LM Studio,
+    Groq, Mistral, DeepSeek, OpenAI et la plupart des passerelles."""
+    import requests as _rq
+    entetes = {"Content-Type": "application/json"}
+    if _IA_CLE:
+        entetes["Authorization"] = f"Bearer {_IA_CLE}"
+    r = _rq.post(
+        f"{_IA_URL}/chat/completions",
+        headers=entetes,
+        json={
+            "model": _IA_MODELE,
+            "max_tokens": 1024,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_msg},
+            ],
+        },
+        timeout=180,   # un modèle local sur CPU est lent, pas en panne
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def _appel_anthropic(user_msg: str) -> str:
+    """Format « messages » d'Anthropic — le seul répandu qui ne soit pas
+    compatible avec le précédent, d'où cette seconde branche."""
+    import requests as _rq
+    entetes = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+    if _IA_CLE:
+        entetes["x-api-key"] = _IA_CLE
+    r = _rq.post(
+        f"{_IA_URL}/messages",
+        headers=entetes,
+        json={
+            "model": _IA_MODELE,
+            "max_tokens": 1024,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": user_msg}],
+        },
+        timeout=180,
+    )
+    r.raise_for_status()
+    return r.json()["content"][0]["text"]
+
+
+@app.get("/api/ia/config")
+def ia_config(user=Depends(require_auth)):
+    """Ce que l'atelier doit savoir pour se décrire honnêtement : le modèle
+    réellement réglé, et s'il sort de la machine. L'interface annonçait un
+    fournisseur en dur, qui restait affiché après en avoir changé."""
+    return {
+        "configuree": _ia_configuree(),
+        "modele":     _IA_MODELE or None,
+        "protocole":  _IA_PROTOCOLE,
+        "locale":     bool(_IA_URL) and any(
+            h in _IA_URL for h in ("localhost", "127.0.0.1", "[::1]")),
+    }
+
+
 @app.post("/api/synthesize")
 @limiter.limit("10/minute;50/hour")
 def synthesize(request: StarletteRequest, req: SynthesizeRequest):
-    """Groq primaire (llama-3.3-70b-versatile) → Anthropic fallback (cf. decisions.md)."""
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    groq_key      = os.environ.get("GROQ_API_KEY")
-
-    if not anthropic_key and not groq_key:
-        raise HTTPException(503, "Aucune clé IA configurée (ANTHROPIC_API_KEY ou GROQ_API_KEY)")
+    """Interroge le modèle réglé dans l'environnement. Aucun fournisseur par
+    défaut : sans réglage, la route dit qu'elle n'est pas configurée."""
+    if not _ia_configuree():
+        raise HTTPException(503, "Aucun modèle configuré : régler IA_URL et IA_MODELE "
+                                 "(cf. deploy/env.exemple).")
+    if _IA_PROTOCOLE not in _IA_PROTOCOLES:
+        raise HTTPException(503, f"IA_PROTOCOLE={_IA_PROTOCOLE} inconnu — "
+                                 f"valeurs acceptées : {', '.join(_IA_PROTOCOLES)}.")
 
     conn = get_db()
     try:
@@ -899,38 +995,12 @@ def synthesize(request: StarletteRequest, req: SynthesizeRequest):
         conn.close()
     user_msg = _build_user_msg(req, db_ctx)
 
-    # Groq primaire — free tier (14 400 req/j, économique)
-    if groq_key:
-        try:
-            from groq import Groq
-            client = Groq(api_key=groq_key)
-            msg = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                max_tokens=1024,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_msg},
-                ],
-            )
-            return {"synthesis": msg.choices[0].message.content, "provider": "groq"}
-        except Exception as e:
-            if not anthropic_key:
-                raise HTTPException(500, str(e))
-            # Fallback Anthropic
-
-    # Anthropic fallback — meilleure qualité, coût
+    appel = _appel_anthropic if _IA_PROTOCOLE == "anthropic" else _appel_openai
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=anthropic_key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        return {"synthesis": msg.content[0].text, "provider": "claude"}
+        return {"synthesis": appel(user_msg), "provider": _IA_MODELE}
     except Exception as e:
-        raise HTTPException(500, str(e))
+        # 502 et non 500 : la panne est chez le fournisseur, pas dans l'atelier.
+        raise HTTPException(502, f"Le modèle n'a pas répondu : {e}")
 
 # ─── /api/candidates ───────────────────────────────────────────────────────────
 

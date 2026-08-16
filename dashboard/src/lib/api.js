@@ -102,6 +102,10 @@ export const api = {
     try { return await get(`/syntheses/${id}`) } catch { return null }
   },
 
+  iaConfig: async () => {
+    try { return await get('/ia/config') } catch { return { configuree: false } }
+  },
+
   synthesize: async (topic, context = '') => {
     try {
       return await post('/synthesize', { topic, context })
