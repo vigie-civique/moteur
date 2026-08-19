@@ -63,17 +63,20 @@
      actif et qui n'est pas dans la zone du domaine — aucune redirection ne peut
      donc le rattraper. Sans cette balise, les deux se concurrencent et l'autorité
      de référencement reste chez l'hébergeur, qui n'appartient pas au projet.
-     Posée une seule fois ici : chaque page en hérite. -->
-{#if SITE_URL}
-  <svelte:head>
+     Posée une seule fois ici : chaque page en hérite.
+
+     La condition est DANS la balise et non autour : `<svelte:head>` ne peut pas
+     se trouver à l'intérieur d'un bloc, le compilateur refuse. -->
+<svelte:head>
+  {#if SITE_URL}
     <link rel="canonical" href="{SITE_URL}{path}" />
     <meta property="og:url" content="{SITE_URL}{path}" />
     <meta property="og:site_name" content={SITE_NOM} />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="fr_FR" />
     <meta name="twitter:card" content="summary" />
-  </svelte:head>
-{/if}
+  {/if}
+</svelte:head>
 
 <svelte:window on:keydown={(e) => { if (e.key === 'Escape') menuOuvert = false }} />
 
