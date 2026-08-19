@@ -913,6 +913,22 @@ def write_entity_bundles(out: Path, public_entities, public_relations,
 
     dest = out / "entite"
     dest.mkdir(parents=True, exist_ok=True)
+
+    # PURGE AVANT ÉCRITURE. Sans elle, une entité retirée de la publication
+    # gardait sa fiche ici, et la synchro miroir la recopiait fidèlement vers le
+    # site : le 19/08/2026, deux sites en ligne servaient des fiches périmées en
+    # `/data/entite/<id>.json` — 1 229 sur l'un dont 80 personnes physiques,
+    # 9 697 sur l'autre dont 156 — alors que le filtre les avait écartées.
+    # Personne ne le voyait, parce que la page HTML de ces entités rendait bien
+    # 404 : seul le fichier de données restait accessible. Écrire par-dessus ne
+    # suffit pas, il faut retirer ce qui ne doit plus sortir.
+    attendus = {f"{e['id']}.json" for e in public_entities}
+    perimees = [f for f in dest.glob("*.json") if f.name not in attendus]
+    for f in perimees:
+        f.unlink()
+    if perimees:
+        print(f"   {len(perimees)} fiche(s) périmée(s) retirée(s) de {dest.name}/")
+
     for entity in public_entities:
         eid = entity["id"]
         write_json_compact(dest / f"{eid}.json", {

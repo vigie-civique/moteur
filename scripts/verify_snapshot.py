@@ -231,6 +231,37 @@ def check_perimetre(base, rep):
         rep.warn("part de la commune inférieure aux instances de référence", detail)
 
 
+def check_fiches_orphelines(base, rep):
+    """Toute fiche servie doit correspondre à une entité publiée.
+
+    Ce contrôle manquait, et son absence a laissé passer la seule vraie fuite du
+    dispositif : le 19/08/2026, deux sites en ligne servaient des fiches
+    `entite/<id>.json` d'entités écartées par le filtre, personnes physiques
+    comprises. Le builder écrivait par-dessus l'ancien contenu sans purger, et la
+    synchro miroir recopiait les périmées. Rien ne criait, parce que la PAGE de
+    ces entités rendait bien 404 : seul le fichier de données restait joignable.
+
+    D'où la règle que ce fichier applique partout ailleurs et qui valait ici
+    aussi : contrôler ce qui est SERVI, jamais ce que le builder croit avoir
+    produit. Le builder purge désormais — ce contrôle est là pour le cas où il
+    cesserait de le faire.
+    """
+    dossier = base / "entite"
+    fp = base / "entities.json"
+    if not dossier.is_dir() or not fp.is_file():
+        return
+    try:
+        entities = json.loads(fp.read_text()).get("entities") or []
+    except json.JSONDecodeError:
+        return  # déjà signalé par check_file
+    publies = {str(e.get("id")) for e in entities}
+    # Toutes signalées : c'est `Report.dump()` qui tronque l'affichage et annonce
+    # le compte exact. Tronquer ici ferait mentir ce compte.
+    for f in sorted(dossier.glob("*.json"), key=lambda p: p.stem):
+        if f.stem not in publies:
+            rep.error("fiche servie pour une entité non publiée", f"entite/{f.name}")
+
+
 def check_dir(base, rep):
     for fp in sorted(base.rglob("*")):
         if not fp.is_file():
@@ -245,6 +276,7 @@ def check_dir(base, rep):
         if fp.suffix in (".json", ".geojson", ".html", ".js", ".txt", ".md", ".css"):
             check_file(fp, rep, base)
     check_perimetre(base, rep)
+    check_fiches_orphelines(base, rep)
 
 
 def main(argv):
