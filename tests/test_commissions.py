@@ -3,7 +3,8 @@
 Le matériau est un PDF converti en texte : les noms y sont coupés par la mise
 en colonnes, les listes tronquées en fin de ligne, les numéros de page
 intercalés, et le débat de séance encadre la composition. Ces tests reproduisent
-ces formes, relevées dans un PV réel du 13/04/2026.
+ces formes, relevées dans un PV réel — les noms, eux, sont fictifs : le moteur
+a vocation à être forké, et il ne doit nommer aucun habitant d'aucune commune.
 
 Rien de ce que ce collecteur produit n'est publié : les commissions naissent en
 `probable` et les sièges en file d'arbitrage. Une commission mal peuplée serait
@@ -15,7 +16,7 @@ import pytest
 
 from collectors.commissions import _noms, _recoller, _resoudre, extraire
 
-# Extrait fidèle d'un PV réel : le débat ouvre, un titre déborde sur deux
+# Formes relevées sur un PV réel, noms remplacés : le débat ouvre, un titre déborde sur deux
 # lignes, un nom est coupé en fin de ligne, une liste est tronquée, une page
 # s'intercale, et de la prose s'immisce entre un titre et sa composition.
 PV = """M. VANTARD : Nous allons désigner les membres des commissions
