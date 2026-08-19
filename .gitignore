@@ -12,6 +12,10 @@ dashboard/static/public_api/
 public/static/docs/
 config/profils_locaux.json
 config/seed_local.json
+# Les dossiers sont le seul endroit du site où un humain écrit, et ils nomment
+# des personnes physiques. Ils n'étaient couverts par aucune règle : une
+# instance qui en rédigeait un le versionnait sans que rien ne l'en avertisse.
+config/dossiers_locaux.json
 audits/
 .env
 
