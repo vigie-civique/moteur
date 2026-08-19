@@ -87,12 +87,25 @@ D'où trois options, par ordre de prudence :
 la base, le temps d'une session de travail :
 
 ```bash
+# Prérequis, une fois : le secret de session et un compte.
+cp deploy/env.exemple .env && chmod 600 .env   # remplir JWT_SECRET
+python3 scripts/create_user.py add --email vous@exemple.org --role admin
+
 uvicorn api:app --port 8765          # dans un terminal
 cd dashboard && npm run dev          # dans un autre
 ```
 
-Rien n'est exposé, il n'y a ni secret à gérer ni serveur à tenir. C'est le mode
-par défaut, et il convient tant qu'une seule personne tient l'instance.
+Puis http://localhost:5173 — Vite proxie `/api` vers le port 8765.
+
+Rien n'est exposé : l'API n'écoute que `127.0.0.1`, il n'y a pas de serveur à
+tenir. Mais **il y a un secret à gérer**, même en local : sans `JWT_SECRET`,
+l'authentification répond 503 plutôt que de signer avec une clé vide, et
+l'atelier reste inaccessible sans que le message le dise clairement. `ADMIN_KEY`
+peut rester vide — une clé absente ne donne aucun accès.
+
+C'est le mode par défaut, et il convient tant qu'une seule personne tient
+l'instance. Séquence détaillée et contrôle du verrou : `README.md`, section
+« Ouvrir l'atelier, en local ».
 
 **b) Le déployer derrière un accès restreint** — VPN, réseau local, ou
 authentification HTTP en amont de nginx. À plusieurs sur un même réseau.

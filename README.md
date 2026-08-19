@@ -173,7 +173,7 @@ cd public && npm install && cd ..
 
 ```bash
 pip install pytest
-python3 -m pytest                        # 74 tests, ~2 s, sans réseau ni base
+python3 -m pytest                        # 100 tests, ~2 s, sans réseau ni base
 python3 scripts/verifier_generique.py    # le moteur ne nomme aucune commune
 ```
 
@@ -186,17 +186,52 @@ sur une commune factice — base, snapshot, contrôle d'étanchéité, site.
 `init_instance.py` liste en fin d'exécution ce qui reste à renseigner à la main
 — typiquement l'adresse du site de la mairie et le connecteur qui sait le lire.
 
-Pour l'atelier, en local :
+---
+
+## Ouvrir l'atelier, en local
+
+L'atelier sert **la base de travail entière, non filtrée** : personnes physiques
+sans rôle civique, pistes non établies, liens de famille, adresses. Tout ce que
+le site public écarte. En local il n'écoute que `127.0.0.1` et rien n'est
+exposé — c'est le mode par défaut, et il suffit tant qu'une seule personne tient
+l'instance. Pour les deux autres modes, voir `deploy/README.md`.
+
+Quatre étapes, dans cet ordre. **Les deux premières sont des prérequis** : sans
+elles l'API démarre mais refuse toute connexion, et l'erreur n'est pas parlante.
 
 ```bash
+# 1. Le secret de session. Sans JWT_SECRET, l'API répond 503 sur toute
+#    authentification — elle refuse plutôt que de signer avec une clé vide.
+cp deploy/env.exemple .env
+openssl rand -hex 32                      # coller la valeur dans JWT_SECRET=
+chmod 600 .env
+#    ADMIN_KEY peut rester VIDE : c'est une clé de service qui contourne le
+#    verrou JWT, et une clé absente ne donne aucun accès. ALLOWED_ORIGINS ne
+#    sert qu'à un atelier en ligne ; en local, laissez-la vide.
+
+# 2. Un compte. Le mot de passe est demandé au clavier, il n'apparaît nulle part.
 venv/bin/python scripts/create_user.py add --email vous@exemple.org --role admin
-venv/bin/uvicorn api:app --port 8765            # l'API
-cd dashboard && npm install && npm run dev      # l'interface
+#    Rôles : admin, validator, contributor.
+venv/bin/python scripts/create_user.py list
+
+# 3. L'API — dans un terminal qu'on laisse ouvert.
+venv/bin/uvicorn api:app --port 8765
+
+# 4. L'interface — dans un autre terminal.
+cd dashboard && npm install && npm run dev
 ```
 
-L'API refuse par défaut : toute route `/api/` sans jeton valide répond 401.
-`JWT_SECRET` doit être défini (`cp deploy/env.exemple .env`), sinon
-l'authentification répond 503 plutôt que de signer avec une clé vide.
+Puis **http://localhost:5173**. Vite proxie `/api` vers le port 8765 : rien
+d'autre à régler.
+
+Pour vérifier que le verrou fonctionne, l'API étant lancée :
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8765/api/stats
+```
+
+**401** est la bonne réponse : la route existe et refuse sans jeton. **503**
+signifie que `JWT_SECRET` n'est pas lu — reprendre l'étape 1.
 
 ---
 
