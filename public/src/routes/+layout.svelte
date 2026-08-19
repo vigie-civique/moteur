@@ -1,8 +1,21 @@
 <script>
-  import { COMMUNE } from '$lib/instance.js'
-  import { page } from '$app/stores'
-  import { goto } from '$app/navigation'
+  import { COMMUNE, SITE_NOM, SITE_URL } from '$lib/instance.js'
+  import { page, updated } from '$app/stores'
+  import { goto, beforeNavigate } from '$app/navigation'
   import Icon from '$lib/components/Icon.svelte'
+
+  // Une version plus récente du site a été publiée pendant que cet onglet était
+  // ouvert : on quitte la navigation interne pour un vrai chargement. Sans ça,
+  // le client continue de réclamer des fragments `/_app/immutable/` empreintés
+  // qui n'existent plus chez l'hébergeur, et le lecteur doit rafraîchir à la
+  // main pour voir quoi que ce soit. Suppose `version.pollInterval` réglé dans
+  // svelte.config.js.
+  beforeNavigate(({ to, willUnload, cancel }) => {
+    if ($updated && to?.url && !willUnload) {
+      cancel()
+      location.href = to.url.href
+    }
+  })
 
   // Public organisé par QUESTION citoyenne (modèle CivLab), pas par table.
   //
@@ -44,6 +57,23 @@
   // Le panneau mobile ne doit pas rester ouvert par-dessus la page d'arrivée.
   $: if (path) menuOuvert = false
 </script>
+
+<!-- Adresse canonique. Un site publié sur un hébergeur répond souvent à deux
+     adresses : son domaine et le sous-domaine de l'hébergeur, que celui-ci garde
+     actif et qui n'est pas dans la zone du domaine — aucune redirection ne peut
+     donc le rattraper. Sans cette balise, les deux se concurrencent et l'autorité
+     de référencement reste chez l'hébergeur, qui n'appartient pas au projet.
+     Posée une seule fois ici : chaque page en hérite. -->
+{#if SITE_URL}
+  <svelte:head>
+    <link rel="canonical" href="{SITE_URL}{path}" />
+    <meta property="og:url" content="{SITE_URL}{path}" />
+    <meta property="og:site_name" content={SITE_NOM} />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta name="twitter:card" content="summary" />
+  </svelte:head>
+{/if}
 
 <svelte:window on:keydown={(e) => { if (e.key === 'Escape') menuOuvert = false }} />
 

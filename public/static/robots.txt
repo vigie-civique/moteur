@@ -1,5 +1,0 @@
-# Ce site a vocation à être trouvé, cité et archivé : tout est indexable.
-User-agent: *
-Allow: /
-
-Sitemap: https://vigie-civique-lasalle.pages.dev/sitemap.xml

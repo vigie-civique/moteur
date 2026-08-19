@@ -13,5 +13,14 @@ export default {
     }),
     // Les données sont dans ../public-data/ (généré par build_public_snapshot.py)
     // En prod : servies par Cloudflare depuis le même repo, sans backend.
+
+    // Détection des nouvelles versions du site. Sans ce réglage, un onglet resté
+    // ouvert garde le JavaScript de la version qu'il a chargée : à la
+    // publication suivante, les fragments qu'il réclame sous
+    // `/_app/immutable/` sont empreintés et n'existent plus chez l'hébergeur, la
+    // navigation interne échoue en silence, et le lecteur croit le site cassé.
+    // Le client interroge `_app/version.json` toutes les cinq minutes ; le
+    // layout force un vrai chargement au clic suivant.
+    version: { pollInterval: 300000 },
   }
 }
