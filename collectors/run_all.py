@@ -82,6 +82,7 @@ def run_cm_flux(commit: bool = True):
     """
     _run_subv_cm(commit=commit)
     _run_baux(commit=commit)
+from collectors.approbations   import run as run_approbations
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
@@ -181,6 +182,11 @@ STEPS = {
     # arbitrage dans l'atelier.
     "commissions": ("Composition des commissions communales (PV)",
                     run_commissions),
+    # Dérivé lui aussi : relit le texte des séances pour y trouver les plans de
+    # financement votés — de l'argent engagé qui n'est pas un marché attribué.
+    # Doit passer APRÈS `cm` et `cc_epci`, qui fournissent ce texte.
+    "approbations": ("Plans de financement votés (PV)",
+                     lambda: run_approbations(commit=True)),
     # DERNIER, et il doit le rester : il classe ce que tous les autres ont
     # écrit. Sans lui, `entities.perimetre` reste NULL et aucune fiche n'est
     # publiable — le snapshot refuse de se construire plutôt que de publier
