@@ -36,13 +36,43 @@ def transaction():
         conn.close()
 
 
+# Colonnes ajoutées après coup. `CREATE TABLE IF NOT EXISTS` ne touche pas une
+# table qui existe déjà : sans ce rattrapage, une base collectée avant l'ajout
+# reste sans la colonne, et le code qui la lit échoue sur une base ancienne
+# alors qu'il marche sur une base neuve. En attendant des migrations
+# versionnées, la liste ci-dessous est le rattrapage minimal — chaque entrée
+# est jouée une fois, et ne fait rien si la colonne est déjà là.
+_COLONNES_AJOUTEES = [
+    ("marches_publics", "confidence",
+     "TEXT DEFAULT 'verified'"),   # 20/08/2026 — acheteur non établi = probable
+]
+
+
+def _rattraper_colonnes(conn) -> None:
+    for table, colonne, definition in _COLONNES_AJOUTEES:
+        existe = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,)).fetchone()
+        if not existe:
+            continue
+        colonnes = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if colonne in colonnes:
+            continue
+        # La contrainte CHECK n'est pas reprise ici : SQLite ne sait pas
+        # l'ajouter par ALTER TABLE. Elle vaut pour les bases neuves, et le code
+        # qui écrit n'utilise que les valeurs autorisées.
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {colonne} {definition}")
+        print(f"[db] colonne ajoutée : {table}.{colonne}")
+
+
 def init_db():
-    """Crée le schéma si absent."""
+    """Crée le schéma si absent, et rattrape les colonnes ajoutées depuis."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     schema = SCHEMA_PATH.read_text()
     conn = get_conn()
     try:
         conn.executescript(schema)
+        _rattraper_colonnes(conn)
         conn.commit()
         print(f"[db] Schéma initialisé → {DB_PATH}")
     finally:

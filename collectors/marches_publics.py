@@ -23,6 +23,7 @@ import argparse
 import json
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -50,6 +51,19 @@ CAC_SIREN      = EPCI_SIREN
 # Les mots significatifs du nom de l'EPCI : « CC », « Communauté », « de »,
 # « des » n'identifient personne. Le seuil de quatre lettres écarte les
 # articles sans avoir à les énumérer.
+def _norme_acheteur(nom: str) -> str:
+    """Forme comparable d'un nom d'acheteur : sans accents, casse, ponctuation
+    ni mots de structure. « CC Causses Aigoual Cévennes Terres Solidaires » et
+    « Communauté de communes Causses-Aigoual-Cévennes Terres solidaires » sont
+    le même acheteur ; « Terres australes françaises » ne l'est pas.
+    """
+    t = unicodedata.normalize("NFD", nom or "")
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn").lower()
+    t = re.sub(r"\b(cc|ca|cu|communaute|communautes|commune|communes|de|du|des|d|la|le|les|l)\b",
+               " ", t)
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
 ACHETEUR_JETONS = tuple({COMMUNE_NAME.lower()} | {
     mot.lower() for mot in re.split(r"[\s'’-]+", EPCI_NOM)
     if len(mot) > 4 and mot.lower() not in ("communaute", "communauté", "commune",
@@ -569,15 +583,25 @@ def fetch_boamp_marches() -> list[dict]:
                     continue
                 date_pub = (hit.get("dateparution") or "")[:10]
                 acheteur = hit.get("nomacheteur") or ""
-                # Déterminer acheteur_id depuis nomacheteur
-                acheteur_lower = acheteur.lower()
-                if COMMUNE_NAME.lower() in acheteur_lower:
-                    acheteur_id_str = COMMUNE_SIREN
-                elif any(j in acheteur_lower for j in ACHETEUR_JETONS
-                         if j != COMMUNE_NAME.lower()):
-                    acheteur_id_str = CAC_SIREN
+                # ── Qui a passé ce marché ? ──────────────────────────────────
+                # Les jetons servent à CHERCHER large, jamais à CONCLURE. Un
+                # seul mot commun du nom de l'EPCI suffisait à déclarer que
+                # l'intercommunalité était l'acheteur : « terres » attrapait les
+                # « Terres australes françaises », « cévennes » le GHT Cévennes
+                # Gard Camargue et le CH d'Alès. 711 marchés sur 712 se sont
+                # retrouvés attribués à la communauté de communes, qui n'y était
+                # pour rien. Affirmer qu'une collectivité a acheté quelque chose
+                # demande mieux qu'une coïncidence de vocabulaire.
+                #
+                # On n'attribue donc que sur le nom COMPLET, normalisé. Le reste
+                # entre en base en `probable` et attend l'atelier.
+                acheteur_norme = _norme_acheteur(acheteur)
+                if _norme_acheteur(COMMUNE_NAME) in acheteur_norme:
+                    acheteur_id_str, certitude = COMMUNE_SIREN, "verified"
+                elif _norme_acheteur(EPCI_NOM) in acheteur_norme:
+                    acheteur_id_str, certitude = CAC_SIREN, "verified"
                 else:
-                    acheteur_id_str = ""
+                    acheteur_id_str, certitude = "", "probable"
                 # Titulaire (peut être str ou list)
                 titulaire_raw = hit.get("titulaire") or ""
                 if isinstance(titulaire_raw, list):
@@ -589,6 +613,7 @@ def fetch_boamp_marches() -> list[dict]:
                 results.append({
                     "source":      "BOAMP",
                     "source_type": "boamp",
+                    "confidence":  certitude,
                     "acheteur_id": acheteur_id_str,
                     "acheteur_nom": acheteur,
                     "objet":       objet,
@@ -731,10 +756,19 @@ def _ensure_marches_table(conn):
             source_url      TEXT,
             raw_id          TEXT,
             event_id        INTEGER REFERENCES events(id),
+            confidence      TEXT DEFAULT 'verified',
             created_at      TEXT DEFAULT (datetime('now')),
             UNIQUE(raw_id)
         )
     """)
+    # Cette définition double celle de db/schema.sql. Elle doit rester
+    # alignée : une base créée par ce collecteur seul, sans passer par
+    # `init_db()`, n'aurait pas la colonne et le filtre de publication
+    # échouerait au moment de publier — donc trop tard.
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(marches_publics)")}
+    if "confidence" not in colonnes:
+        conn.execute("ALTER TABLE marches_publics "
+                     "ADD COLUMN confidence TEXT DEFAULT 'verified'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_acheteur  ON marches_publics(acheteur_siren)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_titulaire ON marches_publics(titulaire_siren)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_date      ON marches_publics(date_notif DESC)")
@@ -747,6 +781,11 @@ def insert_marche(conn, m: dict,
     objet  = m.get("objet", "").strip()
     if not objet:
         return False
+    # Les sources qui identifient l'acheteur par son SIREN (DECP) n'ont pas de
+    # doute à exprimer : elles ne posent pas la clé, et le marché vaut
+    # `verified`. Seul le BOAMP, où le nom de l'acheteur est en saisie libre,
+    # rend parfois `probable`.
+    certitude = m.get("confidence") or "verified"
 
     raw_id = m.get("raw_id", "")[:100]
     if marche_exists(conn, raw_id):
@@ -844,26 +883,30 @@ def insert_marche(conn, m: dict,
            titulaire_id, titulaire_siren, titulaire_nom,
            objet, nature, procedure, montant,
            cpv, cpv_label, date_notif, date_pub, duree_mois,
-           lieu_exec, source, source_url, raw_id, event_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           lieu_exec, source, source_url, raw_id, event_id, confidence)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         acheteur_eid, acheteur_id_str[:9] if acheteur_id_str else "", acheteur_label,
         titulaire_eid, titulaire_siren, titulaire_nom,
         objet, m.get("nature"), m.get("procedure"), montant,
         cpv_str, cpv_label_str, date, date_pub, m.get("duree_mois"),
         m.get("lieu_exec"), m["source"], source_url, raw_id, ev_id,
+        certitude,
     ))
 
     # ── Flux financier ───────────────────────────────────────────────────────
+    # Le flux hérite de la certitude du marché : un montant attribué à une
+    # collectivité dont on n'est pas sûr qu'elle a acheté serait pire publié
+    # que le marché lui-même — c'est de l'argent qu'on lui prête.
     if montant:
         year_str = (date or "")[:4]
         year = int(year_str) if year_str.isdigit() else None
         conn.execute(
             "INSERT INTO financial_flows"
             " (type, year, amount, from_id, to_id, event_id, description, source, confidence)"
-            " VALUES ('marché', ?, ?, ?, ?, ?, ?, ?, 'verified')",
+            " VALUES ('marché', ?, ?, ?, ?, ?, ?, ?, ?)",
             (year, int(montant), acheteur_eid, titulaire_eid, ev_id,
-             f"{objet[:80]} ({acheteur_label})", m["source"])
+             f"{objet[:80]} ({acheteur_label})", m["source"], certitude)
         )
 
     return True

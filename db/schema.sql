@@ -532,6 +532,13 @@ CREATE TABLE IF NOT EXISTS marches_publics (
     source_url      TEXT,
     raw_id          TEXT,
     event_id        INTEGER REFERENCES events(id),
+    -- `probable` quand l'acheteur n'a pas pu être établi : le BOAMP laisse le
+    -- nom de l'acheteur en saisie libre, et une correspondance approximative ne
+    -- suffit pas à affirmer qui a passé un marché. Ces lignes restent en base
+    -- et attendent un arbitrage dans l'atelier ; le snapshot ne publie que
+    -- `verified` et `confirmed`.
+    confidence      TEXT DEFAULT 'verified'
+                    CHECK(confidence IN ('verified','confirmed','probable','hypothesis')),
     created_at      TEXT DEFAULT (datetime('now')),
     UNIQUE(raw_id)
 );

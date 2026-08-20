@@ -1997,10 +1997,18 @@ def build_snapshot(out: Path) -> dict:
                    surface_terrain, surface_bati, price, price_per_m2, lat, lng
             FROM dvf_transactions ORDER BY date DESC
         """)
-        marches_data = rows(conn, """
+        # Le filtre de confiance manquait ici, alors qu'il s'applique partout
+        # ailleurs : la table publiait TOUT. Un marché dont l'acheteur n'a pas
+        # pu être établi affirmait donc qu'une collectivité avait acheté ce
+        # qu'elle n'avait pas acheté. `probable` reste en base et attend
+        # l'atelier ; il ne sort pas.
+        colonnes_mp = {r["name"] for r in rows(conn, "PRAGMA table_info(marches_publics)")}
+        filtre_mp = ("WHERE confidence IN ('verified', 'confirmed')"
+                     if "confidence" in colonnes_mp else "")
+        marches_data = rows(conn, f"""
             SELECT id, acheteur_id, acheteur_nom, titulaire_id, titulaire_nom, objet, nature,
                    procedure, montant, cpv_label, date_notif, lieu_exec, source, source_url
-            FROM marches_publics ORDER BY date_notif DESC, montant DESC
+            FROM marches_publics {filtre_mp} ORDER BY date_notif DESC, montant DESC
         """)
         revue_marches = revue.get("marche", {})
         avant_revue = len(marches_data)
