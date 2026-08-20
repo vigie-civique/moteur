@@ -1749,9 +1749,24 @@ def build_snapshot(out: Path) -> dict:
                 **relation_meta_publique(rel.get("metadata")),
             })
 
-        event_rows = rows(conn, """
+        # Un acte de marché ne se publie pas si son marché n'est pas publiable.
+        #
+        # Le filtre de confiance posé sur `marches_publics` ne suffisait pas :
+        # la page d'accueil, le flux et les millésimes lisent les ACTES, pas la
+        # table des marchés. Le 20/08/2026, le site servait 8 marchés et
+        # 717 actes de marché — dont les avis d'un EPCI de Seine-Saint-Denis
+        # attrapés par le mot « Terres ». Filtrer un côté et pas l'autre ne
+        # ferme rien : les deux vues doivent dire la même chose.
+        colonnes_mp = {r["name"] for r in rows(conn, "PRAGMA table_info(marches_publics)")}
+        filtre_actes_marches = ("""
+            AND NOT EXISTS (SELECT 1 FROM marches_publics mp
+                             WHERE mp.event_id = events.id
+                               AND mp.confidence NOT IN ('verified','confirmed'))
+        """ if "confidence" in colonnes_mp else "")
+        event_rows = rows(conn, f"""
             SELECT id, type, date, title, source, source_url, metadata
             FROM events
+            WHERE 1=1 {filtre_actes_marches}
             ORDER BY date DESC, id DESC
         """)
         public_events: list[dict] = []

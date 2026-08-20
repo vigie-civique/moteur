@@ -42,11 +42,15 @@ from collectors.marches_publics import _norme_acheteur  # noqa: E402
 
 
 def attribution(acheteur_nom: str) -> str:
-    """'commune', 'epci', ou '' si le nom ne permet pas de conclure."""
+    """'commune', 'epci', ou '' si le nom ne permet pas de conclure.
+
+    Le nom doit être EN TÊTE : un organisme tiers met le sien devant. Cherché
+    en sous-chaîne, « Siaep de Lasalle » devenait la mairie de Lasalle.
+    """
     n = _norme_acheteur(acheteur_nom)
-    if _norme_acheteur(COMMUNE_NAME) in n:
+    if n.startswith(_norme_acheteur(COMMUNE_NAME)):
         return "commune"
-    if _norme_acheteur(EPCI_NOM) in n:
+    if n.startswith(_norme_acheteur(EPCI_NOM)):
         return "epci"
     return ""
 

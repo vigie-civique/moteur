@@ -59,8 +59,12 @@ def _norme_acheteur(nom: str) -> str:
     """
     t = unicodedata.normalize("NFD", nom or "")
     t = "".join(c for c in t if unicodedata.category(c) != "Mn").lower()
-    t = re.sub(r"\b(cc|ca|cu|communaute|communautes|commune|communes|de|du|des|d|la|le|les|l)\b",
-               " ", t)
+    # « mairie » et « ville » sont des façons de nommer la commune elle-même :
+    # ils s'effacent. « syndicat », « sivom », « siaep » NON — ce sont d'autres
+    # personnes morales, et les effacer reviendrait à confondre le syndicat des
+    # eaux avec la mairie dont il porte le nom.
+    t = re.sub(r"\b(cc|ca|cu|communaute|communautes|commune|communes|mairie|mairies"
+               r"|ville|villes|de|du|des|d|la|le|les|l)\b", " ", t)
     return re.sub(r"[^a-z0-9]+", "", t)
 
 
@@ -595,12 +599,23 @@ def fetch_boamp_marches() -> list[dict]:
                 #
                 # On n'attribue donc que sur le nom COMPLET, normalisé. Le reste
                 # entre en base en `probable` et attend l'atelier.
+                # EN TÊTE, pas n'importe où. Un organisme tiers met son propre
+                # nom devant : « Siaep de Lasalle » est le syndicat des eaux,
+                # pas la mairie, et « Paris Terres d'Envol » est un EPCI de
+                # Seine-Saint-Denis. Chercher la commune en sous-chaîne les
+                # attribuait tous les deux à Lasalle.
+                #
+                # Un suffixe reste accepté — « CC Machin — service eau » est
+                # bien la CC. Ce qui est refusé, c'est un PRÉFIXE étranger.
                 acheteur_norme = _norme_acheteur(acheteur)
-                if _norme_acheteur(COMMUNE_NAME) in acheteur_norme:
+                if acheteur_norme.startswith(_norme_acheteur(COMMUNE_NAME)):
                     acheteur_id_str, certitude = COMMUNE_SIREN, "verified"
-                elif _norme_acheteur(EPCI_NOM) in acheteur_norme:
+                elif acheteur_norme.startswith(_norme_acheteur(EPCI_NOM)):
                     acheteur_id_str, certitude = CAC_SIREN, "verified"
                 else:
+                    # Ni jeté ni attribué : il garde son nom déclaré, entre en
+                    # `probable`, et l'atelier décide — y compris d'en faire une
+                    # entité à part entière, ce qu'un syndicat mérite.
                     acheteur_id_str, certitude = "", "probable"
                 # Titulaire (peut être str ou list)
                 titulaire_raw = hit.get("titulaire") or ""
