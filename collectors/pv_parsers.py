@@ -59,12 +59,46 @@ LIGNE_CAPITALES = re.compile(r"^[^a-z]{8,}$")
 PUCE = re.compile(r"^\s*(?:\(cid:\d+\)|[•▪–])\s*(.{6,150}?)\s*:\s", re.M)
 
 
+# Un montant écrit à la française : « 8 800,00 € », « 156 812,54 € ».
+_MONTANT_TITRE = re.compile(r"\d{1,3}(?:[  ]\d{3})*,\d{2}\s*€")
+# Un mot porteur de sens : au moins quatre lettres, pas de chiffre dedans.
+_MOT_PORTEUR = re.compile(r"\b[^\W\d_]{4,}\b", re.UNICODE)
+
+
+def _titre_plausible(titre: str) -> bool:
+    """Un titre de délibération qui porte un montant doit aussi porter des mots.
+
+    Les procès-verbaux contiennent des TABLEAUX de plan de financement, et tous
+    les régimes de découpage finissent par couper dedans : chaque ligne du
+    tableau devient un « acte ». Le 20/08/2026, la base de Lasalle en comptait
+    275, tous publiés, dont un en première page du site :
+
+        « 2 506,51 € TTC (TVA: 20%) »      « CD30 8 800,00 € »
+        « FEDER 2021-2027 156 812,54 € 13,0% »
+
+    Aucun n'avait de flux financier extrait : l'information chiffrée était
+    perdue ET affichée comme une décision du conseil.
+
+    La règle ne mord QUE sur les titres portant un montant — un intitulé sans
+    chiffre reste intact, si court soit-il. Deux mots d'au moins quatre lettres
+    suffisent à distinguer « CHAMP CONTRE CHAMP 3 000,00 € » d'une ligne de
+    tableau. Les plans de financement eux-mêmes relèvent d'un extracteur dédié,
+    pas du découpage.
+    """
+    if not _MONTANT_TITRE.search(titre or ""):
+        return True
+    return len(_MOT_PORTEUR.findall(titre or "")) >= 2
+
+
 def deliberations(texte: str) -> list[dict]:
     """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique."""
     for analyseur in (_numerote, _acte_final, _puces, _liste, _capitales):
         sorties = analyseur(texte)
         if sorties:
-            return sorties
+            # Filtré ICI et non dans chaque régime : la règle vaut pour tous, et
+            # les faux actes venaient aussi bien des PV de la commune que de ceux
+            # de l'intercommunalité.
+            return [d for d in sorties if _titre_plausible(d.get("titre", ""))]
     return []
 
 
