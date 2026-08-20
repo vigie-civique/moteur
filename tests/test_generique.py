@@ -112,3 +112,31 @@ def test_le_moteur_ne_nomme_aucune_commune(vg):
     constats += [c for f in vg._fichiers_texte() for c in vg.analyser_texte(f, communes)]
     assert constats == [], "\n".join(
         f"{c['fichier']}:{c['ligne']} {c['explication']}" for c in constats[:20])
+
+
+def test_un_identifiant_fige_est_refuse_aussi_hors_python(tmp_path):
+    """La règle 5 ne s'appliquait qu'au Python : le site y échappait.
+
+    `const COMMUNE_ID = 63` vivait dans la page des flux financiers. Sur toute
+    base où la commune ne porte pas ce numéro — c'est-à-dire toutes sauf celle
+    d'origine — la page affichait « reçu 0 € / versé 0 € » avec des données
+    pourtant publiées, et sans erreur pour le signaler.
+    """
+    from scripts.verifier_generique import analyser_texte
+
+    f = tmp_path / "page.svelte"
+    f.write_text("<script>\n  const COMMUNE_ID = 63\n</script>\n", encoding="utf-8")
+    constats = analyser_texte(f, set())
+    assert any(c["motif"] == "identifiant_fige" for c in constats), \
+        "un identifiant de ligne figé dans un composant doit être refusé"
+
+
+def test_une_constante_metier_n_est_pas_prise_pour_un_identifiant(tmp_path):
+    """Le seuil est bas exprès, mais il ne doit pas mordre à tort : une année,
+    un seuil en euros ou un délai ne s'appellent pas `_ID`."""
+    from scripts.verifier_generique import analyser_texte
+
+    f = tmp_path / "page.svelte"
+    f.write_text("<script>\n  const ANNEE_MIN = 2018\n  const SEUIL_EUROS = 40000\n"
+                 "  const TTL = 300\n</script>\n", encoding="utf-8")
+    assert not [c for c in analyser_texte(f, set()) if c["motif"] == "identifiant_fige"]

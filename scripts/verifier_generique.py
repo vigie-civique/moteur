@@ -148,6 +148,19 @@ def _docstrings(arbre: ast.AST) -> set[int]:
     return ids
 
 
+def _chemin_lisible(fichier: Path) -> str:
+    """Chemin relatif au dépôt, ou absolu s'il est ailleurs.
+
+    `relative_to` lève sur un fichier hors de l'arbre. Un contrôleur qui plante
+    sur un chemin inattendu ne contrôle plus rien — et il devient impossible à
+    éprouver sur un fichier d'essai.
+    """
+    try:
+        return str(fichier.relative_to(ROOT))
+    except ValueError:
+        return str(fichier)
+
+
 def analyser(fichier: Path, communes: set[str]) -> list[dict]:
     """Constats sur un fichier : liste de {ligne, motif, extrait}."""
     try:
@@ -158,7 +171,7 @@ def analyser(fichier: Path, communes: set[str]) -> list[dict]:
 
     docs = _docstrings(arbre)
     constats: list[dict] = []
-    rel = str(fichier.relative_to(ROOT))
+    rel = _chemin_lisible(fichier)
 
     for noeud in ast.walk(arbre):
         # 1-4 : formes interdites dans les chaînes exécutées
@@ -199,24 +212,44 @@ def analyser(fichier: Path, communes: set[str]) -> list[dict]:
     return constats
 
 
+# `const COMMUNE_ID = 63` en JavaScript ou dans un composant Svelte. Même forme
+# que la règle 5 côté Python, appliquée là où elle manquait.
+IDENTIFIANT_FIGE_TEXTE = re.compile(
+    r"\b(?:const|let|var)\s+([A-Z][A-Z0-9_]*_ID)\s*=\s*(\d{1,6})\s*[;,]?\s*$")
+
+
 def analyser_texte(fichier: Path, communes: set[str]) -> list[dict]:
-    """Contrôle d'un fichier non-Python : on ne cherche que les noms propres.
+    """Contrôle d'un fichier non-Python : noms propres et identifiants figés.
 
     Pas d'analyse syntaxique ici : ni SQL ni Svelte ne se prêtent au découpage
-    fait sur Python, et les formes techniques (identifiants de lignes, chemins
-    de base) n'y ont pas cours. Ce qui compte, c'est qu'aucune commune n'y soit
-    nommée — le reste est du texte éditorial, et il vit dans instance.js.
+    fait sur Python. Mais l'affirmation « les formes techniques n'y ont pas
+    cours » était fausse, et coûteuse : `const COMMUNE_ID = 63` vivait dans la
+    page des flux financiers du site. Sur toute base où la commune ne porte pas
+    le numéro 63 — c'est-à-dire toutes sauf celle d'origine — la page affichait
+    « reçu 0 € / versé 0 € » avec des données pourtant publiées, sans erreur.
+
+    La règle 5 existait pour ce cas exact, et le README la donnait en exemple.
+    Elle n'était appliquée qu'au Python : le site y échappait entièrement.
     """
     try:
         lignes = fichier.read_text(encoding="utf-8").splitlines()
     except (UnicodeDecodeError, OSError):
         return []
-    rel = str(fichier.relative_to(ROOT))
+    rel = _chemin_lisible(fichier)
     constats = []
     for numero, ligne in enumerate(lignes, 1):
         nu = ligne.strip()
         if nu.startswith(("--", "//", "#", "*")):
             continue          # commentaire : il documente, il ne s'affiche pas
+        m = IDENTIFIANT_FIGE_TEXTE.search(nu)
+        if m:
+            constats.append({
+                "fichier": rel, "ligne": numero, "motif": "identifiant_fige",
+                "explication": (f"{m.group(1)} = {m.group(2)} : un identifiant de "
+                                "ligne, valable dans une seule base — le résoudre "
+                                "par le nom, ou se servir d'un champ calculé au "
+                                "snapshot (`sens`, `perimetre`)"),
+                "extrait": nu[:80]})
         for commune in communes:
             if re.search(rf"\b{re.escape(commune)}\b", ligne, re.I):
                 constats.append({

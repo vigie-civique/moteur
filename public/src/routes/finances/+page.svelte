@@ -3,15 +3,20 @@
   import Niveau from '$lib/components/Niveau.svelte'
   import { euros } from '$lib/data.js'
 
-  const COMMUNE_ID = 63
   const isRequest = (f) => /demand[eé]e/i.test(f.type || '')
   // Une cession de patrimoine est une VENTE : la commune cède un bien et ENCAISSE
   // le prix. Le flux est stocké commune → acheteur (sens du bien), mais l'argent va
   // dans l'autre sens. On la traite donc à part, comme une recette, jamais comme un
   // versement de subvention/marché. (Le snapshot ne garde que les cessions où la commune est partie.)
   const isCession = (f) => /cession/i.test(f.type || '')
-  const isInflow  = (f) => f.to_id === COMMUNE_ID && !isCession(f)
-  const isOutflow = (f) => f.from_id === COMMUNE_ID && !isCession(f)
+  // `sens` est calculé au snapshot, qui SAIT quelle entité est la commune.
+  // Cette page comparait `to_id`/`from_id` à `COMMUNE_ID = 63` — un numéro de
+  // ligne de la base d'origine. Sur toute autre base, aucune comparaison ne
+  // réussissait : la page annonçait « reçu 0 € / versé 0 € » alors que les flux
+  // étaient publiés, sans la moindre erreur pour le signaler. Un identifiant de
+  // ligne ne traverse pas une base ; un champ calculé, si.
+  const isInflow  = (f) => f.sens === 'entrant' && !isCession(f)
+  const isOutflow = (f) => f.sens === 'sortant' && !isCession(f)
   const unknownName = (n) => !n || n === '?' || n === '∅'
 
   const TYPE_LABELS = {
