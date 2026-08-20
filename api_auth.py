@@ -6,6 +6,7 @@ Deps exportées  : require_auth, require_role
 import hashlib
 import os
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -34,6 +35,25 @@ BASE_DIR         = Path(__file__).parent
 from collectors.config import DB_PATH
 _SECRET          = os.environ.get("JWT_SECRET", "")
 _ALGO            = "HS256"
+
+# Sans secret, l'API démarrait sans rien dire et n'échouait qu'à la PREMIÈRE
+# tentative de connexion, par une trace dans le terminal du serveur — pendant que
+# le navigateur affichait une erreur générique. Le lien entre les deux n'était
+# pas déductible, et un `.env` recopié depuis l'exemple (donc au secret vide)
+# ramène exactement cette situation.
+#
+# Un service qui ne peut rien faire d'utile doit refuser de démarrer, à voix
+# haute, au moment où on le lance. C'est le seul instant où l'exploitant regarde.
+if not _SECRET:
+    print(
+        "\n  ✖ JWT_SECRET absent : l'atelier ne peut authentifier personne.\n"
+        "\n    cp deploy/env.exemple .env && chmod 600 .env\n"
+        "    puis renseigner JWT_SECRET (openssl rand -hex 32)\n"
+        "\n    Attention : recopier l'exemple par-dessus un .env existant\n"
+        "    REMET le secret à vide.\n",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 _ACCESS_MINUTES  = 60
 _REFRESH_MINUTES = 60 * 24 * 7
 

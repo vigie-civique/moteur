@@ -200,11 +200,13 @@ Quatre étapes, dans cet ordre. **Les deux premières sont des prérequis** : sa
 elles l'API démarre mais refuse toute connexion, et l'erreur n'est pas parlante.
 
 ```bash
-# 1. Le secret de session. Sans JWT_SECRET, l'API répond 503 sur toute
-#    authentification — elle refuse plutôt que de signer avec une clé vide.
+# 1. Le secret de session. Sans lui, l'API REFUSE DE DÉMARRER et le dit :
+#    un service qui ne peut authentifier personne n'a rien à faire en écoute.
+#    ⚠ Ne faire ce `cp` qu'UNE FOIS. Le rejouer sur un .env déjà rempli remet
+#      le secret à vide, et l'atelier redevient inaccessible.
 cp deploy/env.exemple .env
-openssl rand -hex 32                      # coller la valeur dans JWT_SECRET=
 chmod 600 .env
+openssl rand -hex 32                      # coller la valeur après « JWT_SECRET= »
 #    ADMIN_KEY peut rester VIDE : c'est une clé de service qui contourne le
 #    verrou JWT, et une clé absente ne donne aucun accès. ALLOWED_ORIGINS ne
 #    sert qu'à un atelier en ligne ; en local, laissez-la vide.
@@ -230,8 +232,20 @@ Pour vérifier que le verrou fonctionne, l'API étant lancée :
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8765/api/stats
 ```
 
-**401** est la bonne réponse : la route existe et refuse sans jeton. **503**
-signifie que `JWT_SECRET` n'est pas lu — reprendre l'étape 1.
+**401** est la bonne réponse : la route existe et refuse sans jeton. Ce contrôle
+ne dit rien du secret, lui — sans `JWT_SECRET`, l'API ne serait pas là pour
+répondre : elle refuse de démarrer, en l'écrivant dans son terminal.
+
+Deux pannes se ressemblent et n'ont rien à voir :
+
+| Ce qu'on voit | Ce que c'est |
+|---|---|
+| L'API s'arrête au lancement, avec un message sur `JWT_SECRET` | secret vide — étape 1 |
+| « Serveur inaccessible » sur la page de connexion, alors que les deux terminaux tournent | l'interface n'atteint pas l'API — port, proxy, ou service arrêté |
+
+Dans le second cas, `curl` sur `127.0.0.1:8765` répond alors que le navigateur
+ne passe pas : viser un service local par `127.0.0.1` et jamais par `localhost`,
+qui résout d'abord en IPv6 là où le service n'écoute qu'en IPv4.
 
 ---
 
