@@ -188,6 +188,46 @@ sur une commune factice — base, snapshot, contrôle d'étanchéité, site.
 
 ---
 
+## Travailler à plusieurs, sans serveur
+
+La base est reconstructible : les collecteurs relisent des sources publiques,
+n'importe qui la refait avec ce code et un code INSEE. Ce qui ne se régénère
+pas, c'est le jugement humain — les sièges tranchés, les sites validés, les
+corrections, les notes. C'est petit, et c'est ça qu'on partage.
+
+Chacun collecte donc chez lui, et les ateliers échangent leurs **décisions** par
+un dépôt privé, un envoi, une clé USB :
+
+```bash
+python3 scripts/exporter_decisions.py            # → decisions/
+python3 scripts/importer_decisions.py            # simulation, chez l'autre
+python3 scripts/importer_decisions.py --appliquer
+```
+
+Les décisions sont désignées par des **clés naturelles** — SIREN, numéro RNA,
+identifiant d'avis BOAMP, empreinte de source pour les actes — et jamais par les
+`id`, qui sont des compteurs locaux ne voulant rien dire sur une autre machine.
+
+Trois refus, et ce sont eux qui comptent :
+
+- une clé qui ne désigne rien ici **n'est pas rattachée au hasard**, elle est
+  rapportée : l'autre atelier a collecté ce que cette base n'a pas ;
+- deux jugements contraires sur le même objet **ne sont pas fusionnés**. C'est un
+  désaccord éditorial, il remonte à un humain ;
+- des décisions portant sur **une autre commune** sont refusées d'emblée.
+
+⚠ **L'export peut nommer des personnes physiques** : l'atelier travaille sur la
+base non filtrée. Le dépôt qui le reçoit doit être privé, et ses membres avoir
+déjà accès à la base. `--sans-personnes` les retire, au prix de reprendre ces
+arbitrages à la main de l'autre côté.
+
+Pour une séance de travail en direct, plutôt qu'en différé : une machine tient
+l'atelier, les autres s'y connectent par un réseau privé maillé (Tailscale,
+WireGuard). L'atelier continue de n'écouter qu'en local — c'est le « local » qui
+s'étend. Rien n'est exposé à l'internet.
+
+---
+
 ## Ouvrir l'atelier, en local
 
 L'atelier sert **la base de travail entière, non filtrée** : personnes physiques

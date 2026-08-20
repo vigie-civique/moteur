@@ -46,6 +46,7 @@ class Rapport:
         self.applique = 0
         self.a_jour = 0
         self.non_rattachees: list[str] = []
+        self.sans_objet: list[str] = []
         self.desaccords: list[str] = []
 
     def resume(self, forcer: bool) -> None:
@@ -58,12 +59,24 @@ class Rapport:
                 print(f"          {d}")
             if len(self.desaccords) > 8:
                 print(f"          … {len(self.desaccords) - 8} autres")
+        # Deux situations très différentes, qu'il ne faut pas confondre :
+        # l'objet n'existe pas ici, ou il existe mais il n'y a rien à arbitrer.
+        # La première dit que les deux collectes divergent ; la seconde, que
+        # cette base n'a pas encore produit la piste — un `run_all` la produira.
         if self.non_rattachees:
-            print(f"   {len(self.non_rattachees):>5}  non rattachée(s) — absentes de cette base")
+            print(f"   {len(self.non_rattachees):>5}  objet inconnu ici — les deux "
+                  f"collectes divergent")
             for d in self.non_rattachees[:5]:
                 print(f"          {d}")
             if len(self.non_rattachees) > 5:
                 print(f"          … {len(self.non_rattachees) - 5} autres")
+        if self.sans_objet:
+            print(f"   {len(self.sans_objet):>5}  objet connu, mais aucune piste à "
+                  f"arbitrer ici")
+            for d in self.sans_objet[:5]:
+                print(f"          {d}")
+            if len(self.sans_objet) > 5:
+                print(f"          … {len(self.sans_objet) - 5} autres")
 
 
 def _appliquer(conn, sql, params, rap, appliquer):
@@ -159,8 +172,12 @@ def importer(conn, src: Path, appliquer: bool, forcer: bool) -> Rapport:
                WHERE from_id=? AND to_id=? AND relation_type=?""",
             (a, b, d["type"])).fetchone()
         if actuel is None:
-            rap.non_rattachees.append(
-                f"[relation] {d.get('de_libelle','?')[:26]} → {d.get('vers_libelle','?')[:26]}")
+            # Les deux entités existent, mais aucune piste ne les relie ici :
+            # cette base n'a pas encore fait tourner le détecteur, ou il n'a rien
+            # vu. La décision reste applicable plus tard, elle n'est pas perdue.
+            rap.sans_objet.append(
+                f"[relation] {d.get('de_libelle','?')[:24]} → "
+                f"{d.get('vers_libelle','?')[:24]} ({d['type']})")
             continue
         if actuel[0] == d["statut"]:
             rap.a_jour += 1
