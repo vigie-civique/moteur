@@ -2480,7 +2480,10 @@ import requests as _requests
 # Adresse et modèles sont des réglages, pas des constantes du dispositif :
 # l'interface les affichait en dur — « nomic-embed-text + Gemma 3 » — et
 # continuait de les afficher après un changement de modèle.
-_OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+# `127.0.0.1` et non `localhost` : Ollama n'écoute qu'en IPv4, et sur macOS
+# `localhost` résout d'abord en IPv6 — la requête part vers `::1` où rien
+# n'écoute. Même piège que le proxy de l'atelier (cf. dashboard/vite.config.js).
+_OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 _OLLAMA_EMBED = f"{_OLLAMA_URL}/api/embeddings"
 _OLLAMA_CHAT  = f"{_OLLAMA_URL}/api/chat"
 _EMBED_MODEL  = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")

@@ -35,7 +35,9 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collectors.config import DB_PATH   # noqa: E402
 
-OLLAMA_URL  = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+# `127.0.0.1` et non `localhost` — cf. api.py : Ollama n'écoute qu'en IPv4 et
+# `localhost` résout d'abord en IPv6 sur macOS.
+OLLAMA_URL  = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 EMBED_URL   = f"{OLLAMA_URL}/api/embeddings"
 EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
