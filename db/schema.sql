@@ -41,7 +41,21 @@ CREATE TABLE IF NOT EXISTS entities (
     -- `db.upsert_entity`. Une colonne GÉNÉRÉE a été essayée le 12/08/2026 puis
     -- abandonnée — l'expression SQL de dépliage des accents fait déborder le
     -- parseur de SQLite et rendait la base illisible (cf. nom_normalise.py).
-    name_norm   TEXT
+    name_norm   TEXT,
+
+    -- ── Colonnes que le CODE utilisait sans que le SCHÉMA les déclare ───────
+    -- Elles existaient dans la base historique et n'avaient jamais été
+    -- reportées ici. Toute instance créée par le moteur naissait donc sans
+    -- elles, et la file de revue de l'atelier — sa page principale — échouait
+    -- sur « no such column: validation_status ». Constaté le 20/08/2026 sur
+    -- Lasalle-v3, Saillans et Brassac-v2 : les trois. Seule l'instance dont la
+    -- base venait de la production fonctionnait, ce qui masquait le défaut.
+    validation_status TEXT DEFAULT 'unverified',
+    responsible       TEXT,
+    -- Coordonnées projetées (Lambert-93) et qualité du géocodage.
+    x_l93             REAL,
+    y_l93             REAL,
+    geocode_score     REAL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_name_type
@@ -83,6 +97,9 @@ CREATE INDEX IF NOT EXISTS idx_persons_name
 CREATE TABLE IF NOT EXISTS businesses (
     entity_id       INTEGER PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
     siren           TEXT UNIQUE,
+    -- Réponse brute de Pappers et date de récupération (collecteur facultatif).
+    pappers_fetched_at TEXT,
+    pappers_raw        TEXT,
     siret_siege     TEXT,
     naf_code        TEXT,
     naf_label       TEXT,
@@ -106,6 +123,8 @@ CREATE INDEX IF NOT EXISTS idx_businesses_status ON businesses(status);
 CREATE TABLE IF NOT EXISTS associations (
     entity_id        INTEGER PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
     rna_id           TEXT UNIQUE,
+    -- Une association peut être immatriculée au répertoire des entreprises.
+    siren            TEXT,
     waldec_id        TEXT,
     object           TEXT,
     status           TEXT,
@@ -299,6 +318,11 @@ CREATE TABLE IF NOT EXISTS annotations (
     note          TEXT,
     reviewed_by   TEXT,
     reviewed_at   TEXT,
+    -- Corrections de champs posées dans l'atelier, en JSON. `charger_revue()`
+    -- les lit derrière un garde (`if "corrections" in colonnes`) : sans la
+    -- colonne, corriger un chiffre dans l'atelier ne laissait aucune trace, en
+    -- silence. Le garde reste, il protège les bases anciennes.
+    corrections   TEXT,
     created_at    TEXT DEFAULT (datetime('now')),
     updated_at    TEXT DEFAULT (datetime('now')),
     UNIQUE(object_type, object_id)
@@ -939,6 +963,31 @@ CREATE TABLE IF NOT EXISTS entity_enrichment (
     sites_found   INTEGER DEFAULT 0,
     socials_found INTEGER DEFAULT 0,
     error         TEXT
+);
+
+-- ----------------------------------------------------------------
+-- BUDGET VOTÉ — les chiffres tels que le conseil les a votés, relevés dans les
+-- procès-verbaux. À distinguer des agrégats DGFiP/OFGL, qui sont l'exécution
+-- constatée après coup : les deux diffèrent, et le site les affiche côte à côte.
+--
+-- Cette table manquait au schéma alors que le script de publication produit
+-- `budget_vote.json` et que le site en a une page. Une instance créée par le
+-- moteur ne l'avait donc pas, et la page naissait vide sans rien dire.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS budget_vote (
+    id              INTEGER PRIMARY KEY,
+    year            INTEGER NOT NULL,
+    scope           TEXT NOT NULL DEFAULT 'principal',  -- 'principal' ou budget annexe
+    agregat         TEXT NOT NULL,
+    value           REAL,
+    unit            TEXT NOT NULL DEFAULT 'EUR',        -- EUR | pct | annees
+    approx          INTEGER NOT NULL DEFAULT 0,
+    note            TEXT,
+    source          TEXT,
+    source_event_id INTEGER,
+    source_url      TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    UNIQUE(year, scope, agregat)
 );
 
 -- ----------------------------------------------------------------

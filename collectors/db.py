@@ -45,6 +45,22 @@ def transaction():
 _COLONNES_AJOUTEES = [
     ("marches_publics", "confidence",
      "TEXT DEFAULT 'verified'"),   # 20/08/2026 — acheteur non établi = probable
+
+    # 20/08/2026 — huit colonnes que le CODE utilisait sans que le SCHÉMA les
+    # déclare. Elles existaient dans la base historique et n'avaient jamais été
+    # reportées : toute instance créée par le moteur naissait sans elles, et la
+    # file de revue de l'atelier échouait sur « no such column:
+    # validation_status ». Le défaut était masqué parce que la seule instance
+    # qu'on ouvrait régulièrement avait une base venue de la production.
+    ("entities", "validation_status", "TEXT DEFAULT 'unverified'"),
+    ("entities", "responsible",       "TEXT"),
+    ("entities", "x_l93",             "REAL"),
+    ("entities", "y_l93",             "REAL"),
+    ("entities", "geocode_score",     "REAL"),
+    ("annotations", "corrections",    "TEXT"),
+    ("businesses", "pappers_fetched_at", "TEXT"),
+    ("businesses", "pappers_raw",     "TEXT"),
+    ("associations", "siren",         "TEXT"),
 ]
 
 
