@@ -795,13 +795,28 @@ def insert_marche(conn, m: dict,
         print(f"  [dry-run] {m['acheteur_nom'][:30]} | {objet[:60]} | {m.get('montant','?')} €")
         return False
 
+    # `acheteur_label` est ce que la SOURCE déclare, conservé tel quel. Il
+    # portait le nom de l'entité résolue, ce qui écrasait la seule trace de ce
+    # qui avait été lu : impossible ensuite de vérifier une attribution, ni de
+    # la reprendre. C'est ce qui a rendu les 712 marchés du BOAMP
+    # irrécupérables le 20/08/2026 — tous déclaraient le même acheteur, les
+    # justes comme les fausses. Un dispositif qui affiche la provenance de
+    # chaque acte ne peut pas perdre l'énoncé de sa source.
+    acheteur_label = (m.get("acheteur_nom") or "").strip()
+
+    # L'entité n'est rattachée que si l'acheteur a été ÉTABLI. Le `else`
+    # accrochait tout le reste à l'EPCI par défaut : un marché dont on ne savait
+    # rien devenait un marché de l'intercommunalité.
     acheteur_id_str = m.get("acheteur_id", "")
-    if acheteur_id_str.startswith(COMMUNE_SIREN):
+    if acheteur_id_str and acheteur_id_str.startswith(COMMUNE_SIREN):
         acheteur_eid   = commune_id
-        acheteur_label = COMMUNE_NAME
-    else:
+        acheteur_label = acheteur_label or COMMUNE_NAME
+    elif acheteur_id_str:
         acheteur_eid   = cac_id
-        acheteur_label = EPCI_NOM
+        acheteur_label = acheteur_label or EPCI_NOM
+    else:
+        acheteur_eid   = None
+        acheteur_label = acheteur_label or "acheteur non établi"
 
     titulaires = m.get("titulaires", [])
     tit = titulaires[0] if titulaires else {}
@@ -858,23 +873,31 @@ def insert_marche(conn, m: dict,
         (date, objet, m["source"], source_url, metadata)
     ).lastrowid
 
-    # Lier acheteur et titulaires aux événements
-    conn.execute(
-        "INSERT OR IGNORE INTO event_entities (event_id, entity_id, role) VALUES (?, ?, 'acheteur')",
-        (ev_id, acheteur_eid)
-    )
+    # Lier acheteur et titulaires aux événements. Pas de lien quand l'acheteur
+    # n'est pas établi : un rattachement est une affirmation, et il ferait
+    # apparaître le marché sur la fiche d'une collectivité qui n'y est pour rien.
+    if acheteur_eid:
+        conn.execute(
+            "INSERT OR IGNORE INTO event_entities (event_id, entity_id, role) VALUES (?, ?, 'acheteur')",
+            (ev_id, acheteur_eid)
+        )
     if titulaire_eid:
         conn.execute(
             "INSERT OR IGNORE INTO event_entities (event_id, entity_id, role) VALUES (?, ?, 'prestataire')",
             (ev_id, titulaire_eid)
         )
-        conn.execute(
-            "INSERT OR IGNORE INTO relations"
-            " (from_id, to_id, relation_type, since, source, confidence, metadata)"
-            " VALUES (?, ?, 'prestataire', ?, ?, 'verified', ?)",
-            (titulaire_eid, acheteur_eid, date, m["source"],
-             json.dumps({"objet": objet[:80], "montant": montant}, ensure_ascii=False))
-        )
+        # « X est prestataire de Y » suppose que Y soit connu. Sans acheteur
+        # établi il n'y a pas de relation à écrire — et `relations.to_id` est
+        # NOT NULL, ce qui ferait échouer la collecte entière sur un seul
+        # marché mal identifié.
+        if acheteur_eid:
+            conn.execute(
+                "INSERT OR IGNORE INTO relations"
+                " (from_id, to_id, relation_type, since, source, confidence, metadata)"
+                " VALUES (?, ?, 'prestataire', ?, ?, ?, ?)",
+                (titulaire_eid, acheteur_eid, date, m["source"], certitude,
+                 json.dumps({"objet": objet[:80], "montant": montant}, ensure_ascii=False))
+            )
 
     # ── Table dédiée marches_publics ─────────────────────────────────────────
     conn.execute("""
