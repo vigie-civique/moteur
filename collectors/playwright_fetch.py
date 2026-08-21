@@ -7,7 +7,14 @@ rend la page dans un Chromium headless et renvoie le HTML, archivé tel quel
 sources immo/RH). NB : un edge anti-bot fort (Akamai/Cloudflare détectant le
 headless, ex. emploi-collectivites.fr) reste bloqué → nécessiterait stealth/proxy.
 
-Requiert : ~/venvs/agents (playwright + chromium installés).
+Requiert playwright et son Chromium, qui ne sont PAS dans requirements.txt — ils
+pèsent un navigateur entier et aucun collecteur livré n'en dépend. Dans le venv
+de l'instance, sur la machine qui en a besoin :
+
+    venv/bin/pip install playwright   puis   venv/bin/playwright install chromium
+
+L'import est différé jusqu'à l'ouverture de la session : un moteur sans
+playwright s'importe et tourne normalement, seul ce fetcher échoue si on l'ouvre.
 
     from .playwright_fetch import PlaywrightFetcher
     with PlaywrightFetcher() as f:

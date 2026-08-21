@@ -7,8 +7,8 @@ database in read-only mode and exports a small, publication-oriented JSON
 snapshot with strict filters and a review report.
 
 Usage:
-    ~/venvs/agents/bin/python scripts/build_public_snapshot.py
-    ~/venvs/agents/bin/python scripts/build_public_snapshot.py --out audits/public_snapshot_preview
+    venv/bin/python scripts/build_public_snapshot.py
+    venv/bin/python scripts/build_public_snapshot.py --out audits/public_snapshot_preview
 """
 from __future__ import annotations
 

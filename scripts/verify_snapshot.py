@@ -8,7 +8,7 @@ précisément pourquoi ce fichier ne doit jamais importer le builder ni être
 « aligné » sur lui. Toute assertion retirée ici est une décision éditoriale.
 
 Usage :
-    ~/venvs/agents/bin/python3 scripts/verify_snapshot.py [DIR ...]
+    venv/bin/python3 scripts/verify_snapshot.py [DIR ...]
     (défaut : dashboard/static/public_api, public/static/data, public/build)
 
 Sortie : rapport groupé par règle, exit 1 à la moindre violation bloquante.

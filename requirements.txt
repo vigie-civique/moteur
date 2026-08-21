@@ -4,6 +4,13 @@
 # Une instance amorcée depuis ce fichier doit pouvoir collecter, pas seulement
 # servir l'API : les paquets de collecte étaient commentés, et un clone neuf
 # échouait au premier import de BeautifulSoup.
+#
+# Le venv se crée DANS le dépôt de l'instance (`venv/`), jamais ailleurs. Un
+# venv partagé entre plusieurs projets tient debout chez celui qui l'a fabriqué
+# et nulle part ailleurs : deux collecteurs du moteur ont vécu des mois en ne
+# tournant que dans le venv personnel du développeur, parce que leur paquet
+# n'était déclaré ici nulle part. Tout ce que le code importe doit figurer dans
+# ce fichier, ou être décrit dans « Hors pip » avec sa commande d'installation.
 
 # ─── API de l'atelier ────────────────────────────────────────────────────────
 fastapi==0.128.8
@@ -21,6 +28,10 @@ requests==2.32.5
 beautifulsoup4==4.15.0
 numpy==1.26.4
 ddgs==9.14.4          # url_finder : recherche des sites des entités locales
+certifi==2026.7.22    # archive.py : vérification SSL. Arrive avec requests, mais
+                      # le code l'importe en propre — donc il se déclare en propre.
+openpyxl==3.1.5       # dgf_notifications.py : les exports .xlsx du portail DGCL.
+                      # Sans lui, le mode CSV marche et le mode Excel casse tard.
 
 # ─── Lecture des procès-verbaux (PDF, puis OCR si le PDF est une image) ──────
 pdfplumber==0.11.10
@@ -33,3 +44,12 @@ pillow==12.3.0
 #   brew install ocrmypdf   puis   tesseract --list-langs   doit lister « fra »
 # Scrapling, pour les sources protégées (RNA) : chemin lu dans l'environnement,
 # pas installé ici — cf. collectors/rna.py.
+# Playwright, pour les pages qui n'existent qu'une fois le JavaScript exécuté
+# (collectors/playwright_fetch.py). Volontairement hors de la liste : il télécharge
+# un navigateur entier, et aucun collecteur livré n'en dépend. À installer sur la
+# machine qui en a besoin, dans le venv de l'instance :
+#   venv/bin/pip install playwright   puis   venv/bin/playwright install chromium
+#
+# Tests : `pip install pytest`, et rien d'autre — la suite ne doit dépendre ni des
+# collecteurs ni de l'API, sans quoi un test sort sur le réseau. C'est pour cela
+# qu'elle n'installe pas ce fichier. Cf. CONTRIBUTING.md et la CI.
