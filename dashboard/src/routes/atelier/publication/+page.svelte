@@ -61,6 +61,15 @@
     }
   }
 
+  // Le contrôle d'étanchéité rend un rapport de plusieurs lignes, remonté par
+  // `postAdmin` dans son enveloppe : « 500 {"detail":"…"} ». On affiche le
+  // rapport, pas l'enveloppe — un contrôle illisible finit ignoré.
+  function lisible(message) {
+    const m = String(message).match(/^\d{3}\s+(\{[\s\S]*\})$/)
+    if (!m) return message
+    try { return JSON.parse(m[1]).detail ?? message } catch { return message }
+  }
+
   async function generateSnapshot() {
     if (!canAct) return
     generating = true
@@ -69,7 +78,7 @@
       rememberKey()
       status = await api.generatePublicSnapshot(adminKey.trim())
     } catch (e) {
-      error = e.message
+      error = lisible(e.message)
     } finally {
       generating = false
     }
@@ -314,6 +323,7 @@
   }
 
   .error {
+    white-space: pre-wrap;
     background: #7f1d1d;
     color: #fee2e2;
     border: 1px solid #991b1b;
