@@ -83,6 +83,7 @@ def run_cm_flux(commit: bool = True):
     _run_subv_cm(commit=commit)
     _run_baux(commit=commit)
 from collectors.approbations   import run as run_approbations
+from collectors.budgets_votes  import run as run_budgets_votes
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
@@ -203,10 +204,17 @@ STEPS = {
     # Doit passer APRÈS `cm` et `cc_epci`, qui fournissent ce texte.
     "approbations": ("Plans de financement votés (PV)",
                      lambda: run_approbations(commit=True)),
+    # Même matière, autre lecture : les tableaux du budget primitif voté, que
+    # l'OFGL ne publiera que dix-huit mois plus tard. Sans ce step, la page du
+    # budget s'arrête à l'avant-dernier exercice — le lecteur ne voit pas le
+    # budget sur lequel le conseil vient de se prononcer.
+    "budgets_votes": ("Budgets primitifs votés (PV)",
+                      lambda: run_budgets_votes(commit=True)),
     # Rejoue `config/saisies.json` — ce qu'un humain a écrit dans l'atelier.
-    # APRÈS les collecteurs, parce qu'une saisie rattache un flux à une entité
-    # que la collecte vient peut-être de créer ; AVANT `origine` et `perimetre`,
-    # qui doivent classer ces lignes comme les autres.
+    # APRÈS les collecteurs, y compris celui des budgets votés : une saisie
+    # rectifie ce qu'une lecture automatique a mal lu, et rattache un flux à une
+    # entité que la collecte vient peut-être de créer. AVANT `origine` et
+    # `perimetre`, qui doivent classer ces lignes comme les autres.
     "saisies":   ("Saisies de l'atelier (config/saisies.json)", import_saisies),
     # Classe les faits par origine — institutionnel, verbatim, atelier. C'est
     # cette colonne que l'API interroge avant d'autoriser une rectification :

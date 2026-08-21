@@ -17,7 +17,7 @@ ce dispositif cherche à combler.
 Des **collecteurs** interrogent des sources publiques (SIRENE, RNA, BODACC, DVF,
 OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, Hub'Eau,
 sites officiels de la commune et de l'intercommunalité) et alimentent une base
-SQLite. `python3 -m collectors.run_all` en enchaîne 35.
+SQLite. `python3 -m collectors.run_all` en enchaîne 36.
 
 Un **script de publication** (`scripts/build_public_snapshot.py`) en extrait un
 snapshot JSON filtré, qui alimente un **site statique** SvelteKit sans backend
