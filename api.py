@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1191,6 +1192,33 @@ def public_snapshot_status(x_admin_key: Optional[str] = Header(default=None),
     _check_admin(x_admin_key, user)
     return _public_snapshot_status()
 
+def _controler_snapshot(cible: Path) -> dict:
+    """Rejoue `scripts/verify_snapshot.py` sur un répertoire produit.
+
+    EN SOUS-PROCESSUS, jamais en import. Deux raisons, et la seconde a coûté
+    une soirée le 21/08/2026 :
+
+    1. Le contrôleur est écrit comme un adversaire du builder — il ne partage
+       aucun code avec lui, c'est toute sa valeur. L'importer ici, dans le
+       processus qui vient d'appeler `build_snapshot()`, les remettrait dans la
+       même mémoire et les ferait vieillir ensemble.
+    2. Un atelier lancé le matin exécute le code du matin. Ce jour-là, un clic
+       sur « régénérer » a rejoué un builder d'avant un correctif et écrasé un
+       bon snapshot par l'ancien — `{"ok": true}` en retour, 152 liens morts
+       dans le fichier servi. Un interpréteur neuf lit le code du disque, pas
+       celui du démarrage : c'est la seule façon que le contrôle ne mente pas
+       sur le code qu'il contrôle.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(BASE_DIR / "scripts" / "verify_snapshot.py"), str(cible)],
+        capture_output=True, text=True, cwd=str(BASE_DIR), timeout=900)
+    return {
+        "repertoire": str(cible),
+        "ok": proc.returncode == 0,
+        "rapport": (proc.stdout + proc.stderr).strip(),
+    }
+
+
 @app.post("/api/admin/public-snapshot/generate")
 def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
                              user=Depends(optional_user)):
@@ -1198,13 +1226,36 @@ def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
     from scripts.build_public_snapshot import DEFAULT_OUT, ROOT, build_snapshot
 
     stats = build_snapshot(DEFAULT_OUT)
+
+    # LE CONTRÔLE PRÉCÈDE LA SYNCHRO. Ce qui fuit ne doit pas atteindre le
+    # répertoire que le site lit : un snapshot refusé reste dans l'atelier, où
+    # il ne blesse personne. Publier d'abord et vérifier ensuite, c'est
+    # exactement la séquence qui a mis 1 229 fiches écartées en ligne.
+    controle = _controler_snapshot(DEFAULT_OUT)
+    if not controle["ok"]:
+        raise HTTPException(500,
+            "Snapshot refusé par le contrôle d'étanchéité — le site public n'a "
+            "PAS été mis à jour, l'ancien reste en place.\n\n" + controle["rapport"])
+
     synced = _sync_public_static(DEFAULT_OUT, ROOT)   # snapshot → site public, 1 clic
+
+    # Et une seconde fois sur ce qui est SERVI. La synchro met `entite/` en
+    # miroir et recopie le reste : un fichier oublié ou une purge incomplète ne
+    # se voit pas dans le répertoire d'origine, seulement à l'arrivée.
+    controle_site = _controler_snapshot(ROOT / "public" / "static" / "data")
+    if not controle_site["ok"]:
+        raise HTTPException(500,
+            "Le snapshot est propre mais sa copie vers le site ne l'est pas — "
+            "ne pas déployer.\n\n" + controle_site["rapport"])
+
     return {
         "ok": True,
         "output_dir": str(DEFAULT_OUT),
         "stats": stats,
         "exclusions": stats.get("exclusions", {}),
         "synced": synced,
+        "controle": controle,
+        "controle_site": controle_site,
     }
 
 # ─── Décisions : exporter / importer ──────────────────────────────────────────
