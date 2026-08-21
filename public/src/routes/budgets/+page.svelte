@@ -167,6 +167,9 @@
   $: detteSerie = [...serieDe('Encours de dette').entries()].sort((a, b) => a[0] - b[0])
   $: detteMin = detteSerie.length ? detteSerie.reduce((min, e) => (e[1] < min[1] ? e : min)) : null
   $: detteFacteur = (detteMin && dette && detteMin[1]) ? (dette / detteMin[1]) : null
+  $: facteurDette = detteFacteur
+    ? detteFacteur.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    : null
 
   const signe = (n) => (n == null ? '' : (n > 0 ? '+' : '') + n + ' %')
   const pct = (n, total) => total ? Math.round(100 * n / total) + ' %' : ''
@@ -272,18 +275,34 @@
         {#if evolRec1 != null}Recettes <b>{signe(evolRec1)}</b> sur un an{/if}
         {#if evolDep1 != null} · dépenses <b>{signe(evolDep1)}</b>{/if}
         {#if evolDette1 != null} · dette <b>{signe(evolDette1)}</b>{/if}
+        <!-- Cette phrase ne regardait que la trajectoire longue, et ignorait
+             l'exercice affiché juste avant elle : sur 2025, la page écrivait
+             « dette -4 % » puis, trois mots plus loin, « multipliée par 3,4 ».
+             Les deux chiffres étaient justes et la page se contredisait quand
+             même. Quand la dette recule sur l'exercice, c'est ce recul qui se
+             dit en premier ; l'échelle longue vient ensuite, comme mesure de ce
+             qui reste à rembourser. -->
         {#if detteFacteur && detteFacteur > 1.5 && detteMin}
           <br />
-          La dette a été multipliée par <b>{detteFacteur.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</b> depuis
-          son point bas de {detteMin[0]} ({eurosC(detteMin[1])}).
+          {#if evolDette1 != null && evolDette1 < 0}
+            Elle recule sur l'exercice, mais reste <b>{facteurDette}</b> fois
+            son point bas de {detteMin[0]} ({eurosC(detteMin[1])}).
+          {:else}
+            La dette a été multipliée par <b>{facteurDette}</b> depuis
+            son point bas de {detteMin[0]} ({eurosC(detteMin[1])}).
+          {/if}
         {/if}
         <span class="courants">Montants en euros courants, non corrigés de l'inflation&nbsp;: une hausse de quelques pour cent sur un an ne signifie pas une hausse en pouvoir d'achat.</span>
       </p>
 
       {#if detteFacteur && detteFacteur > 1.5}
         <p class="lecture">
-          <b>Ce que ce chiffre ne dit pas.</b> Une dette qui augmente n'est pas en
-          soi un mauvais signe&nbsp;: elle finance des investissements, et emprunter
+          <!-- « Une dette qui augmente » affirmait une hausse au moment même où
+               l'exercice affichait une baisse : ce paragraphe se déclenche sur
+               le facteur pluriannuel, pas sur l'année. Formulation sans
+               direction — elle reste vraie que la dette monte ou reflue. -->
+          <b>Ce que ce chiffre ne dit pas.</b> Un endettement élevé n'est pas en
+          soi un mauvais signe&nbsp;: la dette finance des investissements, et emprunter
           quand les taux sont bas pour réaliser des travaux durables est une
           décision courante. Ce que ces chiffres ne disent pas, c'est
           <em>ce qui</em> a été financé — cela se cherche dans
