@@ -29,6 +29,14 @@ LIGNES_DE_TABLEAU = [
     "10 ML 150,00 € 300,00 €",
     "000,00 € TTC (TVA 20%)",
     "529 055,00 € PAM 30% 194 699,42 €",
+    # Relevés le 21/08/2026 en mesurant le découpage sur 389 procès-verbaux.
+    "DETR 52 655.52 € 27.62 %",              # le point décimal n'était pas lu
+    "LANUEJOLS ETAGE N° 9 39,60 318.37 190 €",   # deux mots, deux décimales
+    "DEPENSES D’INVESTISSEMENT",             # un en-tête de colonne — 34 774 car.
+    "CHARGES RECETTES",
+    "DEPENSES MONTANT HT RECETTES MONTANT %",
+    "M. BENEFICE : Oui",                     # un appel nominal, pas une décision
+    "Mme DELAUNAY : Abstention",
 ]
 
 # De vraies délibérations, dont certaines portent un montant.
@@ -40,6 +48,17 @@ VRAIS_ACTES = [
     "Cession de la parcelle AD180",
     "Remplacement luminaire Glycines — SMEG 2 088,76 € HT",
     "DETERMINATION DU NOMBRE DE MEMBRES SIEGEANT AU CONSEIL",
+    # Ces quatre-là ont disparu quand la règle comptait TOUS les nombres, et non
+    # les seules décimales : un numéro d'acte, une parcelle, un article de loi et
+    # une période sont des entiers, pas des colonnes de tableau.
+    "N°4280 : Vente parcelles cadastrées section A n°836 et n°838 au lieu dit "
+    "« Combe Lauret »",
+    "Validation de l’agenda d’accessibilité programmée Ad’AP Vu la loi "
+    "n° 2005-102 du 11 février 2005",
+    "Indemnités Trésorier Municipal Vu le décret n° 82.979 du 19 novembre 1982",
+    "Participation à la consultation du Centre de Gestion – 01.01.2016 au "
+    "31.12.2016",
+    "BUDGET PRIMITIF 2026",
 ]
 
 
