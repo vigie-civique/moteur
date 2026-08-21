@@ -11,18 +11,23 @@ chiffres étaient tapés à la main dans un script jetable — dix-huit lignes q
 toute recollecte effaçait.
 
 CE QU'IL DISTINGUE, ET C'EST TOUT LE SUJET
-Un procès-verbal de séance budgétaire contient deux tableaux de forme identique,
-souvent à quelques pages d'écart :
+Un procès-verbal de séance budgétaire aligne des tableaux de forme identique qui
+ne disent pas la même chose : le budget voté, le compte administratif de
+l'exercice écoulé, les restes à réaliser. Les confondre publierait du
+prévisionnel comme du constaté — une erreur invisible, puisque chaque chiffre
+est vrai.
 
-    BUDGET PRIMITIF (prévisionnel)     UNE colonne de montants, sous un en-tête
-                                       « Chap/art Intitulé BP <année> ».
-    COMPTE FINANCIER (réalisé)         DEUX colonnes — prévu, puis réalisé.
+Deux règles suffisent, et elles sont mécaniques :
 
-Les confondre publierait du prévisionnel comme du constaté, ou l'inverse : une
-erreur invisible, puisque les deux tableaux sont vrais. La règle appliquée ici
-est mécanique — un total suivi d'un SEUL montant est un budget voté, un total
-suivi de deux est un compte financier, et le second est ignoré. L'OFGL publie le
-réalisé bien mieux que nous ne saurions le lire.
+  1. un tableau de budget voté porte une ligne de colonnes « Chap/art Intitulé …
+     BP <année> ». Sans elle, ce n'en est pas un, et il est ignoré ;
+  2. la colonne du budget voté est la DERNIÈRE : « Restes à réaliser | BP 2026 »,
+     « CA 2025 | BP 2026 », ou « BP 2026 » seule. De chaque ligne on retient donc
+     le dernier montant. Si une colonne est déclarée APRÈS elle, la règle ne tient
+     plus : le tableau est laissé de côté et compté au rapport.
+
+Le compte financier, lui, est laissé à l'OFGL, qui le publie bien mieux que nous
+ne saurions le lire.
 
 LE DÉCOUPAGE DES PV NE SE FAIT PAS TOUJOURS, ET CE MODULE N'EN DÉPEND PAS
 Sur la première commune, la séance budgétaire de 2025 forme un seul « acte » de
@@ -70,16 +75,40 @@ from .db import get_conn, transaction
 MONTANT = r"-?\s?\d{1,3}(?:[   ]\d{3})*(?:[.,]\d{1,2})?"
 _MONTANT_RX = re.compile(MONTANT)
 
-# L'en-tête d'un tableau, en une seule expression : le nom du budget, sa section,
-# puis la ligne de colonnes. Les trois doivent se suivre — c'est ce qui distingue
-# un en-tête d'une phrase qui parle en passant d'un « virement à la section
-# d'investissement ». Entre les deux peuvent s'intercaler la nomenclature (M57)
-# et le sens (dépenses / recettes), qui n'apprennent rien de plus.
-TABLE = re.compile(
-    r"(?P<nom>[a-z0-9.'  -]{0,40}?)\s*"
-    r"section\s+(?:de\s+)?(?P<section>fonctionnement|d'\s?investissement)\s*"
-    r"(?:[-–:]\s*)?(?:m\s?\d{1,2}\s*)?(?:d[ée]penses|recettes)?\s*(?:[-–:]\s*)?"
-    r"chap(?:/art)?\.?\s+intitul[ée]*\s*(?:rar\s*-?\s*pm\s+)?bp\s+(?P<annee>20\d\d)")
+# L'ANCRE : la ligne de colonnes d'un tableau budgétaire. « Chap/art Intitulé …
+# BP <année> » se retrouve telle quelle dans un PDF de tableur comme dans une
+# page HTML, et c'est le seul endroit du document qui affirme deux choses à la
+# fois — ceci est un tableau, et il porte le budget primitif de cet exercice.
+# Une phrase qui parle en passant d'un « virement à la section d'investissement »
+# ne la produit jamais.
+ENTETE = re.compile(
+    r"chap(?:\s*[/.]\s*art)?\.?\s*[\s|]*intitul[ée]*\b(?P<colonnes>[\s\S]{0,60}?)"
+    r"bp\s+(?P<annee>20\d\d)")
+
+# Ce qui précède l'ancre nomme la section, et parfois le budget :
+#     « principal section de fonctionnement m57 dépenses »   (PDF de tableur)
+#     « dépenses d'investissement »                          (page HTML)
+# Le nom, lui, n'est présent que dans la première forme — la seconde le laisse
+# dans le récit de la séance, d'où il ne se déduit pas sans deviner.
+SECTION_AVANT = re.compile(r"(?P<mot>fonctionnement|investissement)(?![a-z])")
+NOM_AVANT = re.compile(
+    r"(?P<nom>[a-z0-9.'  -]{0,40}?)\s*section\s+(?:de\s+)?"
+    r"(?:fonctionnement|d'\s?investissement)")
+# Fenêtre de lecture à rebours depuis l'ancre. Assez large pour couvrir un
+# en-tête complet, assez étroite pour ne pas mordre sur le tableau précédent.
+FENETRE_AVANT = 200
+
+# Fenêtre plus courte pour la section : elle est dans l'en-tête, pas dans le
+# récit. « … un virement à la section d'investissement de 50 500 € » se trouve à
+# deux lignes de là, et donnerait la section d'à côté.
+FENETRE_SECTION = 60
+
+# Les colonnes qui peuvent suivre « BP <année> » dans un en-tête, et qui font
+# renoncer au tableau : le compte administratif du même exercice, le réalisé,
+# les restes à réaliser. Un tableau de compte financier en porte toujours au
+# moins une — c'est ce qui le distingue d'un budget voté.
+COLONNE_APRES_BP = re.compile(
+    r"\bca\s*20\d\d\b|compte\s+administratif|realis|\brar\b|mandat")
 
 # Les totaux nomment leur section : aucune ambiguïté à lever.
 TOTAUX = (
@@ -159,14 +188,15 @@ def _est_une_somme(brut: str, valeur: float) -> bool:
 def montants_suivants(texte: str, depart: int, maximum: int = 3) -> list[float]:
     """Les sommes qui suivent IMMÉDIATEMENT une étiquette.
 
-    « Immédiatement » veut dire : rien entre elles que des espaces. C'est ce qui
-    sépare un budget voté d'un compte financier — une colonne contre deux — et
-    c'est donc le seul endroit du module où la tolérance serait une erreur.
+    « Immédiatement » veut dire : rien entre elles que des blancs. Les sauts de
+    ligne en sont : une page HTML met chaque cellule sur sa ligne, un PDF de
+    tableur les aligne sur une seule, et le tableau est le même. Ce qui arrête
+    la lecture, c'est un MOT — l'étiquette de la ligne suivante.
     """
     valeurs: list[float] = []
     i = depart
     while len(valeurs) < maximum:
-        while i < len(texte) and texte[i] in " \t:":
+        while i < len(texte) and texte[i] in " \t\n\r|:":
             i += 1
         m = _MONTANT_RX.match(texte, i)
         if not m:
@@ -207,31 +237,72 @@ def nom_de_budget(brut: str) -> str | None:
     return nom
 
 
+def _avant(texte: str, position: int, fenetre: int = FENETRE_AVANT) -> str:
+    return texte[max(0, position - fenetre):position]
+
+
+def colonne_apres_bp(suite: str) -> bool:
+    """Une colonne est-elle déclarée APRÈS « BP <année> » ?
+
+    Si oui, le budget voté n'est plus la dernière colonne du tableau, et plus
+    rien ne dit lequel des montants d'une ligne est le sien.
+
+    Ce sont les INTITULÉS de colonnes qui sont cherchés, et non la fin de la
+    ligne d'en-tête : celle-ci ne se laisse pas borner. « BP 2025 CA 2025 Restes
+    à réaliser » commence par une année, « BP 2026 11 0.023 Virement… » par un
+    numéro de page suivi d'un chapitre. La liste est courte parce que ces
+    intitulés viennent de la comptabilité publique, pas de la commune.
+    """
+    return bool(COLONNE_APRES_BP.search(suite))
+
+
+
 def tableaux(titre: str, contenu: str) -> list[dict]:
     """Découpe un acte en tableaux de budget voté.
 
-    Le titre est collé devant le texte : quand le découpage des PV a réussi, la
-    section est dans l'intitulé de l'acte (« M57 section de fonctionnement —
-    dépenses ») et le corps commence directement par la ligne de colonnes.
-    Quand il a échoué, chaque tableau porte son en-tête complet dans le texte.
-    Les deux cas se lisent alors de la même façon.
+    Le titre est collé devant le texte : quand le découpage des procès-verbaux a
+    réussi, la section est dans l'intitulé de l'acte (« M57 section de
+    fonctionnement — dépenses ») et le corps commence par la ligne de colonnes.
+    Quand il a échoué — une séance entière dans un seul acte — chaque tableau
+    porte son en-tête dans le texte. Les deux cas se lisent de la même façon.
     """
     texte = _norm(titre) + " " + _norm(contenu)
-    entetes = list(TABLE.finditer(texte))
+    ancres = list(ENTETE.finditer(texte))
     lus: list[dict] = []
-    for i, m in enumerate(entetes):
-        fin = entetes[i + 1].start() if i + 1 < len(entetes) else len(texte)
-        section = "investissement" if m.group("section").startswith("d") else "fonctionnement"
+    for i, m in enumerate(ancres):
+        fin = ancres[i + 1].start() if i + 1 < len(ancres) else len(texte)
+        avant = _avant(texte, m.start())
+        noms = NOM_AVANT.findall(avant)
+        sections = SECTION_AVANT.findall(_avant(texte, m.start(), FENETRE_SECTION))
+        scope = nom_de_budget(noms[-1]) if noms else None
+        section = sections[-1] if sections else None
+        # UN BUDGET, DEUX TABLEAUX. Le document nomme le premier — « chaufferie
+        # bois section de fonctionnement / dépenses » — et coiffe le second d'un
+        # simple « recettes ». Le tableau sans nom n'est pas d'un budget inconnu :
+        # c'est la suite du précédent, et l'attribuer à autre chose serait faux.
+        # L'héritage s'arrête au tableau suivant qui se nomme.
+        if lus and lus[-1]["annee"] == int(m.group("annee")):
+            scope = scope or lus[-1]["scope"]
+            section = section or lus[-1]["section"]
         lus.append({
             "annee": int(m.group("annee")),
-            "scope": nom_de_budget(m.group("nom")),
+            "scope": scope,
             "section": section,
             "corps": texte[m.end():fin],
+            "colonne_sure": not colonne_apres_bp(texte[m.end():m.end() + 45]),
         })
     return lus
 
 
-def agregats_du_tableau(corps: str, section: str) -> list[dict]:
+def agregats_du_tableau(corps: str, section: str | None) -> list[dict]:
+    """Les agrégats d'un tableau : pour chaque étiquette, la valeur de sa ligne.
+
+    La valeur retenue est la DERNIÈRE de la ligne, parce que la colonne du
+    budget voté est la dernière du tableau. Les colonnes qui la précèdent — les
+    restes à réaliser, le compte administratif de l'exercice écoulé — sont ainsi
+    lues et écartées d'un même mouvement, au lieu de faire renoncer au tableau
+    entier comme le faisait la première version de ce module.
+    """
     etiquettes = list(TOTAUX) + list(CHAPITRES)
     if section in SOLDE_PAR_SECTION:
         etiquettes.append((SOLDE, SOLDE_PAR_SECTION[section]))
@@ -239,11 +310,9 @@ def agregats_du_tableau(corps: str, section: str) -> list[dict]:
     for motif, nom in etiquettes:
         for m in re.finditer(motif, corps):
             valeurs = montants_suivants(corps, m.end())
-            # UNE valeur : budget voté. DEUX : prévu puis réalisé, donc un
-            # compte financier — ignoré, l'OFGL le publie mieux que nous.
-            if len(valeurs) != 1 or not valeurs[0]:
+            if not valeurs or not valeurs[-1]:
                 continue
-            trouves.append({"agregat": nom, "value": valeurs[0]})
+            trouves.append({"agregat": nom, "value": valeurs[-1]})
             break
     return trouves
 
@@ -257,18 +326,24 @@ def reperer(conn) -> tuple[list[dict], dict]:
     ancienne serait la dernière à passer, donc la seule à subsister.
     """
     lignes: list[dict] = []
-    ecartes = {"budget_indetermine": 0, "tableaux_lus": 0}
+    ecartes = {"tableaux": 0, "budget_indetermine": 0, "colonne_incertaine": 0}
     actes = conn.execute(
         "SELECT id, date, title, content, source_url FROM events "
         " WHERE type = 'deliberation' AND content IS NOT NULL AND content <> ''"
         " ORDER BY date").fetchall()
     for acte in actes:
         for tableau in tableaux(acte["title"] or "", acte["content"]):
+            ecartes["tableaux"] += 1
+            if not tableau["colonne_sure"]:
+                ecartes["colonne_incertaine"] += 1
+                continue
             agregats = agregats_du_tableau(tableau["corps"], tableau["section"])
             if not agregats:
                 continue
-            ecartes["tableaux_lus"] += 1
             if not tableau["scope"]:
+                # Le tableau se lit, mais rien n'y dit de quel budget il est :
+                # dans un compte rendu HTML, le nom reste dans le récit de la
+                # séance. Compté ici, et laissé à la saisie de l'atelier.
                 ecartes["budget_indetermine"] += 1
                 continue
             for a in agregats:
@@ -289,8 +364,9 @@ def run(commit: bool = False) -> dict:
     lignes, ecartes = reperer(conn)
     exercices = sorted({l["year"] for l in lignes})
     budgets = sorted({l["scope"] for l in lignes})
-    print(f"[budgets_votes] {ecartes['tableaux_lus']} tableau(x) de budget voté lu(s), "
-          f"{ecartes['budget_indetermine']} sans budget identifiable → "
+    print(f"[budgets_votes] {ecartes['tableaux']} tableau(x) repéré(s), "
+          f"{ecartes['budget_indetermine']} sans budget identifiable, "
+          f"{ecartes['colonne_incertaine']} à colonnes ambiguës → "
           f"{len(lignes)} ligne(s)")
     print(f"   exercices : {', '.join(str(a) for a in exercices) or '—'}")
     print(f"   budgets   : {', '.join(budgets) or '—'}")

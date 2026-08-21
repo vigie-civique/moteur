@@ -6,6 +6,12 @@ particulier. Le catalogue des procès-verbaux vient du connecteur déclaré par
 l'instance ; leur lecture est faite ici, et l'analyse du texte dans
 `pv_parsers`. Aucun des trois n'a besoin de savoir de quelle commune il s'agit.
 
+Le format du document n'est pas non plus une affaire de commune : PDF, page
+HTML, traitement de texte ou texte brut sont lus de la même façon — cf.
+`texte_document.py` — et rendent le même texte à `pv_parsers`. Ce lecteur a
+longtemps refusé tout ce qui n'était pas un PDF, et une séance entière
+manquait quand la collectivité publiait son compte rendu en page web.
+
 Ce qui est publié : le TITRE de chaque délibération, sa date, son vote et le
 lien vers le procès-verbal. Le corps du texte est conservé mais reste matériau
 d'atelier.
@@ -40,6 +46,7 @@ from .cm_parser import link_persons_to_event
 from .connecteurs import charger
 from .db import transaction, upsert_entity
 from .pv_parsers import deliberations, presences
+from .texte_document import format_de, texte_de
 
 PDF_DIR = ROOT / "data" / "pv"
 
@@ -91,27 +98,42 @@ def _url_http(url: str) -> str:
     return urllib.parse.urlunsplit(parts._replace(path=chemin))
 
 
-def telecharger(url: str, source: str = "") -> Path | None:
-    """PDF en cache local. Retélécharge seulement s'il est absent."""
-    PDF_DIR.mkdir(parents=True, exist_ok=True)
+MIME = {"pdf": "application/pdf", "html": "text/html",
+        "office": "application/octet-stream", "texte": "text/plain"}
+
+
+def _cible_cache(url: str) -> Path:
     nom = urllib.parse.unquote(Path(urllib.parse.urlparse(url).path).name)
-    cible = PDF_DIR / re.sub(r"[^A-Za-z0-9._-]", "_", nom)
-    if cible.exists() and cible.stat().st_size > 0:
-        return cible
+    return PDF_DIR / (re.sub(r"[^A-Za-z0-9._-]", "_", nom) or "document")
+
+
+def telecharger(url: str, source: str = "") -> tuple[bytes, str] | None:
+    """Rend le contenu d'un document et son format, ou rien.
+
+    Le format vient des OCTETS, pas de l'adresse : un fichier retiré est souvent
+    servi sous son ancienne adresse en `.pdf` par une page d'erreur, qu'on
+    enregistrerait sinon comme un procès-verbal vide.
+
+    Ce lecteur a longtemps refusé tout ce qui n'était pas un PDF. Sur la
+    première commune, le compte rendu de la séance budgétaire d'avril 2026 est
+    une page HTML sans pièce jointe : elle était cataloguée, refusée ici, et la
+    séance entière manquait — avec les huit budgets qu'elle votait.
+    """
     try:
         req = urllib.request.Request(_url_http(url), headers=HEADERS)
         with urllib.request.urlopen(req, timeout=60) as r:
             raw = r.read()
-        if not raw.startswith(b"%PDF-"):
-            print(f"  [pv][skip] pas un PDF : {url}")
-            return None
-        cible.write_bytes(raw)
-        archive_fetch(source or "site", url, raw, "application/pdf", 200,
-                      doc_type="pdf", title=nom)
-        return cible
+            ctype = r.headers.get("Content-Type", "")
     except Exception as e:
         print(f"  [pv][erreur] {url} → {e}")
         return None
+    fmt = format_de(raw, ctype)
+    if fmt == "inconnu":
+        print(f"  [pv][skip] format illisible ({len(raw)} octets) : {url}")
+        return None
+    archive_fetch(source or "site", url, raw, MIME.get(fmt, "application/octet-stream"),
+                  200, doc_type=fmt, title=_cible_cache(url).name)
+    return raw, fmt
 
 
 def texte_pdf(chemin: Path) -> str:
@@ -121,6 +143,37 @@ def texte_pdf(chemin: Path) -> str:
     except Exception as e:
         print(f"  [pv][erreur] lecture {chemin.name} → {e}")
         return ""
+
+
+def lire_document(doc, avec_ocr: bool = False) -> tuple[str, str, bool] | None:
+    """(texte, format, océrisé) — ou rien si le document est hors d'atteinte.
+
+    Les PDF gardent leur cache sur disque : ils sont lourds, immuables une fois
+    déposés, et la reconnaissance optique a besoin d'un fichier. Les autres
+    formats sont relus à chaque passage — une page web change, elle.
+    """
+    cache = _cible_cache(doc.url)
+    if cache.exists() and cache.stat().st_size > 0:
+        texte = texte_pdf(cache)
+        if len(texte) < MIN_TEXT_CHARS and avec_ocr:
+            texte = ocr(cache)
+            return texte, "pdf", bool(texte)
+        return texte, "pdf", False
+
+    recu = telecharger(doc.url, doc.source)
+    if recu is None:
+        return None
+    raw, fmt = recu
+    if fmt != "pdf":
+        return texte_de(raw, fmt), fmt, False
+
+    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(raw)
+    texte = texte_pdf(cache)
+    if len(texte) < MIN_TEXT_CHARS and avec_ocr:
+        texte = ocr(cache)
+        return texte, "pdf", bool(texte)
+    return texte, "pdf", False
 
 
 # ── Écriture ─────────────────────────────────────────────────────────────────
@@ -230,28 +283,27 @@ def ocr(chemin: Path, langue: str = "fra") -> str:
 
 def traiter(conn, doc, portee: str, verbose: bool = True,
             avec_ocr: bool = False) -> dict:
-    """Télécharge, lit et enregistre un procès-verbal."""
+    """Télécharge, lit et enregistre un procès-verbal, quel que soit son format."""
     p = PORTEES[portee]
-    chemin = telecharger(doc.url, doc.source)
-    if chemin is None:
+    lu = lire_document(doc, avec_ocr)
+    if lu is None:
         return {"statut": "inaccessible", "delibs": 0}
+    texte, format_, ocrise = lu
 
-    texte = texte_pdf(chemin)
-    ocrise = False
-    if len(texte) < MIN_TEXT_CHARS and avec_ocr:
-        texte = ocr(chemin)
-        ocrise = bool(texte)
     if len(texte) < MIN_TEXT_CHARS:
         # Sans reconnaissance optique, le signaler vaut mieux que produire une
-        # séance vide qui passerait pour lue.
-        enregistrer_seance(conn, doc, portee)
-        return {"statut": "sans_couche_texte", "delibs": 0}
+        # séance vide qui passerait pour lue. Une page web trop courte, elle,
+        # n'est pas un défaut de lecture : c'est un ordre du jour, ou une page
+        # qui annonce la séance sans la rapporter.
+        enregistrer_seance(conn, doc, portee, {"format": format_})
+        return {"statut": "sans_couche_texte" if format_ == "pdf" else "texte_trop_court",
+                "delibs": 0}
 
     delibs = deliberations(texte)
     pres = presences(texte, _ordre_noms(portee))
     seance_id = enregistrer_seance(
         conn, doc, portee,
-        {"nb_deliberations": len(delibs), "ocr": ocrise, **pres})
+        {"nb_deliberations": len(delibs), "ocr": ocrise, "format": format_, **pres})
 
     if not delibs:
         conn.execute(
