@@ -473,18 +473,18 @@ def public_event_detail(metadata: dict, event_type: str) -> dict:
     if isinstance(metadata.get("tags"), list) and metadata["tags"]:
         detail["tags"] = metadata["tags"][:6]
 
-    if isinstance(metadata.get("ordre_du_jour"), list) and metadata["ordre_du_jour"]:
-        detail["ordre_du_jour"] = metadata["ordre_du_jour"][:40]
-        detail["nb_deliberations"] = metadata.get("nb_deliberations")
-
-    for key in ("organizer", "organisateur"):
-        if metadata.get(key):
-            detail["organisateur"] = metadata[key]
-            break
-    for key in ("lieu", "address"):
-        if metadata.get(key):
-            detail["lieu"] = metadata[key]
-            break
+    # RETIRÉ le 21/08/2026 : `ordre_du_jour`, `organisateur` et `lieu` étaient
+    # recopiés tels quels depuis `metadata`, sans passer par `redige()` — le
+    # masque « un particulier » qui protège `title` et les descriptions de flux.
+    # Un ordre du jour porte des noms (« Demande de M. X », « recrutement de
+    # Mme Y) ; ces trois champs les auraient publiés en clair.
+    #
+    # Supprimés plutôt que masqués : aucun collecteur du moteur n'écrit ces
+    # clés — 0 événement sur les trois instances, en base comme au snapshot.
+    # C'était du code mort qui portait un risque. S'ils reviennent un jour, ils
+    # reviendront par `redige()`, comme tout texte publié.
+    #
+    # Relevé par un audit externe le 21/08/2026.
 
     if metadata.get("archived_copy"):
         detail["copie_archivee"] = True
@@ -2470,7 +2470,37 @@ def build_snapshot(out: Path) -> dict:
             WHERE insee IN ({",".join("?" * len(COMMUNES_EPCI))})
             ORDER BY commune, mandat, nom
         """, tuple(COMMUNES_EPCI)) if table_exists(conn, "elus_rne") else []
-        write_json(out / "elus_rne.json", {"elus": elus, "total": len(elus)})
+
+        # `fiche` : cet élu a-t-il une page `/entite/<id>` sur le site ?
+        #
+        # NON pour la plupart. `publiable_dans_perimetre()` n'accorde de fiche à
+        # une personne C2 que si elle SIÈGE au conseil communautaire ; les
+        # conseillers municipaux des autres communes membres n'en ont pas, et
+        # c'est délibéré (leur fiche agrégerait mandats, sociétés et marchés
+        # pour des élus sans pouvoir de décision sur la commune).
+        #
+        # L'export les portait quand même avec leur `entity_id`, et la page en
+        # faisait un lien : 152 liens morts sur Lasalle, 176 sur Brassac, 191
+        # sur Saillans — soit 78 à 90 % des élus affichés, en production, vers
+        # un 404. Relevé par un audit externe le 21/08/2026.
+        #
+        # La composition d'un conseil municipal reste publiée : c'est une donnée
+        # du Répertoire National des Élus, registre public rediffusable. C'est
+        # la FICHE qui est refusée, pas le nom. Seul cet endroit connaît
+        # `public_ids` — la page ne peut pas recalculer ce booléen, et ne doit
+        # pas essayer.
+        elus = [{**e, "fiche": e.get("entity_id") in public_ids} for e in elus]
+        write_json(out / "elus_rne.json", {
+            "elus": elus,
+            "total": len(elus),
+            "total_avec_fiche": sum(1 for e in elus if e["fiche"]),
+            "note_fiche": (
+                "`fiche: false` signale un élu publié sans page dédiée : sa "
+                "commune relève de l'intercommunalité et il ne siège pas au "
+                "conseil communautaire. Ne pas construire de lien "
+                "/entite/<entity_id> pour ces lignes."
+            ),
+        })
 
         urbanisme_rows = rows(conn, """
             SELECT num_dau, insee, commune, categorie, type_dau, type_label,
@@ -2482,6 +2512,7 @@ def build_snapshot(out: Path) -> dict:
         """) if table_exists(conn, "urbanisme_autorisations") else []
         urbanisme_public = []
         adresses_retirees = 0
+        renvois_retires = 0
         for u in urbanisme_rows:
             u = dict(u)
             # Prudence : sans personne morale nommée, le demandeur est un
@@ -2491,6 +2522,15 @@ def build_snapshot(out: Path) -> dict:
                 if u.get("adresse"):
                     adresses_retirees += 1
                 u["adresse"] = None
+            # Un identifiant d'entité PROMET une fiche. Le demandeur d'un permis
+            # est très souvent hors périmètre publiable — 66 lignes sur Lasalle,
+            # 199 sur Brassac, 168 sur Saillans pointaient vers une fiche
+            # absente. Aucune page du site ne lit ce champ ; il ne sert donc
+            # qu'au lecteur du JSON, à qui il ment. On le retire plutôt que de
+            # le laisser désigner un 404.
+            if u.get("demandeur_entity_id") and u["demandeur_entity_id"] not in public_ids:
+                u["demandeur_entity_id"] = None
+                renvois_retires += 1
             u["date_precision"] = "annee"   # cf. contrôle de divulgation SDES
             urbanisme_public.append(u)
         write_json(out / "urbanisme.json", {
@@ -2498,6 +2538,7 @@ def build_snapshot(out: Path) -> dict:
             "total": len(urbanisme_public),
             "note_dates": "Dates ramenées à l'année pour les petites communes "
                           "(contrôle de divulgation statistique du SDES).",
+            "renvois_demandeur_retires": renvois_retires,
         })
 
         # Parcelles portant à la fois une mutation DVF et une autorisation.
