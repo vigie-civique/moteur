@@ -68,16 +68,29 @@ def marquer(conn) -> int:
 
 
 def relire(portee: str, avec_ocr: bool) -> set[str]:
-    """Relit les procès-verbaux d'une portée ; rend les URL effectivement lues."""
+    """Relit les procès-verbaux d'une portée ; rend les URL effectivement lues.
+
+    Le détail des statuts n'est pas décoratif : un document non relu garde ses
+    actes du découpage précédent, et il faut pouvoir dire POURQUOI. Sur Saillans,
+    90 séances sur 143 sont restées de côté — toutes scannées, et l'instance
+    avait déjà leur reconnaissance optique en cache. Sans ce décompte, la base
+    paraissait corrigée alors qu'elle l'était à un tiers.
+    """
     documents = charger().catalogue_pv(portee)
     print(f"\n[redécoupage] {portee} — {len(documents)} procès-verbaux catalogués")
-    lues = set()
+    lues, statuts = set(), {}
     for doc in documents:
         with transaction() as conn:
             r = conseils.traiter(conn, doc, portee, verbose=False, avec_ocr=avec_ocr)
+        statuts[r["statut"]] = statuts.get(r["statut"], 0) + 1
         if r["statut"] == "ok":
             lues.add(doc.url)
-    print(f"  {len(lues)} relus")
+    detail = ", ".join(f"{n} {s}" for s, n in sorted(statuts.items(), key=lambda x: -x[1])
+                       if s != "ok")
+    print(f"  {len(lues)} relus" + (f" ; {detail}" if detail else ""))
+    if statuts.get("sans_couche_texte") and not avec_ocr:
+        print(f"  ⚠ {statuts['sans_couche_texte']} séances scannées gardent leur "
+              f"ancien découpage — relancer avec --ocr")
     return lues
 
 
