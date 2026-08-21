@@ -1253,6 +1253,35 @@ def is_public_relation(rel: dict, public_ids: set[int],
     return False, "not_in_public_allowlist"
 
 
+def flux_extremites_publiees(flow: dict, public_ids: set[int]) -> bool:
+    """Les deux extrémités NOMMÉES d'un flux désignent-elles des fiches publiées ?
+
+    `is_public_relation` tient cette règle depuis toujours pour les relations
+    (`endpoint_not_public`) ; les flux financiers ne l'avaient jamais eue. Le
+    filtre voisin, lui, ne regarde que les personnes physiques — il laissait donc
+    passer les flux dont l'extrémité est une entité MORALE non publiée, une
+    association d'une commune voisine par exemple. La page des flux en faisait un
+    lien vers une fiche que le snapshot n'écrit pas, et le build du site échouait
+    sur `404 /entite/<id> (linked from /finances)` : l'instance entière devenait
+    impubliable à cause de trois associations. Mesuré le 21/08/2026 sur la
+    première commune : 10 flux, 3 440 €.
+
+    Le flux est écarté, et non simplement délié : publier un montant dont le
+    bénéficiaire n'a pas de fiche reviendrait à nommer une entité que le filtre
+    de périmètre vient d'écarter, en la privant du contexte qui rendrait ce nom
+    lisible.
+
+    Une extrémité vide (`NULL`) ne bloque rien : un flux dont le bénéficiaire est
+    inconnu ne prétend renvoyer nulle part. C'est le cas des lignes que les
+    collecteurs n'ont pas su rattacher, traitées plus loin par la déduplication.
+    """
+    for cle in ("from_id", "to_id"):
+        eid = flow.get(cle)
+        if eid and eid not in public_ids:
+            return False
+    return True
+
+
 def _commune_entity_id(conn) -> int | None:
     """Id de l'entité « Commune de … », ou None si elle n'est pas en base."""
     from collectors.config import COMMUNE_NAME
@@ -1926,6 +1955,15 @@ def build_snapshot(out: Path) -> dict:
             if not ({f.get("from_id"), f.get("to_id")} & personnes_privees)
         ]
         exclusions["flows"]["private_person_endpoint"] = before - len(public_flows)
+
+        # Même contournement, une marche plus haut : le filtre ci-dessus ne voit
+        # que les personnes physiques, et laissait passer les flux dont
+        # l'extrémité est une entité morale non publiée — cf.
+        # `flux_extremites_publiees`, qui porte la règle et son histoire.
+        before = len(public_flows)
+        public_flows = [f for f in public_flows
+                        if flux_extremites_publiees(f, public_ids)]
+        exclusions["flows"]["endpoint_not_public"] = before - len(public_flows)
 
         # Déduplication : doublons exacts (même année/montant/type/émetteur/destinataire)
         # et « jumeaux » non résolus (montant identique, bénéficiaire vide) laissés par
