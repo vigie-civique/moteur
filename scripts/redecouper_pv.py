@@ -47,11 +47,23 @@ MARQUE = "_redecoupage"
 TYPES = tuple(p["delib"] for p in conseils.PORTEES.values())
 
 
+def _cloisonne_par_origine(conn) -> bool:
+    """La base distingue-t-elle les actes saisis à la main des actes collectés ?
+
+    La colonne `events.origine` vient de l'atelier étendu, qui n'est pas fusionné
+    dans toutes les instances. Sans elle, tous les actes sont des actes collectés
+    — ce qui était vrai avant qu'on puisse en saisir.
+    """
+    return any(c[1] == "origine" for c in conn.execute("PRAGMA table_info(events)"))
+
+
 def marquer(conn) -> int:
+    garde = (" AND COALESCE(origine,'verbatim') = 'verbatim'"
+             if _cloisonne_par_origine(conn) else "")
     cur = conn.execute(
         f"UPDATE events SET metadata = json_set(COALESCE(metadata,'{{}}'), "
-        f"'$.{MARQUE}', 1) WHERE type IN ({','.join('?' * len(TYPES))}) "
-        f"AND COALESCE(origine,'verbatim') = 'verbatim'", TYPES)
+        f"'$.{MARQUE}', 1) WHERE type IN ({','.join('?' * len(TYPES))}){garde}",
+        TYPES)
     return cur.rowcount
 
 
