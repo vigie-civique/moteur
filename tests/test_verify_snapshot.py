@@ -244,6 +244,50 @@ def test_renvoi_ignore_les_cles_qui_ne_designent_pas_une_entite(vs, tmp_path):
     assert rep.errors == {}
 
 
+def test_renvoi_dans_un_sous_dossier_bloque(vs, tmp_path):
+    """Les fiches `entite/<id>.json` sont servies, donc contrôlées.
+
+    Le premier jet ne lisait que la racine. Or c'est la fiche pré-résolue qui
+    porte les renvois que `relations.json` n'a pas — un snapshot de Lasalle-v3
+    avait `relations.json` parfaitement propre pendant que `entite/8514.json`
+    renvoyait vers trois acteurs jamais publiés. `check_dir` inspecte déjà ces
+    fichiers en `rglob` pour toutes les autres règles.
+    """
+    base = _publier_entites(tmp_path / "sous-dossier", [1, 2])
+    (base / "entite").mkdir()
+    (base / "entite" / "1.json").write_text(json.dumps({
+        "entity": {"id": 1, "name": "Acteur 1"},
+        "relations": [{"id": 7, "from_id": 1, "to_id": 404, "autre_id": 404}],
+    }), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    detail = " ".join(sum(rep.errors.values(), []))
+    assert "renvoi vers une fiche non publiée" in rep.errors
+    assert "entite/1.json" in detail
+
+
+def test_fiche_false_ne_dispense_pas_ce_qui_est_imbrique(vs, tmp_path):
+    """La dispense couvre l'enregistrement, pas sa descendance.
+
+    `return` sur `fiche: false` coupait la récursion entière : un objet
+    imbriqué sous une ligne dispensée n'était plus contrôlé du tout.
+    `elus_rne.json` est plat, donc rien ne fuyait — mais l'exception était
+    écrite plus large que l'arbitrage qu'elle transcrit.
+    """
+    base = _publier_entites(tmp_path / "imbrique", [1])
+    (base / "elus_rne.json").write_text(json.dumps({"elus": [{
+        "nom": "Conseiller d'une commune membre",
+        "entity_id": 99,
+        "fiche": False,
+        "mandats": [{"role": "adjoint", "entite_id": 77}],
+    }]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    detail = " ".join(sum(rep.errors.values(), []))
+    assert "entite_id" in detail          # le renvoi imbriqué est vu
+    assert "entity_id" not in detail      # la dispense de la ligne tient
+
+
 def test_renvoi_sans_entities_ne_crie_pas(vs, tmp_path):
     """Dépôt fraîchement cloné : pas de snapshot, donc rien à promettre."""
     base = tmp_path / "vide"
