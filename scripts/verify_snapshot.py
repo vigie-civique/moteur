@@ -299,7 +299,10 @@ def check_renvois_sortants(base, rep):
     publié sous ODbL et lu par des tiers, qui suivent les identifiants sans
     avoir de page pour leur pardonner.
 
-    Relevé par un audit externe le 21/08/2026.
+    Relevé par un audit externe le 21/08/2026. Second passage du même
+    audit : le contrôle ne lisait que la racine et `fiche: false`
+    dispensait tout un sous-arbre — deux façons d'annoncer un invariant
+    plus large que ce qu'il tenait. Corrigé le jour même.
     """
     fp = base / "entities.json"
     if not fp.is_file():
@@ -317,12 +320,15 @@ def check_renvois_sortants(base, rep):
 
     def parcourir(noeud, fichier):
         if isinstance(noeud, dict):
-            # Un enregistrement peut dire explicitement qu'il ne promet rien.
-            if noeud.get(CLE_SANS_FICHE) is False:
-                return
+            # Un enregistrement peut dire explicitement qu'il ne promet rien —
+            # mais la dispense ne couvre QUE ses propres champs de renvoi. Elle
+            # coupait la descente entière : un objet imbriqué sous une ligne
+            # `fiche: false` échappait au contrôle sans l'avoir demandé.
+            # `elus_rne.json` est plat aujourd'hui, il ne le restera pas.
+            dispense = noeud.get(CLE_SANS_FICHE) is False
             for cle, val in noeud.items():
                 if cle in CHAMPS_RENVOI and isinstance(val, int):
-                    if val not in publies:
+                    if not dispense and val not in publies:
                         morts.setdefault((fichier, cle), set()).add(val)
                         occurrences[(fichier, cle)] = occurrences.get((fichier, cle), 0) + 1
                 else:
@@ -331,9 +337,17 @@ def check_renvois_sortants(base, rep):
             for v in noeud:
                 parcourir(v, fichier)
 
-    for f in sorted(base.glob("*.json")):
+    # `rglob`, pas `glob` : les fiches `entite/<id>.json` sont servies comme le
+    # reste et portent des renvois (`relations`, `flows`, `marches`) que la
+    # racine n'a pas. Un contrôle limité à la racine annonçait un invariant
+    # qu'il ne tenait que sur une partie du snapshot — et `relations.json`
+    # peut être propre pendant qu'une fiche pré-résolue renvoie dans le vide.
+    for f in sorted(base.rglob("*.json")):
+        rel = f.relative_to(base)
+        if "node_modules" in rel.parts:
+            continue
         try:
-            parcourir(json.loads(f.read_text()), f.name)
+            parcourir(json.loads(f.read_text()), str(rel))
         except json.JSONDecodeError:
             continue  # déjà signalé par check_file
 
