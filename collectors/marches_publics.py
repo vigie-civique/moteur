@@ -746,47 +746,21 @@ def marche_exists(conn, raw_id: str) -> bool:
     return row is not None
 
 
-def _ensure_marches_table(conn):
-    """Crée la table marches_publics si absente."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS marches_publics (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            acheteur_id     INTEGER REFERENCES entities(id),
-            acheteur_siren  TEXT NOT NULL,
-            acheteur_nom    TEXT NOT NULL,
-            titulaire_id    INTEGER REFERENCES entities(id),
-            titulaire_siren TEXT,
-            titulaire_nom   TEXT,
-            objet           TEXT NOT NULL,
-            nature          TEXT,
-            procedure       TEXT,
-            montant         REAL,
-            cpv             TEXT,
-            cpv_label       TEXT,
-            date_notif      TEXT,
-            date_pub        TEXT,
-            duree_mois      INTEGER,
-            lieu_exec       TEXT,
-            source          TEXT NOT NULL,
-            source_url      TEXT,
-            raw_id          TEXT,
-            event_id        INTEGER REFERENCES events(id),
-            confidence      TEXT DEFAULT 'verified',
-            created_at      TEXT DEFAULT (datetime('now')),
-            UNIQUE(raw_id)
-        )
-    """)
-    # Cette définition double celle de db/schema.sql. Elle doit rester
-    # alignée : une base créée par ce collecteur seul, sans passer par
-    # `init_db()`, n'aurait pas la colonne et le filtre de publication
-    # échouerait au moment de publier — donc trop tard.
-    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(marches_publics)")}
-    if "confidence" not in colonnes:
-        conn.execute("ALTER TABLE marches_publics "
-                     "ADD COLUMN confidence TEXT DEFAULT 'verified'")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_acheteur  ON marches_publics(acheteur_siren)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_titulaire ON marches_publics(titulaire_siren)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_mp_date      ON marches_publics(date_notif DESC)")
+# `_ensure_marches_table()` a été SUPPRIMÉE le 21/08/2026. Elle recréait ici
+# `marches_publics` avec une copie du `CREATE TABLE`, sous la consigne de
+# « rester alignée » sur `db/schema.sql`. Elle ne l'était plus : la copie avait
+# perdu la contrainte
+# `CHECK(confidence IN ('verified','confirmed','probable','hypothesis'))`
+# ajoutée au schéma le 20/08/2026.
+#
+# Et surtout : **elle n'avait aucun appelant**. La table est créée par
+# `init_db()` (step `init` de `run_all`), qui joue le schéma entier. La copie ne
+# protégeait donc rien — elle ne faisait que porter une seconde définition,
+# vouée à diverger, dans un fichier où personne n'allait la relire.
+#
+# Deux définitions d'une même table sont deux définitions qui divergeront : la
+# consigne de les tenir alignées ne suffit pas, seule leur unicité suffit.
+# Relevé par un audit externe le 21/08/2026.
 
 
 def insert_marche(conn, m: dict,

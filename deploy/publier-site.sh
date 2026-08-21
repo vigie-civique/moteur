@@ -37,9 +37,22 @@ if [ "$DEPLOYER" -eq 1 ]; then
     echo "  se téléverse tel quel chez n'importe quel hébergeur statique." >&2
     exit 1
   fi
-  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ ! -t 0 ]; then
-    echo "✖ Ni CLOUDFLARE_API_TOKEN ni terminal interactif : wrangler ne pourra" >&2
-    echo "  pas s'authentifier. Inutile de construire le site." >&2
+  # Trois façons d'être authentifié, et la troisième manquait : une session
+  # `wrangler login` DÉJÀ ouverte tient dans un fichier et fonctionne sans
+  # terminal. Exiger un tty refusait la publication depuis un script, un cron
+  # ou un agent, alors que les identifiants étaient là.
+  session_ouverte=0
+  for c in "${WRANGLER_HOME:-}/config/default.toml" \
+           "$HOME/.wrangler/config/default.toml" \
+           "${XDG_CONFIG_HOME:-$HOME/.config}/.wrangler/config/default.toml"; do
+    # Forme explicite : sous `set -e`, un « [ -f … ] && x=1 » qui échoue laisse
+    # une liste en échec, et ce piège a déjà coûté une soirée sur ce projet.
+    if [ -f "$c" ]; then session_ouverte=1; fi
+  done
+  if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] && [ "$session_ouverte" -eq 0 ] && [ ! -t 0 ]; then
+    echo "✖ Aucun moyen de s'authentifier chez Cloudflare : ni CLOUDFLARE_API_TOKEN," >&2
+    echo "  ni session « npx wrangler login » ouverte, ni terminal interactif." >&2
+    echo "  Inutile de construire le site." >&2
     exit 1
   fi
 fi

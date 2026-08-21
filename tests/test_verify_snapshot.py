@@ -144,3 +144,110 @@ def test_base_dans_le_repertoire_publie_refusee(vs, tmp_path):
     (tmp_path / "99001.db").write_bytes(b"SQLite format 3\x00")
     vs.check_dir(tmp_path, rep)
     assert any("fichier interdit" in r for r in rep.errors)
+
+
+# ── L'invariant de renvoi sortant ────────────────────────────────────────────
+#
+# Symétrique de `check_fiches_orphelines`, ajouté le 21/08/2026 après un audit
+# externe : `/elus` liait `/entite/<id>` pour tous les conseillers municipaux de
+# l'intercommunalité, dont 78 à 90 % n'ont pas de fiche. 152 à 191 liens morts
+# par instance, EN PRODUCTION, avec un contrôleur qui rendait « 0 violation ».
+
+def _publier_entites(dossier: Path, ids: list[int]) -> Path:
+    """Un répertoire publié minimal : `entities.json` et rien d'autre."""
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / "entities.json").write_text(
+        json.dumps({"entities": [{"id": i, "name": f"Acteur {i}"} for i in ids]}),
+        encoding="utf-8")
+    return dossier
+
+
+def test_renvoi_vers_fiche_publiee_passe(vs, tmp_path):
+    base = _publier_entites(tmp_path / "ok", [1, 2, 3])
+    (base / "elus_rne.json").write_text(
+        json.dumps({"elus": [{"nom": "A", "entity_id": 2}]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert rep.errors == {}
+
+
+def test_renvoi_vers_fiche_absente_bloque(vs, tmp_path):
+    base = _publier_entites(tmp_path / "ko", [1, 2, 3])
+    (base / "elus_rne.json").write_text(
+        json.dumps({"elus": [{"nom": "A", "entity_id": 99}]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert any("renvoi vers une fiche non publiée" in r for r in rep.errors)
+
+
+def test_fiche_false_dispense_du_renvoi(vs, tmp_path):
+    """La sortie explicite : publier un nom sans promettre de page.
+
+    C'est l'arbitrage du 21/08/2026 sur `/elus` — la composition d'un conseil
+    municipal vient du RNE, registre public rediffusable, et reste publiée ;
+    c'est la FICHE que le filtre de périmètre refuse, pas le nom. L'export le
+    dit champ par champ, et la page ne construit un lien que là où il existe.
+    """
+    base = _publier_entites(tmp_path / "flag", [1, 2, 3])
+    (base / "elus_rne.json").write_text(json.dumps({"elus": [
+        {"nom": "Siège à l'EPCI", "entity_id": 2, "fiche": True},
+        {"nom": "Conseiller d'une commune membre", "entity_id": 99, "fiche": False},
+    ]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert rep.errors == {}
+
+
+def test_fiche_true_mensonger_bloque(vs, tmp_path):
+    """`fiche: true` sur un identifiant absent est un mensonge, pas une dispense."""
+    base = _publier_entites(tmp_path / "menteur", [1, 2, 3])
+    (base / "elus_rne.json").write_text(
+        json.dumps({"elus": [{"nom": "A", "entity_id": 99, "fiche": True}]}),
+        encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert any("renvoi vers une fiche non publiée" in r for r in rep.errors)
+
+
+def test_renvoi_compte_ids_et_occurrences(vs, tmp_path):
+    """Deux unités, parce qu'elles ne disent pas la même chose : les ids
+    distincts comptent les fiches manquantes, les occurrences comptent les liens
+    qu'un lecteur peut heurter. L'audit et le relevé interne différaient de ce
+    seul facteur."""
+    base = _publier_entites(tmp_path / "compte", [1])
+    (base / "urbanisme.json").write_text(json.dumps({"autorisations": [
+        {"num_dau": "A", "demandeur_entity_id": 50},
+        {"num_dau": "B", "demandeur_entity_id": 50},
+        {"num_dau": "C", "demandeur_entity_id": 51},
+        {"num_dau": "D", "demandeur_entity_id": 1},
+    ]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    detail = " ".join(sum(rep.errors.values(), []))
+    assert "2 identifiant(s) mort(s)" in detail
+    assert "3 occurrence(s)" in detail
+
+
+def test_renvoi_ignore_les_cles_qui_ne_designent_pas_une_entite(vs, tmp_path):
+    """`id`, `event_id`, `raw_document_id` ne promettent pas de fiche.
+
+    Un contrôle qui se trompe de champ crie sur du bruit, et un contrôle qui
+    crie sur du bruit finit désactivé. La liste `CHAMPS_RENVOI` est explicite
+    pour cette raison.
+    """
+    base = _publier_entites(tmp_path / "bruit", [1])
+    (base / "events.json").write_text(json.dumps({"events": [
+        {"id": 4242, "event_id": 777, "raw_document_id": 999, "title": "Acte"},
+    ]}), encoding="utf-8")
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert rep.errors == {}
+
+
+def test_renvoi_sans_entities_ne_crie_pas(vs, tmp_path):
+    """Dépôt fraîchement cloné : pas de snapshot, donc rien à promettre."""
+    base = tmp_path / "vide"
+    base.mkdir()
+    rep = vs.Report()
+    vs.check_renvois_sortants(base, rep)
+    assert rep.errors == {}

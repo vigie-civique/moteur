@@ -262,6 +262,89 @@ def check_fiches_orphelines(base, rep):
             rep.error("fiche servie pour une entité non publiée", f"entite/{f.name}")
 
 
+# Champs dont la valeur est un identifiant d'entité, et qui PROMETTENT donc une
+# fiche `/entite/<id>`. La liste est explicite plutôt que déduite d'un suffixe :
+# `id`, `from_id` ou `event_id` désignent autre chose, et un contrôle qui se
+# trompe de champ finit désactivé.
+CHAMPS_RENVOI = (
+    "entity_id", "entite_id", "acteur_id", "person_id",
+    "demandeur_entity_id", "titulaire_id", "acheteur_id",
+    "titulaire_entity_id", "acheteur_entity_id", "autre_id",
+    "from_id", "to_id",
+)
+
+# Fichiers qui portent volontairement un identifiant sans promettre de fiche.
+# Un enregistrement s'en dispense en portant `"fiche": false` — voir
+# `elus_rne.json`, où la composition d'un conseil municipal est publiée (donnée
+# du RNE, registre public) sans que chaque élu ait droit à une page.
+CLE_SANS_FICHE = "fiche"
+
+
+def check_renvois_sortants(base, rep):
+    """Tout identifiant publié qui promet une fiche doit désigner une fiche.
+
+    Symétrique de `check_fiches_orphelines`, et il manquait. Celui-là vérifiait
+    qu'aucune fiche n'est servie sans entité publiée ; personne ne vérifiait le
+    sens inverse — un JSON public qui renvoie vers une fiche ABSENTE.
+
+    Le défaut a vécu en production sur deux sites : `/elus` liait
+    `/entite/<id>` pour tous les conseillers municipaux des communes de
+    l'intercommunalité, dont 78 à 90 % n'ont pas de fiche (le filtre de
+    périmètre ne l'accorde qu'à ceux qui siègent au conseil communautaire).
+    152 liens morts sur Lasalle, 176 sur Brassac, 191 sur Saillans. Le
+    contrôleur rendait « 0 violation » : il regardait le contenu des fiches, pas
+    les promesses de lien entre les fichiers qu'il produit.
+
+    C'est un invariant de CONTRAT DE DONNÉES, pas d'affichage : le snapshot est
+    publié sous ODbL et lu par des tiers, qui suivent les identifiants sans
+    avoir de page pour leur pardonner.
+
+    Relevé par un audit externe le 21/08/2026.
+    """
+    fp = base / "entities.json"
+    if not fp.is_file():
+        return
+    try:
+        entities = json.loads(fp.read_text()).get("entities") or []
+    except json.JSONDecodeError:
+        return  # déjà signalé par check_file
+    publies = {e.get("id") for e in entities}
+    if not publies:
+        return  # base vide : rien à promettre, rien à contrôler
+
+    morts = {}          # (fichier, champ) → {ids}
+    occurrences = {}    # (fichier, champ) → compte
+
+    def parcourir(noeud, fichier):
+        if isinstance(noeud, dict):
+            # Un enregistrement peut dire explicitement qu'il ne promet rien.
+            if noeud.get(CLE_SANS_FICHE) is False:
+                return
+            for cle, val in noeud.items():
+                if cle in CHAMPS_RENVOI and isinstance(val, int):
+                    if val not in publies:
+                        morts.setdefault((fichier, cle), set()).add(val)
+                        occurrences[(fichier, cle)] = occurrences.get((fichier, cle), 0) + 1
+                else:
+                    parcourir(val, fichier)
+        elif isinstance(noeud, list):
+            for v in noeud:
+                parcourir(v, fichier)
+
+    for f in sorted(base.glob("*.json")):
+        try:
+            parcourir(json.loads(f.read_text()), f.name)
+        except json.JSONDecodeError:
+            continue  # déjà signalé par check_file
+
+    for (fichier, champ), ids in sorted(morts.items()):
+        rep.error(
+            "renvoi vers une fiche non publiée",
+            f"{fichier} · {champ} : {len(ids)} identifiant(s) mort(s), "
+            f"{occurrences[(fichier, champ)]} occurrence(s) "
+            f"— ex. {sorted(ids)[:5]}")
+
+
 def check_dir(base, rep):
     for fp in sorted(base.rglob("*")):
         if not fp.is_file():
@@ -277,6 +360,7 @@ def check_dir(base, rep):
             check_file(fp, rep, base)
     check_perimetre(base, rep)
     check_fiches_orphelines(base, rep)
+    check_renvois_sortants(base, rep)
 
 
 def main(argv):
