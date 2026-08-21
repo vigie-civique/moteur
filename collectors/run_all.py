@@ -83,6 +83,7 @@ def run_cm_flux(commit: bool = True):
     _run_subv_cm(commit=commit)
     _run_baux(commit=commit)
 from collectors.approbations   import run as run_approbations
+from collectors.budgets_votes  import run as run_budgets_votes
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
@@ -187,6 +188,12 @@ STEPS = {
     # Doit passer APRÈS `cm` et `cc_epci`, qui fournissent ce texte.
     "approbations": ("Plans de financement votés (PV)",
                      lambda: run_approbations(commit=True)),
+    # Même matière, autre lecture : les tableaux du budget primitif voté, que
+    # l'OFGL ne publiera que dix-huit mois plus tard. Sans ce step, la page du
+    # budget s'arrête à l'avant-dernier exercice — le lecteur ne voit pas le
+    # budget sur lequel le conseil vient de se prononcer.
+    "budgets_votes": ("Budgets primitifs votés (PV)",
+                      lambda: run_budgets_votes(commit=True)),
     # DERNIER, et il doit le rester : il classe ce que tous les autres ont
     # écrit. Sans lui, `entities.perimetre` reste NULL et aucune fiche n'est
     # publiable — le snapshot refuse de se construire plutôt que de publier
