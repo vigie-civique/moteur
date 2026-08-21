@@ -91,6 +91,35 @@ def test_elu_communautaire_publie(bps):
     assert publiee is not None
 
 
+# ── Flux financiers : un montant ne sort pas sans ses deux extrémités ────────
+# Les relations avaient cette règle (`endpoint_not_public`) depuis toujours, les
+# flux ne l'ont jamais eue : le filtre voisin ne regardait que les personnes
+# physiques. Un flux vers une association d'une commune limitrophe sortait donc
+# avec un lien vers une fiche que le snapshot n'écrit pas, et le build du site
+# s'arrêtait sur `404 /entite/<id> (linked from /finances)` — l'instance entière
+# impubliable à cause de trois associations.
+
+def test_flux_vers_une_entite_publiee_passe(bps):
+    assert bps.flux_extremites_publiees({"from_id": 1, "to_id": 2}, {1, 2})
+
+
+def test_flux_vers_une_entite_non_publiee_ecarte(bps):
+    assert not bps.flux_extremites_publiees({"from_id": 1, "to_id": 8405}, {1})
+
+
+def test_flux_depuis_une_entite_non_publiee_ecarte(bps):
+    """Les deux sens comptent : une subvention REÇUE d'une entité écartée
+    renverrait vers la même fiche absente."""
+    assert not bps.flux_extremites_publiees({"from_id": 8405, "to_id": 1}, {1})
+
+
+def test_flux_sans_beneficiaire_identifie_reste(bps):
+    """Une extrémité vide ne prétend renvoyer nulle part : le flux se publie,
+    sans lien. L'écarter effacerait de l'argent public au motif que le
+    collecteur n'a pas su nommer qui l'a touché."""
+    assert bps.flux_extremites_publiees({"from_id": 1, "to_id": None}, {1})
+
+
 # ── L'ordre des règles est lui-même une garantie ─────────────────────────────
 
 def test_une_personne_privee_c1_reste_privee(bps):
