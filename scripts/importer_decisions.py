@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from collectors import saisies as _saisies  # noqa: E402
 from collectors.config import COMMUNE_INSEE, COMMUNE_NAME  # noqa: E402
 from collectors.db import get_conn  # noqa: E402
 from scripts.decisions import resoudre  # noqa: E402
@@ -192,6 +193,58 @@ def importer(conn, src: Path, appliquer: bool, forcer: bool) -> Rapport:
                             WHERE from_id=? AND to_id=? AND relation_type=?""",
                    (d["statut"], d.get("note"), d.get("le"), a, b, d["type"]),
                    rap, appliquer)
+
+    # ── Saisies manuelles ───────────────────────────────────────────────────
+    # Les sections précédentes posent un jugement sur une ligne qui existe déjà
+    # ici. Celle-ci apporte des lignes qui n'existent nulle part ailleurs : elle
+    # n'écrit donc pas en base, elle complète `config/saisies.json`, et c'est le
+    # collecteur `saisies` qui les insérera — le même chemin que pour une saisie
+    # faite à la main sur cette machine.
+    recues = _lire(src / "saisies.jsonl")
+    if recues:
+        fichier = _saisies.charger()
+        connues = {s.get("id"): s for s in fichier.get("saisies", [])}
+        for d in recues:
+            d = dict(d)
+            d.pop("cle", None)
+            # Le chemin inverse de l'export : la clé naturelle redevient
+            # l'identifiant LOCAL de cette base — ou la saisie est écartée.
+            # Rattacher au hasard serait pire que ne rien importer.
+            rattachement_perdu = False
+            for champ, valeur in list((d.get("valeurs") or {}).items()):
+                if isinstance(valeur, dict) and valeur.get("cle"):
+                    eid = resoudre(conn, valeur["cle"])
+                    if eid is None:
+                        rattachement_perdu = True
+                        break
+                    d["valeurs"][champ] = {"id": eid}
+            if rattachement_perdu:
+                rap.non_rattachees.append(
+                    f"[saisie {d.get('objet')}] tiers absent de cette base")
+                continue
+
+            ancienne = connues.get(d.get("id"))
+            if ancienne is None:
+                fichier.setdefault("saisies", []).append(d)
+                rap.applique += 1
+            elif ancienne == d:
+                rap.a_jour += 1
+            elif d.get("retire") and not ancienne.get("retire"):
+                # Un retrait se propage toujours : ne pas publier est le côté
+                # prudent de la décision.
+                ancienne.update(d)
+                rap.applique += 1
+            elif not forcer:
+                rap.desaccords.append(
+                    f"[saisie {d.get('objet')}] déjà présente ici, contenu différent")
+            else:
+                ancienne.update(d)
+                rap.applique += 1
+
+        if appliquer:
+            _saisies.enregistrer(fichier)
+            _saisies.import_saisies()
+
     return rap
 
 

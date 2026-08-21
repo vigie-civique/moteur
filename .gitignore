@@ -16,6 +16,13 @@ config/seed_local.json
 # des personnes physiques. Ils n'étaient couverts par aucune règle : une
 # instance qui en rédigeait un le versionnait sans que rien ne l'en avertisse.
 config/dossiers_locaux.json
+# Les saisies de l'atelier : du travail humain, qui peut nommer des personnes
+# physiques (un acquéreur, un locataire de la commune). Elles se partagent par
+# l'export de décisions vers un dépôt PRIVÉ, jamais par le dépôt du moteur.
+config/saisies.json
+config/saisies.json.tmp
+# Idem pour l'export lui-même, produit dans l'arborescence de l'instance.
+decisions/
 audits/
 .env
 

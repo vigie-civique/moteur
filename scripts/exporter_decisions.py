@@ -32,6 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from collectors import saisies as _saisies  # noqa: E402
 from collectors.config import COMMUNE_INSEE, COMMUNE_NAME  # noqa: E402
 from collectors.db import get_conn  # noqa: E402
 from scripts.decisions import CLES, cle_entite  # noqa: E402
@@ -121,11 +122,53 @@ def exporter(conn, dest: Path, sans_personnes: bool) -> dict[str, int]:
                           "vers_libelle": kb[1], "type": rtype,
                           "statut": statut, "note": note, "le": le})
 
+    # ── 5. Saisies manuelles : ce qu'aucun collecteur ne peut refaire ────────
+    # Les autres sections exportent des JUGEMENTS sur des lignes existantes.
+    # Celle-ci exporte des lignes qui n'existent nulle part ailleurs : un budget
+    # voté, une dotation notifiée, une subvention lue dans un compte rendu. Si
+    # elle manquait, la reprise sur une autre machine perdrait la partie la plus
+    # chère du travail — celle qui a demandé de lire les documents.
+    #
+    # LE POINT DÉLICAT est le même que partout ici : une saisie qui désigne son
+    # bénéficiaire par `{"id": 4471}` ne veut rien dire ailleurs, où 4471 est une
+    # autre entité. On remplace donc l'identifiant local par une clé naturelle,
+    # et l'import fera le chemin inverse.
+    saisies = []
+    for s in _saisies.charger().get("saisies", []):
+        ligne = json.loads(json.dumps(s, ensure_ascii=False))   # copie profonde
+        retiree = bool(ligne.get("retire"))
+        concerne_personne = False
+        for champ, valeur in list((ligne.get("valeurs") or {}).items()):
+            if isinstance(valeur, dict) and valeur.get("id"):
+                k = cle_entite(conn, int(valeur["id"]))
+                if not k:
+                    orphelines += 1
+                    continue
+                if est_personne(int(valeur["id"])):
+                    concerne_personne = True
+                ligne["valeurs"][champ] = {"cle": k[0], "libelle": k[1]}
+        if ligne.get("objet") == "entite" and \
+                (ligne.get("valeurs") or {}).get("type") == "person":
+            concerne_personne = True
+        if sans_personnes and concerne_personne:
+            personnes_retirees += 1
+            continue
+        # Le document local ne suit pas : c'est un fichier, parfois lourd, et
+        # son identifiant est local lui aussi. L'empreinte, elle, voyage — elle
+        # permet de reconnaître le document s'il est déjà présent en face.
+        source = ligne.get("source") or {}
+        source.pop("raw_document_id", None)
+        ligne["source"] = source
+        ligne["cle"] = f"saisie:{ligne.get('id')}"
+        ligne["retire"] = retiree
+        saisies.append(ligne)
+
     compte = {
         "annotations": _ecrire(dest / "annotations.jsonl", annotations),
         "entites-statuts": _ecrire(dest / "entites-statuts.jsonl", statuts),
         "sites": _ecrire(dest / "sites.jsonl", sites),
         "relations-arbitrees": _ecrire(dest / "relations-arbitrees.jsonl", relations),
+        "saisies": _ecrire(dest / "saisies.jsonl", saisies),
     }
 
     (dest / "manifeste.json").write_text(json.dumps({

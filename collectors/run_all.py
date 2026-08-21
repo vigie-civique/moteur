@@ -86,6 +86,22 @@ from collectors.approbations   import run as run_approbations
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.urbanisme      import run as run_urbanisme
+from collectors.saisies        import import_saisies
+
+
+def run_origine():
+    """Classe les faits en institutionnel / verbatim / atelier.
+
+    Chargé par chemin, pour la même raison que `run_perimetre` ci-dessous.
+    Dérivé lui aussi : il ne collecte rien, il relit la `source` que les
+    collecteurs viennent d'écrire.
+    """
+    import importlib.util
+    chemin = Path(__file__).parent.parent / "scripts" / "classer_origine.py"
+    spec = importlib.util.spec_from_file_location("classer_origine", chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run()
 
 
 def run_perimetre():
@@ -187,6 +203,16 @@ STEPS = {
     # Doit passer APRÈS `cm` et `cc_epci`, qui fournissent ce texte.
     "approbations": ("Plans de financement votés (PV)",
                      lambda: run_approbations(commit=True)),
+    # Rejoue `config/saisies.json` — ce qu'un humain a écrit dans l'atelier.
+    # APRÈS les collecteurs, parce qu'une saisie rattache un flux à une entité
+    # que la collecte vient peut-être de créer ; AVANT `origine` et `perimetre`,
+    # qui doivent classer ces lignes comme les autres.
+    "saisies":   ("Saisies de l'atelier (config/saisies.json)", import_saisies),
+    # Classe les faits par origine — institutionnel, verbatim, atelier. C'est
+    # cette colonne que l'API interroge avant d'autoriser une rectification :
+    # sans ce step, une base entière reste non classée, donc entièrement
+    # protégée contre la saisie, et l'atelier ne peut plus rien corriger.
+    "origine":   ("Classement des faits par origine", run_origine),
     # DERNIER, et il doit le rester : il classe ce que tous les autres ont
     # écrit. Sans lui, `entities.perimetre` reste NULL et aucune fiche n'est
     # publiable — le snapshot refuse de se construire plutôt que de publier

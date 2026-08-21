@@ -104,3 +104,47 @@ def test_une_piste_c1_reste_privee(bps):
     publiee, _ = bps.public_entity(
         fiche(perimetre="C1", confidence="hypothesis"), [], set())
     assert publiee is None
+
+
+# ── Le bénéficiaire d'une aide n'est pas un élu ──────────────────────────────
+# Ajouté le 21/08/2026, en ouvrant la saisie manuelle et l'extraction assistée.
+# Le modèle a sorti d'un vrai PV, correctement, des aides à la rénovation de
+# façades NOMINATIVES : « Mme BOURRET Martine », « M. et Mme DUEZ », avec le
+# numéro de rue. Ce sont des particuliers qui reçoivent de l'argent public — la
+# collecte les prend (doctrine de l'atelier), la publication ne doit pas.
+#
+# Le risque est précis : saisir un flux crée une RELATION vers le bénéficiaire,
+# et une relation est justement ce qui rend une personne publiable. Le 19/08,
+# 1 229 fiches d'entités écartées dont 80 personnes physiques ont été servies en
+# production. Ces trois tests ferment la porte par le code, pas par l'attention.
+
+def test_beneficiaire_dune_aide_nest_pas_publiable(bps):
+    """Recevoir de l'argent public n'entre PAS une personne dans l'ensemble
+    civique : sa fiche est refusée, et pour ce motif précis."""
+    publiee, motifs = bps.public_entity(
+        fiche(id=42, type="person", name="Une bénéficiaire", perimetre="C1"),
+        [], set())
+    assert publiee is None
+    assert motifs == ["person_without_public_civic_role"]
+
+
+def test_seuls_les_roles_civiques_ouvrent_la_publication(bps):
+    """Contrôle croisé sur les règles elles-mêmes : si un type de relation
+    « économique » entrait un jour dans la liste civique, toute personne payée
+    par la commune deviendrait publiable d'un coup, et silencieusement."""
+    import json
+    regles = json.loads(
+        (ROOT / "config" / "publication_rules.exemple.json").read_text(encoding="utf-8"))
+    civiques = set(regles["people"]["publish_only_with_relation_types"])
+    jamais = {"subventionné", "locataire_commune", "bail", "cession",
+              "prestataire", "titulaire", "acheteur"}
+    assert not (civiques & jamais), (
+        f"rôles non civiques dans la liste de publication : {civiques & jamais}")
+
+
+def test_un_elu_reste_publiable(bps):
+    """Le contre-test : fermer la porte ne doit pas fermer la maison. Une
+    personne entrée dans l'ensemble civique en amont reste publiée."""
+    publiee, _ = bps.public_entity(
+        fiche(id=7, type="person", name="Une élue", perimetre="C1"), [], {7})
+    assert publiee is not None

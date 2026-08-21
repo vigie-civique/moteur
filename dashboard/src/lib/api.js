@@ -61,6 +61,12 @@ async function postAdmin(path, body, adminKey) {
   return r.json()
 }
 
+async function del(path) {
+  const r = await authFetch(path, { method: 'DELETE' })
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  return r.json()
+}
+
 function qs(params) {
   const p = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
@@ -130,14 +136,64 @@ export const api = {
     get('/budget-annexe' + qs({ entity_id, year })),
 
   // Données importées (délibs / flux / marchés) — revue & annotation (atelier, JWT)
-  donnees: (type, status = '', limit = 200) =>
-    getAuth('/atelier/donnees' + qs({ type, status, limit })),
+  donnees: (type, status = '', limit = 200, origine = '') =>
+    getAuth('/atelier/donnees' + qs({ type, status, origine, limit })),
 
   annotate: (objectType, objectId, body) =>
     patchAuth(`/atelier/annotations/${objectType}/${objectId}`, body),
 
   // Contrat des corrections : quels champs l'API accepte de rectifier, par type.
   champsCorrigeables: () => getAuth('/atelier/champs-corrigeables'),
+
+  // ─── Saisie manuelle ────────────────────────────────────────────────────
+  // Ce que la collecte ne peut pas atteindre : le budget voté, les dotations
+  // notifiées, une subvention lue dans un procès-verbal. La saisie n'écrit pas
+  // en base directement — elle va dans config/saisies.json, que le collecteur
+  // rejoue à chaque passage, et survit donc à une reconstruction de la base.
+  saisiesChamps: () => getAuth('/atelier/saisies/champs'),
+
+  saisies: () => getAuth('/atelier/saisies'),
+
+  saisieCreer: (objet, valeurs, source, confidence = 'confirmed') =>
+    post('/atelier/saisies', { objet, valeurs, source, confidence }),
+
+  saisieRetirer: (id) => del(`/atelier/saisies/${id}`),
+
+  // Documents archivés localement : une saisie s'y adosse, ou dit pourquoi
+  // elle ne le peut pas.
+  documents: (q = '', limit = 50) => getAuth('/atelier/documents' + qs({ q, limit })),
+
+  documentDeposer: async (fichier, titre = '', url = '') => {
+    const form = new FormData()
+    form.append('fichier', fichier)
+    if (titre) form.append('titre', titre)
+    if (url) form.append('url', url)
+    // Pas de Content-Type ici : le navigateur doit poser lui-même la frontière
+    // multipart, et l'écraser à la main casse la lecture côté serveur.
+    const r = await authFetch('/atelier/documents', { method: 'POST', body: form })
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+    return r.json()
+  },
+
+  documentUrl: (id) => `${BASE}/atelier/documents/${id}/fichier`,
+
+  // Extraction assistée : le modèle PROPOSE des lignes lues dans un document.
+  // Rien n'est écrit — les propositions pré-remplissent le formulaire, et
+  // chacune porte la phrase du texte qui la justifie, vérifiée côté serveur.
+  iaExtraire: (objet, { document_id = null, event_id = null }) =>
+    post('/atelier/ia/extraire', { objet, document_id, event_id }),
+
+  // ─── Décisions : le travail humain, exporté et repris ───────────────────
+  // La base se reconstruit toute seule ; les arbitrages et les saisies, non.
+  // ⚠ Un export peut nommer des personnes physiques : dépôt privé.
+  decisionsEtat: () => getAuth('/atelier/decisions'),
+
+  decisionsExporter: (sans_personnes = false) =>
+    post('/atelier/decisions/exporter', { sans_personnes }),
+
+  // `appliquer: false` par défaut — on regarde le rapport avant d'écrire.
+  decisionsImporter: (appliquer = false, forcer = false) =>
+    post('/atelier/decisions/importer', { appliquer, forcer }),
 
   publicSnapshotStatus: (adminKey) =>
     getAdmin('/admin/public-snapshot', adminKey),
