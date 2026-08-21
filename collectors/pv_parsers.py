@@ -22,16 +22,23 @@ couvrant vingt-deux ans, et un quatrième sur celui de l'intercommunalité :
                séance est alors enregistrée avec son texte intégral et le fait
                que le découpage a échoué.
 
-    liste      « Délibérations : » puis une ligne par acte, le vote en fin de
-               ligne (« approuvé à l'unanimité »). Découpage fiable tant que
-               l'en-tête est là — c'est lui qui l'autorise, pas la mise en page.
+    liste      un ordre du jour NUMÉROTÉ : « 1. », « 01. », « III. », « XVI. »,
+               le corps de chaque délibération en dessous. Découpage fiable —
+               c'est la suite qui l'autorise, et elle s'arrête d'elle-même.
     capitales  titres en capitales, séparés du corps par un filet ou un saut.
                Découpage acceptable, mais silencieux sur ses limites : un
                intertitre en capitales devient une délibération de plus.
 
-`deliberations()` essaie les quatre régimes dans l'ordre et rend une liste vide
+`deliberations()` essaie les cinq régimes dans l'ordre et rend une liste vide
 plutôt qu'un découpage inventé. L'ordre compte : un identifiant d'acte est une
 preuve, une mise en capitales n'est qu'un indice.
+
+Le régime `liste` a tenu jusqu'au 21/08/2026 son autorisation d'un EN-TÊTE —
+« Délibérations : » — et non de sa numérotation. La mesure sur 389 procès-verbaux
+de trois communes a montré que les 21 documents qu'il découpait l'étaient TOUS à
+tort, pour 4 337 des 5 529 actes du corpus de Lasalle. Le détail est sous
+`_liste`. C'est la leçon du module, vérifiée une fois de plus : ce qui autorise
+un découpage est une preuve interne au document, jamais une formule d'annonce.
 """
 from __future__ import annotations
 
@@ -59,10 +66,42 @@ LIGNE_CAPITALES = re.compile(r"^[^a-z]{8,}$")
 PUCE = re.compile(r"^\s*(?:\(cid:\d+\)|[•▪–])\s*(.{6,150}?)\s*:\s", re.M)
 
 
-# Un montant écrit à la française : « 8 800,00 € », « 156 812,54 € ».
-_MONTANT_TITRE = re.compile(r"\d{1,3}(?:[  ]\d{3})*,\d{2}\s*€")
+# Un chiffre qui compte dans un tableau : montant ou pourcentage. Les deux
+# notations décimales cohabitent dans un même procès-verbal — « 8 800,00 € » et
+# « 52 655.52 € » — et n'en reconnaître qu'une laissait passer la moitié des
+# lignes de tableau : « DETR 52 655.52 € 27.62 % » était publiée comme un acte.
+_MONTANT_TITRE = re.compile(
+    r"\d{1,3}(?:[  ]\d{3})*[.,]\d{1,2}\s*[€%]|\d[\d  ]*\s*[€%]")
 # Un mot porteur de sens : au moins quatre lettres, pas de chiffre dedans.
 _MOT_PORTEUR = re.compile(r"\b[^\W\d_]{4,}\b", re.UNICODE)
+# Un nombre À DÉCIMALES. Une ligne de tableau en aligne plusieurs — « LANUEJOLS
+# ETAGE N° 9 39,60 318.37 190 € » en porte deux, avec assez de mots pour passer
+# la règle précédente. Compter TOUS les nombres refusait de vraies délibérations :
+# « N°4280 : Vente parcelles cadastrées section A n°836 et n°838 » en aligne trois,
+# et « Vu la loi n° 2005-102 du 11 février 2005 » aussi. Un numéro d'acte, une
+# parcelle, une année sont des entiers ; une colonne de tableau porte des centimes.
+# Les décimales se lisent AU BORD du nombre : sans les deux gardes, « la loi
+# n° 82.213 » et « 01.01.2016 au 31.12.2016 » passaient pour des montants, et
+# deux vraies délibérations de Brassac disparaissaient.
+_DECIMAL = re.compile(r"(?<![\d.,])\d{1,3}(?:[  ]\d{3})*[.,]\d{1,2}(?![\d.,])")
+# Le vocabulaire des en-têtes de colonnes. Un titre dont TOUS les mots porteurs
+# viennent d'ici nomme une colonne, jamais l'objet d'une délibération : le
+# conseil ne délibère pas sur « DEPENSES D'INVESTISSEMENT ». Les termes qui
+# servent aussi de vrais intitulés — budget, compte, exercice, section — n'y
+# figurent pas : « BUDGET PRIMITIF 2026 » est une délibération.
+_MOTS_DE_COLONNE = {
+    "DEPENSES", "DÉPENSES", "DEPENSE", "DÉPENSE", "RECETTES", "RECETTE",
+    "CHARGES", "PRODUITS", "MONTANT", "MONTANTS", "TOTAL", "TOTAUX", "CHAP",
+    "LIBELLE", "LIBELLÉ", "INTITULE", "INTITULÉ", "FONCTIONNEMENT",
+    "INVESTISSEMENT", "REALISE", "RÉALISÉ", "PREVU", "PRÉVU", "SOLDE",
+    "CREDIT", "CREDITS", "CRÉDIT", "CRÉDITS",
+}
+# L'appel nominal d'un vote : « M. BENEFICE : Oui ». Chaque conseiller devenait
+# une délibération, avec le reste de la séance pour contenu.
+_APPEL_NOMINAL = re.compile(
+    r"^(?:MM?|Mme|Mmes|Mlle)\.?\s+[A-ZÀ-Ÿ][\wÀ-ÿ'’\-]*"
+    r"(?:\s+[A-ZÀ-Ÿ][\wÀ-ÿ'’\-]*)?\s*:\s*"
+    r"(?:oui|non|abstention|pour|contre|ne\s+prend\s+pas\s+part)\b", re.I)
 
 
 def _titre_plausible(titre: str) -> bool:
@@ -79,27 +118,73 @@ def _titre_plausible(titre: str) -> bool:
     Aucun n'avait de flux financier extrait : l'information chiffrée était
     perdue ET affichée comme une décision du conseil.
 
-    La règle ne mord QUE sur les titres portant un montant — un intitulé sans
-    chiffre reste intact, si court soit-il. Deux mots d'au moins quatre lettres
-    suffisent à distinguer « CHAMP CONTRE CHAMP 3 000,00 € » d'une ligne de
-    tableau. Les plans de financement eux-mêmes relèvent d'un extracteur dédié,
-    pas du découpage.
+    La règle d'origine ne mordait QUE sur les titres portant un montant à la
+    française, et deux mots d'au moins quatre lettres suffisaient à distinguer
+    « CHAMP CONTRE CHAMP 3 000,00 € » d'une ligne de tableau. La mesure du
+    21/08/2026 sur 389 procès-verbaux de trois communes a montré trois fuites,
+    et chacune ajoute ici une ligne :
+
+        « DETR 52 655.52 € 27.62 % »     le point décimal n'était pas reconnu
+        « LANUEJOLS ETAGE N° 9 39,60 318.37 190 € »   deux mots, quatre nombres
+        « M. BENEFICE : Oui »            l'appel nominal d'un vote
+        « DEPENSES D'INVESTISSEMENT »    un en-tête de colonne, 34 774 caractères
+
+    Un intitulé sans chiffre reste intact, si court soit-il — « PLU », « TARIFS »,
+    « INCIVILITES » sont de vrais objets de délibération. Les plans de
+    financement eux-mêmes relèvent d'un extracteur dédié, pas du découpage.
     """
-    if not _MONTANT_TITRE.search(titre or ""):
+    titre = titre or ""
+    if _APPEL_NOMINAL.match(titre):
+        return False
+    mots = _MOT_PORTEUR.findall(titre)
+    if mots and all(m.upper() in _MOTS_DE_COLONNE for m in mots):
+        return False
+    if len(_DECIMAL.findall(titre)) >= 2:
+        return False
+    if not _MONTANT_TITRE.search(titre):
         return True
-    return len(_MOT_PORTEUR.findall(titre or "")) >= 2
+    return len(mots) >= 2
 
 
-def deliberations(texte: str) -> list[dict]:
-    """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique."""
+def deliberations(texte: str, pagine: bool = True) -> list[dict]:
+    """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique.
+
+    `pagine` dit si le document a des pages — un PDF en a, une page web n'en a
+    pas. Deux régimes s'en servent pour ne pas confondre l'en-tête d'une page
+    avec la ligne de colonnes d'un tableau ; cf. `_sans_entetes`.
+    """
     for analyseur in (_numerote, _acte_final, _puces, _liste, _capitales):
-        sorties = analyseur(texte)
+        sorties = analyseur(texte, pagine)
         if sorties:
             # Filtré ICI et non dans chaque régime : la règle vaut pour tous, et
             # les faux actes venaient aussi bien des PV de la commune que de ceux
             # de l'intercommunalité.
-            return [d for d in sorties if _titre_plausible(d.get("titre", ""))]
+            return _recoller(sorties)
     return []
+
+
+def _recoller(sorties: list[dict]) -> list[dict]:
+    """Écarte les faux titres et REND LEUR TEXTE à l'acte qu'ils coupaient.
+
+    Un titre invraisemblable ne signale pas seulement un acte de trop : il
+    signale que le découpage s'est trompé d'endroit, et que les deux blocs n'en
+    font qu'un. Les jeter avec leur contenu perdait la matière — le compte rendu
+    du 27/04/2026 de Lasalle ouvre un bloc sur la cellule « DEPENSES
+    D'INVESTISSEMENT » et lui donne 34 748 caractères, soit les tableaux des huit
+    budgets votés ce soir-là. Refuser le titre sans recoller le texte revenait à
+    supprimer les huit budgets au lieu de les rattacher à « BUDGET PRINCIPAL ».
+    """
+    gardees: list[dict] = []
+    for d in sorties:
+        if _titre_plausible(d.get("titre", "")):
+            gardees.append(d)
+            continue
+        if not gardees:
+            continue
+        recolle = "\n".join(x for x in (d.get("titre"), d.get("texte")) if x)
+        gardees[-1]["texte"] = f"{gardees[-1]['texte']}\n{recolle}".strip()
+        _enrichir(gardees[-1])
+    return gardees
 
 
 def _enrichir(d: dict) -> dict:
@@ -109,7 +194,7 @@ def _enrichir(d: dict) -> dict:
     return d
 
 
-def _numerote(texte: str) -> list[dict]:
+def _numerote(texte: str, pagine: bool = True) -> list[dict]:
     marques = list(ENTETE_NUMEROTE.finditer(texte))
     sorties = []
     for i, m in enumerate(marques):
@@ -132,7 +217,7 @@ def _numerote(texte: str) -> list[dict]:
     return sorties
 
 
-def _acte_final(texte: str) -> list[dict]:
+def _acte_final(texte: str, pagine: bool = True) -> list[dict]:
     """L'identifiant clôt la ligne du titre ; le titre peut déborder au-dessus.
 
     Deux mises en forme coexistent dans le même corpus : titres en capitales sur
@@ -174,7 +259,7 @@ def _acte_final(texte: str) -> list[dict]:
     return [_enrichir(d) for d in sorties]
 
 
-def _puces(texte: str) -> list[dict]:
+def _puces(texte: str, pagine: bool = True) -> list[dict]:
     marques = list(PUCE.finditer(texte))
     sorties = []
     for i, m in enumerate(marques):
@@ -187,13 +272,24 @@ def _puces(texte: str) -> list[dict]:
     return sorties
 
 
-def _sans_entetes(texte: str) -> str:
-    """Retire les lignes répétées d'un PDF : en-tête et pied de page.
+def _sans_entetes(texte: str, pagine: bool = True) -> str:
+    """Retire les lignes répétées d'un document PAGINÉ : en-tête et pied de page.
 
     Un procès-verbal de vingt-quatre pages répète son en-tête vingt-quatre
     fois. Le découpeur par capitales en fait autant de titres, et la séance
     ressort avec deux fois plus de délibérations qu'elle n'en a pris.
+
+    Une page web n'a pas de pages, donc pas d'en-tête de page — mais elle a des
+    TABLEAUX, dont la ligne de colonnes se répète à chaque tableau. Le compte
+    rendu du 27/04/2026 de Lasalle vote huit budgets : « Chap / Art », « Intitulé »
+    et « BP 2026 » y reviennent vingt fois chacun, et étaient retirés comme un
+    en-tête de page. L'acte perdait sa ligne de colonnes, `budgets_votes` n'y
+    trouvait plus une seule ancre, et les huit budgets — dont la Cantine à
+    162 724,13 € — n'étaient nulle part. Appliquer à une page web le remède d'un
+    PDF, c'est soigner un mal qu'elle n'a pas.
     """
+    if not pagine:
+        return texte
     from collections import Counter
     lignes = texte.splitlines()
     compte = Counter(l.strip() for l in lignes if l.strip())
@@ -214,50 +310,141 @@ def _apres_entete(texte: str) -> str:
     return texte
 
 
-# « Délibérations : » ouvre la liste ; la levée de séance ou la signature la
-# ferme. L'en-tête est le marqueur : sans lui on ne découpe pas, car une suite
-# de lignes n'est pas en soi une suite de délibérations.
-OUVERTURE_LISTE = re.compile(r"^\s*-?\s*D[ée]lib[ée]rations?\s*:\s*$", re.M | re.I)
+# ── Régime « liste » : une suite d'ordinaux ──────────────────────────────────
+#
+# Ce régime a longtemps tenu son autorisation d'un EN-TÊTE : « Délibérations : »
+# ouvrait la liste, la levée de séance ou la signature la fermait, et chaque
+# ligne de l'intervalle devenait un acte. Sa propre note disait : « Découpage
+# fiable tant que l'en-tête est là — c'est lui qui l'autorise, pas la mise en
+# page. » La mesure du 21/08/2026 sur 389 procès-verbaux de trois communes a
+# démenti la prémisse : les 21 documents découpés par ce régime l'étaient TOUS
+# à tort, et ils fournissaient 4 337 des 5 529 actes du corpus de Lasalle.
+#
+# Deux raisons, toutes deux fatales. « Délibération : » AU SINGULIER introduit
+# le texte d'UNE délibération à l'intérieur d'un procès-verbal suivi — quatorze
+# des seize documents de Lasalle. Et la formule de clôture ne venait jamais :
+# les intercommunalités écrivent « La séance se termine à 12h50 ». Les 57 521
+# caractères qui restaient après l'en-tête du 02/10/2019 sont donc devenus 497
+# « délibérations » d'une ligne : « Vu la saisine du CT », « Risque de
+# contentieux », « Thomas Vidal ».
+#
+# Ce qui prouve une liste, ce n'est pas son en-tête, c'est sa NUMÉROTATION.
+# Une suite d'ordinaux qui progresse d'un en un — « 1. », « 01. », « III. »,
+# « XVI. » — ne se rencontre pas par hasard, et elle s'arrête d'elle-même :
+# aucune formule de clôture n'est nécessaire. Une ligne numérotée isolée ne
+# prouve rien ; trois qui se suivent, si. Le régime rejoint ainsi `numerote` et
+# `acte_final` : il découpe sur une preuve, non sur un indice.
+
+# Les deux alphabets. Le point ou la parenthèse ferme l'ordinal ; ce qui suit ne
+# doit pas être un chiffre, sinon « L. 2224-13 du code général » et « IV. 2024 »
+# passeraient pour des titres. « L » est exclu des romains pour la même raison :
+# c'est le préfixe des articles du code général des collectivités.
+ORDINAL_ARABE = re.compile(r"^(\d{1,2})\s*[.)]\s*(?=[^\W\d_])(\S.*)$")
+ORDINAL_ROMAIN = re.compile(r"^([IVX]{1,7})\s*[.)]\s+(?=[^\W\d_])(\S.*)$")
+_CHIFFRES_ROMAINS = {"I": 1, "V": 5, "X": 10}
+# Trois ordinaux qui se suivent : en deçà, c'est une coïncidence.
+MIN_SUITE = 3
+
 FERMETURE_LISTE = re.compile(
-    r"(La séance est levée|Fait et délibéré|Le Maire,|La Présidente,|Le Président,)",
-    re.I)
+    r"(La séance est levée|La séance se termine|Fait et délibéré|Le Maire,|"
+    r"La Présidente,|Le Président,)", re.I)
 # Le vote clôt la ligne : « … approuvé à l'unanimité », « … à la majorité ».
 VOTE_EN_FIN = re.compile(
     r"[,\s]+((?:approuv|adopt|rejet|refus|valid)[eé]{1,2}s?\s+)?"
     r"[àa]\s+(?:l['’]unanimité|la majorité)[^.]*$", re.I)
 
 
-def _liste(texte: str) -> list[dict]:
-    """Une ligne par délibération, sous un en-tête qui l'annonce."""
-    ouverture = OUVERTURE_LISTE.search(texte)
-    if not ouverture:
+def _valeur_romaine(chiffres: str) -> int:
+    total = 0
+    for i, c in enumerate(chiffres):
+        v = _CHIFFRES_ROMAINS[c]
+        suivant = _CHIFFRES_ROMAINS.get(chiffres[i + 1:i + 2] or "", 0)
+        total += -v if suivant > v else v
+    return total
+
+
+def _plus_longue_suite(marques: list[tuple]) -> list[tuple]:
+    """La plus longue série d'ordinaux qui progressent d'un en un.
+
+    À longueur égale on garde la DERNIÈRE : l'ordre du jour énumère les mêmes
+    intitulés en tête du document, mais c'est la seconde énumération qui porte
+    le texte des délibérations. Découper sur l'ordre du jour rendrait des actes
+    correctement titrés et vides.
+    """
+    meilleure: list[tuple] = []
+    courante: list[tuple] = []
+    for marque in marques:
+        if courante and marque[1] == courante[-1][1] + 1:
+            courante.append(marque)
+            continue
+        if len(courante) >= len(meilleure):
+            meilleure = courante
+        courante = [marque]
+    return courante if len(courante) >= len(meilleure) else meilleure
+
+
+# Une personne, et rien d'autre : « Jean-Claude GUIRAUD », « BOUSQUET Christiane ».
+# Les conseils d'installation numérotent leurs conseillers, et le tableau du
+# conseil est une suite d'ordinaux irréprochable — mais c'est un trombinoscope,
+# pas un ordre du jour. Sur Brassac, une séance rendait ainsi dix-sept « actes »
+# nommés d'après les élus présents.
+_ITEM_PERSONNE = re.compile(
+    r"^(?:[A-ZÀ-Ÿ][a-zà-ÿ'’\-]+(?:[- ][A-ZÀ-Ÿ][a-zà-ÿ'’\-]+)*\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}"
+    r"|[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}\s+[A-ZÀ-Ÿ][a-zà-ÿ'’\-]+)"
+    r"(?:\s+\d[\d/.,\s€%]*)?$")
+# Au-delà, deux ordinaux consécutifs ne se touchent plus : du texte les sépare.
+_ECART_SERRE = 2
+# Un ordre du jour se lit en tête de document. Une énumération serrée qui arrive
+# ensuite est interne à une délibération — « 1. Lui donne acte de la présentation
+# du compte administratif, 2. Constate les identités de valeurs… » — et la
+# prendre pour un ordre du jour émiette une délibération en cinq.
+_TETE_DU_DOCUMENT = 0.25
+
+
+def _est_un_ordre_du_jour(suite: list[tuple], total_lignes: int) -> bool:
+    """La suite énumère-t-elle des délibérations, ou autre chose ?"""
+    intitules = [t for _, _, t in suite]
+    if sum(1 for t in intitules if _ITEM_PERSONNE.match(t.strip())) * 2 >= len(suite):
+        return False
+    ecarts = [b[0] - a[0] for a, b in zip(suite, suite[1:])]
+    serree = bool(ecarts) and sorted(ecarts)[len(ecarts) // 2] <= _ECART_SERRE
+    return not serree or suite[0][0] <= total_lignes * _TETE_DU_DOCUMENT
+
+
+def _liste(texte: str, pagine: bool = True) -> list[dict]:
+    """Une suite numérotée de délibérations, le corps de chacune en dessous."""
+    lignes = [l.strip() for l
+              in _apres_entete(_sans_entetes(texte, pagine)).splitlines() if l.strip()]
+    suites = []
+    for motif, valeur in ((ORDINAL_ARABE, int), (ORDINAL_ROMAIN, _valeur_romaine)):
+        marques = []
+        for i, ligne in enumerate(lignes):
+            m = motif.match(ligne)
+            if m:
+                marques.append((i, valeur(m.group(1)), m.group(2)))
+        suites.append(_plus_longue_suite(marques))
+    suite = max(suites, key=len)
+    if len(suite) < MIN_SUITE or not _est_un_ordre_du_jour(suite, len(lignes)):
         return []
-    corps = texte[ouverture.end():]
-    fin = FERMETURE_LISTE.search(corps)
-    if fin:
-        corps = corps[:fin.start()]
 
     sorties = []
-    for ligne in corps.splitlines():
-        ligne = re.sub(r"\s+", " ", ligne).strip(" -–—\t")
-        if len(ligne) < 12:
-            continue
-        # Une ligne qui commence en minuscule prolonge la précédente : le PDF a
-        # replié un titre trop long, ce n'est pas une délibération de plus.
-        if ligne[0].islower() and sorties:
-            sorties[-1]["texte"] = (sorties[-1]["texte"] + " " + ligne).strip()
-            continue
-        titre = VOTE_EN_FIN.sub("", ligne).strip(" ,;:.")
+    for rang, (i, _, intitule) in enumerate(suite):
+        fin = suite[rang + 1][0] if rang + 1 < len(suite) else len(lignes)
+        corps = "\n".join(lignes[i + 1:fin])
+        cloture = FERMETURE_LISTE.search(corps)
+        if cloture and rang + 1 == len(suite):
+            corps = corps[:cloture.start()].strip()
+        titre = VOTE_EN_FIN.sub("", re.sub(r"\s+", " ", intitule)).strip(" ,;:.-–—")
         if len(titre) < 8:
             continue
         sorties.append(_enrichir({
             "regime": "liste", "numero_seance": None, "numero_acte": None,
-            "titre": titre[:255], "texte": ligne,
+            "titre": titre[:255], "texte": corps or intitule,
         }))
     return sorties
 
 
-def _capitales(texte: str) -> list[dict]:
+def _capitales(texte: str, pagine: bool = True) -> list[dict]:
     """Dernier recours : les titres sont en capitales, le corps ne l'est pas.
 
     S'appuie sur le découpeur historique du dispositif, éprouvé sur les procès-
@@ -265,7 +452,7 @@ def _capitales(texte: str) -> list[dict]:
     dispose d'aucun identifiant d'acte pour se vérifier. On l'essaie en dernier
     pour cette raison.
     """
-    propre = _apres_entete(_sans_entetes(texte))
+    propre = _apres_entete(_sans_entetes(texte, pagine))
     blocs = split_into_deliberations([l for l in propre.splitlines() if l.strip()])
     sorties = []
     for bloc in blocs:
