@@ -8,9 +8,9 @@ DOUTEUSES en rapport (fusion/retypage = jugement humain via /atelier) →
 re-scanne jusqu'à 0 anomalie auto-corrigeable.
 
 Usage :
-    ~/venvs/agents/bin/python3 scripts/qa_loop.py            # scan (lecture seule)
-    ~/venvs/agents/bin/python3 scripts/qa_loop.py --fix      # + applique les autofixes sûrs
-    ~/venvs/agents/bin/python3 scripts/qa_loop.py --loop     # scan→fix→rescan jusqu'à stable
+    venv/bin/python3 scripts/qa_loop.py            # scan (lecture seule)
+    venv/bin/python3 scripts/qa_loop.py --fix      # + applique les autofixes sûrs
+    venv/bin/python3 scripts/qa_loop.py --loop     # scan→fix→rescan jusqu'à stable
 
 Principe : ne JAMAIS auto-fusionner ni auto-retyper (corromprait les données).
 Seuls les orphelins d'intégrité référentielle sont auto-supprimés.

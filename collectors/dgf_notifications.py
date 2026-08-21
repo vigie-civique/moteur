@@ -15,11 +15,11 @@ Usage :
   #    (Excel ou CSV) :
   #    http://www.dotations-dgcl.interieur.gouv.fr/consultation/dotations_en_ligne.php
   # 2) Vérifier le mapping détecté (ne touche pas la base) :
-  ~/venvs/agents/bin/python -m collectors.dgf_notifications --year 2026 --file ~/Downloads/dgf_2026.xlsx --inspect
+  venv/bin/python -m collectors.dgf_notifications --year 2026 --file ~/Downloads/dgf_2026.xlsx --inspect
   # 3) Ingestion :
-  ~/venvs/agents/bin/python -m collectors.dgf_notifications --year 2026 --file ~/Downloads/dgf_2026.xlsx
-  ~/venvs/agents/bin/python -m collectors.dgf_notifications --year 2025 --csv-url https://.../dgf_2025.csv
-  ~/venvs/agents/bin/python -m collectors.dgf_notifications --stats
+  venv/bin/python -m collectors.dgf_notifications --year 2026 --file ~/Downloads/dgf_2026.xlsx
+  venv/bin/python -m collectors.dgf_notifications --year 2025 --csv-url https://.../dgf_2025.csv
+  venv/bin/python -m collectors.dgf_notifications --stats
 """
 import argparse
 import csv
