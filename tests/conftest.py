@@ -31,6 +31,12 @@ os.environ.setdefault("VIGIE_INSTANCE",
                       str(Path(__file__).parent / "instance_test.json"))
 os.environ.setdefault("VIGIE_RULES",
                       str(ROOT / "config" / "publication_rules.exemple.json"))
+# Même règle pour `api_auth`, qui refuse de se charger sans secret de session :
+# un service incapable d'authentifier quiconque doit échouer au lancement, pas à
+# la première connexion. La suite lui en donne un jetable — sans quoi elle ne
+# passe QUE sur une machine où traîne un `.env`, celle de son auteur, et échoue
+# partout ailleurs sur un défaut qui n'est pas dans le code testé.
+os.environ.setdefault("JWT_SECRET", "secret-de-test-sans-valeur")
 
 
 @pytest.fixture(scope="session")
