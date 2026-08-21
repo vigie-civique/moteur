@@ -222,7 +222,7 @@ class ConnecteurDrupal(Connecteur):
 
         liens = self._listing_pagine(listing, _liens)
 
-        documents = []
+        documents, sans_piece_jointe = [], []
         for date, page in sorted(liens, reverse=True):
             # Le PDF de la séance est SUR la page, pas dans le listing : une
             # requête de plus par séance, et c'est irréductible ici.
@@ -236,11 +236,27 @@ class ConnecteurDrupal(Connecteur):
                 continue
             pdf = re.search(r'href="([^"]+\.pdf[^"]*)"', interne, re.I)
             if not pdf:
-                print(f"  [drupal] aucun PDF sur {page}")
+                # Le compte rendu EST la page. Longtemps ignorées faute de
+                # pièce jointe, ces séances manquaient entièrement — dont, sur
+                # la première commune, celle qui vote les budgets de l'année.
+                sans_piece_jointe.append(DocumentPublie(
+                    date=date, url=page, libelle=_libelle(page),
+                    source=_domaine(page)))
                 continue
             documents.append(DocumentPublie(
                 date=date, url=urllib.parse.urljoin(page, pdf.group(1)),
                 libelle=_libelle(page), source=_domaine(page)))
+
+        # La page ne sert que si aucun document déposé ne couvre déjà la séance :
+        # le PDF fait foi, et une page « ordre du jour » publiée à côté du
+        # procès-verbal ferait sinon une seconde séance le même jour.
+        datees = {d.date for d in documents}
+        for doc in sans_piece_jointe:
+            if doc.date in datees:
+                continue
+            documents.append(doc)
+            datees.add(doc.date)
+        documents.sort(key=lambda d: d.date, reverse=True)
         return documents
 
     # ── articles ─────────────────────────────────────────────────────────────

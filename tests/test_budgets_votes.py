@@ -52,10 +52,59 @@ def test_budget_primitif_lu(bv):
 
 
 def test_compte_financier_ignore(bv):
-    """Deux colonnes : prévu puis réalisé. Rien ne doit en sortir — l'OFGL
-    publie le réalisé, et mieux que nous ne saurions le lire."""
-    corps = bv._norm(COMPTE_FINANCIER)
-    assert bv.agregats_du_tableau(corps, "fonctionnement") == []
+    """Prévu puis réalisé, sans ligne de colonnes « BP <année> » : ce n'est pas
+    un budget voté, et rien ne doit en sortir. L'OFGL publie le réalisé, et
+    mieux que nous ne saurions le lire."""
+    assert bv.tableaux("CANTINE SECTION DE FONCTIONNEMENT", COMPTE_FINANCIER) == []
+
+
+# ── La colonne du budget voté est la dernière ────────────────────────────────
+
+RESTES_ET_BP = (
+    "DEPENSES D'INVESTISSEMENT Chap / Art Intitulé Restes à réaliser BP 2026 "
+    "204 Subvention d'équipement 57 330,40 68 968,27 "
+    "TOTAL DES DEPENSES D'INVEST 57 330,40 320 283,30"
+)
+
+CA_ET_BP = (
+    "DEPENSES DE FONCTIONNEMENT Chap / Art Intitulé CA 2025 BP 2026 "
+    ".012 Charges de personnel, frais assimilés 1 002 118,36 1 035 000,00 "
+    "TOTAL DES DEPENSES FONCT. 1 818 567,68 2 270 783,59"
+)
+
+
+@pytest.mark.parametrize("texte, agregat, attendu", [
+    (RESTES_ET_BP, "Dépenses d'investissement", 320283.30),
+    (CA_ET_BP, "Dépenses de fonctionnement", 2270783.59),
+    (CA_ET_BP, "Charges de personnel", 1035000.00),
+])
+def test_les_colonnes_qui_precedent_sont_ecartees(bv, texte, agregat, attendu):
+    """« Restes à réaliser » et le compte administratif de l'exercice écoulé
+    partagent la ligne avec le budget voté. Renoncer au tableau entier, comme le
+    faisait la première version, perdait toute la séance d'avril."""
+    table = bv.tableaux("", texte)[0]
+    valeurs = {a["agregat"]: a["value"]
+               for a in bv.agregats_du_tableau(table["corps"], table["section"])}
+    assert valeurs[agregat] == attendu
+
+
+def test_une_colonne_apres_le_bp_fait_renoncer(bv):
+    """Si le budget voté n'est plus la dernière colonne, plus rien ne dit lequel
+    des montants d'une ligne est le sien. On ne devine pas : on compte."""
+    table = bv.tableaux("", "DEPENSES Chap / Art Intitulé BP 2026 Réalisé "
+                            "TOTAL DES DEPENSES FONCT. 2 270 783,59 1 818 567,68")[0]
+    assert table["colonne_sure"] is False
+
+
+def test_les_cellules_sur_leurs_propres_lignes(bv):
+    """Une page HTML met chaque cellule sur sa ligne ; un PDF de tableur les
+    aligne. Le tableau est le même, et doit se lire pareil."""
+    html = ("DEPENSES D'INVESTISSEMENT\nChap / Art\nIntitulé\nRestes à réaliser\n"
+            "BP 2026\nTOTAL DES DEPENSES D'INVEST\n57 330,40\n320 283,30\n")
+    table = bv.tableaux("", html)[0]
+    valeurs = {a["agregat"]: a["value"]
+               for a in bv.agregats_du_tableau(table["corps"], table["section"])}
+    assert valeurs["Dépenses d'investissement"] == 320283.30
 
 
 def test_sans_entete_bp_aucun_tableau(bv):
