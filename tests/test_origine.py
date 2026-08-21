@@ -76,8 +76,21 @@ class TestOrdreDesSteps:
     l'occasion de le casser sans s'en apercevoir.
     """
 
-    def test_perimetre_est_le_dernier(self):
+    @staticmethod
+    def _steps():
+        """`run_all` importe TOUS les collecteurs, donc les paquets de collecte.
+
+        Le job « tests » de la CI n'installe que pytest — c'est ainsi qu'il
+        démontre que le cœur du moteur se teste sans réseau. Ces deux contrôles
+        y sont donc sautés, et joués par le job « tests-deps », qui installe
+        requirements.txt et refuse le moindre test sauté.
+        """
+        pytest.importorskip("pdfplumber", reason="job « tests-deps »")
         from collectors.run_all import STEPS
+        return STEPS
+
+    def test_perimetre_est_le_dernier(self):
+        STEPS = self._steps()
         assert list(STEPS)[-1] == "perimetre", (
             "`perimetre` classe ce que tous les autres ont écrit. Un step "
             "placé après lui laisse ses entités avec perimetre=NULL, et le "
@@ -86,8 +99,7 @@ class TestOrdreDesSteps:
     def test_saisies_et_origine_precedent_perimetre(self):
         """`saisies` crée des entités, que `perimetre` doit classer ; `origine`
         classe les lignes que `saisies` vient d'écrire."""
-        from collectors.run_all import STEPS
-        ordre = list(STEPS)
+        ordre = list(self._steps())
         assert ordre.index("saisies") < ordre.index("origine") < ordre.index("perimetre")
 
 

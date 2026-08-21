@@ -15,9 +15,18 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
-from fastapi.testclient import TestClient
 
-from collectors.origine import ATELIER, INSTITUTIONNEL, VERBATIM
+# Seul fichier de la suite à exiger l'API. Le job « tests » de la CI n'installe
+# que pytest — c'est ainsi qu'on démontre que le cœur du moteur se teste sans
+# serveur ni réseau — donc ce fichier y est SAUTÉ, et joué par le job
+# « tests-deps », qui installe requirements.txt et refuse le moindre test sauté.
+# Sauté partout, ce serait un contrôle mort ; c'est ce second job qui l'empêche,
+# pas cette ligne.
+pytest.importorskip("fastapi", reason="job « tests-deps » : pip install -r requirements.txt")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from collectors.origine import ATELIER, INSTITUTIONNEL, VERBATIM  # noqa: E402
 
 
 @pytest.fixture
