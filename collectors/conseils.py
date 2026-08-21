@@ -299,7 +299,8 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
         return {"statut": "sans_couche_texte" if format_ == "pdf" else "texte_trop_court",
                 "delibs": 0}
 
-    delibs = deliberations(texte)
+    # Seul un PDF a des pages, donc un en-tête de page. Cf. `_sans_entetes`.
+    delibs = deliberations(texte, pagine=(format_ == "pdf"))
     pres = presences(texte, _ordre_noms(portee))
     seance_id = enregistrer_seance(
         conn, doc, portee,
