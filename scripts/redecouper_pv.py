@@ -47,25 +47,50 @@ MARQUE = "_redecoupage"
 TYPES = tuple(p["delib"] for p in conseils.PORTEES.values())
 
 
+def _cloisonne_par_origine(conn) -> bool:
+    """La base distingue-t-elle les actes saisis à la main des actes collectés ?
+
+    La colonne `events.origine` vient de l'atelier étendu, qui n'est pas fusionné
+    dans toutes les instances. Sans elle, tous les actes sont des actes collectés
+    — ce qui était vrai avant qu'on puisse en saisir.
+    """
+    return any(c[1] == "origine" for c in conn.execute("PRAGMA table_info(events)"))
+
+
 def marquer(conn) -> int:
+    garde = (" AND COALESCE(origine,'verbatim') = 'verbatim'"
+             if _cloisonne_par_origine(conn) else "")
     cur = conn.execute(
         f"UPDATE events SET metadata = json_set(COALESCE(metadata,'{{}}'), "
-        f"'$.{MARQUE}', 1) WHERE type IN ({','.join('?' * len(TYPES))}) "
-        f"AND COALESCE(origine,'verbatim') = 'verbatim'", TYPES)
+        f"'$.{MARQUE}', 1) WHERE type IN ({','.join('?' * len(TYPES))}){garde}",
+        TYPES)
     return cur.rowcount
 
 
 def relire(portee: str, avec_ocr: bool) -> set[str]:
-    """Relit les procès-verbaux d'une portée ; rend les URL effectivement lues."""
+    """Relit les procès-verbaux d'une portée ; rend les URL effectivement lues.
+
+    Le détail des statuts n'est pas décoratif : un document non relu garde ses
+    actes du découpage précédent, et il faut pouvoir dire POURQUOI. Sur Saillans,
+    90 séances sur 143 sont restées de côté — toutes scannées, et l'instance
+    avait déjà leur reconnaissance optique en cache. Sans ce décompte, la base
+    paraissait corrigée alors qu'elle l'était à un tiers.
+    """
     documents = charger().catalogue_pv(portee)
     print(f"\n[redécoupage] {portee} — {len(documents)} procès-verbaux catalogués")
-    lues = set()
+    lues, statuts = set(), {}
     for doc in documents:
         with transaction() as conn:
             r = conseils.traiter(conn, doc, portee, verbose=False, avec_ocr=avec_ocr)
+        statuts[r["statut"]] = statuts.get(r["statut"], 0) + 1
         if r["statut"] == "ok":
             lues.add(doc.url)
-    print(f"  {len(lues)} relus")
+    detail = ", ".join(f"{n} {s}" for s, n in sorted(statuts.items(), key=lambda x: -x[1])
+                       if s != "ok")
+    print(f"  {len(lues)} relus" + (f" ; {detail}" if detail else ""))
+    if statuts.get("sans_couche_texte") and not avec_ocr:
+        print(f"  ⚠ {statuts['sans_couche_texte']} séances scannées gardent leur "
+              f"ancien découpage — relancer avec --ocr")
     return lues
 
 
