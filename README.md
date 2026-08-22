@@ -318,6 +318,30 @@ vous voulez. Le script sait pousser vers Cloudflare Pages
 (`CF_PROJECT=… ./deploy/publier-site.sh --deployer`) ; pour tout autre
 hébergeur, rien à changer avant la dernière étape.
 
+### Depuis l'atelier : regarder avant de publier
+
+La page **Publication** de l'atelier fait la même chose en deux temps, pour que
+ce qui part en ligne ait été vu :
+
+1. **Générer un aperçu** construit le snapshot dans un brouillon
+   (`outputs.preview_snapshot_dir`, par défaut `audits/public_snapshot_preview`)
+   et lance les invariants dessus. **Rien de servi ne bouge à cette étape** — ni
+   le snapshot de l'atelier, ni celui du site.
+2. **Prévisualiser** démarre le site public lui-même sur son propre port
+   (`VIGIE_APERCU_PORT`, 5180 par défaut), branché sur le brouillon par
+   `VIGIE_DATA_DIR`. C'est le vrai site, pas une maquette : mêmes gabarits,
+   même feuille de style. L'atelier l'encadre d'un bandeau ; le site, lui,
+   n'est pas modifié.
+3. **Les contrôles** s'affichent règle par règle, chaque cas renvoyant vers la
+   fiche fautive dans l'atelier. Tant qu'ils sont rouges, le bouton de
+   publication n'est pas proposé.
+4. **Publier ce snapshot** — réservé au rôle `admin` — recopie le brouillon
+   contrôlé vers les deux emplacements servis, en recontrôlant à chaque arrivée.
+   Les autres rôles voient l'état et l'aperçu, sans pouvoir publier.
+
+Qui a généré, qui a publié, quand et avec quel verdict : dans `audit_log`, comme
+toute écriture de l'atelier.
+
 Détails, atelier sur serveur, secrets et durcissement : **`deploy/README.md`**.
 
 ---

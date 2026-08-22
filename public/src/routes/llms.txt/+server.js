@@ -8,13 +8,14 @@ import { CODE_POSTAL, COMMUNE_DE, EPCI, SITE_BASELINE, SITE_NOM, SITE_URL } from
 // fabriquerait du soupçon à partir de liens parfaitement légaux.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
 export function GET() {
   let s = {}
   try {
-    s = JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', 'stats.json'), 'utf8'))
+    s = JSON.parse(readFileSync(join(DATA_DIR, 'stats.json'), 'utf8'))
   } catch { /* snapshot absent */ }
 
   const arrete = (s.generated_at || '').slice(0, 10) || 'inconnue'

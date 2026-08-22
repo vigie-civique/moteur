@@ -198,6 +198,26 @@ export const api = {
   publicSnapshotStatus: (adminKey) =>
     getAdmin('/admin/public-snapshot', adminKey),
 
+  // Le geste unique d'avant : construit par-dessus ce qui est servi et
+  // synchronise dans la foulée. Gardé pour les scripts de déploiement ; la page
+  // Publication ne s'en sert plus, elle passe par le flux en deux temps.
   generatePublicSnapshot: (adminKey) =>
     postAdmin('/admin/public-snapshot/generate', {}, adminKey),
+
+  // Publication en deux temps. `publicationEtat` est en lecture seule et ouvert
+  // à tout l'atelier : savoir ce qui est en ligne n'est pas un droit d'admin.
+  publicationEtat: (adminKey) =>
+    getAdmin('/admin/publication', adminKey),
+
+  publicationApercu: (adminKey) =>
+    postAdmin('/admin/publication/apercu', {}, adminKey),
+
+  publicationPublier: (adminKey) =>
+    postAdmin('/admin/publication/publier', {}, adminKey),
+
+  publicationServeurApercu: (action, adminKey) =>
+    postAdmin('/admin/publication/apercu/serveur', { action }, adminKey),
+
+  publicationModifications: (adminKey) =>
+    getAdmin('/admin/publication/modifications', adminKey),
 }

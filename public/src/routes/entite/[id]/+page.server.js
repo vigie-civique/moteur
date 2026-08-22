@@ -12,10 +12,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { error } from '@sveltejs/kit'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
-
-const DATA_DIR = join(process.cwd(), 'static', 'data')
 
 /** Liste des pages à prérendre : les acteurs présents dans l'index public.
  *

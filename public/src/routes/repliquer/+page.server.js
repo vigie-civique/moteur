@@ -7,6 +7,7 @@
 // de HEAD à chaque commit sans que personne ne la refasse.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
@@ -14,7 +15,7 @@ export function load() {
   let stats = {}
   try {
     stats = JSON.parse(readFileSync(
-      join(process.cwd(), 'static', 'data', 'stats.json'), 'utf8'))
+      join(DATA_DIR, 'stats.json'), 'utf8'))
   } catch { /* pas de snapshot : la page s'affiche sans ses chiffres */ }
 
   return { replicabilite: stats.replicabilite || null }

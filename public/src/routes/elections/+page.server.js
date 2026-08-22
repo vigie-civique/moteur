@@ -1,12 +1,13 @@
 // Résultats électoraux lus au build (cf. marches/+page.server.js pour le motif).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
 const lire = (nom) => {
   try {
-    return JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', nom), 'utf8'))
+    return JSON.parse(readFileSync(join(DATA_DIR, nom), 'utf8'))
   } catch {
     return {}   // snapshot absent : page vide plutôt que build cassé
   }

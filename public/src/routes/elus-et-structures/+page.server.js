@@ -3,13 +3,14 @@
 // telle qu'elle était à une date donnée, donc surtout pas rendue côté client.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
 export function load() {
   let conflits = null
   try {
-    conflits = JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', 'conflits.json'), 'utf8'))
+    conflits = JSON.parse(readFileSync(join(DATA_DIR, 'conflits.json'), 'utf8'))
   } catch { /* snapshot absent : page vide plutôt que build cassé */ }
 
   return { conflits }

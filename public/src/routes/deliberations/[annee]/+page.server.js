@@ -6,10 +6,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { error } from '@sveltejs/kit'
 import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
-
-const DATA_DIR = join(process.cwd(), 'static', 'data')
 
 const lireActes = () => {
   try {

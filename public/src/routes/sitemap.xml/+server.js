@@ -8,10 +8,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { SITE_URL } from '$lib/instance.js'
 import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
-const DATA_DIR = join(process.cwd(), 'static', 'data')
 const lire = (nom, defaut = {}) => {
   try { return JSON.parse(readFileSync(join(DATA_DIR, nom), 'utf8')) }
   catch { return defaut }

@@ -118,6 +118,38 @@ jobs:
         env:
           VIGIE_DB: db/ci.db
         run: python tests/amorcer_base_ci.py
+      - name: Publication en deux temps — l'aperçu ne publie rien
+        # Le flux tel qu'un admin le vit depuis l'atelier, sur le vrai
+        # générateur et le vrai contrôleur. La suite pytest éprouve
+        # l'orchestration sur des répertoires jetables ; ici on vérifie que
+        # l'assemblage tient sur une vraie base — et surtout que générer un
+        # aperçu ne touche pas au répertoire publié.
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+          VIGIE_RULES: config/publication_rules.exemple.json
+          VIGIE_DB: db/ci.db
+        run: |
+          python - <<'PY'
+          import sys
+          from scripts import publication as pub
+
+          apercu = pub.generer_apercu(auteur="ci")
+          assert apercu["controle"]["ok"], apercu["controle"]["rapport"]
+          assert not (pub.PUBLIE / "stats.json").exists(), \
+              "générer un aperçu a écrit dans le répertoire publié"
+          assert pub.etat_publication()["etape"] == "pret_a_publier"
+
+          try:
+              pub.publier(auteur="ci", role="validator")
+              sys.exit("un non-admin a pu publier")
+          except pub.PublicationRefusee:
+              pass
+
+          pub.publier(auteur="ci", role="admin")
+          assert pub.etat_publication()["etape"] == "publie"
+          print("aperçu → contrôle → publication : le flux tient.")
+          PY
+
       - name: Snapshot et contrôle d'étanchéité
         env:
           VIGIE_INSTANCE: tests/instance_test.json

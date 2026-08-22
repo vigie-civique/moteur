@@ -3,10 +3,9 @@
 // afficher « Chargement… » ni un compteur à zéro le temps d'un fetch.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
-
-const DATA_DIR = join(process.cwd(), 'static', 'data')
 
 const lire = (nom, defaut = {}) => {
   try { return JSON.parse(readFileSync(join(DATA_DIR, nom), 'utf8')) }

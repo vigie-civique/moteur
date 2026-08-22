@@ -8,10 +8,14 @@ précisément pourquoi ce fichier ne doit jamais importer le builder ni être
 « aligné » sur lui. Toute assertion retirée ici est une décision éditoriale.
 
 Usage :
-    venv/bin/python3 scripts/verify_snapshot.py [DIR ...]
+    venv/bin/python3 scripts/verify_snapshot.py [DIR ...] [--json]
     (défaut : dashboard/static/public_api, public/static/data, public/build)
 
 Sortie : rapport groupé par règle, exit 1 à la moindre violation bloquante.
+Avec `--json`, le même rapport sort en JSON, chaque cas décomposé (fichier,
+champ, identifiants) pour que l'atelier puisse renvoyer vers la fiche fautive.
+Le rapport texte intégral y figure sous `rapport` : le format machine n'est pas
+un résumé, il ne masque rien.
 À câbler à la fin de toute génération/déploiement : un build qui fuit échoue.
 """
 import json
@@ -50,6 +54,57 @@ FORBIDDEN_KEYS = {"personnes_citees", "birth_date", "date_naissance", "adresse_p
 SUSPECT_KEYS = {"email", "mail", "telephone", "phone", "tel"}
 
 MAX_EXAMPLES = 8
+# Cas détaillés par règle dans la sortie `--json`. Au-delà, seul le compte est
+# rendu : l'atelier affiche « 1 229 cas », pas 1 229 lignes.
+MAX_CAS = 50
+
+# Un exemple est écrit `<fichier>: <détail>` partout, sauf pour les renvois
+# sortants qui portent `<fichier> · <champ> : <détail>`. Ces deux formes sont le
+# contrat de sortie du contrôleur ; les relire ici lui évite d'être réécrit à
+# vingt endroits pour ajouter un identifiant à chaque appel.
+_RE_FICHE_ENTITE = re.compile(r"(?:^|/)entite/(\d+)\.json")
+_RE_ID = re.compile(r"\bid=(\d+)")
+_RE_IDS_LISTE = re.compile(r"ex\. \[([0-9,\s]+)\]")
+
+
+def analyser_cas(exemple):
+    """Décompose un exemple en fichier, champ, objet visé et identifiants.
+
+    Rien n'est deviné : ce qui n'est pas reconnu reste `None`, et `message`
+    porte toujours l'exemple entier. Un contrôle mal décomposé ne doit pas
+    devenir un contrôle amputé.
+    """
+    texte = str(exemple)
+    fichier = champ = None
+    reste = texte
+    if " · " in texte:
+        fichier, _, apres = texte.partition(" · ")
+        champ, _, reste = apres.partition(" : ")
+        champ = champ.strip() or None
+    elif ": " in texte:
+        fichier, _, reste = texte.partition(": ")
+    else:
+        fichier = texte
+    fichier = (fichier or "").strip() or None
+
+    identifiants = []
+    objet = None
+    m = _RE_FICHE_ENTITE.search(fichier or "")
+    if m:
+        objet, identifiants = "entite", [int(m.group(1))]
+    else:
+        liste = _RE_IDS_LISTE.search(reste)
+        if liste:
+            objet = "entite"      # tous les champs de CHAMPS_RENVOI visent une entité
+            identifiants = [int(n) for n in liste.group(1).replace(" ", "").split(",") if n]
+        else:
+            ids = _RE_ID.findall(reste)
+            if ids:
+                identifiants = [int(n) for n in ids]
+                objet = "evenement" if (fichier or "").startswith("events") else None
+
+    return {"message": texte, "fichier": fichier, "champ": champ,
+            "objet": objet, "identifiants": identifiants}
 
 
 class Report:
@@ -67,14 +122,37 @@ class Report:
     def warn(self, rule, example):
         self._add(self.warnings, rule, example)
 
-    def dump(self):
+    def lignes(self):
+        out = []
         for label, bucket in (("BLOQUANT", self.errors), ("avertissement", self.warnings)):
             for rule, examples in sorted(bucket.items()):
-                print(f"[{label}] {rule} — {len(examples)} cas")
+                out.append(f"[{label}] {rule} — {len(examples)} cas")
                 for ex in examples[:MAX_EXAMPLES]:
-                    print(f"    {ex}")
+                    out.append(f"    {ex}")
                 if len(examples) > MAX_EXAMPLES:
-                    print(f"    … {len(examples) - MAX_EXAMPLES} autres")
+                    out.append(f"    … {len(examples) - MAX_EXAMPLES} autres")
+        return out
+
+    def dump(self):
+        for ligne in self.lignes():
+            print(ligne)
+
+    def groupes(self, bucket):
+        """Le même contenu, décomposé — une entrée par règle, ses cas dedans.
+
+        Le rapport texte reste la référence : ceci n'en retire rien, il ajoute
+        ce qu'une interface peut suivre. `total` compte TOUS les cas, `cas` en
+        détaille au plus MAX_CAS — une règle violée 1 229 fois se dit en un
+        nombre, pas en 1 229 lignes envoyées au navigateur.
+        """
+        return [
+            {
+                "regle": regle,
+                "total": len(exemples),
+                "cas": [analyser_cas(ex) for ex in exemples[:MAX_CAS]],
+            }
+            for regle, exemples in sorted(bucket.items())
+        ]
 
 
 def domain_of(url):
@@ -378,7 +456,8 @@ def check_dir(base, rep):
 
 
 def main(argv):
-    targets = [Path(a) for a in argv] or [
+    en_json = "--json" in argv
+    targets = [Path(a) for a in argv if not a.startswith("-")] or [
         ROOT / "dashboard" / "static" / "public_api",
         ROOT / "public" / "static" / "data",
         ROOT / "public" / "build",
@@ -390,19 +469,40 @@ def main(argv):
             scanned.append(t)
             check_dir(t, rep)
     if not scanned:
-        print("Aucun répertoire de snapshot trouvé.", file=sys.stderr)
+        absent = "Aucun répertoire de snapshot trouvé."
+        if en_json:
+            print(json.dumps({"ok": False, "repertoires": [], "fichiers": 0,
+                              "erreurs": [], "avertissements": [],
+                              "compte_erreurs": 0, "compte_avertissements": 0,
+                              "rapport": absent}, ensure_ascii=False))
+        else:
+            print(absent, file=sys.stderr)
         return 2
-    print(f"Répertoires : {', '.join(str(s) for s in scanned)}")
-    print(f"Fichiers inspectés : {rep.files}")
-    rep.dump()
+
     n_err = sum(len(v) for v in rep.errors.values())
     n_warn = sum(len(v) for v in rep.warnings.values())
-    print(f"\n{n_err} violation(s) bloquante(s), {n_warn} avertissement(s).")
-    if n_err:
-        print("ÉCHEC — ne pas publier ce snapshot.")
-        return 1
-    print("OK — étanchéité vérifiée sur les règles connues.")
-    return 0
+    lignes = [f"Répertoires : {', '.join(str(s) for s in scanned)}",
+              f"Fichiers inspectés : {rep.files}",
+              *rep.lignes(),
+              "",
+              f"{n_err} violation(s) bloquante(s), {n_warn} avertissement(s).",
+              "ÉCHEC — ne pas publier ce snapshot." if n_err
+              else "OK — étanchéité vérifiée sur les règles connues."]
+
+    if en_json:
+        print(json.dumps({
+            "ok": not n_err,
+            "repertoires": [str(s) for s in scanned],
+            "fichiers": rep.files,
+            "erreurs": rep.groupes(rep.errors),
+            "avertissements": rep.groupes(rep.warnings),
+            "compte_erreurs": n_err,
+            "compte_avertissements": n_warn,
+            "rapport": "\n".join(lignes),
+        }, ensure_ascii=False, indent=2))
+    else:
+        print("\n".join(lignes))
+    return 1 if n_err else 0
 
 
 if __name__ == "__main__":

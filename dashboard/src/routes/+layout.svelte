@@ -33,9 +33,13 @@
     { href: '/atelier/donnees',     label: '📥 Données importées' },
     { href: '/atelier/analyses',    label: '🔬 Analyses' },
     { href: '/atelier/ia',          label: '🤖 IA' },
-    { href: '/atelier/publication', label: '🚀 Publication', adminOnly: true },
+    { href: '/atelier/publication', label: '🚀 Publication' },
   ]
-  // Publication réservée au rôle admin (décision 03/07/2026 : 1 admin + 2 validateurs)
+  // La page Publication est ouverte à tout l'atelier depuis le 22/08/2026, en
+  // LECTURE SEULE pour les non-admins : l'action reste réservée au rôle admin
+  // (décision 03/07/2026 : 1 admin + 2 validateurs), mais un validateur qui
+  // vient de corriger doit pouvoir voir si c'est en ligne et si le dernier
+  // contrôle est rouge. Cacher l'état ne protégeait rien.
   $: nav = NAV.filter(n => !n.adminOnly || !$currentUser || $currentUser.role === 'admin')
   // « 👁 Voir le site public » — app publique séparée (dev : 5174).
   const PUBLIC_URL = 'http://localhost:5174'

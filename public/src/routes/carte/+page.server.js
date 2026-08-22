@@ -8,13 +8,14 @@
 // qu'on ne sait pas compter.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
 export function load() {
   let s = {}
   try {
-    s = JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', 'stats.json'), 'utf8'))
+    s = JSON.parse(readFileSync(join(DATA_DIR, 'stats.json'), 'utf8'))
   } catch { /* snapshot absent : la carte s'affiche sans son dénominateur */ }
 
   const q = s.location_quality || {}

@@ -13,7 +13,9 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const BUILD = join(process.cwd(), 'build')
+// Même répertoire que celui qu'`adapter-static` vient d'écrire : un aperçu
+// figé (`VIGIE_BUILD_DIR`) doit être contrôlé, pas ignoré.
+const BUILD = join(process.cwd(), process.env.VIGIE_BUILD_DIR || 'build')
 
 // Exceptions assumées, chacune pour une raison précise. Toute nouvelle entrée
 // ici doit être justifiée : c'est la porte par laquelle le défaut reviendrait.

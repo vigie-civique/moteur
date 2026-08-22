@@ -16,6 +16,7 @@ import { COMMUNE_A, INSEE, SITE_NOM, SITE_URL } from '$lib/instance.js'
 // leur place dans un fil de vigie.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
@@ -34,7 +35,7 @@ const GENRES = {
 export function GET() {
   let d = { items: [] }
   try {
-    d = JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', 'actualite.json'), 'utf8'))
+    d = JSON.parse(readFileSync(join(DATA_DIR, 'actualite.json'), 'utf8'))
   } catch { /* snapshot absent : flux vide plutôt que build cassé */ }
 
   const arreteLe = d.arrete_le || (d.genere_le || '').slice(0, 10)

@@ -11,13 +11,14 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
+import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
 
 export function load() {
   let d = { events: [] }
   try {
-    d = JSON.parse(readFileSync(join(process.cwd(), 'static', 'data', 'events.json'), 'utf8'))
+    d = JSON.parse(readFileSync(join(DATA_DIR, 'events.json'), 'utf8'))
   } catch { /* snapshot absent : page vide plutôt que build cassé */ }
 
   const actes = (d.events || []).filter((e) => INSTITUTIONAL[e.type])

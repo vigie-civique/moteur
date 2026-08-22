@@ -4,9 +4,11 @@ import adapter from '@sveltejs/adapter-static'
 export default {
   kit: {
     // adapter-static → Cloudflare Pages
+    // `VIGIE_BUILD_DIR` sert à construire un aperçu figé sans écraser le build
+    // de production ; non définie, rien ne change.
     adapter: adapter({
-      pages:      'build',
-      assets:     'build',
+      pages:      process.env.VIGIE_BUILD_DIR || 'build',
+      assets:     process.env.VIGIE_BUILD_DIR || 'build',
       fallback:   '404.html',
       precompress: false,
       strict:     false,

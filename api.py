@@ -1167,10 +1167,15 @@ def _public_snapshot_status():
     from scripts.build_public_snapshot import DEFAULT_OUT, RULES_PATH
 
     stats_path = DEFAULT_OUT / "stats.json"
-    report_path = DEFAULT_OUT / "review_report.json"
     rules = _read_json_file(RULES_PATH, {})
     stats = _read_json_file(stats_path)
-    report = _read_json_file(report_path, {})
+    # Le rapport QA est écrit HORS du snapshot depuis que `verify_snapshot.py`
+    # interdit `review_report*.json` dans un répertoire publié — à raison, il
+    # contient les exclusions nominatives. Le chercher dans le snapshot rendait
+    # « Règles actives » vide en permanence, sans que rien ne le signale ; seule
+    # la clé `rules` est reprise, jamais les exclusions.
+    report = _read_json_file(BASE_DIR / "audits" / "public_snapshot_review.json", {})
+    report = {"rules": report.get("rules", {})}
     return {
         "exists": stats is not None,
         "output_dir": str(DEFAULT_OUT),
@@ -1192,31 +1197,15 @@ def public_snapshot_status(x_admin_key: Optional[str] = Header(default=None),
     _check_admin(x_admin_key, user)
     return _public_snapshot_status()
 
+# Le flux de publication (aperçu → contrôle → publication) vit dans
+# `scripts/publication.py` : il n'a besoin ni de FastAPI ni d'une base, et les
+# tests le rejouent sur des répertoires jetables. api.py y ajoute ce qu'il est
+# seul à savoir — qui a cliqué.
+from scripts import publication as pub   # noqa: E402
+
+
 def _controler_snapshot(cible: Path) -> dict:
-    """Rejoue `scripts/verify_snapshot.py` sur un répertoire produit.
-
-    EN SOUS-PROCESSUS, jamais en import. Deux raisons, et la seconde a coûté
-    une soirée le 21/08/2026 :
-
-    1. Le contrôleur est écrit comme un adversaire du builder — il ne partage
-       aucun code avec lui, c'est toute sa valeur. L'importer ici, dans le
-       processus qui vient d'appeler `build_snapshot()`, les remettrait dans la
-       même mémoire et les ferait vieillir ensemble.
-    2. Un atelier lancé le matin exécute le code du matin. Ce jour-là, un clic
-       sur « régénérer » a rejoué un builder d'avant un correctif et écrasé un
-       bon snapshot par l'ancien — `{"ok": true}` en retour, 152 liens morts
-       dans le fichier servi. Un interpréteur neuf lit le code du disque, pas
-       celui du démarrage : c'est la seule façon que le contrôle ne mente pas
-       sur le code qu'il contrôle.
-    """
-    proc = subprocess.run(
-        [sys.executable, str(BASE_DIR / "scripts" / "verify_snapshot.py"), str(cible)],
-        capture_output=True, text=True, cwd=str(BASE_DIR), timeout=900)
-    return {
-        "repertoire": str(cible),
-        "ok": proc.returncode == 0,
-        "rapport": (proc.stdout + proc.stderr).strip(),
-    }
+    return pub.controler(cible)
 
 
 @app.post("/api/admin/public-snapshot/generate")
@@ -1235,7 +1224,8 @@ def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
     if not controle["ok"]:
         raise HTTPException(500,
             "Snapshot refusé par le contrôle d'étanchéité — le site public n'a "
-            "PAS été mis à jour, l'ancien reste en place.\n\n" + controle["rapport"])
+            "PAS été mis à jour, l'ancien reste en place.\n\n"
+            + controle.get("rapport", ""))
 
     synced = _sync_public_static(DEFAULT_OUT, ROOT)   # snapshot → site public, 1 clic
 
@@ -1246,7 +1236,7 @@ def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
     if not controle_site["ok"]:
         raise HTTPException(500,
             "Le snapshot est propre mais sa copie vers le site ne l'est pas — "
-            "ne pas déployer.\n\n" + controle_site["rapport"])
+            "ne pas déployer.\n\n" + controle_site.get("rapport", ""))
 
     return {
         "ok": True,
@@ -1343,6 +1333,223 @@ def atelier_importer_decisions(req: ImportDecisionsRequest,
         "sans_objet": rap.sans_objet,
     }
 
+
+
+# ─── Publication en deux temps : aperçu, contrôle, publication ───────────────
+#
+# L'endpoint ci-dessus construit par-dessus le répertoire servi puis synchronise
+# dans la foulée : un seul geste, irréversible, dont le résultat ne se regarde
+# qu'une fois en ligne. Il reste — `deploy/publier-site.sh` et les scripts CLI
+# s'en servent — mais l'atelier ne l'offre plus. Ce qu'on publie se regarde
+# d'abord, et ce qui est rouge ne se publie pas.
+
+
+class ApercuServeurRequest(BaseModel):
+    action: str = "demarrer"      # demarrer | arreter
+
+
+def _cle_admin_valide(x_admin_key: Optional[str]) -> bool:
+    return bool(ADMIN_KEY) and x_admin_key == ADMIN_KEY
+
+
+def _role_effectif(x_admin_key: Optional[str], user: Optional[dict]) -> Optional[str]:
+    """La clé admin VAUT admin : c'est le contrat des scripts depuis l'origine.
+
+    Sans cette ligne, un validateur qui possède aussi la clé se verrait refuser
+    ce qu'un script anonyme muni de la même clé obtient — l'identification
+    dégraderait le droit, ce qui est le meilleur moyen de la faire contourner.
+    """
+    if _cle_admin_valide(x_admin_key):
+        return "admin"
+    return (user or {}).get("role")
+
+
+def _auteur(user: Optional[dict]) -> str:
+    """Un nom lisible dans « publié par ». Sans JWT, l'auteur est la clé."""
+    if user:
+        return user.get("email") or f"utilisateur #{user.get('id')}"
+    return "clé admin (script)"
+
+
+def _journal_publication(user: Optional[dict], action: str, detail: dict) -> None:
+    """Qui a généré un aperçu, qui a publié, quand, et avec quel verdict.
+
+    Dans `audit_log`, la table qui porte déjà toutes les écritures de l'atelier :
+    une publication est une écriture comme une autre, en plus lourde de
+    conséquences. Lui donner un journal à part, c'est se garantir qu'on lira
+    l'un des deux.
+
+    Le journal ne doit jamais faire échouer ce qu'il journalise : une base
+    verrouillée ne transforme pas une publication réussie en erreur.
+    """
+    try:
+        conn = get_db_rw()
+        try:
+            conn.execute(
+                "INSERT INTO audit_log(user_id, table_name, action, new_value) "
+                "VALUES(?,?,?,?)",
+                ((user or {}).get("id"), "publication", action,
+                 json.dumps(detail, ensure_ascii=False)[:4000]))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                      # noqa: BLE001
+        print(f"  [publication] journal non écrit : {e}", file=sys.stderr)
+
+
+def _etat_complet(x_admin_key: Optional[str], user: Optional[dict]) -> dict:
+    """L'état du flux plus le contexte que la page affiche en permanence.
+
+    Les trois routes rendent la MÊME forme. Une action qui ne renverrait que
+    l'état laisserait la page sans son nom de projet ni ses règles actives, et
+    la moitié de l'écran se viderait au moment où on vient d'agir.
+    """
+    role = _role_effectif(x_admin_key, user)
+    contexte = _public_snapshot_status()
+    return pub.etat_publication() | {
+        "role": role,
+        "peut_agir": pub.peut_publier(role),
+        "project": contexte["project"],
+        "rules": contexte["rules"],
+        "rules_path": contexte["rules_path"],
+        "output_dir": contexte["output_dir"],
+    }
+
+
+@app.get("/api/admin/publication")
+def publication_etat(x_admin_key: Optional[str] = Header(default=None),
+                     user=Depends(optional_user)):
+    """L'état du flux, en LECTURE SEULE — ouvert à tout l'atelier.
+
+    Un validateur ne publie pas, mais il doit pouvoir savoir si la correction
+    qu'il vient de faire est en ligne, et si le dernier contrôle est rouge.
+    Réserver cette page aux admins ne protégeait rien : elle ne dit rien de plus
+    que le site public, plus un verdict de contrôle.
+    """
+    return _etat_complet(x_admin_key, user)
+
+
+@app.post("/api/admin/publication/apercu")
+def publication_apercu(x_admin_key: Optional[str] = Header(default=None),
+                       user=Depends(optional_user)):
+    """Construit le snapshot dans le brouillon et le contrôle. Rien de servi ne bouge.
+
+    Un contrôle rouge n'est PAS une erreur de cette route : l'aperçu a bien été
+    produit, c'est son verdict qui est rouge — et c'est exactement ce qu'on
+    voulait pouvoir regarder. Répondre 500 ici ferait disparaître le rapport
+    dans une bannière d'erreur au lieu de l'afficher.
+    """
+    _check_admin(x_admin_key, user)
+    from scripts.build_public_snapshot import PerimetreNonClasse
+    try:
+        resume = pub.generer_apercu(auteur=_auteur(user))
+    except pub.PublicationRefusee as e:
+        raise HTTPException(400, e.message)
+    except PerimetreNonClasse as e:
+        raise HTTPException(400, f"Snapshot refusé — {e}")
+    controle = resume.get("controle") or {}
+    _journal_publication(user, "apercu", {
+        "repertoire": resume.get("repertoire"),
+        "controle_ok": controle.get("ok"),
+        "violations": controle.get("compte_erreurs"),
+        "avertissements": controle.get("compte_avertissements"),
+        "entites_publiques": (resume.get("stats") or {}).get("entities_public"),
+    })
+    return _etat_complet(x_admin_key, user)
+
+
+@app.post("/api/admin/publication/publier")
+def publication_publier(x_admin_key: Optional[str] = Header(default=None),
+                        user=Depends(optional_user)):
+    """Porte l'aperçu contrôlé vers les deux emplacements servis. Admin seul."""
+    _check_admin(x_admin_key, user)
+    role = _role_effectif(x_admin_key, user)
+    try:
+        publie = pub.publier(auteur=_auteur(user), role=role)
+    except pub.PublicationRefusee as e:
+        _journal_publication(user, "publication-refusee",
+                             {"motif": e.message, "role": role})
+        raise HTTPException(409, {"message": e.message, **e.detail})
+    _journal_publication(user, "publication", {
+        "repertoire": publie.get("repertoire"),
+        "apercu_genere_le": publie.get("apercu_genere_le"),
+        "fichiers_publies": (publie.get("copie") or {}).get("count"),
+        "fichiers_site": (publie.get("synchro") or {}).get("count"),
+        "differences": publie.get("differences"),
+        "entites_publiques": (publie.get("stats") or {}).get("entities_public"),
+    })
+    return _etat_complet(x_admin_key, user)
+
+
+@app.get("/api/admin/publication/modifications")
+def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
+                              user=Depends(optional_user)):
+    """Les fiches touchées depuis la dernière publication.
+
+    C'est la question que se pose vraiment celui qui vient de corriger : « ce
+    que j'ai changé, ça donne quoi en ligne ? » Sans cette liste, l'aperçu
+    oblige à retrouver ses propres modifications à la main dans un site de
+    quinze cents pages.
+
+    `dans_apercu` dit si la fiche existe dans le brouillon : une entité écartée
+    par le filtre de publication n'a pas de page, et proposer le lien enverrait
+    sur un 404 en laissant croire à une panne.
+    """
+    _check_admin(x_admin_key, user, allow_validator=True)
+    etat = pub.etat_publication()
+    depuis = (etat.get("publie") or {}).get("publie_le")
+    borne = None
+    if depuis:
+        try:
+            # `audit_log.at` est écrit par SQLite en UTC (`datetime('now')`) ;
+            # l'état porte une date locale avec décalage. Comparer les deux
+            # chaînes telles quelles décale la liste de deux heures l'été.
+            borne = (datetime.fromisoformat(depuis).astimezone(timezone.utc)
+                     .strftime("%Y-%m-%d %H:%M:%S"))
+        except ValueError:
+            borne = None
+
+    conn = get_db()
+    try:
+        lignes = rows(conn, """
+            SELECT e.id, e.name, e.type,
+                   COUNT(*) AS modifications,
+                   MAX(al.at) AS derniere
+            FROM audit_log al
+            JOIN entities e ON e.id = al.entity_id
+            WHERE al.entity_id IS NOT NULL
+              AND (? IS NULL OR al.at > ?)
+            GROUP BY e.id, e.name, e.type
+            ORDER BY derniere DESC
+            LIMIT 50
+        """, (borne, borne))
+    finally:
+        conn.close()
+
+    brouillon = Path((etat.get("brouillon") or {}).get("repertoire") or pub.BROUILLON)
+    for ligne in lignes:
+        ligne["dans_apercu"] = (brouillon / "entite" / f"{ligne['id']}.json").is_file()
+    return {"depuis": depuis, "modifications": lignes}
+
+
+@app.post("/api/admin/publication/apercu/serveur")
+def publication_apercu_serveur(req: ApercuServeurRequest = ApercuServeurRequest(),
+                               x_admin_key: Optional[str] = Header(default=None),
+                               user=Depends(optional_user)):
+    """Démarre (ou arrête) le SITE PUBLIC lui-même, branché sur le brouillon.
+
+    Pas une maquette de l'aperçu : le site, ses composants, sa feuille de style,
+    sur son propre port, avec `VIGIE_DATA_DIR` pointé sur le brouillon. C'est la
+    seule façon qu'un aperçu ressemble à ce qui sera publié — et il est servi à
+    la RACINE de ce port parce que les liens du site sont absolus.
+    """
+    _check_admin(x_admin_key, user)
+    try:
+        if req.action == "arreter":
+            return pub.arreter_serveur_apercu()
+        return pub.demarrer_serveur_apercu()
+    except pub.PublicationRefusee as e:
+        raise HTTPException(400, e.message)
 
 @app.post("/api/candidates/{candidate_id}/review")
 def review_candidate(
