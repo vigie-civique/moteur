@@ -17,15 +17,24 @@ ce dispositif cherche à combler.
 Des **collecteurs** interrogent des sources publiques (SIRENE, RNA, BODACC, DVF,
 OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, Hub'Eau,
 sites officiels de la commune et de l'intercommunalité) et alimentent une base
-SQLite. `python3 -m collectors.run_all` en enchaîne 34.
+SQLite. `python3 -m collectors.run_all` en enchaîne 36.
 
 Un **script de publication** (`scripts/build_public_snapshot.py`) en extrait un
 snapshot JSON filtré, qui alimente un **site statique** SvelteKit sans backend
 ni base de données en ligne.
 
 Un **atelier** (`dashboard/` + `api.py`) permet de corriger, valider et annoter
-la base. Il est **facultatif** et ne se met pas en ligne à la légère : voir
-« Les deux moitiés » plus bas.
+la base, et d'y **saisir** ce qu'aucun collecteur ne peut atteindre — un budget
+voté, une dotation notifiée, une subvention lue dans un compte rendu. Il est
+**facultatif** et ne se met pas en ligne à la légère : voir « Les deux moitiés »
+plus bas.
+
+Ce que l'atelier a le droit de réécrire dépend de l'**origine** de la ligne. Une
+donnée déjà structurée par une administration (API, CSV) ne se rectifie pas à la
+main : le montant est celui qu'elle publie. Une donnée lue dans un PDF ou une
+page web, si — le chiffre y est notre lecture d'une phrase. Une ligne
+institutionnelle peut en revanche toujours être écartée de la publication.
+`collectors/origine.py` porte la règle, l'API la fait respecter.
 
 Le filtrage n'est pas un détail : c'est le cœur du dispositif. Il écarte les
 personnes physiques sans rôle civique public, les pistes de travail non

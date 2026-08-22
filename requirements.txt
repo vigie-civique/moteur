@@ -22,6 +22,11 @@ bcrypt==5.0.0
 python-jose==3.5.0
 python-dotenv==1.2.1
 cryptography==50.0.0
+# Dépôt de documents dans l'atelier : FastAPI en a besoin pour lire un
+# formulaire multipart. Une saisie manuelle ne s'enregistre pas sans sa source,
+# et toutes les sources ne sont pas en ligne — un PV remis sur papier n'a pas
+# d'URL. Sans ce paquet, la route de dépôt répond 500 sans rien expliquer.
+python-multipart==0.0.32
 
 # ─── Collecte ────────────────────────────────────────────────────────────────
 requests==2.32.5

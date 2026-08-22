@@ -34,10 +34,39 @@ jobs:
       - name: Dépendances de test
         # Pas requirements.txt : la suite ne doit dépendre ni des collecteurs ni
         # de l'API. Si un test se met à réclamer requests, c'est qu'il sort sur
-        # le réseau, et il ne devrait pas.
+        # le réseau, et il ne devrait pas. Les tests qui s'adressent à l'API font
+        # exception et sont sautés ici — cf. le job `tests-deps`, qui les joue.
         run: pip install pytest
       - name: Tests
-        run: python -m pytest
+        run: python -m pytest -ra
+
+  tests-deps:
+    # Le job précédent saute ce qui exige l'API ou les collecteurs. Celui-ci
+    # installe tout et rejoue la suite ENTIÈRE : sans lui, un fichier sauté
+    # partout serait un contrôle mort, et c'est justement là que vit le verrou
+    # d'origine — l'interface grise ce qu'elle interdit, mais elle ne protège
+    # que celui qui l'utilise. Rien ne sort sur le réseau pour autant : le
+    # client de test de FastAPI appelle l'application dans le même processus.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Dépendances
+        run: pip install -r requirements.txt pytest
+      - name: Suite entière
+        # Un test SAUTÉ ici est un défaut, pas une information : tout est
+        # installé, donc un skip dénonce un paquet absent de requirements.txt.
+        # Deux collecteurs ont vécu des mois dans cet angle mort.
+        run: |
+          python -m pytest -ra | tee resultat.txt
+          statut=${PIPESTATUS[0]}
+          if [ "$statut" -ne 0 ]; then exit "$statut"; fi
+          if grep -q '^SKIPPED' resultat.txt; then
+            echo "::error::un test sauté alors que les dépendances sont installées"
+            exit 1
+          fi
 
   generique:
     # Séparé des tests : ce contrôle est l'admission du kit. Le voir échouer

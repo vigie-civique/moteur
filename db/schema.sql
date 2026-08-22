@@ -259,10 +259,22 @@ CREATE TABLE IF NOT EXISTS events (
     source      TEXT,
     source_url  TEXT,
     metadata    TEXT,   -- JSON (montant, vote_pour, vote_contre, vote_abstention...)
-    created_at  TEXT DEFAULT (datetime('now'))
+    created_at  TEXT DEFAULT (datetime('now')),
+    -- Qui a structuré cette ligne : institutionnel (API/CSV d'une
+    -- administration) | verbatim (notre lecture d'un PDF/HTML) | atelier
+    -- (saisie humaine). Gouverne le droit de rectifier — cf. collectors/origine.py.
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(type, date);
+-- L'index sur `origine` n'est PAS ici : le schéma est joué avant le rattrapage
+-- de colonnes de `collectors/db.py`, donc sur une base antérieure au 20/08/2026
+-- il porterait sur une colonne qui n'existe pas encore, et `init_db()` échouerait
+-- entièrement. Il est déclaré dans `_INDEX_AJOUTES`, joué après. À reprendre le
+-- jour où les migrations seront versionnées.
 
 -- Liens événement ↔ entité
 CREATE TABLE IF NOT EXISTS event_entities (
@@ -297,7 +309,14 @@ CREATE TABLE IF NOT EXISTS financial_flows (
     --   type_norm  type ramené à une famille, pour les regroupements publics.
     perimetre   TEXT DEFAULT 'detail' CHECK(perimetre IN ('detail','agregat')),
     statut      TEXT DEFAULT 'realise' CHECK(statut IN ('realise','demande')),
-    type_norm   TEXT
+    type_norm   TEXT,
+    -- cf. events.origine — c'est ici que le partage compte le plus : au 20/08,
+    -- 38 lignes institutionnelles (OFGL, DECP) et 150 lignes lues dans des
+    -- comptes rendus cohabitaient sans que rien ne les distingue.
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_flows_year    ON financial_flows(year);
@@ -564,6 +583,10 @@ CREATE TABLE IF NOT EXISTS marches_publics (
     confidence      TEXT DEFAULT 'verified'
                     CHECK(confidence IN ('verified','confirmed','probable','hypothesis')),
     created_at      TEXT DEFAULT (datetime('now')),
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT,
     UNIQUE(raw_id)
 );
 
@@ -591,7 +614,11 @@ CREATE TABLE IF NOT EXISTS approbations_projets (
     source_url     TEXT,
     raw_id         TEXT UNIQUE,
     confidence     TEXT DEFAULT 'verified',
-    created_at     TEXT DEFAULT (datetime('now'))
+    created_at     TEXT DEFAULT (datetime('now')),
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_approb_date ON approbations_projets(date DESC);
 
@@ -987,6 +1014,13 @@ CREATE TABLE IF NOT EXISTS budget_vote (
     source_event_id INTEGER,
     source_url      TEXT,
     created_at      TEXT DEFAULT (datetime('now')),
+    -- Budget PRIMITIF voté : il n'existe que dans les comptes rendus du conseil
+    -- (le détail DGFiP s'arrête à 2023, les agrégats OFGL à 2024). Cette table
+    -- est donc « verbatim » ou « atelier » par nature, jamais institutionnelle.
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT,
     UNIQUE(year, scope, agregat)
 );
 
@@ -1039,6 +1073,13 @@ CREATE TABLE IF NOT EXISTS dotations_etat (
     source      TEXT DEFAULT 'DGCL',
     raw_label   TEXT,
     created_at  TEXT DEFAULT (datetime('now')),
+    -- La DGCL publie ses notifications en ligne, mais tant que le collecteur ne
+    -- les atteint pas, ces lignes sont transcrites d'un compte rendu : d'où une
+    -- table qui accepte les trois origines.
+    origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
+    raw_document_id INTEGER REFERENCES raw_documents(id),
+    saisi_par       TEXT,
+    saisi_le        TEXT,
     UNIQUE(year, insee, composante)
 );
 

@@ -2,7 +2,7 @@
 import sqlite3
 import contextlib
 from .config import DB_PATH, SCHEMA_PATH
-from .nom_normalise import normaliser
+from .nom_normalise import normaliser, rectifier
 
 
 def get_conn(read_only: bool = False) -> sqlite3.Connection:
@@ -61,7 +61,72 @@ _COLONNES_AJOUTEES = [
     ("businesses", "pappers_fetched_at", "TEXT"),
     ("businesses", "pappers_raw",     "TEXT"),
     ("associations", "siren",         "TEXT"),
+
+    # 20/08/2026 — `origine` : qui a structuré la donnée de cette ligne, et donc
+    # ce qu'un humain a le droit d'en faire. Cf. collectors/origine.py. Ajoutée
+    # SANS valeur par défaut : une ligne non classée doit se voir, pas se fondre
+    # dans une catégorie choisie par le schéma. `scripts/classer_origine.py` la
+    # remplit, et refuse de deviner ce qu'il ne reconnaît pas.
+    ("events",               "origine", "TEXT"),
+    ("financial_flows",      "origine", "TEXT"),
+    ("marches_publics",      "origine", "TEXT"),
+    ("budget_vote",          "origine", "TEXT"),
+    ("dotations_etat",       "origine", "TEXT"),
+    ("approbations_projets", "origine", "TEXT"),
+
+    # Le document local qui porte la ligne. Sur les tables issues de lecture, il
+    # y a presque toujours un PDF ou un HTML dans `raw_documents` derrière —
+    # mais le lien n'existait que par comparaison d'URL, ce qui casse dès qu'une
+    # source republie sous une autre adresse. Une saisie manuelle, elle, ne
+    # s'enregistre pas sans lui.
+    ("events",               "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+    ("financial_flows",      "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+    ("marches_publics",      "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+    ("budget_vote",          "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+    ("dotations_etat",       "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+    ("approbations_projets", "raw_document_id", "INTEGER REFERENCES raw_documents(id)"),
+
+    # Qui a saisi, et quand. Vides sur tout ce qu'un collecteur a écrit : c'est
+    # la signature du travail humain, celle qui part dans l'export de décisions.
+    ("events",               "saisi_par", "TEXT"),
+    ("financial_flows",      "saisi_par", "TEXT"),
+    ("marches_publics",      "saisi_par", "TEXT"),
+    ("budget_vote",          "saisi_par", "TEXT"),
+    ("dotations_etat",       "saisi_par", "TEXT"),
+    ("approbations_projets", "saisi_par", "TEXT"),
+    ("events",               "saisi_le", "TEXT"),
+    ("financial_flows",      "saisi_le", "TEXT"),
+    ("marches_publics",      "saisi_le", "TEXT"),
+    ("budget_vote",          "saisi_le", "TEXT"),
+    ("dotations_etat",       "saisi_le", "TEXT"),
+    ("approbations_projets", "saisi_le", "TEXT"),
 ]
+
+
+# Index portant sur une colonne rattrapée. Ils ne peuvent PAS vivre dans
+# `db/schema.sql` : celui-ci est joué en entier AVANT `_rattraper_colonnes`, donc
+# sur une base antérieure à l'ajout de la colonne, `init_db()` échouerait sur
+# « no such column » — et échouerait entièrement, laissant la base à moitié
+# migrée. Même raison d'être que la liste ci-dessus, même dette : des migrations
+# versionnées rendraient les deux inutiles.
+_INDEX_AJOUTES = [
+    ("idx_events_origine",  "events",          "origine"),
+    ("idx_flows_origine",   "financial_flows", "origine"),
+    ("idx_marches_origine", "marches_publics", "origine"),
+]
+
+
+def _rattraper_index(conn) -> None:
+    for nom, table, colonnes in _INDEX_AJOUTES:
+        existe = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (table,)).fetchone()
+        if not existe:
+            continue
+        presentes = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not set(c.strip() for c in colonnes.split(",")) <= presentes:
+            continue
+        conn.execute(f"CREATE INDEX IF NOT EXISTS {nom} ON {table}({colonnes})")
 
 
 def _rattraper_colonnes(conn) -> None:
@@ -89,6 +154,7 @@ def init_db():
     try:
         conn.executescript(schema)
         _rattraper_colonnes(conn)
+        _rattraper_index(conn)
         conn.commit()
         print(f"[db] Schéma initialisé → {DB_PATH}")
     finally:
@@ -159,6 +225,15 @@ def upsert_entity(conn, *, type, name, short_name=None,
     faisait rien. Trois incidents en sont sortis, cf.
     d'une migration ponctuelle, non versionnée.
     """
+    # Les rectifications déclarées s'appliquent ICI, et nulle part ailleurs :
+    # c'est le seul point par lequel passent toutes les fiches, de tous les
+    # collecteurs. Déclarée une fois, une rectification vaut donc pour SIRENE,
+    # le RNA, OSM et les saisies — et ne peut plus être défaite par une
+    # recollecte. Liste vide par défaut : une instance qui n'en déclare pas ne
+    # voit aucune différence.
+    name = rectifier(name)
+    address = rectifier(address)
+
     row = _entite_existante(conn, type, name, commune)
     if row is None:
         # Colonne toujours écrite, même à NULL : plus aucun défaut implicite ne

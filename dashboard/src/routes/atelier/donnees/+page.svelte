@@ -17,8 +17,22 @@
   ]
   const CONFIDENCES = ['', 'verified', 'confirmed', 'probable', 'hypothesis']
 
+  // Filtrer par origine n'est pas du confort : c'est ce qui rend l'arbitrage
+  // faisable. Sur 9 264 actes, 4 934 seulement sont rectifiables — les autres
+  // viennent d'une administration et ne se réécrivent pas. Et « non classé »
+  // est la liste qu'il faut regarder pour déclarer les sources manquantes,
+  // sans quoi ces lignes restent invisibles ET non corrigeables.
+  const ORIGINES = [
+    { key: '',               label: 'Toutes origines' },
+    { key: 'verbatim',       label: 'Lu dans un document' },
+    { key: 'institutionnel', label: 'Source institutionnelle' },
+    { key: 'atelier',        label: 'Saisi à la main' },
+    { key: 'non-classe',     label: 'Non classé' },
+  ]
+
   let tab = 'deliberation'
   let statusFilter = ''
+  let origineFilter = ''
   let items = []
   let loading = false
   let error = ''
@@ -46,10 +60,24 @@
   // Valeur d'origine du champ, telle que la donnée source la porte.
   const valeurSource = (it, champ) => it?.[champ] ?? ''
 
+  // ─── Origine ───────────────────────────────────────────────────────────────
+  // Une donnée structurée par une administration (OFGL, BOAMP, BODACC, DECP…)
+  // ne se réécrit pas à la main : le montant est celui qu'elle publie. Ce qui
+  // vient d'une lecture — PDF, page web, OCR — le peut, parce que le chiffre y
+  // est notre interprétation d'une phrase. L'API refuse de toute façon ; ce qui
+  // suit évite d'offrir un champ dont on saura ensuite qu'il sera rejeté.
+  const LIBELLE_ORIGINE = {
+    institutionnel: 'source institutionnelle',
+    verbatim: 'lu dans un document',
+    atelier: 'saisi à la main',
+  }
+  $: rectifiable = selected
+      && ['verbatim', 'atelier'].includes(selected.origine)
+
   async function load() {
     loading = true; error = ''; selected = null
     try {
-      items = await api.donnees(tab, statusFilter, 300)
+      items = await api.donnees(tab, statusFilter, 300, origineFilter)
     } catch (e) {
       error = e.message || 'Erreur de chargement'
       items = []
@@ -112,7 +140,7 @@
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v)
   }
 
-  $: tab, statusFilter, load()
+  $: tab, statusFilter, origineFilter, load()
 
   // Le front ne devine pas ce qui est corrigeable : il demande le contrat.
   api.champsCorrigeables()
@@ -138,6 +166,9 @@
       {#each STATUSES as s}
         <button class="chip" class:on={statusFilter === s.key} on:click={() => (statusFilter = s.key)}>{s.label}</button>
       {/each}
+      <select class="chip-select" bind:value={origineFilter}>
+        {#each ORIGINES as o}<option value={o.key}>{o.label}</option>{/each}
+      </select>
     </div>
     <div class="legend">
       <span class="pill pending">{counts.pending || 0} à revoir</span>
@@ -211,8 +242,16 @@
             <strong>{selected.objet || '(objet inconnu)'}</strong>
             <p class="excerpt">{selected.acheteur_nom} → {selected.titulaire_nom || '?'} · {fmtMontant(selected.montant)}</p>
           {/if}
+          <p class="origine {selected.origine || 'inconnue'}">
+            {LIBELLE_ORIGINE[selected.origine] || 'origine non classée'}
+            {#if selected.saisi_par}· {selected.saisi_par}{/if}
+          </p>
           {#if selected.source_url}
             <a class="src-link" href={selected.source_url} target="_blank" rel="noopener">↗ source</a>
+          {/if}
+          {#if selected.document_id}
+            <a class="src-link" href={`/api/atelier/documents/${selected.document_id}/fichier`}
+               target="_blank" rel="noopener">↗ document archivé</a>
           {/if}
         </div>
 
@@ -236,7 +275,24 @@
           </select>
         </label>
 
-        {#if champsDuType.length}
+        {#if champsDuType.length && !rectifiable}
+          <div class="field corrections verrou">
+            <span>Corriger la donnée</span>
+            <p class="hint">
+              {#if selected.origine === 'institutionnel'}
+                Cette ligne vient d'un collecteur institutionnel : sa valeur est
+                celle que publie l'administration source, et l'atelier ne la
+                réécrit pas. Vous pouvez en revanche <strong>l'écarter de la
+                publication</strong> ci-dessus, ou la commenter.
+              {:else}
+                L'origine de cette ligne n'est pas classée : par précaution, sa
+                valeur n'est pas modifiable. Lancer
+                <code>scripts/classer_origine.py</code>, qui indiquera la source
+                à déclarer.
+              {/if}
+            </p>
+          </div>
+        {:else if champsDuType.length}
           <div class="field corrections">
             <span>Corriger la donnée</span>
             <p class="hint">
@@ -307,8 +363,20 @@
   .filters { display: flex; gap: .35rem; }
   .chip { padding: .25rem .7rem; border-radius: 999px; background: #1e293b; color: #94a3b8; font-size: .78rem; }
   .chip.on { background: #334155; color: #fff; }
+  .chip-select { width: auto; padding: .25rem .5rem; border-radius: 999px;
+                 background: #1e293b; color: #94a3b8; font-size: .78rem;
+                 border: none; }
 
   .crayon { color: #34d399; font-size: .8rem; margin-left: .25rem; }
+
+  .origine { margin: .4rem 0 0; font-size: .7rem; text-transform: uppercase;
+             letter-spacing: .04em; }
+  .origine.institutionnel { color: #60a5fa; }
+  .origine.verbatim       { color: #a78bfa; }
+  .origine.atelier        { color: #34d399; }
+  .origine.inconnue       { color: #f59e0b; }
+  .corrections.verrou .hint { color: #94a3b8; }
+  .corrections.verrou code { background: #0f172a; padding: 0 .25rem; border-radius: 3px; }
   .corrections { border-top: 1px solid #1e293b; padding-top: .75rem; margin-top: .25rem; }
   .corrections .hint { color: #64748b; font-size: .74rem; line-height: 1.45;
                        margin: .2rem 0 .6rem; font-weight: 400; }

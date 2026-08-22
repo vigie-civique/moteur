@@ -62,6 +62,19 @@ SERVICE_CATEGORIES = {
 }
 
 
+def nom_utilisable(nom: str | None) -> bool:
+    """Un nom sans une seule lettre n'est pas un nom.
+
+    OSM range les panneaux d'information sous `tourism=information`, et le
+    `name` y porte le NUMÉRO du panneau. Lasalle en a reçu dix, nommés « 2 » à
+    « 10 » et « ? » : ils occupaient la TOTALITÉ de l'onglet « Lieu » de
+    l'atelier, en tête de liste puisque les chiffres se trient avant les
+    lettres. Le critère est lexical, pas une liste de valeurs OSM à tenir :
+    une borne utilement nommée (« Panneau 3 — le Valat ») passe, « 3 » non.
+    """
+    return any(c.isalpha() for c in (nom or ""))
+
+
 def _requete(insee: str) -> str:
     filtres = "\n".join(f'  nwr(area.a)["{cle}"];' for cle in CLES)
     return GABARIT.format(insee=insee, filtres=filtres)
@@ -171,7 +184,7 @@ def import_osm():
     print(f"[osm] {len(features)} POIs sur "
           f"{len(COMMUNES) - len(echecs)}/{len(COMMUNES)} communes")
 
-    inserted = skipped = 0
+    inserted = skipped = sans_lettre = 0
 
     with transaction() as conn:
         for feat in features:
@@ -181,6 +194,10 @@ def import_osm():
 
             if not name:
                 skipped += 1
+                continue
+
+            if not nom_utilisable(name):
+                sans_lettre += 1
                 continue
 
             coords = geom.get("coordinates", [None, None])
@@ -225,7 +242,8 @@ def import_osm():
 
             inserted += 1
 
-    print(f"[osm] {inserted} POIs importés, {skipped} sans nom ignorés")
+    print(f"[osm] {inserted} POIs importés, {skipped} sans nom "
+          f"et {sans_lettre} sans aucune lettre ignorés")
 
     # Une collecte partielle n'est pas une collecte. Le 14/08/2026, ce step a
     # rendu « ok » avec 13 communes sur 15 en échec — dont la commune

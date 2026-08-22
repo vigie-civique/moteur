@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,9 @@ try:
 except ImportError:
     pass
 
-from fastapi import Body, FastAPI, HTTPException, Path as FPath, Query, Header, Depends
+from fastapi import (Body, Depends, FastAPI, File, Form, Header, HTTPException,
+                     Path as FPath, Query, UploadFile)
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -32,6 +35,9 @@ SYNTHESES_DIR = BASE_DIR / "dashboard" / "static" / "api" / "syntheses"
 # données que le site ne publie pas, et l'écart ne se verrait jamais.
 from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
                                DEPARTEMENT, EPCI_NOM)
+from collectors import extraction as _extraction
+from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
+                                modifiable)
 
 # Boîte englobante de la commune, telle que déclarée par l'instance.
 COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
@@ -916,50 +922,80 @@ def _build_user_msg(req: SynthesizeRequest, db_ctx: str = "") -> str:
     parts.append(f"DEMANDE : {req.topic}")
     return "\n\n".join(parts)
 
-def _appel_openai(user_msg: str) -> str:
+def _appel_openai(user_msg: str, system: str = SYSTEM_PROMPT,
+                  max_tokens: int = 1024, json_strict: bool = False) -> str:
     """Format « chat completions ». Parlé par Ollama, llama.cpp, vLLM, LM Studio,
     Groq, Mistral, DeepSeek, OpenAI et la plupart des passerelles."""
     import requests as _rq
     entetes = {"Content-Type": "application/json"}
     if _IA_CLE:
         entetes["Authorization"] = f"Bearer {_IA_CLE}"
-    r = _rq.post(
-        f"{_IA_URL}/chat/completions",
-        headers=entetes,
-        json={
-            "model": _IA_MODELE,
-            "max_tokens": 1024,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": user_msg},
-            ],
-        },
-        timeout=180,   # un modèle local sur CPU est lent, pas en panne
-    )
+    charge = {
+        "model": _IA_MODELE,
+        "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user_msg},
+        ],
+    }
+    if json_strict:
+        # Demandé, pas exigé : tous les fournisseurs ne connaissent pas ce
+        # paramètre. Celui qui l'ignore renvoie du texte, et l'appelant sait
+        # déjà y retrouver un objet JSON — mieux vaut une réponse à nettoyer
+        # qu'un 400 sur un réglage optionnel.
+        charge["response_format"] = {"type": "json_object"}
+        # Une extraction n'a pas à être créative : elle recopie ce qu'elle lit.
+        charge["temperature"] = 0
+    r = _rq.post(f"{_IA_URL}/chat/completions", headers=entetes, json=charge,
+                 timeout=600)   # un modèle local sur CPU est lent, pas en panne
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    # Pas `["content"]` directement : un modèle à raisonnement rend un contenu
+    # VIDE avec un HTTP 200 quand son budget de tokens est épuisé. Ce lecteur
+    # lève une erreur qui dit quoi faire, au lieu de propager une chaîne vide.
+    return _extraction.contenu_openai(r.json())
 
 
-def _appel_anthropic(user_msg: str) -> str:
+def _appel_anthropic(user_msg: str, system: str = SYSTEM_PROMPT,
+                     max_tokens: int = 1024, json_strict: bool = False) -> str:
     """Format « messages » d'Anthropic — le seul répandu qui ne soit pas
     compatible avec le précédent, d'où cette seconde branche."""
     import requests as _rq
     entetes = {"Content-Type": "application/json", "anthropic-version": "2023-06-01"}
     if _IA_CLE:
         entetes["x-api-key"] = _IA_CLE
-    r = _rq.post(
-        f"{_IA_URL}/messages",
-        headers=entetes,
-        json={
-            "model": _IA_MODELE,
-            "max_tokens": 1024,
-            "system": SYSTEM_PROMPT,
-            "messages": [{"role": "user", "content": user_msg}],
-        },
-        timeout=180,
-    )
+    charge = {
+        "model": _IA_MODELE,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": user_msg}],
+    }
+    if json_strict:
+        charge["temperature"] = 0
+    r = _rq.post(f"{_IA_URL}/messages", headers=entetes, json=charge, timeout=600)
     r.raise_for_status()
     return r.json()["content"][0]["text"]
+
+
+def _appel_modele(user_msg: str, **kw) -> str:
+    """Le fournisseur réglé, quel qu'il soit. Un seul point d'appel."""
+    if not _ia_configuree():
+        raise HTTPException(503, "Aucun modèle configuré : régler IA_URL et IA_MODELE "
+                                 "(cf. deploy/env.exemple).")
+    if _IA_PROTOCOLE not in _IA_PROTOCOLES:
+        raise HTTPException(503, f"IA_PROTOCOLE={_IA_PROTOCOLE} inconnu — "
+                                 f"valeurs acceptées : {', '.join(_IA_PROTOCOLES)}.")
+    appel = _appel_anthropic if _IA_PROTOCOLE == "anthropic" else _appel_openai
+    try:
+        return appel(user_msg, **kw)
+    except HTTPException:
+        raise
+    except _extraction.ReponseSansContenu:
+        # Remonte telle quelle : `extraire` la rattrape par tranche pour en
+        # faire un motif d'échec lisible, plutôt qu'un « rien trouvé » muet.
+        raise
+    except Exception as e:
+        # 502 et non 500 : la panne est chez le fournisseur, pas dans l'atelier.
+        raise HTTPException(502, f"Le modèle n'a pas répondu : {e}")
 
 
 @app.get("/api/ia/config")
@@ -981,26 +1017,84 @@ def ia_config(user=Depends(require_auth)):
 def synthesize(request: StarletteRequest, req: SynthesizeRequest):
     """Interroge le modèle réglé dans l'environnement. Aucun fournisseur par
     défaut : sans réglage, la route dit qu'elle n'est pas configurée."""
-    if not _ia_configuree():
-        raise HTTPException(503, "Aucun modèle configuré : régler IA_URL et IA_MODELE "
-                                 "(cf. deploy/env.exemple).")
-    if _IA_PROTOCOLE not in _IA_PROTOCOLES:
-        raise HTTPException(503, f"IA_PROTOCOLE={_IA_PROTOCOLE} inconnu — "
-                                 f"valeurs acceptées : {', '.join(_IA_PROTOCOLES)}.")
-
     conn = get_db()
     try:
         db_ctx = _db_context_for_topic(req.topic, conn)
     finally:
         conn.close()
-    user_msg = _build_user_msg(req, db_ctx)
+    return {"synthesis": _appel_modele(_build_user_msg(req, db_ctx)),
+            "provider": _IA_MODELE}
 
-    appel = _appel_anthropic if _IA_PROTOCOLE == "anthropic" else _appel_openai
+
+# ─── Extraction assistée ──────────────────────────────────────────────────────
+#
+# Le prompt, le découpage et la vérification des citations vivent dans
+# `collectors/extraction.py` — pas ici. C'est ce qui permet au banc d'essai
+# (`scripts/banc_essai_ia.py`) de comparer deux modèles avec EXACTEMENT ce que
+# l'atelier leur demande : une seconde copie du prompt divergerait, et l'essai
+# ne dirait plus rien de ce qui tourne vraiment.
+#
+# Le modèle ne saisit rien. Il propose ; l'atelier affiche ; un humain décide.
+
+class ExtraireRequest(BaseModel):
+    objet: str                      # flux | acte | marche | budget_vote
+    document_id: Optional[int] = None
+    event_id: Optional[int] = None
+
+
+@app.post("/api/atelier/ia/extraire")
+@limiter.limit("20/hour")
+def atelier_ia_extraire(request: StarletteRequest, req: ExtraireRequest,
+                        user=Depends(require_auth)):
+    """Propose des lignes structurées d'après un document — sans rien écrire."""
+    if req.objet not in _extraction.GABARITS:
+        raise HTTPException(400, f"objet inconnu : {req.objet} — valeurs admises : "
+                                 f"{', '.join(_extraction.GABARITS)}")
+    if not (req.document_id or req.event_id):
+        raise HTTPException(400, "préciser document_id ou event_id.")
+
+    conn = get_db()
     try:
-        return {"synthesis": appel(user_msg), "provider": _IA_MODELE}
-    except Exception as e:
-        # 502 et non 500 : la panne est chez le fournisseur, pas dans l'atelier.
-        raise HTTPException(502, f"Le modèle n'a pas répondu : {e}")
+        if req.event_id:
+            ev = row(conn, "SELECT id, title, content, date, source_url, "
+                           "raw_document_id FROM events WHERE id=?", (req.event_id,))
+            if not ev:
+                raise HTTPException(404, "acte introuvable.")
+            texte = ev["content"] or ""
+            doc_id = ev["raw_document_id"]
+            titre = ev["title"]
+            if not doc_id and ev["source_url"]:
+                lien = row(conn, "SELECT id FROM raw_documents WHERE url=?",
+                           (ev["source_url"],))
+                doc_id = lien["id"] if lien else None
+        else:
+            doc = row(conn, "SELECT id, title, local_path, doc_type FROM raw_documents "
+                            "WHERE id=?", (req.document_id,))
+            if not doc:
+                raise HTTPException(404, "document introuvable.")
+            doc_id, titre = doc["id"], doc["title"]
+            # Le texte des actes est déjà extrait en base ; le relire d'un PDF
+            # ici demanderait pdfplumber dans l'API, donc de tenir un second
+            # chemin d'extraction qui divergerait du premier.
+            actes = rows(conn, "SELECT content FROM events WHERE raw_document_id=? "
+                               "OR source_url=(SELECT url FROM raw_documents WHERE id=?)",
+                         (doc_id, doc_id))
+            texte = "\n\n".join(a["content"] or "" for a in actes)
+    finally:
+        conn.close()
+
+    if not texte.strip():
+        raise HTTPException(422, "Aucun texte exploitable pour cette source : "
+                                 "le document n'a pas encore été lu par un parser.")
+
+    resultat = _extraction.extraire(texte, req.objet, _appel_modele)
+    resultat["source"] = {"raw_document_id": doc_id, "titre": titre}
+    resultat["modele"] = _IA_MODELE
+    # Le dire explicitement : quand on manipule des données de personnes, savoir
+    # si le texte est sorti de la machine n'est pas un détail d'affichage.
+    resultat["locale"] = bool(_IA_URL) and any(
+        h in _IA_URL for h in ("localhost", "127.0.0.1", "[::1]"))
+    return resultat
 
 # ─── /api/candidates ───────────────────────────────────────────────────────────
 
@@ -1098,6 +1192,33 @@ def public_snapshot_status(x_admin_key: Optional[str] = Header(default=None),
     _check_admin(x_admin_key, user)
     return _public_snapshot_status()
 
+def _controler_snapshot(cible: Path) -> dict:
+    """Rejoue `scripts/verify_snapshot.py` sur un répertoire produit.
+
+    EN SOUS-PROCESSUS, jamais en import. Deux raisons, et la seconde a coûté
+    une soirée le 21/08/2026 :
+
+    1. Le contrôleur est écrit comme un adversaire du builder — il ne partage
+       aucun code avec lui, c'est toute sa valeur. L'importer ici, dans le
+       processus qui vient d'appeler `build_snapshot()`, les remettrait dans la
+       même mémoire et les ferait vieillir ensemble.
+    2. Un atelier lancé le matin exécute le code du matin. Ce jour-là, un clic
+       sur « régénérer » a rejoué un builder d'avant un correctif et écrasé un
+       bon snapshot par l'ancien — `{"ok": true}` en retour, 152 liens morts
+       dans le fichier servi. Un interpréteur neuf lit le code du disque, pas
+       celui du démarrage : c'est la seule façon que le contrôle ne mente pas
+       sur le code qu'il contrôle.
+    """
+    proc = subprocess.run(
+        [sys.executable, str(BASE_DIR / "scripts" / "verify_snapshot.py"), str(cible)],
+        capture_output=True, text=True, cwd=str(BASE_DIR), timeout=900)
+    return {
+        "repertoire": str(cible),
+        "ok": proc.returncode == 0,
+        "rapport": (proc.stdout + proc.stderr).strip(),
+    }
+
+
 @app.post("/api/admin/public-snapshot/generate")
 def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
                              user=Depends(optional_user)):
@@ -1105,14 +1226,123 @@ def generate_public_snapshot(x_admin_key: Optional[str] = Header(default=None),
     from scripts.build_public_snapshot import DEFAULT_OUT, ROOT, build_snapshot
 
     stats = build_snapshot(DEFAULT_OUT)
+
+    # LE CONTRÔLE PRÉCÈDE LA SYNCHRO. Ce qui fuit ne doit pas atteindre le
+    # répertoire que le site lit : un snapshot refusé reste dans l'atelier, où
+    # il ne blesse personne. Publier d'abord et vérifier ensuite, c'est
+    # exactement la séquence qui a mis 1 229 fiches écartées en ligne.
+    controle = _controler_snapshot(DEFAULT_OUT)
+    if not controle["ok"]:
+        raise HTTPException(500,
+            "Snapshot refusé par le contrôle d'étanchéité — le site public n'a "
+            "PAS été mis à jour, l'ancien reste en place.\n\n" + controle["rapport"])
+
     synced = _sync_public_static(DEFAULT_OUT, ROOT)   # snapshot → site public, 1 clic
+
+    # Et une seconde fois sur ce qui est SERVI. La synchro met `entite/` en
+    # miroir et recopie le reste : un fichier oublié ou une purge incomplète ne
+    # se voit pas dans le répertoire d'origine, seulement à l'arrivée.
+    controle_site = _controler_snapshot(ROOT / "public" / "static" / "data")
+    if not controle_site["ok"]:
+        raise HTTPException(500,
+            "Le snapshot est propre mais sa copie vers le site ne l'est pas — "
+            "ne pas déployer.\n\n" + controle_site["rapport"])
+
     return {
         "ok": True,
         "output_dir": str(DEFAULT_OUT),
         "stats": stats,
         "exclusions": stats.get("exclusions", {}),
         "synced": synced,
+        "controle": controle,
+        "controle_site": controle_site,
     }
+
+# ─── Décisions : exporter / importer ──────────────────────────────────────────
+#
+# La base est reconstructible — n'importe qui la refait avec le code et un code
+# INSEE. Le jugement humain, non : les sièges tranchés, les sites validés, les
+# corrections, et depuis aujourd'hui les saisies. C'est petit, c'est cher, et
+# c'est la seule chose qui mérite de circuler.
+#
+# ⚠ L'export PEUT NOMMER DES PERSONNES PHYSIQUES : l'atelier travaille sur la
+# base non filtrée. Le répertoire produit va dans un dépôt PRIVÉ, ou nulle part.
+# `sans_personnes` retire ce qui porte sur une personne, au prix de devoir le
+# ressaisir en face.
+
+class ExportDecisionsRequest(BaseModel):
+    sans_personnes: bool = False
+
+
+@app.post("/api/atelier/decisions/exporter")
+def atelier_exporter_decisions(req: ExportDecisionsRequest,
+                               user=Depends(require_role("admin"))):
+    from scripts.exporter_decisions import exporter
+
+    dest = RACINE / "decisions"
+    conn = get_db()
+    try:
+        compte = exporter(conn, dest, req.sans_personnes)
+    finally:
+        conn.close()
+    return {"ok": True, "vers": str(dest), "compte": compte,
+            "avertissement": None if req.sans_personnes else
+            "Cet export peut nommer des personnes physiques : dépôt privé obligatoire."}
+
+
+@app.get("/api/atelier/decisions")
+def atelier_decisions_etat(user=Depends(require_auth)):
+    """Ce qu'il y a dans le répertoire de décisions, sans rien y toucher."""
+    dest = RACINE / "decisions"
+    manifeste = dest / "manifeste.json"
+    if not manifeste.is_file():
+        return {"present": False}
+    try:
+        contenu = json.loads(manifeste.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"present": True, "lisible": False}
+    return {"present": True, "lisible": True, **contenu}
+
+
+class ImportDecisionsRequest(BaseModel):
+    # Par défaut on REGARDE sans écrire. Importer des décisions d'un autre
+    # atelier est irréversible et peut contredire les siennes : le rapport à
+    # blanc d'abord, l'écriture ensuite, jamais l'inverse.
+    appliquer: bool = False
+    forcer: bool = False
+
+
+@app.post("/api/atelier/decisions/importer")
+def atelier_importer_decisions(req: ImportDecisionsRequest,
+                               user=Depends(require_role("admin"))):
+    from scripts.importer_decisions import importer
+
+    src = RACINE / "decisions"
+    if not (src / "manifeste.json").is_file():
+        raise HTTPException(404, f"Aucune décision à importer dans {src}.")
+    manifeste = json.loads((src / "manifeste.json").read_text(encoding="utf-8"))
+    # Refus net : les clés naturelles d'une commune ne désignent rien dans une
+    # autre, et un import croisé mélangerait deux territoires en silence.
+    if manifeste.get("insee") and manifeste["insee"] != COMMUNE_INSEE:
+        raise HTTPException(
+            409, f"Ces décisions viennent de {manifeste.get('commune')} "
+                 f"({manifeste['insee']}), cet atelier est {COMMUNE_NAME} "
+                 f"({COMMUNE_INSEE}).")
+
+    conn = get_db_rw()
+    try:
+        rap = importer(conn, src, req.appliquer, req.forcer)
+        if req.appliquer:
+            conn.commit()
+    finally:
+        conn.close()
+    return {
+        "ok": True, "applique_reellement": req.appliquer,
+        "appliquees": rap.applique, "deja_a_jour": rap.a_jour,
+        "desaccords": rap.desaccords, "non_rattachees": rap.non_rattachees,
+        "sans_objet": rap.sans_objet,
+    }
+
 
 @app.post("/api/candidates/{candidate_id}/review")
 def review_candidate(
@@ -1286,6 +1516,51 @@ def atelier_update_status(
 DONNEES_TYPES = ("deliberation", "flow", "marche")
 ANNOTATION_STATUSES = ("pending", "validated", "rejected")
 
+#: Table portant chaque type d'objet annotable. Sert à lire son `origine` avant
+#: d'autoriser une rectification — cf. `_verifier_origine_modifiable`.
+TABLE_DE_TYPE = {
+    "deliberation": "events",
+    "flow":         "financial_flows",
+    "marche":       "marches_publics",
+}
+
+
+def _verifier_origine_modifiable(conn, object_type: str, object_id: int) -> str | None:
+    """Refuse de rectifier une VALEUR sur une ligne institutionnelle.
+
+    Règle posée par Julien le 20/08/2026 : « ne pas corrompre tout ce qui est
+    établi comme venant de collecteurs institutionnels ; cela ne concerne que ce
+    qui a été extrait de verbatims ou la collecte de sites ».
+
+    La nuance qui compte : ÉCARTER une ligne de la publication reste permis quelle
+    que soit son origine — refuser de publier un chiffre qu'on juge faux n'exige
+    pas d'en connaître un meilleur. Ce qui est interdit, c'est de substituer sa
+    lecture à celle d'une administration sur une donnée qu'elle a elle-même
+    structurée. Cette fonction ne garde donc que les corrections de valeurs.
+
+    Une ligne encore non classée est traitée comme institutionnelle : devant
+    l'inconnu, ne rien casser. Le message dit quoi faire pour en sortir.
+    """
+    table = TABLE_DE_TYPE.get(object_type)
+    if not table:
+        return None
+    ligne = row(conn, f"SELECT origine FROM {table} WHERE id=?", (object_id,))
+    if not ligne:
+        raise HTTPException(404, f"{object_type} {object_id} introuvable.")
+    origine = ligne["origine"]
+    if modifiable(origine):
+        return origine
+    if origine == INSTITUTIONNEL:
+        raise HTTPException(
+            409, "Cette ligne vient d'un collecteur institutionnel : sa valeur "
+                 "est celle que publie l'administration source, et l'atelier ne "
+                 "la réécrit pas. Vous pouvez en revanche l'écarter de la "
+                 "publication (statut « rejeté »), ou la commenter.")
+    raise HTTPException(
+        409, "Origine de cette ligne inconnue : par précaution, sa valeur n'est "
+             "pas modifiable. Lancer `scripts/classer_origine.py`, qui indiquera "
+             "la source non reconnue à déclarer dans collectors/origine.py.")
+
 # ─── Corrections : rectifier sans écraser ────────────────────────────────────
 # Rejeter une donnée fausse la fait disparaître ; le plus souvent ce qu'il faut
 # c'est la rectifier — un statut de cession, un montant OCR aberrant, une date.
@@ -1314,8 +1589,39 @@ def _valide_correction(object_type: str, champ: str, valeur):
     genre = CHAMPS_CORRIGEABLES.get(object_type, {}).get(champ)
     if genre is None:
         raise HTTPException(400, f"champ non corrigeable pour {object_type} : {champ}")
+    return _normaliser(genre, champ, valeur)
+
+
+def _normaliser(genre: str, champ: str, valeur):
+    """Normalise une valeur d'après son genre, ou refuse.
+
+    Partagé par les corrections et par la saisie manuelle : les deux écrivent
+    dans les mêmes colonnes, et deux validateurs pour un même champ finiraient
+    par admettre des choses différentes.
+    """
     if valeur is None or valeur == "":
         return None
+    if genre.startswith("choix:"):
+        admis = genre.split(":", 1)[1].split(",")
+        s = str(valeur).strip()
+        if s not in admis:
+            raise HTTPException(400, f"{champ} : valeurs admises — {', '.join(admis)}")
+        return s
+    if genre == "entite":
+        # Soit une entité déjà choisie dans la recherche, soit un nom et un type
+        # à créer. Jamais un nom seul : deviner le type d'après l'orthographe a
+        # produit des doublons dans cette base, une même structure existant à la
+        # fois en entreprise et en association.
+        if not isinstance(valeur, dict):
+            raise HTTPException(400, f"{champ} : entité attendue (id, ou nom + type)")
+        if valeur.get("id"):
+            return {"id": int(valeur["id"])}
+        if not valeur.get("nom") or not valeur.get("type"):
+            raise HTTPException(400, f"{champ} : choisir une entité existante, "
+                                     "ou donner un nom ET un type")
+        return {"nom": " ".join(str(valeur["nom"]).split())[:255],
+                "type": str(valeur["type"]).strip(),
+                "commune": (valeur.get("commune") or "").strip() or None}
     if genre == "date":
         s = str(valeur).strip()
         try:
@@ -1354,12 +1660,35 @@ def _valide_correction(object_type: str, champ: str, valeur):
     return " ".join(str(valeur).split())[:4000]
 
 
-def _donnees_query(object_type: str, limit: int):
+def _filtre_origine(alias: str, origine: Optional[str], params: list) -> str:
+    """Clause SQL de filtrage par origine, et son paramètre.
+
+    « non-classé » est une valeur de filtre à part entière : c'est la liste que
+    quelqu'un doit regarder pour déclarer les sources manquantes, et sans elle
+    ces lignes restent invisibles — donc jamais corrigées, puisqu'une origine
+    inconnue interdit la rectification.
+    """
+    if not origine:
+        return ""
+    if origine == "non-classe":
+        return f" AND {alias}.origine IS NULL"
+    params.append(origine)
+    return f" AND {alias}.origine = ?"
+
+
+def _donnees_query(object_type: str, limit: int, origine: Optional[str] = None):
+    params: list = []
     if object_type == "deliberation":
         return ("""
             SELECT e.id, e.type, e.date, e.title,
                    substr(e.content, 1, 400) AS excerpt,
-                   e.source, e.source_url,
+                   e.source, e.source_url, e.origine, e.saisi_par,
+                   -- Le document local qui porte cette ligne, s'il existe : le
+                   -- lien direct d'abord, la comparaison d'URL en repli pour les
+                   -- 4 839 actes archivés avant que la colonne n'existe.
+                   COALESCE(e.raw_document_id,
+                            (SELECT r.id FROM raw_documents r
+                              WHERE r.url = e.source_url LIMIT 1)) AS document_id,
                    -- Montant tel que la page publique le calcule : le plus élevé
                    -- des montants cités. C'est celui qu'on corrige.
                    -- Les parsers successifs ont écrit `montant` ou `value` :
@@ -1370,34 +1699,41 @@ def _donnees_query(object_type: str, limit: int):
                      WHERE json_valid(e.metadata)) AS montant
             FROM events e
             WHERE e.type IN ('deliberation','conseil_municipal','délibérations_cc','pv_cc')
+            {filtre}
             ORDER BY e.date DESC
             LIMIT ?
-        """, [limit])
+        """.replace("{filtre}", _filtre_origine("e", origine, params)), params + [limit])
     if object_type == "flow":
         return ("""
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,
-                   ff.source, ff.confidence,
+                   ff.source, ff.confidence, ff.origine, ff.saisi_par,
+                   ff.raw_document_id AS document_id,
                    ef.name AS from_name, et.name AS to_name
             FROM financial_flows ff
             LEFT JOIN entities ef ON ef.id = ff.from_id
             LEFT JOIN entities et ON et.id = ff.to_id
+            WHERE 1=1 {filtre}
             ORDER BY ff.year DESC, ff.amount DESC
             LIMIT ?
-        """, [limit])
+        """.replace("{filtre}", _filtre_origine("ff", origine, params)), params + [limit])
     # marche
     return ("""
         SELECT mp.id, mp.acheteur_nom, mp.titulaire_nom, mp.objet,
-               mp.montant, mp.procedure, mp.date_notif, mp.source, mp.source_url
+               mp.montant, mp.procedure, mp.date_notif, mp.source, mp.source_url,
+               mp.origine, mp.saisi_par, mp.raw_document_id AS document_id
         FROM marches_publics mp
+        WHERE 1=1 {filtre}
         ORDER BY mp.date_notif DESC
         LIMIT ?
-    """, [limit])
+    """.replace("{filtre}", _filtre_origine("mp", origine, params)), params + [limit])
 
 
 @app.get("/api/atelier/donnees")
 def atelier_donnees(
     type: str = Query(..., description="deliberation | flow | marche"),
     status: Optional[str] = None,
+    origine: Optional[str] = Query(None, description="institutionnel | verbatim | "
+                                                     "atelier | non-classe"),
     limit: int = Query(200, le=1000),
     user=Depends(require_auth),
 ):
@@ -1405,8 +1741,11 @@ def atelier_donnees(
         raise HTTPException(400, f"type invalide — valeurs: {', '.join(DONNEES_TYPES)}")
     if status and status not in ANNOTATION_STATUSES:
         raise HTTPException(400, f"status invalide — valeurs: {', '.join(ANNOTATION_STATUSES)}")
+    if origine and origine not in ORIGINES + ("non-classe",):
+        raise HTTPException(400, f"origine invalide — valeurs: "
+                                 f"{', '.join(ORIGINES + ('non-classe',))}")
 
-    sql, params = _donnees_query(type, limit)
+    sql, params = _donnees_query(type, limit, origine)
     conn = get_db()
     try:
         items = rows(conn, sql, params)
@@ -1484,6 +1823,13 @@ def atelier_annotate(
         anciennes = parse_json_field(existing["corrections"], {}) if existing else {}
         corrections = dict(anciennes) if isinstance(anciennes, dict) else {}
         if req.corrections is not None:
+            # Une correction de VALEUR exige une ligne dont l'origine l'autorise.
+            # Le test porte sur les corrections non vides seulement : annuler une
+            # correction (valeur vide) doit rester possible même si la ligne a
+            # changé d'origine entre-temps, sinon une correction posée par erreur
+            # sur de l'institutionnel deviendrait indélogeable.
+            if any(v not in (None, "") for v in req.corrections.values()):
+                _verifier_origine_modifiable(conn, object_type, object_id)
             for champ, valeur in req.corrections.items():
                 propre = _valide_correction(object_type, champ, valeur)
                 if propre is None:
@@ -1519,6 +1865,293 @@ def atelier_annotate(
                 "review_status": new_status, "corrections": corrections}
     finally:
         conn.close()
+
+# ─── Saisie manuelle ──────────────────────────────────────────────────────────
+#
+# Ce que l'atelier savait faire jusqu'ici : JUGER une ligne qu'un collecteur a
+# écrite — l'écarter, la rectifier. Ce qu'il ne savait pas faire : en CRÉER une.
+# Or 49 % des flux financiers de la production sont saisis à la main, dans onze
+# scripts Python jetables, et les budgets votés n'existent nulle part ailleurs
+# que dans les comptes rendus du conseil.
+#
+# La saisie n'écrit PAS directement en base. Elle va dans `config/saisies.json`,
+# que le collecteur `saisies` rejoue à chaque collecte : sans quoi elle serait
+# perdue au premier `init_instance`, exactement comme le travail de la v1. L'API
+# écrit le fichier puis rejoue l'import — un seul chemin d'écriture, donc pas de
+# divergence possible entre « saisir » et « rejouer ».
+#
+# Elle ne touche jamais une ligne existante : elle en ajoute, marquées
+# `origine='atelier'`. La règle « ne pas corrompre ce qui vient d'un collecteur
+# institutionnel » tient donc par construction.
+
+from collectors import saisies as _saisies  # noqa: E402
+
+RACINE = Path(__file__).resolve().parent
+
+
+@app.get("/api/atelier/saisies/champs")
+def atelier_saisies_champs(user=Depends(require_auth)):
+    """Le contrat de saisie : le formulaire le demande au lieu de le deviner."""
+    return {"objets": _saisies.CHAMPS_SAISIE, "confiances": list(_saisies.CONFIANCES)}
+
+
+@app.get("/api/atelier/saisies")
+def atelier_saisies_liste(user=Depends(require_auth)):
+    data = _saisies.charger()
+    return {"version": data.get("version"),
+            "saisies": [s for s in data.get("saisies", []) if not s.get("retire")]}
+
+
+class SaisieCreate(BaseModel):
+    objet: str
+    valeurs: dict
+    source: dict = {}
+    confidence: str = "confirmed"
+
+
+def _valide_saisie(objet: str, valeurs: dict) -> dict:
+    """Applique le contrat de `collectors/saisies.py` : champs obligatoires
+    présents, valeurs normalisées, rien d'autre accepté.
+
+    Refuser un champ inconnu n'est pas du zèle : c'est ce qui empêche un
+    formulaire d'écrire dans une colonne que la publication ne relit jamais,
+    donc de faire croire à une saisie qui n'aura aucun effet visible.
+    """
+    contrat = _saisies.CHAMPS_SAISIE.get(objet)
+    if not contrat:
+        raise HTTPException(400, f"objet inconnu : {objet} — valeurs admises : "
+                                 f"{', '.join(_saisies.CHAMPS_SAISIE)}")
+    propres: dict = {}
+    for cle, spec in contrat.items():
+        if cle.startswith("_"):
+            continue
+        champ = cle.rstrip("*")
+        genre = spec[0]
+        valeur = valeurs.get(champ)
+        normalisee = _normaliser(genre, champ, valeur)
+        if normalisee is None:
+            if cle.endswith("*"):
+                raise HTTPException(400, f"{champ} : champ obligatoire ({spec[1]})")
+            continue
+        propres[champ] = normalisee
+
+    inconnus = set(valeurs) - {c.rstrip("*") for c in contrat if not c.startswith("_")}
+    if inconnus:
+        raise HTTPException(400, f"champs non reconnus pour {objet} : "
+                                 f"{', '.join(sorted(inconnus))}")
+    return propres
+
+
+def _valide_source(source: dict, conn) -> dict:
+    """Une saisie sans source ne s'enregistre pas.
+
+    Les procès-verbaux 2017-2019 de la commune ont disparu du site de la mairie :
+    une URL seule ne prouve plus rien. On exige donc un document ARCHIVÉ —
+    choisi parmi ceux que la collecte a déjà déposés, ou déposé à la main.
+
+    La soupape `sans_document_motif` existe pour les cas où c'est impossible
+    (document remis sur papier, consultation sur place). Elle n'est pas un
+    contournement : le motif est enregistré, republié avec la ligne, et se voit.
+    """
+    doc_id = source.get("raw_document_id")
+    motif = (source.get("sans_document_motif") or "").strip()
+    if not doc_id and not motif:
+        raise HTTPException(
+            400, "Source manquante : choisir un document archivé, en déposer un, "
+                 "ou expliquer pourquoi il n'y en a pas (sans_document_motif).")
+    propre = {"citation": " ".join(str(source.get("citation") or "").split())[:2000]}
+    if doc_id:
+        doc = row(conn, "SELECT id, sha256, url, local_path FROM raw_documents "
+                        "WHERE id=?", (int(doc_id),))
+        if not doc:
+            raise HTTPException(400, f"document {doc_id} introuvable.")
+        # Le sha256 accompagne l'identifiant : sur une autre machine, les `id`
+        # ne veulent rien dire, et c'est l'empreinte qui retrouve le document.
+        propre.update({"raw_document_id": doc["id"], "sha256": doc["sha256"],
+                       "url": doc["url"]})
+    else:
+        propre["sans_document_motif"] = motif[:500]
+        if source.get("url"):
+            propre["url"] = _normaliser("url", "url", source["url"])
+    return propre
+
+
+@app.post("/api/atelier/saisies", status_code=201)
+def atelier_saisie_creer(req: SaisieCreate, user=Depends(require_auth)):
+    if req.confidence not in _saisies.CONFIANCES:
+        raise HTTPException(400, f"confidence : valeurs admises — "
+                                 f"{', '.join(_saisies.CONFIANCES)}")
+    conn = get_db()
+    try:
+        valeurs = _valide_saisie(req.objet, req.valeurs)
+        source = _valide_source(req.source or {}, conn)
+    finally:
+        conn.close()
+
+    saisie = {
+        "id": _secrets.token_hex(8),
+        "objet": req.objet,
+        "valeurs": valeurs,
+        "source": source,
+        "confidence": req.confidence,
+        "saisi_par": user["email"],
+        "saisi_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    data = _saisies.charger()
+    data.setdefault("saisies", []).append(saisie)
+    _saisies.enregistrer(data)
+
+    # Rejouer TOUT le fichier plutôt qu'insérer cette ligne seule : c'est le même
+    # code qui écrira en base au prochain `run_all`, donc le résultat visible
+    # dans l'atelier est exactement celui qu'une recollecte reproduira.
+    try:
+        resultat = _saisies.import_saisies()
+    except Exception as e:
+        # La saisie est déjà dans le fichier — donc elle n'est pas perdue, et
+        # elle sera reprise au prochain passage. Le dire, plutôt que de laisser
+        # croire à un échec total : le travail de lecture est ce qui coûte cher.
+        raise HTTPException(
+            500, f"Saisie enregistrée dans config/saisies.json, mais son "
+                 f"insertion en base a échoué : {e}. Elle sera reprise au "
+                 f"prochain passage du collecteur.")
+
+    conn = get_db_rw()
+    try:
+        conn.execute(
+            "INSERT INTO audit_log(user_id, entity_id, table_name, action, field,"
+            " old_value, new_value) VALUES(?,?,?,?,?,?,?)",
+            (user["id"], None, "saisies", "create",
+             req.objet, None, json.dumps(saisie, ensure_ascii=False)))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "saisie": saisie, "import": resultat}
+
+
+@app.delete("/api/atelier/saisies/{saisie_id}")
+def atelier_saisie_retirer(saisie_id: str, user=Depends(require_auth)):
+    """Retire une saisie — marquée retirée, pas effacée du fichier.
+
+    Garder la trace du retrait est ce qui permet de le propager : sur une autre
+    machine qui a déjà importé cette saisie, une ligne disparue du fichier serait
+    indistinguable d'une ligne jamais reçue, et l'import la laisserait en place.
+    """
+    data = _saisies.charger()
+    cible = next((s for s in data.get("saisies", []) if s.get("id") == saisie_id), None)
+    if cible is None:
+        raise HTTPException(404, f"saisie {saisie_id} introuvable.")
+    if cible.get("retire"):
+        return {"ok": True, "deja_retiree": True}
+    cible["retire"] = True
+    cible["retire_par"] = user["email"]
+    cible["retire_le"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _saisies.enregistrer(data)
+    resultat = _saisies.import_saisies()
+    return {"ok": True, "import": resultat}
+
+
+# ─── Documents sources ────────────────────────────────────────────────────────
+
+@app.get("/api/atelier/documents")
+def atelier_documents(
+    q: Optional[str] = Query(None, description="filtre sur le titre ou l'URL"),
+    limit: int = Query(50, le=500),
+    user=Depends(require_auth),
+):
+    """Les sources déjà archivées localement, pour en choisir une à la saisie."""
+    conn = get_db()
+    try:
+        if q:
+            motif = f"%{q.strip()}%"
+            items = rows(conn, """
+                SELECT id, source, doc_type, title, url, byte_size, fetched_at
+                FROM raw_documents
+                WHERE title LIKE ? OR url LIKE ? OR local_path LIKE ?
+                ORDER BY fetched_at DESC LIMIT ?""", (motif, motif, motif, limit))
+        else:
+            items = rows(conn, """
+                SELECT id, source, doc_type, title, url, byte_size, fetched_at
+                FROM raw_documents ORDER BY fetched_at DESC LIMIT ?""", (limit,))
+        return items
+    finally:
+        conn.close()
+
+
+@app.post("/api/atelier/documents", status_code=201)
+async def atelier_document_deposer(
+    fichier: UploadFile = File(...),
+    titre: Optional[str] = Form(None),
+    url: Optional[str] = Form(None),
+    user=Depends(require_auth),
+):
+    """Dépose un document que la collecte n'a pas atteint.
+
+    Rangé comme les collecteurs le font — `data/raw/atelier/<empreinte>.<ext>` —
+    et inscrit dans `raw_documents`. L'empreinte sert de nom : deux dépôts du
+    même fichier ne font qu'une entrée, et l'empreinte est ce qui permettra de
+    retrouver ce document sur une autre machine.
+    """
+    contenu = await fichier.read()
+    if not contenu:
+        raise HTTPException(400, "fichier vide.")
+    if len(contenu) > 50 * 1024 * 1024:
+        raise HTTPException(413, "fichier trop volumineux (50 Mo maximum).")
+
+    import hashlib
+    empreinte = hashlib.sha256(contenu).hexdigest()
+    # L'extension vient du nom déposé, mais n'est jamais reprise telle quelle :
+    # elle sert à nommer un fichier sur le disque, et un nom fourni par un
+    # formulaire n'a pas à décider d'un chemin. On ne garde que des lettres.
+    ext = "".join(c for c in Path(fichier.filename or "").suffix.lower()
+                  if c.isalnum() or c == ".")[:8] or ".bin"
+    dossier = RACINE / "data" / "raw" / "atelier"
+    dossier.mkdir(parents=True, exist_ok=True)
+    chemin = dossier / f"{empreinte[:16]}{ext}"
+    if not chemin.exists():
+        chemin.write_bytes(contenu)
+
+    relatif = str(chemin.relative_to(RACINE))
+    conn = get_db_rw()
+    try:
+        existant = row(conn, "SELECT id FROM raw_documents WHERE sha256=?", (empreinte,))
+        if existant:
+            return {"ok": True, "id": existant["id"], "deja_present": True,
+                    "sha256": empreinte}
+        cur = conn.execute("""
+            INSERT INTO raw_documents(source, url, doc_type, sha256, byte_size,
+                                      local_path, http_status, title, parse_status)
+            VALUES('atelier', ?, ?, ?, ?, ?, NULL, ?, 'manuel')""",
+            (url, ext.lstrip(".") or "bin", empreinte, len(contenu), relatif,
+             titre or fichier.filename))
+        conn.commit()
+        return {"ok": True, "id": cur.lastrowid, "sha256": empreinte,
+                "byte_size": len(contenu), "local_path": relatif}
+    finally:
+        conn.close()
+
+
+@app.get("/api/atelier/documents/{doc_id}/fichier")
+def atelier_document_fichier(doc_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+    """Sert le document archivé, pour relire la source sans quitter l'atelier."""
+    conn = get_db()
+    try:
+        doc = row(conn, "SELECT local_path, doc_type, title FROM raw_documents "
+                        "WHERE id=?", (doc_id,))
+    finally:
+        conn.close()
+    if not doc:
+        raise HTTPException(404, "document introuvable.")
+    # `local_path` vient de la base, mais la base est modifiable par d'autres
+    # chemins que celui-ci : on résout et on vérifie l'appartenance à l'arbre du
+    # projet plutôt que de faire confiance à une chaîne stockée.
+    chemin = (RACINE / doc["local_path"]).resolve()
+    if not chemin.is_file() or RACINE not in chemin.parents:
+        raise HTTPException(404, "fichier absent du disque.")
+    types = {"pdf": "application/pdf", "html": "text/html; charset=utf-8",
+             "json": "application/json", "csv": "text/csv"}
+    return FileResponse(chemin, media_type=types.get(doc["doc_type"],
+                                                    "application/octet-stream"))
+
 
 # ─── GET /api/atelier/entities/{id} — détail complet pour l'éditeur ───────────
 

@@ -65,7 +65,15 @@
     <div class="grid">
       {#each liste as e (e.entity_id)}
         <article>
-          <a href="/entite/{e.entity_id}"><h3>{e.prenom} {e.nom}</h3></a>
+          <!-- `fiche` vient du snapshot, calculé contre les entités publiées.
+               La plupart des conseillers des communes membres n'ont pas de page
+               dédiée — leur nommer un lien produisait un 404. Le nom reste
+               affiché : il vient du Répertoire National des Élus. -->
+          {#if e.fiche}
+            <a href="/entite/{e.entity_id}"><h3>{e.prenom} {e.nom}</h3></a>
+          {:else}
+            <h3 class="sans-fiche">{e.prenom} {e.nom}</h3>
+          {/if}
           <div class="roles">
             {#if e.fonction}
               <span class="role" class:maire={rangFonction(e.fonction) === 0}
@@ -115,6 +123,9 @@
           margin-top: .8rem; }
   article { background: #fff; border: 1px solid var(--trait); border-radius: 10px; padding: .9rem 1rem; }
   article h3 { margin: 0 0 .5rem; color: var(--encre); font-size: 1.05rem; }
+  /* Un élu sans fiche garde exactement la même apparence : ce qui change
+     est l'absence d'affordance de lien, pas une hiérarchie entre élus. */
+  article h3.sans-fiche { color: var(--encre); }
   .roles { display: flex; flex-wrap: wrap; gap: .35rem; }
   /* Pas de `nowrap` : « 5ème vice-président du conseil communautaire » est un
      libellé RNE de 45 caractères, il débordait de la carte sur la colonne

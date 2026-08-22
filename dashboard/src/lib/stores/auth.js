@@ -13,7 +13,12 @@ export async function authFetch(path, options = {}) {
     headers: {
       ...(options.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Un FormData pose sa propre frontière multipart, que seul le navigateur
+      // sait calculer. Lui coller « application/json » d'office — ce que faisait
+      // cette ligne pour tout corps non typé — rend le dépôt de document
+      // illisible côté serveur, avec une erreur qui parle de JSON invalide.
       ...(options.body && !options.headers?.['Content-Type']
+          && !(typeof FormData !== 'undefined' && options.body instanceof FormData)
         ? { 'Content-Type': 'application/json' }
         : {}),
     },

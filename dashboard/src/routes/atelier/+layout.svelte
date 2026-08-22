@@ -60,6 +60,7 @@
   const NAV = [
     { href: '/atelier',                        label: 'File de travail' },
     { href: '/atelier/donnees',                label: 'Données importées' },
+    { href: '/atelier/saisie',                 label: 'Saisir une donnée' },
     { href: '/atelier/queue/websites',         label: '→ Websites candidats' },
     { href: '/atelier/analyses',               label: 'Analyses croisées' },
     { href: '/atelier/ia',                     label: 'Recherche IA' },

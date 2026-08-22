@@ -61,6 +61,15 @@
     }
   }
 
+  // Le contrôle d'étanchéité rend un rapport de plusieurs lignes, remonté par
+  // `postAdmin` dans son enveloppe : « 500 {"detail":"…"} ». On affiche le
+  // rapport, pas l'enveloppe — un contrôle illisible finit ignoré.
+  function lisible(message) {
+    const m = String(message).match(/^\d{3}\s+(\{[\s\S]*\})$/)
+    if (!m) return message
+    try { return JSON.parse(m[1]).detail ?? message } catch { return message }
+  }
+
   async function generateSnapshot() {
     if (!canAct) return
     generating = true
@@ -69,7 +78,7 @@
       rememberKey()
       status = await api.generatePublicSnapshot(adminKey.trim())
     } catch (e) {
-      error = e.message
+      error = lisible(e.message)
     } finally {
       generating = false
     }
@@ -82,6 +91,38 @@
 
   function entries(obj) {
     return Object.entries(obj || {})
+  }
+
+  // ─── Décisions : exporter / importer ────────────────────────────────────
+  // La base est reconstructible, le jugement humain non. Ce qu'on partage,
+  // ce ne sont pas les données — ce sont les arbitrages et les saisies.
+  let decisions = null
+  let rapport = null
+  let sansPersonnes = false
+  let occupe = ''
+
+  async function etatDecisions() {
+    try { decisions = await api.decisionsEtat() } catch { decisions = null }
+  }
+  onMount(etatDecisions)
+
+  async function exporter() {
+    occupe = 'export'; error = ''; rapport = null
+    try {
+      const r = await api.decisionsExporter(sansPersonnes)
+      rapport = { type: 'export', ...r }
+      await etatDecisions()
+    } catch (e) { error = e.message } finally { occupe = '' }
+  }
+
+  // Deux temps, toujours : on lit le rapport, ensuite seulement on écrit.
+  // Un import contredit parfois ses propres arbitrages, et c'est irréversible.
+  async function importer(appliquer) {
+    occupe = appliquer ? 'import' : 'blanc'; error = ''
+    try {
+      rapport = { type: appliquer ? 'import' : 'blanc',
+                  ...(await api.decisionsImporter(appliquer)) }
+    } catch (e) { error = e.message } finally { occupe = '' }
   }
 </script>
 
@@ -130,6 +171,87 @@
     <button class="primary" on:click={generateSnapshot} disabled={generating || !canAct}>
       {generating ? 'Génération...' : 'Générer & synchroniser le snapshot'}
     </button>
+  </section>
+
+  <section class="decisions">
+    <div class="dec-tete">
+      <div>
+        <h2>Décisions — exporter, reprendre</h2>
+        <p class="muted">
+          La base se refait toute seule avec le code et un code INSEE. Ce qui ne
+          se refait pas, c'est le travail humain : les arbitrages, les
+          corrections, les sites validés, les saisies. C'est ça qu'on transporte.
+        </p>
+      </div>
+    </div>
+
+    <div class="dec-actions">
+      <label class="dec-opt">
+        <input type="checkbox" bind:checked={sansPersonnes} />
+        Retirer ce qui porte sur des personnes physiques
+      </label>
+      <button class="secondary" on:click={exporter} disabled={occupe || !isAdmin}>
+        {occupe === 'export' ? 'Export…' : 'Exporter mes décisions'}
+      </button>
+      <button class="secondary" on:click={() => importer(false)} disabled={occupe || !isAdmin}>
+        {occupe === 'blanc' ? 'Lecture…' : 'Lire un import (à blanc)'}
+      </button>
+      <button class="primary" on:click={() => importer(true)} disabled={occupe || !isAdmin}>
+        {occupe === 'import' ? 'Import…' : 'Appliquer l\'import'}
+      </button>
+    </div>
+
+    {#if !sansPersonnes}
+      <p class="dec-alerte">
+        ⚠ Un export complet peut nommer des personnes physiques : l'atelier
+        travaille sur la base non filtrée. Le répertoire produit va dans un dépôt
+        <strong>privé</strong>, ou nulle part.
+      </p>
+    {/if}
+
+    {#if decisions?.present && decisions?.lisible}
+      <p class="muted">
+        Présent : {decisions.commune} ({decisions.insee}), exporté le
+        {(decisions.exporte_le || '').slice(0, 16).replace('T', ' à ')}
+        {#if decisions.sans_personnes}· sans personnes{/if}
+        {#if decisions.compte}
+          — {entries(decisions.compte).map(([k, v]) => `${v} ${k}`).join(', ')}
+        {/if}
+      </p>
+    {:else if decisions && !decisions.present}
+      <p class="muted">Aucun répertoire <code>decisions/</code> pour l'instant.</p>
+    {/if}
+
+    {#if rapport}
+      <div class="dec-rapport">
+        {#if rapport.type === 'export'}
+          <p class="sync-ok">✓ Exporté vers <code>{rapport.vers}</code> —
+            {entries(rapport.compte).filter(([k]) => !k.startsWith('_'))
+              .map(([k, v]) => `${v} ${k}`).join(', ')}</p>
+        {:else}
+          <p class="sync-ok">
+            {rapport.applique_reellement ? '✓ Appliqué' : 'Lecture à blanc'} :
+            {rapport.appliquees} décision(s) {rapport.applique_reellement ? 'écrite(s)' : 'applicable(s)'},
+            {rapport.deja_a_jour} déjà à jour
+          </p>
+          {#if rapport.desaccords?.length}
+            <p class="dec-alerte">{rapport.desaccords.length} désaccord(s) — non appliqué(s).
+              Deux jugements contraires se tranchent entre humains, pas par un import.</p>
+            <ul class="dec-liste">
+              {#each rapport.desaccords.slice(0, 6) as d}<li>{d}</li>{/each}
+            </ul>
+          {/if}
+          {#if rapport.non_rattachees?.length}
+            <p class="muted">{rapport.non_rattachees.length} objet(s) inconnu(s) ici —
+              les deux collectes divergent.</p>
+          {/if}
+          {#if rapport.sans_objet?.length}
+            <p class="muted">{rapport.sans_objet.length} objet(s) connu(s), mais aucune
+              piste à arbitrer ici : un <code>run_all</code> la produira peut-être.</p>
+          {/if}
+        {/if}
+      </div>
+    {/if}
   </section>
 
   {#if synced}
@@ -314,6 +436,7 @@
   }
 
   .error {
+    white-space: pre-wrap;
     background: #7f1d1d;
     color: #fee2e2;
     border: 1px solid #991b1b;
@@ -438,4 +561,18 @@
   .sync-ok { color: #6ee7b7; margin: 0 0 .35rem; font-size: .9rem; }
   .sync-next { color: #94a3b8; margin: 0; font-size: .82rem; }
   .sync code { background: #0f172a; padding: 1px 6px; border-radius: 4px; color: #cbd5e1; font-size: .78rem; }
+
+  .decisions { margin: 1.25rem 0; padding: 1rem; background: #0f172a;
+               border: 1px solid #1e293b; border-radius: 8px; }
+  .decisions h2 { font-size: 1rem; margin: 0 0 .3rem; }
+  .dec-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+                 margin: .8rem 0 .5rem; }
+  .dec-opt { display: flex; align-items: center; gap: .35rem; font-size: .8rem;
+             color: #94a3b8; margin-right: auto; }
+  .dec-opt input { width: auto; }
+  .dec-alerte { color: #fbbf24; font-size: .8rem; line-height: 1.5; margin: .4rem 0; }
+  .dec-rapport { margin-top: .7rem; border-top: 1px solid #1e293b; padding-top: .6rem; }
+  .dec-liste { margin: .3rem 0 0; padding-left: 1.1rem; color: #94a3b8; font-size: .78rem; }
+  .decisions code { background: #020617; padding: 1px 6px; border-radius: 4px;
+                    color: #cbd5e1; font-size: .78rem; }
 </style>

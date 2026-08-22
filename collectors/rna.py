@@ -52,6 +52,7 @@ def _match_commune(ville: str) -> str | None:
     """Nom officiel du registre si la commune est collectée, sinon None."""
     return _COMMUNE_LOOKUP.get(_norm(ville))
 from .db import transaction, upsert_entity, upsert_relation
+from .nom_normalise import nettoyer_libelle
 
 
 # ----------------------------------------------------------------
@@ -163,7 +164,7 @@ def _import_structures(conn, structures: list[dict]) -> int:
     for st in structures:
         if not st["responsable"] and not st["contacts"]:
             continue
-        eid = upsert_entity(conn, type="association", name=st["name"],
+        eid = upsert_entity(conn, type="association", name=nettoyer_libelle(st["name"]),
                             commune=COMMUNE_NAME, confidence="probable")
         note = json.dumps({"responsable": st["responsable"],
                            "contacts": st["contacts"],
@@ -227,12 +228,14 @@ def import_rna(cp: str = CODE_POSTAL):
 def _import_jo_record(conn, item: dict):
     # Schéma dataset jo_associations (Opendatasoft v2.1, refonte 2024)
     rna_id  = item.get("numero_rna") or item.get("id", "")
-    titre   = (item.get("titre") or item.get("titre_search") or rna_id).strip()
+    # Le RNA publie ses titres tels que déposés : entre guillemets, avec un
+    # point final, parfois deux fois de suite. `nettoyer_libelle` retire cette
+    # ponctuation de saisie — et rien d'autre, la casse comprise.
+    titre   = nettoyer_libelle(item.get("titre") or item.get("titre_search") or rna_id)
     objet   = item.get("objet", "")
     cp      = item.get("codepostal_actuel", "") or ""
     ville   = (item.get("commune_actuelle") or "").strip()
     addr    = (item.get("adresse_actuelle") or "").strip()
-    addr_str = " ".join(filter(None, [addr, cp, ville]))
 
     # Type d'avis : Création / Modification / Dissolution
     typeavis = (item.get("typeavis") or "").lower()
@@ -248,6 +251,12 @@ def _import_jo_record(conn, item: dict):
     diss = item.get("datedeclaration") if is_diss else None
 
     commune = _match_commune(ville) or (ville or None)
+
+    # L'adresse porte le nom de commune du RÉFÉRENTIEL quand il a été
+    # reconnu, pas celui de la source : « 30570 Val d'aigoual » et
+    # « Val-d'Aigoual » désignaient la même commune sur la même fiche, l'une
+    # dans `address`, l'autre dans `commune`.
+    addr_str = nettoyer_libelle(" ".join(filter(None, [addr, cp, commune or ville])))
 
     eid = upsert_entity(conn,
         type="association",
