@@ -111,6 +111,16 @@ COMMUNES_INSEE_ADRESSE = list(COMMUNES_ADRESSE)
 # seulement un peu plus bruyant.
 BRUIT_PV: list[str] = _I.get("bruit_pv", [])
 
+# Rectifications déclarées : ce que la source ÉCRIT → ce qu'il faut LIRE.
+# Chaque entrée est une décision humaine, datée et motivée, pas une règle. Une
+# faute de frappe d'un registre national ne se corrige ni à la main dans la
+# base (elle revient à la collecte suivante) ni par une règle générale (« uu »
+# n'est pas une faute dans tous les mots) : elle se déclare ici, une fois, et
+# vaut pour toutes les collectes à venir.
+# Une `lecture` ne doit jamais contenir sa `source`, sans quoi la rectification
+# se rejouerait sur elle-même.
+RECTIFICATIONS: list[dict] = _I.get("rectifications", [])
+
 # ── C2 — l'intercommunalité ──────────────────────────────────────────────────
 # Suivie comme INSTITUTION : conseil communautaire et délégués, compétences
 # transférées, budget principal et annexes, marchés, délibérations.

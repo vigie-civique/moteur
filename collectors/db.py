@@ -2,7 +2,7 @@
 import sqlite3
 import contextlib
 from .config import DB_PATH, SCHEMA_PATH
-from .nom_normalise import normaliser
+from .nom_normalise import normaliser, rectifier
 
 
 def get_conn(read_only: bool = False) -> sqlite3.Connection:
@@ -225,6 +225,15 @@ def upsert_entity(conn, *, type, name, short_name=None,
     faisait rien. Trois incidents en sont sortis, cf.
     d'une migration ponctuelle, non versionnée.
     """
+    # Les rectifications déclarées s'appliquent ICI, et nulle part ailleurs :
+    # c'est le seul point par lequel passent toutes les fiches, de tous les
+    # collecteurs. Déclarée une fois, une rectification vaut donc pour SIRENE,
+    # le RNA, OSM et les saisies — et ne peut plus être défaite par une
+    # recollecte. Liste vide par défaut : une instance qui n'en déclare pas ne
+    # voit aucune différence.
+    name = rectifier(name)
+    address = rectifier(address)
+
     row = _entite_existante(conn, type, name, commune)
     if row is None:
         # Colonne toujours écrite, même à NULL : plus aucun défaut implicite ne
