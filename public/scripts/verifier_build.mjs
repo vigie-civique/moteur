@@ -43,6 +43,18 @@ if (!existsSync(BUILD)) {
 //                    y désigne cet index, pas le contenu de la page.
 const EXCEPTIONS = new Set(['carte.html', 'recherche.html'])
 
+// Le SYMPTÔME est « Chargement… », pas le mot « chargement ». Le contrôle
+// cherchait /chargement/i n'importe où dans le rendu : il a refusé tout le site
+// de Saillans le 23/08/2026 pour un marché intitulé « Acquisition d'un véhicule
+// de collecte benne à CHARGEMENT vertical ». Trois pages bloquées, aucune vide,
+// et l'instance entière impubliable à cause d'un mot d'une source publique.
+//
+// Un attendeur s'écrit toujours pareil — majuscule de début de phrase puis
+// points de suspension : « Chargement de la carte… ». Une donnée, jamais. On
+// exige donc les deux, et le filet de sécurité reste `MINI_RENDU` : une page
+// réellement vide se fait prendre à sa taille, quel que soit son texte.
+const ATTENTE = /Chargement[^<]{0,40}(…|\.\.\.)/
+
 // Taille minimale de HTML rendu (hors <script>) en dessous de laquelle une page
 // est forcément une coquille : l'en-tête et le pied de page pèsent déjà ~6 Ko.
 const MINI_RENDU = 6500
@@ -65,8 +77,8 @@ for (const p of pages) {
   const html = readFileSync(p, 'utf8')
   const rendu = html.replace(/<script[\s\S]*?<\/script>/g, '')
 
-  if (/Chargement/i.test(rendu)) {
-    problemes.push(`${rel} : contient « Chargement » — la page attend un fetch client`)
+  if (ATTENTE.test(rendu)) {
+    problemes.push(`${rel} : contient « Chargement… » — la page attend un fetch client`)
   }
   if (rendu.length < MINI_RENDU) {
     problemes.push(`${rel} : ${rendu.length} o de HTML rendu (< ${MINI_RENDU}) — page probablement vide`)
