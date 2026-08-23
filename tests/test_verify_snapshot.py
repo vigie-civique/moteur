@@ -146,6 +146,23 @@ def test_base_dans_le_repertoire_publie_refusee(vs, tmp_path):
     assert any("fichier interdit" in r for r in rep.errors)
 
 
+def test_rebuts_du_systeme_de_fichiers_refuses(vs, tmp_path):
+    """`.DS_Store` passait le contrôle, et il nomme ce qu'on a retiré du public.
+
+    Le 23/08, le contrôleur relancé sur un vieux brouillon a signalé son
+    `review_report.json` et laissé passer le `.DS_Store` posé à côté. Ce
+    fichier-là porte le nom de TOUS les fichiers que le dossier a contenus —
+    y compris les fiches écartées de la publication — et il part chez
+    l'hébergeur avec le reste.
+    """
+    for rebut in (".DS_Store", "._entities.json", "Thumbs.db"):
+        rep = vs.Report()
+        (tmp_path / rebut).write_bytes(b"\x00\x00\x00\x01Bud1")
+        vs.check_dir(tmp_path, rep)
+        assert any("fichier interdit" in r for r in rep.errors), rebut
+        (tmp_path / rebut).unlink()
+
+
 # ── L'invariant de renvoi sortant ────────────────────────────────────────────
 #
 # Symétrique de `check_fiches_orphelines`, ajouté le 21/08/2026 après un audit

@@ -41,8 +41,16 @@ EXCLUDED_EVENT_TYPES = set(RULES["events"]["exclude_types"])
 GENERIC_DOMAINS = set(RULES["urls"]["exclude_generic_domains"])
 
 # Fichiers qui n'ont RIEN à faire dans un répertoire publié.
+#
+# Les rebuts du système de fichiers sont là pour de bon : `.DS_Store` traîne dans
+# n'importe quel répertoire ouvert dans le Finder, et il porte les noms de TOUS
+# les fichiers que le dossier a contenus — y compris ceux qu'on a retirés du
+# public. Un snapshot du 26/07 en portait un ; le contrôleur l'a laissé passer,
+# et il serait parti chez l'hébergeur. Les `._machin` (AppleDouble) sont le même
+# problème sur un volume non-HFS, `Thumbs.db` son équivalent Windows.
 FORBIDDEN_FILENAMES = re.compile(
-    r"(^review_report.*\.json$|^qa_report.*\.json$|\.db$|\.sqlite3?$|^\.env)", re.I
+    r"(^review_report.*\.json$|^qa_report.*\.json$|\.db$|\.sqlite3?$|^\.env"
+    r"|^\.DS_Store$|^\._|^Thumbs\.db$)", re.I
 )
 # Chaînes qui trahissent une fuite d'environnement local ou de secret.
 LEAKY_STRINGS = re.compile(
