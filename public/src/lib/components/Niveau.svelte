@@ -18,6 +18,10 @@
   export let href = ''              // fait : lien vers le document
   export let base = ''              // calcul : sur quelles données il porte
 
+  // L'étiquette et le détail se lisent d'affilée : « Calcul » suivi de
+  // « calculé par le site » donnait « Calcul calculé par le site ». Le détail
+  // complète l'étiquette, il ne la redit pas.
+  //
   // `compact` : au-dessus d'une grille de tuiles, le bloc encadré écraserait
   // les chiffres qu'il qualifie. La variante n'en garde que l'étiquette et la
   // provenance, sur une ligne — même vocabulaire, même code couleur, poids
@@ -49,7 +53,7 @@
       <span class="detail">{source}</span>
       {#if href}<a class="doc" {href} target="_blank" rel="noopener">voir la source ↗</a>{/if}
     {:else if type === 'calcul'}
-      <span class="detail">{base ? `calculé par le site sur ${base}` : 'calculé par le site'}</span>
+      <span class="detail">{base ? `du site, sur ${base}` : 'du site'}</span>
     {:else}
       <span class="detail">lecture proposée</span>
     {/if}
@@ -61,8 +65,8 @@
     {#if type === 'fait' && source}
       <span class="detail">{source}</span>
       {#if href}<a class="doc" {href} target="_blank" rel="noopener">voir le document ↗</a>{/if}
-    {:else if type === 'calcul' && base}
-      <span class="detail">calculé sur {base}</span>
+    {:else if type === 'calcul'}
+      <span class="detail">{base ? `du site, sur ${base}` : 'du site'}</span>
     {/if}
   </p>
 

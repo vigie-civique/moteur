@@ -46,7 +46,30 @@
   </p>
 
   {#if !c?.sources?.length}
-    <p class="muted">Données de couverture indisponibles.</p>
+    <!-- Une page dont tout le propos est de dire ce qui manque ne peut pas se
+         taire quand c'est elle qui manque : « indisponible » laissait le
+         lecteur devant un site qu'il croit incomplet, sans lui dire de quoi il
+         s'agit ni quoi en faire. -->
+    <div class="vide">
+      <p>
+        <strong>Le relevé de couverture n'est pas disponible pour cette
+        publication.</strong> Il est produit à chaque mise à jour du site et
+        récapitule, source par source, la période couverte, la date du dernier
+        passage de la collecte et les documents connus mais non récupérés.
+      </p>
+      <p>
+        Les autres pages, elles, sont bien alimentées&nbsp;: ce qui manque ici,
+        c'est notre capacité à vous dire <em>ce que nous n'avons pas</em>. Tant
+        que c'est le cas, lisez les chiffres du site comme un plancher — ce qui
+        est affiché a été trouvé&nbsp;; ce qui n'est pas affiché n'a pas
+        forcément été cherché.
+      </p>
+      <p class="liens">
+        <a href="/methode">Comment les données sont collectées</a> ·
+        <a href="/repliquer">Refaire ces relevés soi-même</a> ·
+        <a href="/contact">Nous signaler un document manquant</a>
+      </p>
+    </div>
   {:else}
     <h2>Le point faible principal</h2>
     <!-- Donné en premier, et non enfoui : c'est le chiffre qui affaiblit le
@@ -135,6 +158,9 @@
   .apres a, .liens a { color: var(--ardoise); }
   .note { font-size: .82rem; color: var(--gris-clair); margin: .5rem 0 0; line-height: 1.5; }
   .muted { color: var(--gris-clair); }
+  .vide { max-width: 62ch; border-left: 3px solid var(--trait);
+          padding: .1rem 0 .1rem 1rem; margin: 1.5rem 0; }
+  .vide p { color: var(--gris); line-height: 1.6; }
 
   /* Le tableau doit défiler dans son propre cadre : sur téléphone, c'est le
      premier élément qui pousse la page à déborder horizontalement. */
