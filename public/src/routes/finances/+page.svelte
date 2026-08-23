@@ -3,7 +3,13 @@
   import Niveau from '$lib/components/Niveau.svelte'
   import { euros } from '$lib/data.js'
 
-  const isRequest = (f) => /demand[eé]e/i.test(f.type || '')
+  // L'état d'un montant est calculé au snapshot (`collectors/etat_flux`) : il
+  // dit ce que la pièce atteste — demandé, voté, engagé, payé. Cette page le
+  // devinait en cherchant « demandée » dans le NOM du type, ce qui marchait
+  // pour `DSIL_demande` et pour rien d'autre. Le repli sur le libellé reste,
+  // le temps qu'un snapshot d'avant le 23/08/2026 soit régénéré.
+  const etatDe = (f) => f.etat || (/demand[eé]/i.test(f.type || '') ? 'demande' : 'inconnu')
+  const isRequest = (f) => etatDe(f) === 'demande'
   // Une cession de patrimoine est une VENTE : la commune cède un bien et ENCAISSE
   // le prix. Le flux est stocké commune → acheteur (sens du bien), mais l'argent va
   // dans l'autre sens. On la traite donc à part, comme une recette, jamais comme un
@@ -32,6 +38,19 @@
   }
   const typeLabel = (t) => TYPE_LABELS[t] || (t || '—')
 
+  // Repris mot pour mot de `collectors/etat_flux` : une seule phrase circule
+  // entre la base, le site et le dictionnaire de données.
+  const ETAT_LIB = { demande: 'demandé', vote: 'voté', engage: 'engagé',
+                     paye: 'payé', annule: 'annulé', inconnu: '?' }
+  const ETAT_DEF = {
+    demande: "Sollicité auprès d'un financeur. Ni accordé, ni versé.",
+    vote: "Décidé par une délibération. Le paiement n'est pas attesté.",
+    engage: "Engagé par un marché notifié ou un acte d'attribution.",
+    paye: "Constaté dans les comptes de la collectivité.",
+    annule: "Annulé ou abandonné après décision.",
+    inconnu: "La source ne permet pas de dire où en est ce montant.",
+  }
+
   // Rendu au build par +page.server.js.
   export let data
   $: all = data.flows.slice().sort((a, b) => (b.year || 0) - (a.year || 0) || (b.amount || 0) - (a.amount || 0))
@@ -54,6 +73,17 @@
   $: outTotal = sum(outflows)
   $: othTotal = sum(others)
   $: cessionTotal = sum(cessions)
+
+  // « la commune a versé 10 k€ » pour un exercice dont AUCUN paiement n'est
+  // consolidé : les 18 flux 2026 viennent tous de délibérations. Une subvention
+  // votée a vocation à être payée, mais le site décrit la pièce disponible
+  // aujourd'hui, pas la suite probable de l'histoire.
+  $: outPaye = sum(outflows.filter(f => etatDe(f) === 'paye'))
+  $: outDecide = sum(outflows.filter(f => ['vote', 'engage'].includes(etatDe(f))))
+  $: verbeOut = outPaye && !outDecide ? 'versé' : (outDecide && !outPaye ? 'voté' : 'recensé')
+  $: titreOut = verbeOut === 'voté' ? "Ce que la commune a voté"
+              : verbeOut === 'versé' ? "Ce que la commune verse"
+              : "Ce que la commune engage"
 
   $: requests = all.filter(f => isRequest(f) && f.year === year)
   $: reqTotal = sum(requests)
@@ -127,7 +157,7 @@
   {#if all.length}
     <p class="lede">
       Sur la période <b>{periode}</b>, la commune a reçu <b class="in">{eurosC(inTotal)}</b>
-      (dotations de l'État, concours, emprunts) et versé <b class="out">{eurosC(outTotal)}</b>
+      (dotations de l'État, concours, emprunts) et {verbeOut} <b class="out">{eurosC(outTotal)}</b>
       de subventions et marchés à des acteurs locaux.{#if cessionTotal > 0}&nbsp;Elle a par ailleurs <b class="ces">cédé pour {eurosC(cessionTotal)}</b> de patrimoine (ventes de terrains).{/if}
     </p>
 
@@ -140,7 +170,7 @@
     <Niveau type="calcul" base="les flux financiers recensés dans les délibérations et les données ouvertes">
       {#if data.constat}
         Sur {data.constat.periode ? `${data.constat.periode[0]}–${data.constat.periode[1]}` : 'la période'},
-        <b>{eurosC(data.constat.total)}</b> de versements de la commune sont recensés,
+        <b>{eurosC(data.constat.total)}</b> de sorties de la commune sont recensées,
         répartis entre <b>{data.constat.beneficiaires}</b> bénéficiaires.
         <b>{data.constat.pour80}</b> d'entre eux réunissent 80&nbsp;% des montants.
       {:else}
@@ -179,8 +209,8 @@
 
     <!-- Vue annualisée : reçu / versé par an -->
     {#if flowsByYear.length > 1}
-      <h2>Reçu &amp; versé, année par année</h2>
-      <p class="hint">Deux échelles distinctes : le « reçu » (dotations, concours, emprunts) est bien plus élevé que le « versé » (subventions et marchés locaux).</p>
+      <h2>Reçu &amp; {verbeOut}, année par année</h2>
+      <p class="hint">Deux échelles distinctes : le « reçu » (dotations, concours, emprunts) est bien plus élevé que ce qui part vers les acteurs locaux (subventions et marchés).</p>
       <div class="yr2">
         <div class="yrblock">
           <span class="yrhead in">Reçu par la commune</span>
@@ -199,7 +229,7 @@
           <span class="yrhead out">Versé par la commune</span>
           <div class="yrbars">
             {#each flowsByYear as d}
-              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.out)} versé — cliquer pour voir le détail"
+              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.out)} {verbeOut} — cliquer pour voir le détail"
                       on:click={() => year = d.year}>
                 <span class="yval">{d.out ? eurosC(d.out) : ''}</span>
                 <span class="ybar out" style="height:{Math.max(2, 100 * d.out / outYrMax)}%"></span>
@@ -231,8 +261,18 @@
 
     <!-- Versé par la commune -->
     {#if outByBenef.length}
-      <h2 class="out-h">Ce que la commune verse</h2>
-      <p class="hint">Subventions et marchés payés par la commune — {eurosC(outTotal)} sur {periode}.</p>
+      <h2 class="out-h">{titreOut}</h2>
+      <p class="hint">
+        Subventions et marchés — {eurosC(outTotal)} sur {periode}.
+        {#if outDecide && !outPaye}
+          Ces montants sont ceux des <b>délibérations</b> : le conseil les a votés.
+          Les paiements de l'exercice ne sont pas encore consolidés dans les
+          comptes publiés.
+        {:else if outPaye && outDecide}
+          Dont <b>{eurosC(outPaye)}</b> constatés dans les comptes et
+          <b>{eurosC(outDecide)}</b> votés ou engagés, paiement non attesté.
+        {/if}
+      </p>
       <ul class="bars">
         {#each outShown as g}
           <li>
@@ -298,12 +338,13 @@
     <details>
       <summary>Détail des flux de la commune ({inflows.length + outflows.length})</summary>
       <table>
-        <thead><tr><th>Année</th><th>Sens</th><th>Type</th><th>Financeur → bénéficiaire</th><th>Description</th><th class="r">Montant</th></tr></thead>
+        <thead><tr><th>Année</th><th>Sens</th><th>État</th><th>Type</th><th>Financeur → bénéficiaire</th><th>Description</th><th class="r">Montant</th></tr></thead>
         <tbody>
           {#each [...inflows, ...outflows].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.amount || 0) - (a.amount || 0)) as f (f.id)}
             <tr>
               <td>{f.year || '—'}</td>
-              <td>{#if isInflow(f)}<span class="tag in">reçu</span>{:else}<span class="tag out">versé</span>{/if}</td>
+              <td>{#if isInflow(f)}<span class="tag in">reçu</span>{:else}<span class="tag out">sortant</span>{/if}</td>
+              <td><span class="etat e-{etatDe(f)}" title={ETAT_DEF[etatDe(f)]}>{ETAT_LIB[etatDe(f)]}</span></td>
               <td>{typeLabel(f.type)}</td>
               <td class="who">{f.from_name || '—'} → {#if f.to_id}<a href="/entite/{f.to_id}">{f.to_name || '?'}</a>{:else}{f.to_name || '—'}{/if}</td>
               <td class="desc">{f.description || ''}</td>
@@ -314,7 +355,12 @@
       </table>
     </details>
 
-    <p class="foot">Sources : DECP (marchés), subventions État/Région, délibérations du conseil municipal. « Reçu » / « versé » = la commune (SIREN {COMMUNE}) est respectivement destinataire ou émetteur du flux ; les flux entre tiers sont regroupés à part. Les demandes non accordées sont exclues des totaux.</p>
+    <p class="foot">Sources : DECP (marchés), subventions État/Région, délibérations du conseil municipal. « Reçu » / « sortant » = la commune (SIREN {COMMUNE}) est respectivement destinataire ou émetteur du flux ; les flux entre tiers sont regroupés à part. Les demandes non accordées sont exclues des totaux.<br />
+      L'<b>état</b> dit ce que la pièce atteste, et rien de plus :
+      <b>voté</b> = décidé en délibération, paiement non attesté ·
+      <b>engagé</b> = marché notifié ·
+      <b>payé</b> = constaté dans les comptes de la collectivité ·
+      <b>demandé</b> = sollicité, ni accordé ni versé.</p>
   {/if}
 </section>
 
@@ -403,6 +449,12 @@
   .who a { color: var(--ardoise-fonce); } .desc { color: var(--gris); }
   .tag { font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
   .tag.in { background: #e7f0ea; color: var(--recette); } .tag.out { background: var(--ardoise-pale); color: var(--ardoise-fonce); }
+  /* L'état est une information de fiabilité, pas de catégorie : il se lit en
+     gris sauf quand il retire une garantie que le lecteur croyait acquise. */
+  .etat { font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+          background: var(--ardoise-pale); color: var(--ardoise-fonce); white-space: nowrap; cursor: help; }
+  .etat.e-paye { background: #e7f0ea; color: var(--recette); }
+  .etat.e-demande, .etat.e-inconnu { background: #fdf1e0; color: #8a5a10; }
 
   .muted { color: var(--gris); }
   .foot { color: var(--gris-clair); font-size: .78rem; margin-top: 1.5rem; max-width: 72ch; }

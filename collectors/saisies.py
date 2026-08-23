@@ -63,7 +63,11 @@ CHAMPS_SAISIE = {
         "sens*":        ("choix:verse,recu", "Versé par la commune, ou reçu par elle"),
         "tiers*":       ("entite",      "L'autre partie : bénéficiaire ou payeur"),
         "description*": ("texte",       "Ce que dit la source, en une phrase"),
-        "statut":       ("choix:realise,demande", "Réalisé ou seulement demandé"),
+        # « Réalisé » recouvrait le vote, l'engagement et le paiement : celui
+        # qui saisit lit une pièce précise, il peut dire laquelle.
+        "statut":       ("choix:vote,engage,paye,demande,annule",
+                         "Ce que la pièce atteste : voté, engagé, payé, "
+                         "seulement demandé, ou annulé"),
     },
     "acte": {
         "_libelle": "Délibération / acte",

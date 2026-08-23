@@ -56,6 +56,26 @@ FORBIDDEN_FILENAMES = re.compile(
 LEAKY_STRINGS = re.compile(
     r"file://|/Users/|/home/|sk-ant-|api[_-]?key|X-Admin-Key|Bearer\s+ey", re.I
 )
+# Encodage abîmé parti en ligne : « L'EUZIAÃÂRE » s'affichait dans le fil
+# d'accueil du site public le 23/08/2026. La règle est volontairement dupliquée
+# ici plutôt qu'importée de `collectors.nom_normalise` — ce fichier ne doit
+# jamais dépendre du code qu'il contrôle, sans quoi un défaut du builder se
+# contrôlerait lui-même.
+#
+# Le motif est une SÉQUENCE, jamais un caractère isolé : « CHÂTEAU DE LA
+# TOUR », « THÉÂTRE » et « Âne » sont du français correct et figurent dans le
+# corpus. Une règle qui bloquerait sur « Â » seul refuserait de publier la
+# moitié des lieux-dits.
+_CONT = ("\x80-\xbf"                     # continuations rendues par latin-1
+         "\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160"
+         "\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014"
+         "\u02dc\u2122\u0161\u203a\u0153\u017e\u0178")   # …et par cp1252
+MOJIBAKE = re.compile(
+    f"[\xc2\xc3][{_CONT}]"              # utf-8 à deux octets relu en latin-1
+    f"|\xe2[{_CONT}]{{2}}"               # à trois octets : « â€™ », « â€" »
+    "|A[\x80-\x96\x98-\x9f]"          # repli Sitadel : « Ã » dépilé en « A »
+    "|\ufffd"                            # caractère de remplacement
+)
 # Clés interdites où qu'elles apparaissent dans un objet publié.
 FORBIDDEN_KEYS = {"personnes_citees", "birth_date", "date_naissance", "adresse_personnelle"}
 # Clés à signaler (non bloquant) si elles portent une valeur.
@@ -245,6 +265,14 @@ def check_file(fp, rep, base):
         # Retrouver un extrait pour le rapport
         idx = raw.lower().find(m.lower())
         rep.error("chaîne locale ou secret", f"{loc}: …{raw[max(0, idx - 20):idx + 60]!r}…")
+    # Bloquant, pas un avertissement : un nom de lieu abîmé est faux, il est
+    # recopié tel quel par ceux qui citent le site, et il se corrige en amont
+    # (`collectors.nom_normalise.reparer_encodage`) — pas à l'affichage.
+    for m in MOJIBAKE.finditer(raw):
+        idx = m.start()
+        rep.error("encodage abîmé publié",
+                  f"{loc}: …{raw[max(0, idx - 30):idx + 30]!r}…")
+        break   # une occurrence suffit à refuser le fichier
     if fp.suffix not in (".json", ".geojson"):
         return
     if fp.name == "__data.json":

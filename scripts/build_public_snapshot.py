@@ -39,6 +39,7 @@ from collectors.config import (  # noqa: E402
     EPCI_SIREN as EPCI_SIREN_C2,
 )
 from collectors.config import DB_PATH   # nommée dans la config
+from collectors.etat_flux import etat_du_flux  # noqa: E402
 # `VIGIE_RULES` désigne d'autres règles de publication — les tests s'en servent
 # pour tourner sur l'exemple versionné, un dépôt fraîchement cloné n'ayant pas
 # encore de règles à lui.
@@ -275,6 +276,13 @@ def nettoyer_titre_evenement(titre: str | None) -> str:
 TYPES_REVUS = {
     "deliberation": ("deliberation", "conseil_municipal", "délibérations_cc", "pv_cc"),
 }
+
+# Ce qu'un conseil a effectivement délibéré — communal et intercommunal. Sert
+# le compteur affiché à l'accueil : un site de contrôle de l'action publique
+# doit pouvoir dire ce qu'il compte quand il écrit « délibérations ». Les
+# séances (`conseil_municipal`, `conseil_communautaire`) sont des contenants,
+# pas des décisions : les compter doublerait les actes qu'elles portent.
+TYPES_DELIBERES = ("deliberation", "deliberation_cc")
 
 
 def charger_revue(conn) -> dict[str, dict[int, dict]]:
@@ -1175,16 +1183,19 @@ def beneficiaires_argent_public(conn) -> set[int]:
     structure qui touche de l'argent public est d'intérêt général, celui avec une
     société sans rapport avec la commune ne l'est pas.
 
-    Les flux sont sommés sur `perimetre='detail' AND statut='realise'` uniquement :
-    les agrégats OFGL englobent la DGF présente en détail (double compte), et
-    `statut='demande'` désigne une subvention **sollicitée**, pas obtenue.
+    Les flux sont sommés sur `perimetre='detail'` seulement, demandes et
+    annulations écartées : les agrégats OFGL englobent la DGF présente en détail
+    (double compte), et `statut='demande'` désigne une subvention **sollicitée**,
+    pas obtenue. Le filtre nommait la valeur retenue (`= 'realise'`) plutôt que
+    celles qu'il écarte — étendre la liste des statuts saisissables l'aurait
+    vidé sans un mot d'erreur.
     """
     ids: set[int] = set()
     for r in rows(conn, """
         SELECT DISTINCT to_id AS id FROM financial_flows
          WHERE to_id IS NOT NULL
            AND COALESCE(perimetre,'detail') = 'detail'
-           AND COALESCE(statut,'realise')   = 'realise'
+           AND COALESCE(statut,'realise') NOT IN ('demande','annule')
     """):
         ids.add(r["id"])
     if table_exists(conn, "marches_publics"):
@@ -2000,6 +2011,14 @@ def build_snapshot(out: Path) -> dict:
         counters["flows_par_sens"] = dict(Counter(f["sens"] for f in public_flows))
         counters["flows_par_statut"] = dict(Counter(f["statut"] for f in public_flows))
 
+        # `statut` valait `realise` sur la totalité des flux — la subvention
+        # votée, la dotation lue dans les comptes et la demande de DSIL avec le
+        # même mot. La page en tirait « la commune a versé ». L'état se déduit
+        # de ce qui documente le montant : cf. `collectors/etat_flux`.
+        for f in public_flows:
+            f["etat"] = etat_du_flux(f.get("type"), f.get("source"), f.get("statut"))
+        counters["flows_par_etat"] = dict(Counter(f["etat"] for f in public_flows))
+
         public_layers = {
             "businesses": [],
             "associations": [],
@@ -2168,6 +2187,17 @@ def build_snapshot(out: Path) -> dict:
             "relations_public": len(public_relations),
             "events_total_private": len(event_rows),
             "events_public": len(public_events),
+            # « 5 377 décisions » à l'accueil : le mot promettait un registre
+            # des décisions locales et livrait le total des événements publics,
+            # dont 3 061 annonces BODACC — la vie des entreprises, que personne
+            # n'a votée — et 440 autorisations d'urbanisme individuelles. Un
+            # habitant lisait « le conseil a pris 5 377 décisions ».
+            # Ce qui a été délibéré se compte à part, et c'est ce chiffre-là que
+            # l'accueil affiche. Le total reste publié, sous son vrai nom.
+            "deliberations_public": sum(
+                1 for e in public_events if e["type"] in TYPES_DELIBERES),
+            "events_public_par_type": dict(
+                Counter(e["type"] for e in public_events)),
             # Dette de réplication, mesurée et non promise (cf. /methode).
             "replicabilite": mesurer_replicabilite(),
             # Répartition sur les trois axes de provenance. C'est ce qui rend

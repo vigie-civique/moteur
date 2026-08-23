@@ -181,3 +181,103 @@ def rectifier(texte: str | None) -> str | None:
         texte = texte.replace(sans_accents(source).upper(),
                               sans_accents(lecture).upper())
     return texte
+
+
+# ── Encodage abîmé par la source ─────────────────────────────────────────────
+#
+# « L'EUZIAÃÂRE » s'affichait tel quel sur le site public le 23/08/2026, dans le
+# fil d'accueil. Le défaut n'est pas dans le collecteur : le CSV brut de Sitadel
+# archivé sous `data/raw/sitadel/` contient DÉJÀ les octets
+# `C3 83 C2 82 C3 82 C2 88`, et c'est de l'UTF-8 parfaitement valide. C'est le
+# CONTENU qui est du mojibake, livré ainsi par DIDO.
+#
+# Deux dégâts distincts, deux réparations :
+#
+# 1. Le double encodage ordinaire — « MickaÃ«l », « prononÃ§ant » — où de l'UTF-8
+#    a été relu comme du latin-1, une ou deux fois. Il se défait exactement : les
+#    octets sont tous là, dans l'ordre. Ce n'est pas une interprétation.
+#
+# 2. Le repli Sitadel, plus abîmé : l'octet de tête `C3` a en plus été rabattu
+#    sur « A » par un dépilage d'accents en amont, et seul l'octet de queue a
+#    survécu, en caractère de contrôle. « NAÎMES » pour « NÎMES »,
+#    « TRAÈVES » pour « TRÈVES », « L'EUZIAÈRE » pour « L'EUZIÈRE ». La
+#    reconstruction est déterministe — `C3` est le seul octet de tête qui rende
+#    une lettre — et vérifiable : le même fichier écrit ailleurs « EUZIERE
+#    VIEILLE » et « NIMES » en clair.
+#
+# Ce que ces fonctions ne font PAS : deviner. Un texte sans motif de mojibake en
+# ressort identique, et une séquence qui ne se décode pas est laissée telle
+# quelle plutôt que remplacée par un caractère de remplacement. Réparer à
+# l'affichage seulement aurait laissé le défaut dans les exports, dans la
+# recherche plein texte et dans les fiches d'entités — c'est pour ça que la
+# réparation est ici, au point d'écriture, et pas dans une feuille de style.
+
+# Une séquence de mojibake latin-1 : un octet de tête UTF-8 (C2/C3) devenu
+# caractère, suivi de sa continuation.
+# Les octets de continuation, tels qu'ils ressortent d'une relecture fautive.
+# Latin-1 les rend en caractères de contrôle ; cp1252 range à la place 27
+# symboles de typographie — c'est d'ailleurs à ça qu'on reconnaît « â€™ »,
+# l'apostrophe courbe passée par Windows.
+_CONT = ("\x80-\xbf"
+         "\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160"
+         "\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014"
+         "\u02dc\u2122\u0161\u203a\u0153\u017e\u0178")
+# Deux têtes seulement, et c'est ce qui évite les faux positifs : « Â » et « Ã »
+# ne précèdent jamais un symbole en français (ÂGE, ÂNE, CHÂTEAU sont suivis
+# d'une lettre), tandis que « É… » ou « À » suivis d'une ponctuation seraient du
+# texte correct — une classe de tête large aurait cassé « CAFÉ… ».
+# « â » ouvre les caractères à trois octets (ponctuation générale) : on en exige
+# DEUX de suite, sans quoi « château » suffirait à déclencher la règle.
+_MOJIBAKE_SEQ = re.compile(
+    f"(?:[\xc2\xc3][{_CONT}]|\xe2[{_CONT}]{{2}})+")
+# Le repli Sitadel : « A » (ce que devient « Ã » dépilé) suivi de l'octet de
+# queue resté en contrôle C1. \x97 est écarté : il rendrait « × », pas une
+# lettre. Seules les capitales sont traitées — Sitadel n'écrit qu'en capitales,
+# et « a » suivi d'un contrôle n'a jamais été observé.
+_REPLI_TETE = re.compile("A([\x80-\x96\x98-\x9f])")
+
+
+def _defaire_une_couche(texte: str) -> str:
+    def _decoder(m: re.Match) -> str:
+        # cp1252 d'abord : c'est l'encodage par lequel passent la plupart des
+        # chaînes de publication françaises, et le seul qui sache remettre « € »
+        # sur l'octet 0x80. latin-1 ensuite, pour les octets que cp1252 n'a pas.
+        for codec in ("cp1252", "latin-1"):
+            try:
+                return m.group().encode(codec).decode("utf-8")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                continue
+        return m.group()
+    return _MOJIBAKE_SEQ.sub(_decoder, texte)
+
+
+def reparer_encodage(texte: str | None) -> str | None:
+    """Défait le mojibake livré par une source, sans rien deviner.
+
+    Trois couches au maximum : le corpus n'en a jamais montré plus de deux, et
+    une borne évite qu'un texte pathologique fasse tourner la boucle.
+    """
+    if not texte or not _MOJIBAKE_SEQ.search(texte):
+        return texte
+    for _ in range(3):
+        suivant = _defaire_une_couche(texte)
+        if suivant == texte:
+            break
+        texte = suivant
+    return _REPLI_TETE.sub(
+        lambda m: bytes([0xC3, ord(m.group(1))]).decode("utf-8"), texte)
+
+
+def porte_du_mojibake(texte: str | None) -> bool:
+    """Vrai si le texte porte encore une signature d'encodage abîmé.
+
+    Sert au contrôle du snapshot : ce qui a échappé à la réparation ne part pas
+    en ligne sans que quelqu'un l'ait vu. Le critère est une SÉQUENCE, jamais un
+    caractère isolé : « CHÂTEAU », « THÉÂTRE » et « Âne » sont du français
+    correct, et une règle qui bloquerait sur « Â » seul refuserait de publier la
+    moitié des lieux-dits du Gard.
+    """
+    if not texte:
+        return False
+    return bool(_MOJIBAKE_SEQ.search(texte) or _REPLI_TETE.search(texte)
+                or "�" in texte)

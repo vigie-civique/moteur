@@ -2,7 +2,7 @@
 import sqlite3
 import contextlib
 from .config import DB_PATH, SCHEMA_PATH
-from .nom_normalise import normaliser, rectifier
+from .nom_normalise import normaliser, rectifier, reparer_encodage
 
 
 def get_conn(read_only: bool = False) -> sqlite3.Connection:
@@ -231,8 +231,13 @@ def upsert_entity(conn, *, type, name, short_name=None,
     # le RNA, OSM et les saisies — et ne peut plus être défaite par une
     # recollecte. Liste vide par défaut : une instance qui n'en déclare pas ne
     # voit aucune différence.
-    name = rectifier(name)
-    address = rectifier(address)
+    # L'encodage se répare AVANT la rectification déclarée : une entrée de la
+    # liste s'écrit dans la langue de la source, pas dans son mojibake, et
+    # « L'EUZIAÈRE » ne rejoindrait jamais « L'EUZIÈRE » sans ça. Réparer ici
+    # vaut aussi pour la déduplication : deux graphies d'un même nom, dont une
+    # abîmée, faisaient deux fiches.
+    name = rectifier(reparer_encodage(name))
+    address = rectifier(reparer_encodage(address))
 
     row = _entite_existante(conn, type, name, commune)
     if row is None:

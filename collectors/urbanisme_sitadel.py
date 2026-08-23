@@ -41,6 +41,7 @@ import urllib.request
 from .archive import archive_fetch
 from .config import COMMUNES_ADRESSE, COMMUNES_INSEE_ADRESSE, HEADERS
 from .db import get_conn
+from .nom_normalise import reparer_encodage
 
 DATAGOUV_DATASET = "liste-des-permis-de-construire-et-autres-autorisations-durbanisme"
 DATAGOUV_API = "https://www.data.gouv.fr/api/1/datasets"
@@ -178,7 +179,14 @@ def fetch_rows(rid: str, insee_list: list[str]) -> list[dict]:
     archive_fetch("sitadel", url, raw, doc_type="csv",
                   title="Sitadel — autorisations d'urbanisme du périmètre",
                   metadata={"rid": rid, "communes": insee_list})
-    return list(csv.DictReader(io.StringIO(raw.decode("utf-8", "replace")), delimiter=";"))
+    # Le CSV est du UTF-8 valide, mais son CONTENU est abîmé à la source : DIDO
+    # livre « L'EUZIAÈRE » pour « L'EUZIÈRE » et « NAÎMES » pour « NÎMES ».
+    # Réparer ici, à l'entrée, plutôt qu'à l'affichage : sinon le défaut reste
+    # dans la base, dans la recherche plein texte et dans les exports.
+    lignes = csv.DictReader(io.StringIO(raw.decode("utf-8", "replace")),
+                            delimiter=";")
+    return [{k: reparer_encodage(v) if isinstance(v, str) else v
+             for k, v in ligne.items()} for ligne in lignes]
 
 
 def _num(v):

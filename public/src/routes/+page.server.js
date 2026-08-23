@@ -59,7 +59,12 @@ export function load() {
   return {
     chiffres: {
       acteurs: stats.entities_public ?? null,
-      decisions: stats.events_public ?? null,
+      // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
+      // autorisations d'urbanisme comprises. L'afficher sous le mot
+      // « décisions » faisait dire à l'accueil ce qu'aucune source ne dit.
+      // Le compteur porte maintenant ce qu'il nomme.
+      deliberations: stats.deliberations_public ?? null,
+      evenements: stats.events_public ?? null,
       marches: stats.marches_rows ?? null,
       surCarte: stats.map_features_public ?? null,
       associations: parType.association ?? null,

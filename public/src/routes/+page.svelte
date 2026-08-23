@@ -55,7 +55,7 @@
     </p>
     <div class="chiffres">
       <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs recensés</span></span>
-      <span class="chiffre"><b>{nombre(chiffres.decisions)}</b><span>décisions</span></span>
+      <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations</span></span>
       <span class="chiffre"><b>{nombre(chiffres.marches)}</b><span>marchés</span></span>
       {#if budget}
         <span class="chiffre"><b>{millions(budget.recettes)}</b><span>budget {budget.annee}</span></span>
@@ -109,7 +109,7 @@
   <a class="porte" href="/qui-decide">
     <span class="porte-titre"><Icon name="decide" size={18} />Qui décide&nbsp;?</span>
     <p>Le conseil, l'intercommunalité, les commissions et les liens entre acteurs.</p>
-    <span class="porte-n">{nombre(chiffres.decisions)} décisions publiées</span>
+    <span class="porte-n">{nombre(chiffres.deliberations)} délibérations publiées</span>
   </a>
   <a class="porte" href="/argent">
     <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>

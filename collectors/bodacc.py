@@ -27,6 +27,7 @@ from .archive import fetch_json
 from .config import (COMMUNES, COMMUNES_CP, COMMUNES_DELEGUEES,
                      HEADERS, ROOT)
 from .db import get_conn
+from .nom_normalise import reparer_encodage
 
 API_BASE = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
 CP = COMMUNES_CP[0]
@@ -88,8 +89,28 @@ def fetch_page(offset: int, since: str | None = None, cp: str = CP,
         "order_by": "dateparution ASC",
     })
     url = f"{API_BASE}?{params}"
-    return fetch_json(url, source="bodacc", timeout=30,
-                      headers=HEADERS)
+    return _reparer_encodage_partout(
+        fetch_json(url, source="bodacc", timeout=30, headers=HEADERS))
+
+
+def _reparer_encodage_partout(obj):
+    """Défait le mojibake de la source avant qu'il n'entre en base.
+
+    Le BODACC publie « MickaÃ«l », « prononÃ§ant », « rÃ©solution » : de l'UTF-8
+    relu en latin-1 quelque part dans sa chaîne de publication. 26 lignes de
+    Lasalle en portaient la trace, titre et métadonnées comprises, et l'une
+    d'elles s'affichait sur la page d'accueil du site public.
+
+    Récursif, parce que l'annonce arrive en JSON imbriqué et que le défaut se
+    loge aussi bien dans `listepersonnes` que dans le libellé du jugement.
+    """
+    if isinstance(obj, str):
+        return reparer_encodage(obj)
+    if isinstance(obj, dict):
+        return {k: _reparer_encodage_partout(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_reparer_encodage_partout(v) for v in obj]
+    return obj
 
 
 def parse_siren(registre) -> str | None:
