@@ -1481,6 +1481,51 @@ def publication_publier(x_admin_key: Optional[str] = Header(default=None),
     return _etat_complet(x_admin_key, user)
 
 
+@app.post("/api/admin/publication/verifier-en-ligne")
+def publication_verifier_en_ligne(x_admin_key: Optional[str] = Header(default=None),
+                                  user=Depends(optional_user)):
+    """Constate ce que le site public sert vraiment.
+
+    C'est le seul état que l'atelier ne peut pas déduire de ses propres
+    écritures : entre la promotion locale et la mise en ligne il y a un build et
+    un déploiement qu'il ne fait pas. Tant que personne n'a interrogé le site,
+    « déployé » reste une supposition — et la page l'affichait comme un fait.
+
+    Ouvert au validateur : constater n'écrit rien dans les données.
+    """
+    _check_admin(x_admin_key, user, allow_validator=True)
+    verdict = pub.verifier_en_ligne()
+    _journal_publication(user, "verification-en-ligne", {
+        "url": verdict.get("url_interrogee"),
+        "ok": verdict.get("ok"),
+        "empreinte": verdict.get("empreinte"),
+        "empreinte_attendue": verdict.get("empreinte_attendue"),
+    })
+    return _etat_complet(x_admin_key, user)
+
+
+@app.post("/api/admin/publication/revenir")
+def publication_revenir(x_admin_key: Optional[str] = Header(default=None),
+                        user=Depends(optional_user)):
+    """Remet en service la version d'avant, sur les deux emplacements servis.
+
+    Un contrôle vert ne dit pas qu'une version est BONNE : il dit qu'elle est
+    étanche. Un chiffre faux, un découpage raté, une page vide passent le
+    contrôle — et jusqu'ici, revenir en arrière demandait de reconstruire tout
+    un snapshot, donc de disposer de la base d'avant.
+    """
+    _check_admin(x_admin_key, user)
+    try:
+        with pub.verrou_de_publication():
+            repris = [pub.revenir_a_la_version_precedente(d)
+                      for d in (pub.SITE, pub.PUBLIE)]
+    except pub.PublicationRefusee as e:
+        raise HTTPException(409, {"message": e.message, **e.detail})
+    _journal_publication(user, "retour-arriere",
+                         {"emplacements": [r["dest"] for r in repris]})
+    return _etat_complet(x_admin_key, user)
+
+
 @app.get("/api/admin/publication/modifications")
 def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
                               user=Depends(optional_user)):

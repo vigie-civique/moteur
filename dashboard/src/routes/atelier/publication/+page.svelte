@@ -23,11 +23,17 @@
 
   // Les cinq états du flux, nommés. Un bouton grisé sans phrase laisse chercher
   // ce qui manque ; ici l'état se lit.
+  // `publie` disait deux choses à la fois : « l'atelier a promu le snapshot »
+  // et « le site public le sert ». Entre les deux il y a un build et un
+  // déploiement que l'atelier ne fait pas — et la page l'écrivait plus bas,
+  // après avoir affiché « Publié » en tête. Qui lit le badge et ferme l'onglet
+  // croit son site à jour.
   const LIBELLE_ETAPE = {
     aucun_apercu:        { texte: 'Aucun aperçu',        ton: 'neutre' },
     pret_a_publier:      { texte: 'Prêt à publier',      ton: 'ok' },
     controles_en_echec:  { texte: 'Contrôles en échec',  ton: 'ko' },
-    publie:              { texte: 'Publié',              ton: 'ok' },
+    promu_localement:    { texte: 'Promu localement',    ton: 'attente' },
+    en_ligne:            { texte: 'En ligne, vérifié',   ton: 'ok' },
   }
 
   const LIENS_APERCU = [
@@ -45,10 +51,10 @@
   let loading = false
   let generating = false
   let publishing = false
+  let verifying = false
   let serveurEnCours = false
   let error = ''
   let controleDeplie = false
-  let chemin = '/'
   let autoTried = false
 
   $: role = etat?.role || $currentUser?.role || null
@@ -60,7 +66,9 @@
   $: controle = brouillon.controle || null
   $: apercu = etat?.apercu || {}
   $: project = etat?.project || {}
-  $: urlApercu = apercu.actif && apercu.url ? apercu.url + chemin : null
+  $: enLigne = etat?.en_ligne || {}
+  $: urlPublique = etat?.site?.url || null
+  $: promu = etape === 'promu_localement' || etape === 'en_ligne'
   $: peutPublier = peutAgir && etape === 'pret_a_publier'
   // Exporter ou importer des décisions passe par `require_role("admin")` :
   // une clé admin ne suffit pas, il faut une session au bon rôle.
@@ -158,6 +166,21 @@
     await appeler(api.publicationPublier, () => (publishing = false))
   }
 
+  async function verifierEnLigne() {
+    verifying = true
+    await appeler(api.publicationVerifierEnLigne, () => (verifying = false))
+  }
+
+  async function revenir() {
+    if (!confirm(
+      'Remettre en service la version précédente ?\n\n'
+      + 'Les deux emplacements servis repassent au snapshot d’avant la dernière '
+      + 'publication. Le site public, lui, ne changera qu’après un nouveau build '
+      + 'et un nouveau déploiement.')) return
+    publishing = true
+    await appeler(api.publicationRevenir, () => (publishing = false))
+  }
+
   async function serveurApercu(action) {
     serveurEnCours = true
     error = ''
@@ -165,7 +188,6 @@
       rememberKey()
       const r = await api.publicationServeurApercu(action, adminKey.trim())
       etat = { ...etat, apercu: r }
-      if (action === 'demarrer') chemin = '/'
     } catch (e) {
       error = lireErreur(e.message).texte
     } finally {
@@ -255,7 +277,7 @@
       <li class:courant={
         (e.cle === 'apercu' && etape === 'aucun_apercu') ||
         (e.cle === 'controles' && etape === 'controles_en_echec') ||
-        (e.cle === 'publication' && (etape === 'pret_a_publier' || etape === 'publie'))
+        (e.cle === 'publication' && (etape === 'pret_a_publier' || promu))
       }>
         <span class="num">{i + 1}</span>{e.titre}
       </li>
@@ -280,11 +302,11 @@
   <!-- ① Ce qui est en ligne ------------------------------------------------ -->
   <section class="carte">
     <header>
-      <h2>① Ce qui est publié</h2>
+      <h2>① Ce que l’atelier sert</h2>
       {#if publie.existe}
-        <span class="tag ok">en place</span>
+        <span class="tag ok">promu localement</span>
       {:else}
-        <span class="tag neutre">rien de publié</span>
+        <span class="tag neutre">rien de promu</span>
       {/if}
     </header>
 
@@ -418,8 +440,8 @@
             {/if}
           {/if}
           {#if apercu.actif}
-            <a class="lien" href={apercu.url + chemin} target="_blank" rel="noreferrer">
-              Ouvrir dans un onglet ↗
+            <a class="lien" href={apercu.url} target="_blank" rel="noreferrer">
+              Ouvrir l’aperçu ↗
             </a>
           {/if}
         </div>
@@ -430,30 +452,40 @@
             <code>cd public &amp;&amp; npm install</code> une fois, puis il démarre d’ici.
           </p>
         {:else if apercu.actif}
+          <!-- L'aperçu s'ouvre dans un onglet, il ne s'encadre plus.
+               L'iframe était pilotée des DEUX côtés : les puces changeaient son
+               `src`, mais naviguer dans le site embarqué ne les mettait pas à
+               jour — impossible, l'aperçu tourne sur un autre port, donc une
+               autre origine. Cliquer sur « Où va l'argent » dans le site laissait
+               la puce sur « Accueil », « Ouvrir dans un onglet » pointait
+               toujours la racine, et recliquer sur Accueil ne faisait rien
+               puisque la valeur était déjà `/`. Le cadre et son contenu ne
+               racontaient plus la même chose.
+
+               Un onglet à part règle les trois : la navigation appartient au
+               site, l'atelier n'en garde que les portes d'entrée. -->
+          <p class="cadre-bandeau">
+            APERÇU ATELIER — snapshot brouillon, non publié. Le site lit
+            <code>{brouillon.repertoire}</code>. Il s’ouvre dans un onglet
+            séparé : la navigation y appartient au site.
+          </p>
           <div class="apercu-liens">
             {#each LIENS_APERCU as l}
-              <button class="puce" class:actif={chemin === l.chemin}
-                      on:click={() => (chemin = l.chemin)}>{l.label}</button>
+              <a class="puce" href={apercu.url + l.chemin} target="_blank"
+                 rel="noreferrer">{l.label} ↗</a>
             {/each}
             {#if modifications?.modifications?.length}
               <span class="separateur">fiches modifiées :</span>
               {#each modifications.modifications.slice(0, 8) as m}
                 {#if m.dans_apercu}
-                  <button class="puce" class:actif={chemin === `/entite/${m.id}`}
-                          on:click={() => (chemin = `/entite/${m.id}`)}
-                          title="{m.modifications} modification(s), dernière le {m.derniere}">
-                    {m.name}
-                  </button>
+                  <a class="puce" href={`${apercu.url}/entite/${m.id}`} target="_blank"
+                     rel="noreferrer"
+                     title="{m.modifications} modification(s), dernière le {m.derniere}">
+                    {m.name} ↗
+                  </a>
                 {/if}
               {/each}
             {/if}
-          </div>
-          <div class="cadre">
-            <p class="cadre-bandeau">
-              APERÇU ATELIER — snapshot brouillon, non publié. Le site ci-dessous
-              lit <code>{brouillon.repertoire}</code>.
-            </p>
-            <iframe src={urlApercu} title="Aperçu du site public" />
           </div>
         {:else}
           <p class="muted">
@@ -538,7 +570,8 @@
   <section class="carte">
     <header>
       <h2>④ Publier</h2>
-      {#if etape === 'publie'}<span class="tag ok">cet aperçu est publié</span>{/if}
+      {#if etape === 'en_ligne'}<span class="tag ok">en ligne, vérifié</span>
+      {:else if promu}<span class="tag attente">promu, pas encore vérifié en ligne</span>{/if}
     </header>
 
     {#if !peutAgir}
@@ -553,17 +586,19 @@
         Contrôles rouges — le bouton n’est pas proposé. Corriger dans l’atelier,
         puis regénérer un aperçu.
       </p>
-    {:else if etape === 'publie'}
+    {:else if promu}
       <p class="muted">
-        Cet aperçu est déjà en place dans <code>{publie.repertoire}</code> et dans
+        Cet aperçu est en place dans <code>{publie.repertoire}</code> et dans
         <code>{etat.site?.repertoire}</code>. Regénérer un aperçu pour prendre en
         compte des corrections plus récentes.
       </p>
     {:else}
       <p class="ligne">
-        L’aperçu du {date(brouillon.genere_le)} est contrôlé. Publier le recopie
-        vers <code>{publie.repertoire}</code> puis vers
-        <code>{etat.site?.repertoire}</code>, avec un contrôle à chaque arrivée.
+        L’aperçu du {date(brouillon.genere_le)} est contrôlé. Publier construit
+        chaque copie <em>à côté</em> de ce qui est servi, la contrôle, puis la met
+        en service d’un seul geste — <code>{publie.repertoire}</code> puis
+        <code>{etat.site?.repertoire}</code>. Un refus laisse la version
+        précédente entière et servie.
       </p>
     {/if}
 
@@ -573,6 +608,68 @@
       </button>
     {/if}
   </section>
+
+  <!-- ⑤ En ligne ----------------------------------------------------------- -->
+  <!-- L'étape que l'atelier ne fait PAS, et qu'il ne peut donc que constater :
+       entre la promotion locale et le site public il y a un build et un
+       déploiement. Tant que personne n'a interrogé le site, « déployé » est une
+       supposition — et la page l'affichait comme un fait. -->
+  {#if promu}
+  <section class="carte">
+    <header>
+      <h2>⑤ En ligne</h2>
+      {#if enLigne.ok}<span class="tag ok">vérifié</span>
+      {:else if enLigne.verifie_le}<span class="tag ko">pas à jour</span>
+      {:else}<span class="tag attente">non vérifié</span>{/if}
+    </header>
+
+    <p class="ligne">
+      Promouvoir écrit dans les répertoires de cette machine. Le site public,
+      lui, sert ce que le dernier <strong>build</strong> et le dernier
+      <strong>déploiement</strong> y ont mis. Ces deux gestes ne sont pas faits
+      d’ici : cette carte se contente de constater.
+    </p>
+
+    <div class="ligne">
+      <span class="etiq">Adresse publique</span>
+      {#if urlPublique}
+        <a class="lien" href={urlPublique} target="_blank" rel="noreferrer">{urlPublique} ↗</a>
+      {:else}
+        <em class="muted">aucune déclarée (<code>site_url</code> dans <code>config/instance.json</code>)</em>
+      {/if}
+    </div>
+    <div class="ligne">
+      <span class="etiq">Empreinte promue</span>
+      <code>{publie.empreinte || '—'}</code>
+    </div>
+    {#if enLigne.verifie_le}
+      <div class="ligne">
+        <span class="etiq">Empreinte servie</span>
+        <code>{enLigne.empreinte || '—'}</code>
+        {#if enLigne.http}<span class="muted">HTTP {enLigne.http}</span>{/if}
+      </div>
+      <p class:alerte={!enLigne.ok} class:muted={enLigne.ok}>
+        {enLigne.perimee
+          ? 'Cette vérification portait sur la version précédente — elle ne dit rien de ce qui vient d’être promu.'
+          : enLigne.motif}
+        <em class="muted">Vérifié le {date(enLigne.verifie_le)}.</em>
+      </p>
+    {:else}
+      <p class="muted">Jamais vérifié depuis cette machine.</p>
+    {/if}
+
+    {#if peutAgir}
+      <button class="secondary" on:click={verifierEnLigne} disabled={verifying}>
+        {verifying ? 'Vérification…' : 'Vérifier ce qui est en ligne'}
+      </button>
+      {#if publie.existe}
+        <button class="secondary" on:click={revenir} disabled={publishing || generating}>
+          Revenir à la version précédente
+        </button>
+      {/if}
+    {/if}
+  </section>
+  {/if}
 
   <section class="carte regles">
     <h2>Règles de publication actives</h2>
@@ -895,26 +992,28 @@
     font-weight: 600;
   }
 
-  .puce.actif { border-color: #2563eb; color: #bfdbfe; background: #172554; }
+  .puce { text-decoration: none; }
+
+  /* Promu localement sans constatation en ligne : ni vert (ce serait affirmer
+     un déploiement), ni rouge (rien n'a échoué). */
+  .attente { background: #422006; color: #fdba74; border: 1px solid #b45309; }
+  .etiq { display: inline-block; min-width: 11rem; color: #94a3b8; font-size: .8rem; }
   .separateur { color: #64748b; font-size: .72rem; margin-left: .35rem; }
 
-  /* Le bandeau est AUTOUR de l'iframe, jamais dans le site : l'aperçu doit
+  /* Le bandeau reste dans l'ATELIER, jamais dans le site : l'aperçu doit
      montrer le site publié, pas un site décoré pour l'occasion. */
-  .cadre { border: 2px solid #b45309; border-radius: 8px; overflow: hidden; background: #020617; }
-
   .cadre-bandeau {
     background: #b45309;
     color: #fff7ed;
     font-size: .74rem;
     font-weight: 700;
-    padding: .3rem .6rem;
-    margin: 0;
+    padding: .35rem .6rem;
+    margin: 0 0 .5rem;
+    border-radius: 6px;
     letter-spacing: .02em;
   }
 
   .cadre-bandeau code { background: #78350f; color: #fed7aa; }
-
-  iframe { width: 100%; height: 70vh; border: 0; display: block; background: white; }
 
   .regles .puces { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 

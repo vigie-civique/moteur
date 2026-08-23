@@ -213,9 +213,14 @@
     Rien ici ne vaut spécifiquement pour {COMMUNE}. Le même dispositif —
     collecteurs, base, règles de publication, site — est conçu pour être
     <strong>rejoué sur n'importe quelle commune française</strong>, et
-    singulièrement sur les <strong>petites communes rurales</strong> : en
-    dessous de 3 500 habitants, l'obligation légale d'ouvrir ses données ne
-    s'applique pas, et c'est précisément là que rien n'est publié.
+    singulièrement sur les <strong>petites communes rurales</strong> : le
+    régime général d'open data ne vise que les collectivités de plus de
+    3 500 habitants employant plus de 50 agents, et {COMMUNE} n'en relève pas.
+    D'autres obligations de publication demeurent — les actes des communes de
+    moins de 3 500 habitants doivent être rendus publics, la commune choisissant
+    entre affichage, papier et forme électronique, et l'électronique s'applique
+    à défaut de choix. Ce qui manque ici, ce n'est donc pas le droit de savoir :
+    c'est un endroit où tout se lit ensemble.
   </p>
   <p>
     Le périmètre d'une instance — la commune, son intercommunalité, ses communes

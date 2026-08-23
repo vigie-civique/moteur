@@ -174,7 +174,9 @@ def test_controle_vert_autorise_la_publication_admin(publication, emplacements):
     for servi in ("publie", "site"):
         stats = json.loads((emplacements[servi] / "stats.json").read_text())
         assert stats["entities_public"] == 3
-    assert publication.etape(publication.lire_etat()) == "publie"
+    # « Promu localement », pas « publié » : le build et la mise en ligne
+    # restent à faire, et l'atelier ne les fait pas.
+    assert publication.etape(publication.lire_etat()) == "promu_localement"
 
 
 def test_publier_retire_ce_qui_ne_doit_plus_sortir(publication, emplacements):
@@ -362,15 +364,263 @@ def test_le_site_public_ne_code_plus_son_repertoire_de_donnees_en_dur(publicatio
 
 
 # ── Les cinq états, nommés ───────────────────────────────────────────────────
+#
+# `publie` s'appelle désormais `promu_localement`, et un cinquième état
+# s'ajoute derrière : `en_ligne`. Le mot « publié » recouvrait les deux — la
+# page annonçait « Ce qui est publié », puis précisait plus bas que le build et
+# la mise en ligne restaient à faire. Un exploitant qui lit « publié » et ferme
+# l'onglet croit son site à jour.
+#
+# Le dernier état ne se déduit pas : l'atelier ne fait ni le build ni le
+# déploiement. Il demande une CONSTATATION — le site public interrogé sert bien
+# l'empreinte promue.
 
 @pytest.mark.parametrize("etat,attendu", [
     ({}, "aucun_apercu"),
     ({"brouillon": {"genere_le": "t", "controle": {"ok": False}}}, "controles_en_echec"),
     ({"brouillon": {"genere_le": "t", "controle": {"ok": True}}}, "pret_a_publier"),
+    # Promu localement : les répertoires servis portent l'aperçu, et personne
+    # n'a encore constaté quoi que ce soit en ligne.
     ({"brouillon": {"genere_le": "t", "controle": {"ok": True}},
-      "publie": {"apercu_genere_le": "t"}}, "publie"),
+      "publie": {"apercu_genere_le": "t"}}, "promu_localement"),
     ({"brouillon": {"genere_le": "t2", "controle": {"ok": True}},
       "publie": {"apercu_genere_le": "t1"}}, "pret_a_publier"),
+    # En ligne : une vérification HTTP a trouvé l'empreinte promue.
+    ({"brouillon": {"genere_le": "t", "controle": {"ok": True}},
+      "publie": {"apercu_genere_le": "t", "empreinte": "abc"},
+      "en_ligne": {"ok": True, "empreinte": "abc"}}, "en_ligne"),
+    # Une vérification verte sur une AUTRE empreinte ne vaut rien : c'est le
+    # déploiement d'avant qu'elle a constaté.
+    ({"brouillon": {"genere_le": "t", "controle": {"ok": True}},
+      "publie": {"apercu_genere_le": "t", "empreinte": "neuve"},
+      "en_ligne": {"ok": True, "empreinte": "ancienne"}}, "promu_localement"),
+    # Site injoignable : promu, pas en ligne.
+    ({"brouillon": {"genere_le": "t", "controle": {"ok": True}},
+      "publie": {"apercu_genere_le": "t", "empreinte": "abc"},
+      "en_ligne": {"ok": False, "motif": "Site injoignable"}}, "promu_localement"),
 ])
 def test_etapes(publication, etat, attendu):
     assert publication.etape(etat) == attendu
+
+
+def test_chaque_etape_porte_un_libelle(publication):
+    """Un état sans phrase est un état que l'interface devra traduire seule,
+    et deux traductions divergentes valent deux vérités."""
+    assert set(publication.LIBELLES_ETAPES) == set(publication.ETAPES)
+    assert all(publication.LIBELLES_ETAPES[e].strip() for e in publication.ETAPES)
+
+
+def test_le_repertoire_servi_declare_la_version_quil_sert(publication, emplacements):
+    """`version.json` est la seule pièce qui permette de constater, de
+    l'extérieur, ce que le site déployé sert réellement."""
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    publie = publication.publier(auteur="admin@exemple", role="admin",
+                                 controleur=lambda cible: controle(True))
+
+    for servi in ("publie", "site"):
+        declare = json.loads(
+            (emplacements[servi] / "version.json").read_text(encoding="utf-8"))
+        assert declare["empreinte"] == publie["empreinte"]
+
+
+def test_lempreinte_ne_depend_pas_du_fichier_qui_la_declare(publication, tmp_path):
+    """Sinon elle serait circulaire : écrire l'empreinte changerait l'empreinte."""
+    a = tmp_path / "a"
+    snapshot(a, [1])
+    avant = publication.empreinte(a)
+    (a / "version.json").write_text('{"empreinte": "peu importe"}', encoding="utf-8")
+    assert publication.empreinte(a) == avant
+
+
+def test_verification_en_ligne_sans_adresse_declaree(publication, emplacements,
+                                                     monkeypatch):
+    """Une instance de test n'a pas de site public : l'atelier doit le dire,
+    pas inventer une URL ni afficher un état vert."""
+    monkeypatch.setattr(publication, "site_url", lambda: None)
+    verdict = publication.verifier_en_ligne()
+    assert verdict["ok"] is False
+    assert "aucune adresse publique" in verdict["motif"].lower()
+
+
+def test_une_verification_perimee_ne_passe_pas_pour_verte(publication, emplacements,
+                                                          monkeypatch):
+    """Publier de nouveau invalide la constatation précédente : elle portait sur
+    la version d'avant."""
+    monkeypatch.setattr(publication, "site_url", lambda: None)
+    publication.generer_apercu(builder=builder([1]),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+    etat = publication.lire_etat()
+    etat["en_ligne"] = {"ok": True, "empreinte": "dune-autre-fois",
+                        "empreinte_attendue": "dune-autre-fois"}
+    publication.ecrire_etat(etat)
+
+    vu = publication.etat_publication()
+
+    assert vu["etape"] == "promu_localement"
+    assert vu["en_ligne"]["perimee"] is True
+    assert vu["en_ligne"]["ok"] is False
+
+
+# ── La mise en service est atomique ──────────────────────────────────────────
+#
+# Jusqu'au 23/08/2026, `publier()` recopiait les fichiers un par un DANS le
+# répertoire servi, puis contrôlait le résultat. Trois conséquences, toutes
+# vérifiables ci-dessous :
+#
+#   — un contrôle rouge trouvait l'ancien snapshot déjà à moitié écrasé, sans
+#     rien pour revenir en arrière, et le message « le site public est
+#     inchangé » était faux au moment où il s'affichait ;
+#   — un visiteur tombant pendant la copie voyait un site mi-ancien mi-neuf ;
+#   — deux publications simultanées se recouvraient sans que rien ne le dise.
+
+
+def test_un_controle_rouge_a_la_copie_laisse_la_version_precedente_entiere(
+        publication, emplacements):
+    """Le cas qui n'avait pas de filet : l'aperçu passe, la copie échoue.
+
+    C'est le seul moment où le contrôleur peut dire non alors que tout allait
+    bien une seconde plus tôt — et c'est précisément là que l'ancien snapshot
+    se retrouvait à moitié remplacé.
+    """
+    snapshot(emplacements["publie"], [1, 2, 3], marque="en ligne")
+    avant = empreinte(emplacements["publie"])
+    publication.generer_apercu(builder=builder([9], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+
+    # Vert sur le brouillon, rouge sur la copie.
+    def controleur(cible):
+        return controle(Path(cible).resolve() == emplacements["brouillon"].resolve())
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.publier(auteur="admin@exemple", role="admin",
+                            controleur=controleur)
+
+    assert "précédente reste servie" in str(refus.value)
+    assert empreinte(emplacements["publie"]) == avant, \
+        "le répertoire servi a été touché alors que le contrôle a refusé"
+
+
+def test_rien_ne_traine_a_cote_du_repertoire_servi(publication, emplacements):
+    """Le répertoire de travail ne doit pas survivre à un refus : il porte des
+    données non contrôlées, à côté de données servies."""
+    snapshot(emplacements["publie"], [1], marque="en ligne")
+    publication.generer_apercu(builder=builder([9], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+
+    with pytest.raises(publication.PublicationRefusee):
+        publication.publier(
+            auteur="admin@exemple", role="admin",
+            controleur=lambda cible: controle(
+                Path(cible).resolve() == emplacements["brouillon"].resolve()))
+
+    publie = emplacements["publie"]
+    assert not (publie.parent / f".{publie.name}.neuf").exists()
+
+
+def test_la_version_precedente_est_conservee_et_peut_reprendre_du_service(
+        publication, emplacements):
+    """Un contrôle vert ne dit pas qu'une version est BONNE : il dit qu'elle est
+    étanche. Un chiffre faux, un découpage raté, une page vide passent le
+    contrôle. Quelqu'un doit pouvoir revenir sans reconstruire."""
+    snapshot(emplacements["publie"], [1, 2, 3], marque="en ligne")
+    snapshot(emplacements["site"], [1, 2, 3], marque="en ligne")
+    publication.generer_apercu(builder=builder([7], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+    assert json.loads((emplacements["publie"] / "stats.json").read_text())["marque"] == "brouillon"
+
+    publication.revenir_a_la_version_precedente(emplacements["publie"])
+
+    stats = json.loads((emplacements["publie"] / "stats.json").read_text())
+    assert stats["marque"] == "en ligne"
+    assert sorted(f.name for f in (emplacements["publie"] / "entite").glob("*.json")) \
+        == ["1.json", "2.json", "3.json"]
+
+
+def test_revenir_deux_fois_ramene_la_ou_lon_etait(publication, emplacements):
+    """Sinon on creuse : le deuxième retour irait chercher une version encore
+    plus ancienne, que personne n'a demandée."""
+    snapshot(emplacements["publie"], [1], marque="en ligne")
+    publication.generer_apercu(builder=builder([2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+
+    publication.revenir_a_la_version_precedente(emplacements["publie"])
+    publication.revenir_a_la_version_precedente(emplacements["publie"])
+
+    assert json.loads(
+        (emplacements["publie"] / "stats.json").read_text())["marque"] == "brouillon"
+
+
+def test_revenir_sans_version_precedente_se_dit(publication, emplacements):
+    snapshot(emplacements["publie"], [1])
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.revenir_a_la_version_precedente(emplacements["publie"])
+    assert "aucune version précédente" in str(refus.value).lower()
+
+
+def test_letat_publie_porte_lempreinte_de_ce_qui_est_servi(publication, emplacements):
+    """« Publié » et « en ligne » sont deux états distincts. L'empreinte est ce
+    qui permettra, plus tard, de vérifier que le site déployé sert bien cette
+    version-là — et pas celle d'avant-hier."""
+    publication.generer_apercu(builder=builder([1, 2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+    publie = publication.publier(auteur="admin@exemple", role="admin",
+                                 controleur=lambda cible: controle(True))
+
+    assert publie["empreinte"] == publication.empreinte(emplacements["publie"])
+
+
+def test_deux_snapshots_qui_different_dun_fichier_retire_ont_deux_empreintes(
+        publication, tmp_path):
+    """L'empreinte porte les CHEMINS autant que les contenus : c'est ce qui
+    permet de voir qu'une fiche a disparu, et la disparition d'une fiche est
+    exactement ce que la publication doit propager."""
+    a, b = tmp_path / "a", tmp_path / "b"
+    snapshot(a, [1, 2])
+    snapshot(b, [1, 2])
+    assert publication.empreinte(a) == publication.empreinte(b)
+    (b / "entite" / "2.json").unlink()
+    assert publication.empreinte(a) != publication.empreinte(b)
+
+
+def test_une_publication_concurrente_est_refusee_et_ne_touche_a_rien(
+        publication, emplacements, monkeypatch):
+    """Deux clics valent deux requêtes. Rien n'empêchait deux publications de
+    se recouvrir dans le même répertoire."""
+    import fcntl
+
+    snapshot(emplacements["publie"], [1], marque="en ligne")
+    avant = empreinte(emplacements["publie"])
+    publication.generer_apercu(builder=builder([2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+
+    verrou = publication.VERROU
+    verrou.parent.mkdir(parents=True, exist_ok=True)
+    with open(verrou, "w") as tenu:
+        fcntl.flock(tenu, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Sans raccourcir l'attente, le test durerait la trentaine de secondes
+        # que l'atelier accorde à un opérateur pressé.
+        vrai_verrou = publication.verrou_de_publication
+        monkeypatch.setattr(publication, "verrou_de_publication",
+                            lambda delai=0.3: vrai_verrou(delai))
+
+        with pytest.raises(publication.PublicationRefusee) as refus:
+            publication.publier(auteur="admin@exemple", role="admin",
+                                controleur=lambda cible: controle(True))
+
+    assert "en cours" in str(refus.value).lower()
+    assert empreinte(emplacements["publie"]) == avant
+
+
+def test_le_verrou_est_relache_apres_usage(publication):
+    """Un verrou qui survivrait à son opération immobiliserait l'instance."""
+    with publication.verrou_de_publication(delai=1):
+        pass
+    with publication.verrou_de_publication(delai=1):
+        pass    # doit être immédiat, pas une seconde d'attente

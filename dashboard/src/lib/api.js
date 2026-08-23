@@ -218,6 +218,14 @@ export const api = {
   publicationServeurApercu: (action, adminKey) =>
     postAdmin('/admin/publication/apercu/serveur', { action }, adminKey),
 
+  // Constater ce que le site public sert VRAIMENT : c'est le seul état que
+  // l'atelier ne peut pas déduire de ses propres écritures.
+  publicationVerifierEnLigne: (adminKey) =>
+    postAdmin('/admin/publication/verifier-en-ligne', {}, adminKey),
+
+  publicationRevenir: (adminKey) =>
+    postAdmin('/admin/publication/revenir', {}, adminKey),
+
   publicationModifications: (adminKey) =>
     getAdmin('/admin/publication/modifications', adminKey),
 }
