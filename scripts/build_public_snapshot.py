@@ -2209,6 +2209,10 @@ def build_snapshot(out: Path) -> dict:
             },
             "flows_total_private": len(flow_rows),
             "flows_public": len(public_flows),
+            # Ce que les pièces attestent, en un coup d'oeil : sur Lasalle,
+            # 123 votés, 36 payés, 2 engagés. Le compteur était calculé mais
+            # restait dans un `Counter` local, donc invisible.
+            "flows_par_etat": dict(counters["flows_par_etat"]),
             "budget_annuel_rows": len(budget_annuel),
             "budget_annexe_rows": len(budget_annexe),
             "ofgl_rows": len(ofgl_data),
@@ -2934,7 +2938,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build a conservative public snapshot preview")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--no-sync", action="store_true",
-                        help="ne pas recopier le snapshot vers public/static/data")
+                        help="ne pas recopier le snapshot vers public/static/data "
+                             "(la recopie n'a lieu que si --out est le répertoire "
+                             "publié : un brouillon ne se sert jamais)")
     args = parser.parse_args()
 
     # Les libellés du site sont dérivés de la même instance que le snapshot :
@@ -2956,7 +2962,23 @@ def main() -> None:
 
     # Produire le snapshot sans le porter jusqu'au site, c'était la moitié du
     # travail — et la moitié invisible : le site restait tel quel, sans erreur.
-    if not args.no_sync:
+    #
+    # Mais la synchro ne vaut QUE pour le répertoire publié. Construire un
+    # brouillon (`--out audits/public_snapshot_preview`) poussait quand même le
+    # résultat dans `public/static/data` : un aperçu se retrouvait servi sans
+    # avoir été contrôlé ni publié, et sans qu'une ligne le dise. C'est le même
+    # défaut que la publication en deux temps a corrigé côté atelier, resté
+    # entier côté ligne de commande — là où l'exploitant travaille.
+    #
+    # Générer n'est pas publier : pour porter un brouillon jusqu'au site, il y a
+    # le flux de publication, qui contrôle avant de mettre en service.
+    vers_le_repertoire_publie = args.out.resolve() == DEFAULT_OUT.resolve()
+    if args.no_sync:
+        pass
+    elif not vers_le_repertoire_publie:
+        print(f"  [site] non synchronisé : --out désigne {args.out}, pas le "
+              f"répertoire publié ({DEFAULT_OUT}). Un brouillon ne se sert pas.")
+    else:
         sync = synchroniser_site_public(args.out, ROOT)
         stats["site_public_fichiers"] = sync["count"]
         stats["site_public_fiches_retirees"] = len(sync["fiches_retirees"])

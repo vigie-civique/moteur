@@ -624,3 +624,27 @@ def test_le_verrou_est_relache_apres_usage(publication):
         pass
     with publication.verrou_de_publication(delai=1):
         pass    # doit être immédiat, pas une seconde d'attente
+
+
+# ── La ligne de commande aussi : générer n'est pas publier ───────────────────
+
+def test_le_cli_ne_sert_pas_un_brouillon(publication):
+    """`build_public_snapshot.py --out <brouillon>` recopiait quand même le
+    résultat dans `public/static/data`.
+
+    La publication en deux temps a corrigé ça côté atelier — l'aperçu n'écrit
+    que dans son brouillon — mais le défaut restait entier côté ligne de
+    commande, là où l'exploitant travaille : construire un aperçu le mettait en
+    ligne, sans contrôle et sans qu'une ligne le dise.
+
+    Le test lit le code plutôt que de lancer un build : construire un vrai
+    snapshot demande une base, et ce qui est en jeu ici est une DÉCISION, pas
+    un résultat.
+    """
+    source = (ROOT / "scripts" / "build_public_snapshot.py").read_text(encoding="utf-8")
+    bloc = source[source.index("def main()"):]
+    assert "vers_le_repertoire_publie" in bloc, \
+        "la synchro vers le site ne vérifie plus où pointe --out"
+    # La recopie est sous condition, jamais dans la branche par défaut.
+    avant_sync = bloc[:bloc.index("synchroniser_site_public(args.out")]
+    assert "DEFAULT_OUT.resolve()" in avant_sync
