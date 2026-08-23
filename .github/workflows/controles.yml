@@ -145,9 +145,40 @@ jobs:
           except pub.PublicationRefusee:
               pass
 
+          publie = pub.publier(auteur="ci", role="admin")
+
+          # « promu_localement », et non « publié » : entre les répertoires
+          # servis et le site en ligne il y a un build et un déploiement que
+          # l'atelier ne fait pas. Le dernier état se CONSTATE, il ne se déduit
+          # pas — et la CI n'a pas de site à interroger.
+          etat = pub.etat_publication()
+          assert etat["etape"] == "promu_localement", etat["etape"]
+          assert etat["etape_libelle"]
+
+          # La mise en service est atomique : chaque emplacement est construit à
+          # côté, contrôlé, puis renommé. Ce qui est servi porte donc toujours
+          # une version entière, et déclare laquelle.
+          assert publie["empreinte"] == pub.empreinte(pub.PUBLIE), \
+              "le répertoire servi ne porte pas la version annoncée"
+          assert (pub.PUBLIE / "version.json").is_file(), \
+              "le répertoire servi ne déclare pas ce qu'il sert"
+
+          # Et l'on peut revenir en arrière — un contrôle vert dit qu'une
+          # version est étanche, pas qu'elle est bonne. Il faut deux
+          # publications pour cela : à la première, il n'y a pas d'avant.
+          try:
+              pub.revenir_a_la_version_precedente(pub.PUBLIE)
+              sys.exit("il n'y avait pourtant aucune version précédente")
+          except pub.PublicationRefusee:
+              pass
+
           pub.publier(auteur="ci", role="admin")
-          assert pub.etat_publication()["etape"] == "publie"
-          print("aperçu → contrôle → publication : le flux tient.")
+          repris = pub.revenir_a_la_version_precedente(pub.PUBLIE)
+          assert (pub.PUBLIE / "stats.json").is_file(), \
+              "le retour arrière a laissé le répertoire servi vide"
+          assert repris["empreinte"] == publie["empreinte"], \
+              "la version remise en service n'est pas celle d'avant"
+          print("aperçu → contrôle → promotion → retour arrière : le flux tient.")
           PY
 
       - name: Snapshot et contrôle d'étanchéité
