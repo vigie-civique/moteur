@@ -107,6 +107,12 @@ APERCU_LOG = ROOT / "audits" / "apercu-site.log"
 # celui qui vient d'être déployé.
 APERCU_BUILD = ROOT / "audits" / "apercu_build"
 
+# Mise en ligne : le build de production et son téléversement chez l'hébergeur.
+# Journal séparé de celui de l'aperçu — on veut pouvoir relire le déploiement
+# d'hier sans qu'un aperçu construit depuis l'ait écrasé.
+DEPLOIEMENT_LOG = ROOT / "audits" / "mise-en-ligne.log"
+DEPLOIEMENT_ETAT = ROOT / "audits" / "mise-en-ligne.json"
+
 # Qui publie. Une seule liste, lue par l'API comme par les tests : le rôle est
 # une règle du dispositif, pas un détail de la couche HTTP.
 ROLES_QUI_PUBLIENT = frozenset({"admin"})
@@ -349,6 +355,7 @@ def etat_publication() -> dict:
         "site": {"repertoire": str(SITE), "existe": (SITE / "stats.json").is_file(),
                  "url": site_url()},
         "en_ligne": en_ligne,
+        "mise_en_ligne": etat_mise_en_ligne(),
         "apercu": etat_serveur_apercu(),
         "roles_qui_publient": sorted(ROLES_QUI_PUBLIENT),
     }
@@ -699,6 +706,117 @@ def _publier_sous_verrou(auteur, source, controleur) -> dict:
     return publie
 
 
+# ── Mise en ligne ────────────────────────────────────────────────────────────
+# Le dernier geste, et le seul qui sorte de la machine. Il est tenu à part de la
+# promotion parce qu'il n'a ni les mêmes effets ni la même réversibilité :
+# promouvoir écrit dans deux répertoires locaux, mettre en ligne change ce que
+# le public voit.
+_deploiement = None
+
+
+def projet_hebergeur() -> str | None:
+    """Le nom du projet chez l'hébergeur, déclaré par l'instance.
+
+    `CF_PROJECT` en variable d'environnement reste prioritaire : c'est ce que
+    `deploy/publier-site.sh` utilise, et deux façons de nommer la même chose
+    qui divergeraient enverraient le site au mauvais endroit.
+    """
+    if os.environ.get("CF_PROJECT"):
+        return os.environ["CF_PROJECT"]
+    chemin = Path(os.environ.get("VIGIE_INSTANCE") or ROOT / "config" / "instance.json")
+    if not chemin.is_file():
+        return None
+    try:
+        return (json.loads(chemin.read_text(encoding="utf-8"))
+                .get("cf_project") or None)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def etat_mise_en_ligne() -> dict:
+    """Où en est le déploiement — en cours, fini, ou jamais lancé."""
+    actif = _deploiement is not None and _deploiement.poll() is None
+    fini = _deploiement is not None and _deploiement.poll() is not None
+    etat = {
+        "actif": actif,
+        "projet": projet_hebergeur(),
+        "journal": str(DEPLOIEMENT_LOG) if DEPLOIEMENT_LOG.is_file() else None,
+    }
+    if DEPLOIEMENT_ETAT.is_file():
+        try:
+            etat |= json.loads(DEPLOIEMENT_ETAT.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    if fini:
+        etat["code_retour"] = _deploiement.returncode
+        etat["ok"] = _deploiement.returncode == 0
+        etat["fin_du_journal"] = _fin_du_journal(25, DEPLOIEMENT_LOG)
+    etat["actif"] = actif      # `|=` a pu l'écraser avec une valeur périmée
+    return etat
+
+
+def mettre_en_ligne(auteur: str | None = None, role: str | None = None) -> dict:
+    """Construit le site depuis la version PROMUE, et le téléverse.
+
+    Ne rejoue pas `deploy/publier-site.sh` en entier, et c'est délibéré : ce
+    script commence par reconstruire le snapshot depuis la base. Or ce qui a été
+    promu a été contrôlé ; le reconstruire déploierait une version que personne
+    n'a validée, différente dès qu'un collecteur a tourné entre-temps. On repart
+    donc de `public/static/data` tel qu'il est servi — étapes 3 et 4 du script,
+    pas 1 à 4.
+    """
+    if not peut_publier(role):
+        raise PublicationRefusee(
+            "Mettre en ligne est réservé au rôle admin.")
+
+    global _deploiement
+    if _deploiement is not None and _deploiement.poll() is None:
+        return etat_mise_en_ligne()
+
+    etat = lire_etat()
+    empreinte_promue = (etat.get("publie") or {}).get("empreinte")
+    if not empreinte_promue:
+        raise PublicationRefusee(
+            "Rien n'a été promu localement — publier d'abord. Mettre en ligne "
+            "ne construit pas de snapshot, il déploie celui qui a été contrôlé.")
+    if not (SITE / "stats.json").is_file():
+        raise PublicationRefusee(
+            f"{SITE} est vide : le site n'a rien à construire.")
+
+    projet = projet_hebergeur()
+    if not projet:
+        raise PublicationRefusee(
+            "Aucun projet d'hébergement déclaré. Ajouter `cf_project` à "
+            "config/instance.json, ou exporter CF_PROJECT avant de démarrer "
+            "l'API. Sans lui, le déploiement irait au hasard.")
+    if not (ROOT / "public" / "node_modules").is_dir():
+        raise PublicationRefusee(
+            "Le site public n'a pas ses dépendances : `cd public && npm ci`.")
+
+    DEPLOIEMENT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    DEPLOIEMENT_ETAT.write_text(json.dumps({
+        "demarre_le": maintenant(), "demarre_par": auteur,
+        "projet": projet, "empreinte_visee": empreinte_promue,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    journal = DEPLOIEMENT_LOG.open("w", encoding="utf-8")
+    journal.write(f"$ mise en ligne de {SITE} vers « {projet} »\n"
+                  f"  empreinte promue : {empreinte_promue}\n\n")
+    journal.flush()
+    # `--branch=main` force l'environnement Production : sans lui, wrangler lit
+    # la branche git courante et déploie en Preview — la production reste alors
+    # inchangée, sans que rien n'échoue.
+    _deploiement = subprocess.Popen(
+        ["bash", "-c",
+         "npm run build && "
+         f"npx wrangler pages deploy build --project-name={projet} "
+         "--branch=main --commit-dirty=true"],
+        cwd=str(ROOT / "public"),
+        stdout=journal, stderr=subprocess.STDOUT,
+    )
+    return etat_mise_en_ligne()
+
+
 # ── Serveur d'aperçu : le site public branché sur le brouillon ───────────────
 # Un seul processus à la fois, gardé ici parce que c'est l'API qui le démarre et
 # qui doit pouvoir l'arrêter. Il sert le VRAI site — mêmes composants, même
@@ -881,9 +999,10 @@ def _attendre_le_port(delai: float = 25.0) -> bool:
     return False
 
 
-def _fin_du_journal(lignes: int = 20) -> str:
+def _fin_du_journal(lignes: int = 20, fichier: Path | None = None) -> str:
     try:
-        return "\n".join(APERCU_LOG.read_text(encoding="utf-8").splitlines()[-lignes:])
+        texte = (fichier or APERCU_LOG).read_text(encoding="utf-8")
+        return "\n".join(texte.splitlines()[-lignes:])
     except OSError:
         return "(journal illisible)"
 

@@ -694,3 +694,108 @@ def test_le_cli_ne_sert_pas_un_brouillon(publication):
     # La recopie est sous condition, jamais dans la branche par défaut.
     avant_sync = bloc[:bloc.index("synchroniser_site_public(args.out")]
     assert "DEFAULT_OUT.resolve()" in avant_sync
+
+# ── Mettre en ligne ──────────────────────────────────────────────────────────
+#
+# Le seul geste de l'atelier qui sorte de la machine. Promouvoir écrit dans deux
+# répertoires locaux ; mettre en ligne change ce que le public voit.
+#
+# Ce qu'il ne fait PAS, et c'est le point : rejouer `deploy/publier-site.sh` en
+# entier. Ce script commence par reconstruire le snapshot depuis la base — or ce
+# qui a été promu a été CONTRÔLÉ. Le reconstruire déploierait une version que
+# personne n'a validée, différente dès qu'un collecteur a tourné entre-temps.
+
+
+@pytest.fixture
+def pret_a_deployer(publication, emplacements, monkeypatch):
+    """Un snapshot promu, et un projet d'hébergement déclaré."""
+    monkeypatch.setattr(publication, "projet_hebergeur", lambda: "vigie-essai")
+    monkeypatch.setattr(publication, "DEPLOIEMENT_LOG",
+                        emplacements["brouillon"].parent / "mise-en-ligne.log")
+    monkeypatch.setattr(publication, "DEPLOIEMENT_ETAT",
+                        emplacements["brouillon"].parent / "mise-en-ligne.json")
+    monkeypatch.setattr(publication, "_deploiement", None)
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    return publication.publier(auteur="admin@exemple", role="admin",
+                               controleur=lambda cible: controle(True))
+
+
+def test_seul_un_admin_met_en_ligne(publication, pret_a_deployer):
+    for role in (None, "contributor", "validator"):
+        with pytest.raises(publication.PublicationRefusee) as refus:
+            publication.mettre_en_ligne(auteur="x", role=role)
+        assert "admin" in str(refus.value).lower()
+
+
+def test_sans_rien_de_promu_la_mise_en_ligne_refuse(publication, emplacements,
+                                                    monkeypatch):
+    """Mettre en ligne ne construit pas de snapshot : il déploie celui qui a été
+    contrôlé. S'il n'y en a pas, il n'y a rien à déployer."""
+    monkeypatch.setattr(publication, "projet_hebergeur", lambda: "vigie-essai")
+    monkeypatch.setattr(publication, "_deploiement", None)
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
+    assert "promu" in str(refus.value).lower()
+
+
+def test_sans_projet_declare_la_mise_en_ligne_refuse(publication, pret_a_deployer,
+                                                     monkeypatch):
+    """Un déploiement sans nom de projet irait au hasard — ou, pire, chez le
+    voisin : une machine porte souvent plusieurs instances."""
+    monkeypatch.setattr(publication, "projet_hebergeur", lambda: None)
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
+    assert "projet" in str(refus.value).lower()
+
+
+def test_la_mise_en_ligne_part_de_ce_qui_est_servi(publication, pret_a_deployer,
+                                                   emplacements, monkeypatch):
+    """Le build est lancé dans `public/`, qui lit le répertoire servi — pas une
+    reconstruction depuis la base."""
+    lance = {}
+
+    class FauxDeploiement:
+        returncode = None
+        def poll(self): return None
+
+    def faux_popen(cmd, cwd=None, **kw):
+        lance.update(cmd=cmd, cwd=cwd)
+        return FauxDeploiement()
+
+    monkeypatch.setattr(publication.subprocess, "Popen", faux_popen)
+    monkeypatch.setattr(publication, "_deploiement", None)
+    # `node_modules` est exigé avant de lancer quoi que ce soit.
+    (publication.ROOT / "public" / "node_modules").mkdir(parents=True, exist_ok=True)
+
+    etat = publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
+
+    assert lance["cwd"].endswith("public")
+    commande = " ".join(lance["cmd"])
+    assert "npm run build" in commande
+    assert "wrangler pages deploy build" in commande
+    # L'environnement Production, explicitement : sans `--branch=main`, wrangler
+    # lit la branche git courante et déploie en Preview — la production reste
+    # inchangée sans que rien n'échoue.
+    assert "--branch=main" in commande
+    assert "--project-name=vigie-essai" in commande
+    # Aucune reconstruction de snapshot : ce qui a été contrôlé part tel quel.
+    assert "build_public_snapshot" not in commande
+    assert "publier-site.sh" not in commande
+    assert etat["actif"] is True
+    assert etat["empreinte_visee"] == pret_a_deployer["empreinte"]
+
+
+def test_letat_dit_quand_un_deploiement_a_echoue(publication, pret_a_deployer,
+                                                 monkeypatch):
+    """Un déploiement rouge doit se voir : le site n'a pas changé, et celui qui
+    a cliqué doit le savoir sans aller lire un journal."""
+    class Echoue:
+        returncode = 1
+        def poll(self): return 1
+
+    monkeypatch.setattr(publication, "_deploiement", Echoue())
+    etat = publication.etat_mise_en_ligne()
+    assert etat["actif"] is False
+    assert etat["ok"] is False
+    assert etat["code_retour"] == 1

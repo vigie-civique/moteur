@@ -223,6 +223,10 @@ export const api = {
   publicationVerifierEnLigne: (adminKey) =>
     postAdmin('/admin/publication/verifier-en-ligne', {}, adminKey),
 
+  // Le seul geste de l'atelier qui sorte de la machine.
+  publicationMettreEnLigne: (adminKey) =>
+    postAdmin('/admin/publication/mettre-en-ligne', {}, adminKey),
+
   publicationRevenir: (adminKey) =>
     postAdmin('/admin/publication/revenir', {}, adminKey),
 

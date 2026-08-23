@@ -1504,6 +1504,31 @@ def publication_verifier_en_ligne(x_admin_key: Optional[str] = Header(default=No
     return _etat_complet(x_admin_key, user)
 
 
+@app.post("/api/admin/publication/mettre-en-ligne")
+def publication_mettre_en_ligne(x_admin_key: Optional[str] = Header(default=None),
+                                user=Depends(optional_user)):
+    """Construit le site depuis la version promue et le téléverse. Admin seul.
+
+    Le seul geste de tout l'atelier qui sorte de la machine. Il rend la main
+    tout de suite : construire 1 449 pages et les téléverser prend plusieurs
+    minutes, et une route qui attendrait la fin ferait expirer le navigateur
+    avant le déploiement. L'avancement se lit dans l'état.
+    """
+    _check_admin(x_admin_key, user)
+    role = _role_effectif(x_admin_key, user)
+    try:
+        lance = pub.mettre_en_ligne(auteur=_auteur(user), role=role)
+    except pub.PublicationRefusee as e:
+        _journal_publication(user, "mise-en-ligne-refusee",
+                             {"motif": e.message, "role": role})
+        raise HTTPException(409, {"message": e.message, **e.detail})
+    _journal_publication(user, "mise-en-ligne", {
+        "projet": lance.get("projet"),
+        "empreinte_visee": lance.get("empreinte_visee"),
+    })
+    return _etat_complet(x_admin_key, user)
+
+
 @app.post("/api/admin/publication/revenir")
 def publication_revenir(x_admin_key: Optional[str] = Header(default=None),
                         user=Depends(optional_user)):

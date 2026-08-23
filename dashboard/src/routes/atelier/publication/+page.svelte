@@ -1,4 +1,5 @@
 <script>
+  import { onDestroy } from 'svelte'
   // Publication en quatre temps : ce qui est en ligne, un aperçu, ses contrôles,
   // puis — et seulement si tout est vert — la publication.
   //
@@ -52,6 +53,7 @@
   let generating = false
   let publishing = false
   let verifying = false
+  let deploying = false
   let serveurEnCours = false
   let error = ''
   let controleDeplie = false
@@ -67,6 +69,7 @@
   $: apercu = etat?.apercu || {}
   $: project = etat?.project || {}
   $: enLigne = etat?.en_ligne || {}
+  $: deploiement = etat?.mise_en_ligne || {}
   $: urlPublique = etat?.site?.url || null
   $: promu = etape === 'promu_localement' || etape === 'en_ligne'
   $: peutPublier = peutAgir && etape === 'pret_a_publier'
@@ -165,6 +168,31 @@
     publishing = true
     await appeler(api.publicationPublier, () => (publishing = false))
   }
+
+  async function mettreEnLigne() {
+    if (!confirm(
+      `Mettre en ligne sur ${urlPublique || 'le site public'} ?\n\n`
+      + 'Le site est construit depuis la version promue, puis téléversé chez '
+      + "l'hébergeur. C'est le seul geste de l'atelier qui change ce que le "
+      + 'public voit. Compter plusieurs minutes.')) return
+    deploying = true
+    await appeler(api.publicationMettreEnLigne, () => (deploying = false))
+    // Le déploiement continue en arrière-plan : on suit son avancement.
+    suivre()
+  }
+
+  // Tant que le déploiement tourne, l'état est relu régulièrement — sinon la
+  // page resterait sur « en cours » jusqu'au prochain clic, et personne ne
+  // saurait si le site est à jour.
+  let suivi = null
+  function suivre() {
+    clearInterval(suivi)
+    suivi = setInterval(async () => {
+      await charger({ silencieux: true })
+      if (!etat?.mise_en_ligne?.actif) { clearInterval(suivi); suivi = null }
+    }, 5000)
+  }
+  onDestroy(() => clearInterval(suivi))
 
   async function verifierEnLigne() {
     verifying = true
@@ -663,7 +691,29 @@
       <p class="muted">Jamais vérifié depuis cette machine.</p>
     {/if}
 
+    {#if deploiement.actif}
+      <p class="ligne"><span class="tag attente">déploiement en cours</span>
+        Vers <code>{deploiement.projet}</code>, empreinte
+        <code>{deploiement.empreinte_visee}</code>. Construction des pages puis
+        téléversement — plusieurs minutes. Journal :
+        <code>{deploiement.journal}</code>
+      </p>
+    {:else if deploiement.code_retour !== undefined}
+      <p class:alerte={!deploiement.ok} class:muted={deploiement.ok}>
+        {deploiement.ok
+          ? 'Dernier déploiement terminé sans erreur. Vérifier ci-dessous que le site sert bien cette version.'
+          : `Dernier déploiement en ÉCHEC (code ${deploiement.code_retour}) — le site n'a pas changé.`}
+      </p>
+      {#if !deploiement.ok && deploiement.fin_du_journal}
+        <details><summary>Fin du journal</summary><pre>{deploiement.fin_du_journal}</pre></details>
+      {/if}
+    {/if}
+
     {#if peutAgir}
+      <button class="danger" on:click={mettreEnLigne}
+              disabled={deploying || deploiement.actif || publishing}>
+        {deploying || deploiement.actif ? 'Mise en ligne…' : 'Mettre en ligne'}
+      </button>
       <button class="secondary" on:click={verifierEnLigne} disabled={verifying}>
         {verifying ? 'Vérification…' : 'Vérifier ce qui est en ligne'}
       </button>
