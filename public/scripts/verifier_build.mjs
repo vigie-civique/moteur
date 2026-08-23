@@ -10,12 +10,26 @@
 //
 // Ce script fait échouer le build si le symptôme réapparaît. Il tourne après
 // `vite build` (cf. package.json).
-import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
 // Même répertoire que celui qu'`adapter-static` vient d'écrire : un aperçu
 // figé (`VIGIE_BUILD_DIR`) doit être contrôlé, pas ignoré.
-const BUILD = join(process.cwd(), process.env.VIGIE_BUILD_DIR || 'build')
+//
+// `resolve` et non `join` : `join('/a/public', '/a/audits/build')` CONCATÈNE et
+// donne `/a/public/a/audits/build`. L'aperçu de l'atelier passe un chemin
+// absolu — le contrôle regardait donc un répertoire inexistant, n'y trouvait
+// aucune page, et annonçait « ✓ 0 pages vérifiées : toutes livrent leur
+// contenu ». Vrai, et vide de sens. Constaté le 23/08/2026 sur le premier
+// aperçu construit depuis l'atelier.
+const BUILD = resolve(process.cwd(), process.env.VIGIE_BUILD_DIR || 'build')
+
+if (!existsSync(BUILD)) {
+  console.error(`\n✖ ${BUILD} n'existe pas.`)
+  console.error("\nVIGIE_BUILD_DIR ne désigne pas le répertoire qu'adapter-static")
+  console.error("vient d'écrire, ou le build a échoué avant d'écrire quoi que ce soit.\n")
+  process.exit(1)
+}
 
 // Exceptions assumées, chacune pour une raison précise. Toute nouvelle entrée
 // ici doit être justifiée : c'est la porte par laquelle le défaut reviendrait.
@@ -57,6 +71,17 @@ for (const p of pages) {
   if (rendu.length < MINI_RENDU) {
     problemes.push(`${rel} : ${rendu.length} o de HTML rendu (< ${MINI_RENDU}) — page probablement vide`)
   }
+}
+
+// Un contrôle qui passe sur zéro page ne contrôle rien, et son « ✓ » est plus
+// dangereux qu'une erreur : c'est exactement ce qu'il a affiché le 23/08/2026
+// devant un répertoire inexistant. Le garde-fou doit d'abord se garantir
+// lui-même.
+if (pages.length === 0) {
+  console.error(`\n✖ Aucune page trouvée dans ${BUILD}.`)
+  console.error("\nLe build n'a rien écrit, ou VIGIE_BUILD_DIR ne désigne pas")
+  console.error("le répertoire qu'adapter-static vient de remplir.\n")
+  process.exit(1)
 }
 
 if (problemes.length) {
