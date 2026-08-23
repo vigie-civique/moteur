@@ -26,10 +26,12 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+from collections import Counter
 from pathlib import Path
 
 from .config import (
-    COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT, COMMUNE_SIREN as COMMUNE_SIREN_CFG,
+    COMMUNE_INSEE, COMMUNE_NAME, COMMUNES_ADRESSE, COMMUNES_CP, DEPARTEMENT,
+    COMMUNE_SIREN as COMMUNE_SIREN_CFG,
     COMMUNE_SIRET as COMMUNE_SIRET_CFG, EPCI_NOM, EPCI_SIREN,
     HEADERS, REQUEST_DELAY
 )
@@ -66,6 +68,114 @@ def _norme_acheteur(nom: str) -> str:
     t = re.sub(r"\b(cc|ca|cu|communaute|communautes|commune|communes|mairie|mairies"
                r"|ville|villes|de|du|des|d|la|le|les|l)\b", " ", t)
     return re.sub(r"[^a-z0-9]+", "", t)
+
+
+# ── Recouper un acheteur avec le territoire ──────────────────────────────────
+# Le BOAMP ne publie AUCUN SIREN : vérifié le 23/08/2026 sur les deux schémas
+# qu'il sert. Le schéma historique (`Boamp_v230.xsd`) donne un bloc `IDENTITE`
+# avec DENOMINATION, CP et VILLE ; le schéma eForms donne des organisations dont
+# le `cbc:CompanyID` porte un identifiant européen opaque
+# (« 61ABD31C-D0E7-9627-… »), jamais l'immatriculation française. Le recoupement
+# par SIREN existe donc là où la source en donne un — les trois chemins DECP
+# interrogent par SIREN d'acheteur — et il est IMPOSSIBLE sur le BOAMP.
+#
+# Ce que le BOAMP donne, en revanche, c'est l'ADRESSE DÉCLARÉE de l'acheteur.
+# C'est elle qui sert de recoupement : un acheteur domicilié hors du territoire
+# n'est pas l'acheteur qu'on cherche, quel que soit son nom.
+#
+# Sans ce filtre, la recherche par jetons ramène la France entière dès que le
+# nom de l'EPCI contient un mot commun. Mesuré le 23/08/2026 : « coeur » ramène
+# 3 668 avis (Cœur Essonne, Cœur de Flandre, Cœur du Var, Cœur de Loire, Cœur de
+# Tarentaise…), « terres » 2 441, « cévennes » 626. Saillans en avait 400 en
+# base, tous `probable`, tous hors sujet — ils n'atteignaient pas le site mais
+# encombraient la file de revue, qui est le vrai goulot du dispositif.
+#
+# `code_departement` ne suffit pas : c'est le département de l'avis, pas celui
+# de l'acheteur. Une recherche bornée au 26 remonte le SYDEO du Pouzin (07).
+
+def _texte(v) -> str:
+    """Valeur d'un champ eForms, qu'il soit une chaîne ou un objet `@languageID`."""
+    if isinstance(v, dict):
+        return str(v.get("#text") or "")
+    return str(v or "")
+
+
+def _adresses_declarees(noeud, trouvees: list | None = None) -> list[tuple[str, str, str]]:
+    """(dénomination, code postal, ville) de toutes les organisations d'un avis.
+
+    Les deux schémas du BOAMP sont parcourus par la même fonction : celui qui
+    n'est pas là ne produit rien.
+    """
+    trouvees = [] if trouvees is None else trouvees
+    if isinstance(noeud, dict):
+        identite = noeud.get("IDENTITE")
+        if isinstance(identite, dict):
+            trouvees.append((str(identite.get("DENOMINATION") or ""),
+                             str(identite.get("CP") or ""),
+                             str(identite.get("VILLE") or "")))
+        if "cac:PartyName" in noeud:
+            adresse = noeud.get("cac:PostalAddress") or {}
+            trouvees.append((
+                _texte((noeud.get("cac:PartyName") or {}).get("cbc:Name")),
+                _texte(adresse.get("cbc:PostalZone")),
+                _texte(adresse.get("cbc:CityName")),
+            ))
+        for valeur in noeud.values():
+            _adresses_declarees(valeur, trouvees)
+    elif isinstance(noeud, list):
+        for valeur in noeud:
+            _adresses_declarees(valeur, trouvees)
+    return trouvees
+
+
+def localite_acheteur(avis: dict) -> tuple[str, str] | None:
+    """Code postal et ville de l'acheteur d'un avis BOAMP, ou None s'il se tait.
+
+    L'avis décrit plusieurs organisations — l'acheteur, les titulaires, le
+    tribunal compétent, la centrale d'achat. On retient celle dont le nom est
+    celui de l'acheteur ; à défaut, la première déclarée, qui est l'acheteur
+    dans les deux schémas.
+    """
+    try:
+        donnees = json.loads(avis.get("donnees") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return None
+    cherche = _norme_acheteur(avis.get("nomacheteur") or "")
+    declarees = _adresses_declarees(donnees)
+    for nom, cp, ville in declarees:
+        if cherche and _norme_acheteur(nom) == cherche and (cp or ville):
+            return (cp, ville)
+    for nom, cp, ville in declarees:
+        if cp or ville:
+            return (cp, ville)
+    return None
+
+
+def _norme_lieu(nom: str) -> str:
+    t = unicodedata.normalize("NFD", nom or "")
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn").lower()
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
+_LIEUX_PERIMETRE = {_norme_lieu(c["nom"]) for c in COMMUNES_ADRESSE.values()}
+
+
+def acheteur_du_territoire(localite: tuple[str, str] | None) -> bool | None:
+    """L'acheteur est-il domicilié dans le périmètre ? None si la source se tait.
+
+    Trois réponses et non deux : une adresse absente n'est pas une adresse
+    étrangère. Le doute ne fait pas entrer un acheteur — il laisse la décision
+    au nom, qui est l'autre indice.
+    """
+    if not localite:
+        return None
+    cp, ville = localite
+    cp = (cp or "").strip()[:5]
+    if cp and cp in COMMUNES_CP:
+        return True
+    if ville and _norme_lieu(ville) in _LIEUX_PERIMETRE:
+        return True
+    return False if (cp or ville) else None
 
 
 ACHETEUR_JETONS = tuple({COMMUNE_NAME.lower()} | {
@@ -552,15 +662,24 @@ def fetch_boamp_marches() -> list[dict]:
     print(f"\n[BOAMP] Recherche marchés {COMMUNE_NAME} + {EPCI_NOM}…")
     results = []
     seen_ids = set()
+    ecartes = Counter()
 
-    # Le nom de l'acheteur est saisi librement par le publicateur : on
-    # interroge sur les jetons du périmètre, en bornant au département pour le
-    # nom de la commune — « Brassac » désigne aussi des communes de l'Ariège,
-    # du Puy-de-Dôme et du Tarn-et-Garonne.
-    queries = [
-        f'nomacheteur like "%{COMMUNE_NAME.lower()}%" and code_departement="{DEPARTEMENT}"',
-    ] + [f'nomacheteur like "%{j}%"' for j in ACHETEUR_JETONS
-         if j != COMMUNE_NAME.lower()]
+    # Le nom de l'acheteur est saisi librement par le publicateur : on interroge
+    # sur les jetons du périmètre, TOUS bornés au département. Le nom de la
+    # commune l'était depuis toujours — « Brassac » désigne aussi des communes
+    # de l'Ariège, du Puy-de-Dôme et du Tarn-et-Garonne — mais pas les jetons
+    # tirés du nom de l'EPCI, et c'est par là que la France entière entrait :
+    # « coeur » ramène 3 668 avis sans borne, 23 avec (mesuré le 23/08/2026).
+    #
+    # La borne sert aussi à ce que la pagination garde un sens : chaque requête
+    # s'arrête à 200 avis, les plus récents d'abord. Sur un jeton non borné, les
+    # 200 plus récents de France peuvent ne contenir aucun avis du territoire.
+    #
+    # Elle ne suffit pas : `code_departement` est celui de l'AVIS, pas celui de
+    # l'acheteur — une recherche bornée au 26 remonte le SYDEO du Pouzin (07).
+    # D'où le recoupement sur l'adresse déclarée, plus bas.
+    queries = [f'nomacheteur like "%{j}%" and code_departement="{DEPARTEMENT}"'
+               for j in ACHETEUR_JETONS]
 
     for where in queries:
         offset = 0
@@ -609,14 +728,35 @@ def fetch_boamp_marches() -> list[dict]:
                 # bien la CC. Ce qui est refusé, c'est un PRÉFIXE étranger.
                 acheteur_norme = _norme_acheteur(acheteur)
                 if acheteur_norme.startswith(_norme_acheteur(COMMUNE_NAME)):
-                    acheteur_id_str, certitude = COMMUNE_SIREN, "verified"
+                    reconnu = COMMUNE_SIREN
                 elif acheteur_norme.startswith(_norme_acheteur(EPCI_NOM)):
-                    acheteur_id_str, certitude = CAC_SIREN, "verified"
+                    reconnu = CAC_SIREN
                 else:
-                    # Ni jeté ni attribué : il garde son nom déclaré, entre en
+                    reconnu = ""
+
+                # Le recoupement : l'adresse que l'acheteur déclare lui-même.
+                # C'est le seul rattachement au territoire que le BOAMP permette
+                # — il ne publie pas de SIREN (cf. `localite_acheteur`).
+                du_territoire = acheteur_du_territoire(localite_acheteur(hit))
+                if du_territoire is False:
+                    # Domicilié ailleurs. Le nom ne rachète pas l'adresse : un
+                    # « Brassac » de l'Ariège porte bien le nom de la commune.
+                    ecartes["hors_territoire"] += 1
+                    continue
+                if reconnu:
+                    acheteur_id_str, certitude = reconnu, "verified"
+                elif du_territoire:
+                    # Nom inconnu, adresse dans le périmètre : un syndicat, un
+                    # CCAS, une régie. Il garde son nom déclaré, entre en
                     # `probable`, et l'atelier décide — y compris d'en faire une
                     # entité à part entière, ce qu'un syndicat mérite.
                     acheteur_id_str, certitude = "", "probable"
+                else:
+                    # Ni le nom ni l'adresse ne le rattachent : il n'entre pas.
+                    # Une file de revue pleine d'avis d'autres départements est
+                    # une file que personne ne relit.
+                    ecartes["sans_rattachement"] += 1
+                    continue
                 # Titulaire (peut être str ou list)
                 titulaire_raw = hit.get("titulaire") or ""
                 if isinstance(titulaire_raw, list):
@@ -650,7 +790,10 @@ def fetch_boamp_marches() -> list[dict]:
                 break
             time.sleep(REQUEST_DELAY)
 
-    print(f"  [BOAMP] {len(results)} avis trouvés")
+    print(f"  [BOAMP] {len(results)} avis retenus"
+          + (f" — {ecartes['hors_territoire']} acheteurs hors territoire, "
+             f"{ecartes['sans_rattachement']} sans rattachement, écartés"
+             if ecartes else ""))
     return results
 
 
