@@ -137,13 +137,15 @@
 </script>
 
 <svelte:head><title>Flux financiers publics — {SITE_NOM}</title>
-  <meta name="description" content="Où va l'argent public {COMMUNE_A} : subventions versées, dotations reçues, marchés attribués." /></svelte:head>
+  <meta name="description" content="Où va l'argent public {COMMUNE_A} : subventions votées ou versées, dotations reçues, marchés attribués." /></svelte:head>
 
 <section>
   <header class="head">
     <div>
       <h1>Flux financiers publics</h1>
-      <p class="sub">Ce que la commune reçoit et ce qu'elle verse — subventions, marchés, dotations et baux recensés dans les données ouvertes et les délibérations.</p>
+      <!-- « ce qu'elle verse » affirmait un paiement dès le sous-titre, avant
+           même que la page ait regardé ce que les pièces attestent. -->
+      <p class="sub">Ce que la commune reçoit et ce qui en sort — subventions, marchés, dotations et baux recensés dans les données ouvertes et les délibérations, avec l'état de chaque montant.</p>
     </div>
     <label class="year">Période
       <select bind:value={year}>

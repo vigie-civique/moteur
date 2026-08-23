@@ -273,44 +273,86 @@ class FauxVite:
         return 0
 
 
-def test_le_serveur_d_apercu_pointe_sur_le_brouillon(publication, emplacements,
-                                                     port_libre, tmp_path, monkeypatch):
-    """Le site public est lancé sur le BROUILLON, par la seule variable qui
-    décide d'où il lit. Un aperçu branché sur le snapshot publié montrerait
-    fidèlement... ce qui est déjà en ligne."""
+@pytest.fixture
+def build_dapercu(publication, tmp_path, monkeypatch):
+    """Un build déjà là, pour les tests qui portent sur le SERVEUR.
+
+    Construire pour de vrai demanderait `npm` et une minute par test ; ce qui
+    s'éprouve ici, c'est ce que l'atelier lance et sur quoi il le lance.
+    """
+    build = tmp_path / "apercu_build"
+    build.mkdir()
+    (build / "index.html").write_text("<h1>aperçu</h1>", encoding="utf-8")
+    monkeypatch.setattr(publication, "APERCU_BUILD", build)
+    faux_vite = tmp_path / "vite"
+    faux_vite.write_text("", encoding="utf-8")
+    monkeypatch.setattr(publication, "_vite", lambda: faux_vite)
+    return build
+
+
+def test_le_serveur_d_apercu_sert_le_build_du_brouillon(
+        publication, emplacements, port_libre, build_dapercu, monkeypatch):
+    """Ce qui est servi est l'ARTEFACT, pas le serveur de développement.
+
+    Avant le 23/08/2026, l'aperçu lançait `vite dev` : rendu à la volée,
+    modules non groupés, aucun prérendu. Ce qui part en ligne est un build
+    statique de 1 449 pages, et c'est là que se logent les défauts qui restent.
+    On prévisualisait la seule version du site qui ne sera jamais publiée.
+    """
     snapshot(emplacements["brouillon"], [1])
     snapshot(emplacements["publie"], [1, 2])
     lance = {}
+    construit = {}
 
     def faux_popen(cmd, cwd=None, env=None, **kw):
         lance.update(cmd=cmd, cwd=cwd, env=env)
         return FauxVite(port=port_libre)
 
-    faux_vite = tmp_path / "vite"
-    faux_vite.write_text("", encoding="utf-8")
     monkeypatch.setattr(publication.subprocess, "Popen", faux_popen)
-    monkeypatch.setattr(publication, "_vite", lambda: faux_vite)
+    monkeypatch.setattr(publication, "construire_apercu",
+                        lambda cible=None: construit.update(cible=cible))
 
     etat = publication.demarrer_serveur_apercu()
     try:
-        assert lance["env"]["VIGIE_DATA_DIR"] == str(emplacements["brouillon"])
-        assert lance["env"]["VIGIE_DATA_DIR"] != str(emplacements["publie"])
-        assert lance["cwd"].endswith("public")
-        assert lance["cmd"][1] == "dev"
+        # Construit sur le brouillon, jamais sur ce qui est déjà servi.
+        assert construit["cible"] == emplacements["brouillon"]
+        # Servi par le serveur statique du dépôt, pas par Vite.
+        assert lance["cmd"][1].endswith("servir_apercu.py")
+        assert lance["cmd"][2] == str(build_dapercu)
         assert etat["actif"] and etat["url"]
+        assert etat["build"]["existe"] is True
     finally:
         assert publication.arreter_serveur_apercu()["actif"] is False
 
 
-def test_un_apercu_qui_ne_demarre_pas_se_dit(publication, emplacements, port_libre,
-                                             tmp_path, monkeypatch):
-    """Port déjà pris, dépendances cassées : Vite sort en une seconde. Rendre
-    la main sur « c'est parti » afficherait une prévisualisation en marche
-    devant un cadre vide."""
+def test_un_build_dapercu_qui_echoue_ne_se_montre_pas(publication, emplacements,
+                                                      build_dapercu, monkeypatch):
+    """Un build rouge est un défaut de l'artefact publiable, pas de l'atelier :
+    il n'y a rien à montrer tant qu'il n'est pas corrigé. Servir le build
+    PRÉCÉDENT serait pire — on croirait regarder ses corrections."""
     snapshot(emplacements["brouillon"], [1])
-    faux_vite = tmp_path / "vite"
-    faux_vite.write_text("", encoding="utf-8")
-    monkeypatch.setattr(publication, "_vite", lambda: faux_vite)
+
+    def build_rouge(cible=None):
+        raise publication.PublicationRefusee("Le build de l'aperçu a échoué")
+
+    # Le port de la machine qui fait tourner les tests n'a rien à voir avec ce
+    # qu'on éprouve ici : l'atelier du développeur occupe souvent 5180.
+    monkeypatch.setattr(publication, "_port_repond", lambda: False)
+    monkeypatch.setattr(publication, "construire_apercu", build_rouge)
+    monkeypatch.setattr(publication.subprocess, "Popen",
+                        lambda *a, **kw: pytest.fail("rien ne devait être servi"))
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.demarrer_serveur_apercu()
+    assert "build" in str(refus.value).lower()
+
+
+def test_un_apercu_qui_ne_demarre_pas_se_dit(publication, emplacements, port_libre,
+                                             build_dapercu, monkeypatch):
+    """Le serveur peut sortir en une seconde. Rendre la main sur « c'est parti »
+    afficherait une prévisualisation en marche devant un cadre vide."""
+    snapshot(emplacements["brouillon"], [1])
+    monkeypatch.setattr(publication, "construire_apercu", lambda cible=None: None)
     monkeypatch.setattr(publication.subprocess, "Popen",
                         lambda *a, **kw: FauxVite(vivant=False))
 
@@ -332,6 +374,10 @@ def test_un_port_deja_occupe_se_dit_avant_de_lancer_quoi_que_ce_soit(
     monkeypatch.setattr(publication, "_vite", lambda: faux_vite)
     monkeypatch.setattr(publication.subprocess, "Popen",
                         lambda *a, **kw: pytest.fail("rien ne devait être lancé"))
+    # Le build non plus : construire 1 449 pages pour découvrir ensuite que le
+    # port est pris ferait attendre une minute pour rien.
+    monkeypatch.setattr(publication, "construire_apercu",
+                        lambda cible=None: pytest.fail("rien ne devait être construit"))
     with socket.socket() as occupant:
         occupant.bind(("127.0.0.1", 0))
         occupant.listen(1)

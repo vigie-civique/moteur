@@ -174,9 +174,26 @@ cp config/seed_local.exemple.json config/seed_local.json
 venv/bin/python -m collectors.run_all
 
 # 3. Publier : snapshot filtré → contrôles → site statique dans public/build/
-cd public && npm install && cd ..
+cd public && npm ci && cd ..
 ./deploy/publier-site.sh
 ```
+
+> **`npm ci`, pas `npm install`.** Les versions de Svelte, SvelteKit, Vite et
+> leurs greffons sont **épinglées à l'exact** dans les deux `package.json`
+> (23/08/2026). Ce n'est pas de la prudence de principe : les plages `^2.5.0`
+> laissaient SvelteKit dériver jusqu'à 2.70, qui attend Svelte 5 et importe de
+> lui `untrack`, `fork` et `settled` — absents de Svelte 4. Le build passait,
+> en crachant six avertissements « is not exported by » que plus personne ne
+> lisait. Une combinaison qui produit des avertissements à chaque build est une
+> combinaison dont on ne saura pas voir le jour où ils deviendront des erreurs.
+>
+> Combinaison éprouvée : svelte 4.2.20, @sveltejs/kit 2.15.3,
+> @sveltejs/vite-plugin-svelte 3.1.2, @sveltejs/adapter-static 3.0.10,
+> vite 5.4.21. Build propre des deux paquets, 1 449 pages vérifiées.
+>
+> Pour en changer : monter les versions **ensemble**, relancer les deux builds,
+> et n'épingler que si la sortie est vierge d'avertissements. Passer à Svelte 5
+> est un chantier à part — il ouvrira les versions récentes de SvelteKit.
 
 ### Contrôles
 

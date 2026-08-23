@@ -435,7 +435,7 @@
             {:else}
               <button class="secondary" on:click={() => serveurApercu('demarrer')}
                       disabled={serveurEnCours || !apercu.installe}>
-                {serveurEnCours ? 'Démarrage…' : 'Ouvrir l’aperçu'}
+                {serveurEnCours ? 'Construction…' : 'Construire et ouvrir l’aperçu'}
               </button>
             {/if}
           {/if}
@@ -465,9 +465,12 @@
                Un onglet à part règle les trois : la navigation appartient au
                site, l'atelier n'en garde que les portes d'entrée. -->
           <p class="cadre-bandeau">
-            APERÇU ATELIER — snapshot brouillon, non publié. Le site lit
-            <code>{brouillon.repertoire}</code>. Il s’ouvre dans un onglet
-            séparé : la navigation y appartient au site.
+            APERÇU ATELIER — snapshot brouillon, non publié. C’est le
+            <strong>build statique</strong> du site, celui qui partira en ligne,
+            construit sur <code>{brouillon.repertoire}</code>.
+            {#if apercu.build?.pages}({apercu.build.pages} pages, construites le
+            {date(apercu.build.construit_le)}){/if}
+            Il s’ouvre dans un onglet séparé : la navigation y appartient au site.
           </p>
           <div class="apercu-liens">
             {#each LIENS_APERCU as l}
@@ -489,8 +492,10 @@
           </div>
         {:else}
           <p class="muted">
-            La prévisualisation démarre le site public sur son propre port, branché
-            sur le brouillon. Rien n’est copié.
+            La prévisualisation <strong>construit</strong> le site public sur le
+            brouillon — les mêmes pages que celles qui partiront en ligne, passées
+            par le même contrôle de build — puis les sert sur son propre port.
+            Compter une poignée de secondes. Rien n’est copié.
           </p>
         {/if}
       </div>

@@ -102,6 +102,11 @@ APERCU_PORT = int(os.environ.get("VIGIE_APERCU_PORT", "5180"))
 APERCU_URL = os.environ.get("VIGIE_APERCU_URL", f"http://localhost:{APERCU_PORT}")
 APERCU_LOG = ROOT / "audits" / "apercu-site.log"
 
+# Où le build d'aperçu est écrit. Hors du dépôt servi, et distinct de `build/` :
+# construire un aperçu ne doit pas écraser le build de production, qui peut être
+# celui qui vient d'être déployé.
+APERCU_BUILD = ROOT / "audits" / "apercu_build"
+
 # Qui publie. Une seule liste, lue par l'API comme par les tests : le rôle est
 # une règle du dispositif, pas un détail de la couche HTTP.
 ROLES_QUI_PUBLIENT = frozenset({"admin"})
@@ -706,23 +711,105 @@ def _vite() -> Path:
     return ROOT / "public" / "node_modules" / ".bin" / "vite"
 
 
+def _npm() -> str:
+    return shutil.which("npm") or "npm"
+
+
+def construire_apercu(cible: Path | None = None) -> dict:
+    """Construit le site public sur le brouillon, tel qu'il sera publié.
+
+    L'aperçu montrait `vite dev` : rendu à la volée, modules non groupés, aucun
+    prérendu. Ce qui part en ligne est un build statique de 1 449 pages écrites
+    par `adapter-static`, et c'est là que se logent les défauts qui restent —
+    une page qui rend bien en dev et se retrouve vide dans le HTML livré, un
+    lien qui ne résout plus une fois les routes figées. Un aperçu qui ne montre
+    pas l'artefact publiable ne préserve de rien.
+
+    `npm run build` et non `vite build` seul : le script du paquet enchaîne sur
+    `verifier_build.mjs`, qui refuse un build dont les pages sont vides. Cette
+    vérification doit porter sur l'aperçu aussi, sans quoi elle n'arriverait
+    qu'après la publication.
+
+    Deux réglages, déjà prévus par le site : `VIGIE_DATA_DIR` lui dit où lire
+    les données, `VIGIE_BUILD_DIR` où écrire. Rien n'est déplacé.
+    """
+    cible = _verifier_cible_brouillon(cible or BROUILLON)
+    if not (cible / "stats.json").is_file():
+        raise PublicationRefusee(
+            "Aucun aperçu à construire — générer un aperçu d'abord.")
+    if not _vite().exists():
+        raise PublicationRefusee(
+            "Le site public n'a pas ses dépendances : `cd public && npm install`. "
+            "L'aperçu construit le site lui-même, il lui faut de quoi tourner.")
+
+    APERCU_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with APERCU_LOG.open("w", encoding="utf-8") as journal:
+        journal.write(f"$ npm run build  (VIGIE_DATA_DIR={cible})\n\n")
+        journal.flush()
+        issue = subprocess.run(
+            [_npm(), "run", "build"],
+            cwd=str(ROOT / "public"),
+            env={**os.environ,
+                 "VIGIE_DATA_DIR": str(cible),
+                 "VIGIE_BUILD_DIR": str(APERCU_BUILD)},
+            stdout=journal, stderr=subprocess.STDOUT,
+        )
+    if issue.returncode != 0:
+        raise PublicationRefusee(
+            "Le build de l'aperçu a échoué — c'est un défaut de l'artefact "
+            "publiable, pas de l'atelier. Il n'y a rien à montrer tant qu'il "
+            "n'est pas corrigé.", {"journal": _fin_du_journal(40)})
+    if not (APERCU_BUILD / "index.html").is_file():
+        raise PublicationRefusee(
+            "Le build s'est terminé sans écrire de page d'accueil.",
+            {"journal": _fin_du_journal(40)})
+
+    pages = sum(1 for _ in APERCU_BUILD.rglob("*.html"))
+    return {"repertoire": str(APERCU_BUILD), "pages": pages,
+            "construit_le": maintenant(), "donnees": str(cible)}
+
+
 def etat_serveur_apercu() -> dict:
     actif = _serveur is not None and _serveur.poll() is None
+    index = APERCU_BUILD / "index.html"
     return {
         "actif": actif,
         "url": APERCU_URL if actif else None,
         "port": APERCU_PORT,
         "installe": _vite().exists(),
         "journal": str(APERCU_LOG) if actif else None,
+        # Ce qui est servi est un BUILD, pas un serveur de développement : la
+        # page le dit, et donne sa date — un aperçu vieux d'une heure ne montre
+        # pas les corrections de la dernière demi-heure.
+        "build": {
+            "repertoire": str(APERCU_BUILD),
+            "existe": index.is_file(),
+            "construit_le": (datetime.fromtimestamp(index.stat().st_mtime)
+                             .astimezone().isoformat(timespec="seconds")
+                             if index.is_file() else None),
+            "pages": sum(1 for _ in APERCU_BUILD.rglob("*.html"))
+                     if index.is_file() else 0,
+        },
     }
 
 
-def demarrer_serveur_apercu(cible: Path | None = None) -> dict:
-    """Lance le site public sur le brouillon, sur son propre port.
+def demarrer_serveur_apercu(cible: Path | None = None,
+                            reconstruire: bool = True) -> dict:
+    """Construit l'artefact publiable, puis le sert — sur son propre port.
 
-    `VIGIE_DATA_DIR` est le seul réglage : le site le lit pour ses pages
-    prérendues comme pour ses appels `/data/`. Aucun fichier n'est déplacé —
-    l'aperçu ne touche à rien, il regarde ailleurs.
+    Deux gestes, pas un : `npm run build` écrit les 1 449 pages telles qu'elles
+    partiront en ligne et les fait passer par `verifier_build.mjs` ; le serveur
+    ne fait ensuite que les servir, avec les règles de résolution d'URL d'un
+    hébergeur statique (`scripts/servir_apercu.py`).
+
+    Avant le 23/08/2026 l'aperçu lançait `vite dev` : il montrait le serveur de
+    développement, jamais l'artefact. Or c'est là que se logent les défauts qui
+    restent — une page qui rend bien en dev et se retrouve vide dans le HTML
+    livré. On prévisualisait la seule version du site qui ne sera jamais
+    publiée.
+
+    Le prix est un build à chaque ouverture, une poignée de secondes. Le
+    contrepoids est qu'on regarde enfin ce qu'on s'apprête à mettre en ligne.
     """
     global _serveur
     cible = _verifier_cible_brouillon(cible or BROUILLON)
@@ -733,7 +820,7 @@ def demarrer_serveur_apercu(cible: Path | None = None) -> dict:
     if not _vite().exists():
         raise PublicationRefusee(
             "Le site public n'a pas ses dépendances : `cd public && npm install`. "
-            "L'aperçu affiche le site lui-même, il lui faut de quoi tourner.")
+            "L'aperçu construit le site lui-même, il lui faut de quoi tourner.")
     if _port_repond():
         # Quelqu'un écoute déjà, et ce n'est pas nous : une instance voisine, ou
         # l'aperçu d'une API précédente resté orphelin. Le dire vaut mieux que
@@ -745,12 +832,19 @@ def demarrer_serveur_apercu(cible: Path | None = None) -> dict:
             "l'occupe — une machine qui porte plusieurs instances les empile "
             "à partir de 5173.")
 
+    # Le build vient APRÈS les refus : construire 1 449 pages pour découvrir
+    # ensuite que le port est pris ferait attendre une minute pour rien.
+    if reconstruire or not (APERCU_BUILD / "index.html").is_file():
+        construire_apercu(cible)
+
+    # Le journal est ouvert en AJOUT : il porte déjà la sortie du build, et
+    # c'est elle qu'on veut relire quand l'aperçu ne montre pas ce qu'on attend.
     APERCU_LOG.parent.mkdir(parents=True, exist_ok=True)
-    journal = APERCU_LOG.open("w", encoding="utf-8")
+    journal = APERCU_LOG.open("a", encoding="utf-8")
     _serveur = subprocess.Popen(
-        [str(_vite()), "dev", "--port", str(APERCU_PORT), "--strictPort"],
-        cwd=str(ROOT / "public"),
-        env={**os.environ, "VIGIE_DATA_DIR": str(cible)},
+        [sys.executable, str(ROOT / "scripts" / "servir_apercu.py"),
+         str(APERCU_BUILD), "--port", str(APERCU_PORT)],
+        cwd=str(ROOT),
         stdout=journal, stderr=subprocess.STDOUT,
     )
 
