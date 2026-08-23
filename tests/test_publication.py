@@ -120,6 +120,41 @@ def test_flux_sans_beneficiaire_identifie_reste(bps):
     assert bps.flux_extremites_publiees({"from_id": 1, "to_id": None}, {1})
 
 
+# ── Marchés : le lien tombe, la pièce reste ──────────────────────────────────
+# Un flux est écarté quand son extrémité n'a pas de fiche ; un marché non. La
+# pièce décrit un achat de la collectivité, et le nom du titulaire est public —
+# seul le renvoi vers une fiche absente est coupé. Saillans, 23/08/2026 : deux
+# titulaires C2 d'un marché intercommunal refusaient le snapshot entier.
+
+def test_titulaire_sans_fiche_perd_son_lien_pas_son_nom(bps):
+    marches = [{"id": 1, "acheteur_id": 5, "titulaire_id": 19017,
+                "titulaire_nom": "TRUCKS SOLUTIONS VALENCE"}]
+    assert bps.delier_renvois_morts(marches, {5}) == 1
+    assert marches[0]["titulaire_id"] is None
+    assert marches[0]["acheteur_id"] == 5
+    assert marches[0]["titulaire_nom"] == "TRUCKS SOLUTIONS VALENCE"
+
+
+def test_acheteur_sans_fiche_perd_son_lien_aussi(bps):
+    marches = [{"id": 1, "acheteur_id": 8405, "titulaire_id": 2}]
+    assert bps.delier_renvois_morts(marches, {2}) == 1
+    assert marches[0]["acheteur_id"] is None
+
+
+def test_marche_entierement_publie_est_laisse_intact(bps):
+    marches = [{"id": 1, "acheteur_id": 5, "titulaire_id": 2}]
+    assert bps.delier_renvois_morts(marches, {2, 5}) == 0
+    assert (marches[0]["acheteur_id"], marches[0]["titulaire_id"]) == (5, 2)
+
+
+def test_un_renvoi_absent_nest_pas_un_renvoi_mort(bps):
+    """`NULL` ne prétend renvoyer nulle part : rien à couper, rien à compter —
+    sinon le décompte des exclusions gonflerait de marchés que personne n'a
+    déliés."""
+    marches = [{"id": 1, "acheteur_id": 5, "titulaire_id": None}]
+    assert bps.delier_renvois_morts(marches, {5}) == 0
+
+
 # ── L'ordre des règles est lui-même une garantie ─────────────────────────────
 
 def test_une_personne_privee_c1_reste_privee(bps):

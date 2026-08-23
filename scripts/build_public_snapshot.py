@@ -1293,6 +1293,35 @@ def flux_extremites_publiees(flow: dict, public_ids: set[int]) -> bool:
     return True
 
 
+def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
+    """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
+
+    Un flux financier est ÉCARTÉ dans ce cas (cf. `flux_extremites_publiees`) :
+    un montant versé à quelqu'un qui n'a pas de fiche nomme une entité sans le
+    contexte qui la rendrait lisible. Un marché, lui, reste — et c'est une
+    différence de nature, pas une inconséquence. La pièce décrit un ACHAT de la
+    collectivité : son objet, son montant, sa procédure informent même quand
+    l'attributaire est une entreprise de Valence qui n'a rien d'autre à voir avec
+    la commune. Le nom du titulaire vient du BOAMP ou des DECP, il est public, et
+    l'effacer reviendrait à cacher qui a été payé.
+
+    Seul le LIEN tombe. `/marches` et `/entite/<id>` affichent déjà le nom nu
+    quand l'identifiant manque.
+
+    Relevé sur Saillans le 23/08/2026, à la première collecte de marchés : deux
+    titulaires d'un marché de la communauté de communes, écartés des fiches par
+    `hors_fiche_perimetre_C2`, et l'invariant « renvoi vers une fiche non
+    publiée » refusait le snapshot entier — trois fichiers, quatre renvois.
+    """
+    morts = 0
+    for marche in marches:
+        for cle in ("acheteur_id", "titulaire_id"):
+            if marche.get(cle) is not None and marche[cle] not in public_ids:
+                marche[cle] = None
+                morts += 1
+    return morts
+
+
 def _commune_entity_id(conn) -> int | None:
     """Id de l'entité « Commune de … », ou None si elle n'est pas en base."""
     from collectors.config import COMMUNE_NAME
@@ -2087,6 +2116,10 @@ def build_snapshot(out: Path) -> dict:
         marches_data = [m for m in (appliquer_revue(m, revue_marches.get(m["id"]))
                                     for m in marches_data) if m is not None]
         exclusions["marches"]["rejete_en_atelier"] = avant_revue - len(marches_data)
+
+        # Le marché reste, le lien vers une fiche non publiée tombe.
+        exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \
+            delier_renvois_morts(marches_data, public_ids)
 
         # Plans de financement votés (participations aux opérations du syndicat
         # d'électrification). Exportés à part des marchés : aucune entreprise
