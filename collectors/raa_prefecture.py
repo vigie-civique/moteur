@@ -32,6 +32,7 @@ from datetime import date
 from pathlib import Path
 
 from .archive import archive_fetch
+from .connecteurs.base import date_fr
 from .config import (COMMUNES, DEPARTEMENT, EPCI_NOM, PREFECTURE_RAA_PATH,
                      PREFECTURE_URL)
 from .db import get_conn
@@ -145,9 +146,38 @@ def list_pdfs(year: int) -> list[str]:
     return pdfs
 
 
+# La date dans le NOM du fichier : « recueil-30-2026-001-special du 05 01 2026 ».
+# `re.I` parce que la même préfecture écrit aussi « DU 03 03 2026 » — trois
+# recueils du Gard restaient sans date pour une majuscule.
+_DATE_NOM = re.compile(r"\bdu[ ._-](\d{2})[ ._-](\d{2})[ ._-](\d{4})", re.I)
+
+# La date sur la COUVERTURE, quand le nom du fichier ne la porte pas. C'est le
+# cas de départements entiers : la Drôme numérote ses recueils sans les dater
+# (« RAA SPECIAL N°26-2026-016.pdf »), et les 79 recueils lus le 24/08/2026 sont
+# entrés sans une seule date. Leur première page, elle, dit « PUBLIÉ LE 16
+# JANVIER 2026 » — c'est la mention réglementaire de publication, et elle est
+# donc au moins aussi sûre qu'un nom de fichier.
+_PUBLIE_LE = re.compile(r"PUBLI[ÉE]E?\s+LE\s+([^\n]{6,40})", re.I)
+
+
 def _date_from_name(name: str) -> str | None:
-    m = re.search(r"du (\d{2}) (\d{2}) (\d{4})", name)
+    m = _DATE_NOM.search(name or "")
     return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else None
+
+
+def date_du_recueil(nom: str, pages: list[str] | None = None) -> str | None:
+    """La date d'un recueil : son nom de fichier s'il la porte, sa couverture sinon.
+
+    L'ordre n'est pas indifférent. Le nom de fichier est ce que la préfecture a
+    saisi à la mise en ligne ; la couverture est ce que le recueil affirme de
+    lui-même. Les deux se sont toujours accordés là où les deux existent, et le
+    nom vient en premier parce qu'il ne coûte pas de lecture.
+    """
+    date = _date_from_name(nom)
+    if date:
+        return date
+    m = _PUBLIE_LE.search((pages or [""])[0] or "")
+    return date_fr(m.group(1)) if m else None
 
 
 def extract_pages(raw: bytes) -> list[str]:
@@ -191,7 +221,7 @@ def scan_pdf(conn, url: str, dry_run: bool = False) -> int:
     raw = _get(url)
     pages = extract_pages(raw)
     mentions = find_mentions(pages)
-    date_doc = _date_from_name(fname)
+    date_doc = date_du_recueil(fname, pages)
 
     if mentions and not dry_run:
         archive_fetch(SOURCE, url, raw, doc_type="pdf", title=fname,
