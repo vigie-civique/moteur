@@ -74,6 +74,18 @@ THEME_RE = re.compile(
 CONTEXT = 150  # caractères de contexte autour d'une mention
 
 
+class SourceInterrompue(RuntimeError):
+    """La source a cessé de répondre avant la fin de la collecte.
+
+    Ce n'est pas la même chose qu'un recueil retiré du site : là, on SAIT ce
+    qu'on n'a pas lu. Ici, non — la préfecture ferme les connexions au bout de
+    quelques dizaines de téléchargements, et ce qui reste n'a même pas été
+    tenté. Le distinguer d'une collecte complète est tout l'objet de cette
+    exception : le 24/08/2026, un passage a lu 74 recueils sur 263, échoué sur
+    les 189 autres, et s'est déclaré `ok` dans `collector_runs`.
+    """
+
+
 def ensure_table(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS raa_scans (
@@ -265,30 +277,53 @@ def run(year: int, limit: int | None = None, dry_run: bool = False,
     try:
         pdfs = list_pdfs(year)
     except Exception as e:
-        print(f"[raa] index injoignable ({e}) — gard.gouv.fr limite les rafales, réessayer plus tard")
         conn.close()
-        return
+        raise SourceInterrompue(
+            f"index des recueils {year} injoignable ({e}) — la préfecture limite "
+            f"les rafales, réessayer plus tard") from e
     done = {r[0] for r in conn.execute("SELECT url FROM raa_scans")}
     todo = [u for u in pdfs if u not in done]
     print(f"[raa] {len(pdfs)} PDFs en ligne, {len(todo)} à scanner"
           + (f" (limit {limit})" if limit else ""))
 
-    scanned = hits = 0
-    for url in (todo[:limit] if limit else todo):
+    lot = todo[:limit] if limit else todo
+    scanned = hits = absents = interrompus = 0
+    for url in lot:
         fname = urllib.parse.unquote(url.rsplit("/", 1)[-1])
         try:
             n = scan_pdf(conn, url, dry_run=dry_run)
         except Exception as e:
-            print(f"  [raa] échec {fname} → {e}")
+            # Deux échecs qui n'ont rien à voir. Un 4xx dit que le recueil n'est
+            # plus là : c'est une lacune, elle est connue, la collecte reste
+            # complète. Une connexion coupée ne dit rien du tout — on ignore ce
+            # qu'on n'a pas lu, et c'est cela qui rend le passage incomplet.
+            if isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500:
+                absents += 1
+                print(f"  [raa] retiré du site ({e.code}) : {fname}")
+            else:
+                interrompus += 1
+                print(f"  [raa] sans réponse : {fname} → {e}")
             continue
         scanned += 1
         if n:
             hits += 1
             print(f"  ✓ {fname} — {n} mention(s)")
-        time.sleep(delay)  # gard.gouv.fr coupe les connexions après ~90 fetchs rapprochés
+        time.sleep(delay)  # la préfecture coupe les connexions après ~90 fetchs rapprochés
 
-    print(f"[raa] OK — {scanned} scannés, {hits} avec mentions vallon")
+    print(f"[raa] {scanned} recueils lus sur {len(lot)}, {hits} avec mention"
+          + (f", {absents} retiré(s) du site" if absents else "")
+          + (f", {interrompus} sans réponse" if interrompus else ""))
     conn.close()
+
+    if interrompus:
+        # Ce qui a été lu est en base : l'exception ne défait rien, elle refuse
+        # seulement d'appeler « ok » une collecte tronquée. La reprise est
+        # incrémentale — `raa_scans` retient ce qui a été scanné.
+        raise SourceInterrompue(
+            f"{interrompus} recueil(s) sur {len(lot)} n'ont pas répondu — la "
+            f"source a cessé de répondre en cours de collecte. {scanned} lus et "
+            f"enregistrés ; relancer le step reprendra les autres, en espaçant "
+            f"davantage (--delay).")
 
 
 def show_stats():
@@ -304,7 +339,9 @@ def show_stats():
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="RAA préfecture du Gard — mentions vallon")
+    ap = argparse.ArgumentParser(
+        description="Recueils des actes administratifs de la préfecture — "
+                    "mentions des communes du périmètre")
     ap.add_argument("--year", type=int, default=date.today().year)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true", help="Scan sans écrire")
