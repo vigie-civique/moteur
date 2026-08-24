@@ -30,6 +30,13 @@ class DocumentPublie:
     url: str
     libelle: str = ""
     source: str = ""
+    meta: dict | None = None
+    """Ce que la source dit du document lui-même, consigné tel quel.
+
+    Sert à la provenance quand elle ne se lit pas dans l'adresse : un PV
+    retrouvé dans une archive du web garde ici l'horodatage de la capture et
+    l'adresse d'origine, que `conseils` recopie dans la métadonnée de la séance.
+    """
     acte: dict | None = None
     """Renseigné quand la pièce EST un acte, publiée seule, avec son identifiant.
 
@@ -125,9 +132,18 @@ MOIS = {
     "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
     "janv": 1, "févr": 2, "fevr": 2, "avr": 4, "juil": 7, "sept": 9,
     "oct": 10, "nov": 11, "déc": 12, "dec": 12,
+    # Abréviations à trois lettres, relevées dans les noms de fichiers d'une
+    # mairie : « cm 27fev2019.pdf », « cm 24oct2018.pdf ». Une table trop courte
+    # ne se signale pas — elle rend simplement des documents « sans date ».
+    "jan": 1, "fev": 2, "fév": 2, "mar": 3, "jui": 6, "aou": 8, "aoû": 8,
+    "sep": 9,
 }
+# Les séparateurs sont OPTIONNELS : un libellé écrit « 1er septembre 2020 », un
+# nom de fichier écrit « cm26juin2019.pdf ». Ce qui autorise la lecture, c'est le
+# NOM DU MOIS — la table `MOIS` referme la règle, et une suite de chiffres sans
+# mois ne peut pas passer pour une date.
 _DATE_FR = re.compile(
-    r"(\d{1,2})\s*(?:er)?\s+([a-zàâçéèêëîïôûùüÿ]+)\.?\s+(\d{4})", re.I)
+    r"(\d{1,2})\s*(?:er)?\s*([a-zàâçéèêëîïôûùüÿ]{3,})\.?\s*(\d{4})", re.I)
 _DATE_NUM = re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b")
 
 

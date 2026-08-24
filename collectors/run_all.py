@@ -44,7 +44,8 @@ from collectors.osm           import import_osm
 from collectors.profiles      import import_profiles
 from collectors.cm_events     import import_cm_events
 from collectors.conseils      import (import_conseil_communautaire,
-                                      import_conseil_municipal)
+                                      import_conseil_municipal,
+                                      import_pv_archives)
 from collectors.sirene        import import_sirene
 from collectors.rna           import import_rna
 from collectors.bodacc        import run as run_bodacc
@@ -134,6 +135,12 @@ STEPS = {
     # config/seed_local.json (subventions, baux). Les confondre revenait à
     # faire dépendre la collecte des PV d'un fichier local à remplir.
     "cm":       ("Procès-verbaux du conseil municipal (PDF)", import_conseil_municipal),
+    # Ce que le site NE SERT PLUS. Une refonte de site municipal efface les
+    # anciens comptes rendus ; l'archive du web les garde. Passe après `cm` :
+    # une date déjà tenue par une séance collectée sur le site n'est pas
+    # reprise, la pièce servie par la commune faisant foi sur une capture.
+    "cm_archive": ("Procès-verbaux disparus du site (web.archive.org)",
+                   import_pv_archives),
     "seed":     ("Saisies locales : subventions, baux, transactions", import_cm_events),
     # sirene et dvf sont ADRESSÉS : ils bouclent sur COMMUNES_ADRESSE, qui
     # ajoute les communes déléguées — celles qu'une fusion a absorbées mais que

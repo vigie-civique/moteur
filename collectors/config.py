@@ -202,6 +202,9 @@ STEP_META = {
     "marches":    (7,   3,  "marches_publics",   ""),
     "bodacc":     (7,   4,  "events",            "source='bodacc'"),
     "cc_epci":    (14,  5,  "events",            "type='deliberation_cc'"),
+    # L'archive du web ne change pas : une fois les PV disparus repris, il n'y a
+    # plus rien à y chercher avant la prochaine refonte du site.
+    "cm_archive": (365, 5,  "events",            "source_url LIKE '%web.archive.org%'"),
     "banatic":    (30,  5,  "epci_competences",  ""),
     "web":        (7,   6,  "entity_notes",      ""),
     "raa":        (30,  7,  "events",            "type='raa_prefecture'"),

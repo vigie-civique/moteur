@@ -375,7 +375,8 @@ def traiter_acte(conn, doc, portee: str, verbose: bool = True,
     pres = presences(texte, _ordre_noms(portee))
     seance_id = enregistrer_seance(
         conn, doc, portee,
-        {"format": format_, "ocr": ocrise, "depuis_portail_actes": True, **pres})
+        {"format": format_, "ocr": ocrise, "depuis_portail_actes": True,
+         **(doc.meta or {}), **pres})
 
     delib = acte_unique(doc.acte.get("objet") or doc.libelle, texte,
                         doc.acte.get("numero") or "")
@@ -431,7 +432,8 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
     pres = presences(texte, _ordre_noms(portee))
     seance_id = enregistrer_seance(
         conn, doc, portee,
-        {"nb_deliberations": len(delibs), "ocr": ocrise, "format": format_, **pres})
+        {"nb_deliberations": len(delibs), "ocr": ocrise, "format": format_,
+         **(doc.meta or {}), **pres})
 
     if not delibs:
         conn.execute(
@@ -507,6 +509,64 @@ def collecter(portee: str = "commune", depuis: str | None = None,
           + f", {resume['inaccessible']} inaccessibles")
 
 
+def collecter_archives(portee: str = "commune", limit: int = 0,
+                       commit: bool = True, avec_ocr: bool = False) -> None:
+    """Les séances que le site ne sert plus, reprises dans l'archive du web.
+
+    L'archive ne COMPLÈTE pas le site, elle le rattrape : une date déjà tenue
+    par une séance en base n'est pas retraitée. Deux raisons. La pièce servie
+    par la commune fait foi sur une capture — elle peut avoir été corrigée
+    depuis. Et l'identité d'une séance porte sur l'adresse du document : la
+    même séance récupérée par deux chemins ferait deux séances, donc deux jeux
+    de délibérations.
+    """
+    from .wayback import catalogue_archive
+
+    instance = COMMUNE_NAME if portee == "commune" else (EPCI_NOM or "EPCI")
+    print(f"\n[conseils] {instance} — procès-verbaux archivés (web.archive.org)")
+
+    documents = catalogue_archive(portee)
+    if not documents:
+        print("  aucun procès-verbal archivé trouvé")
+        return
+    print(f"  {len(documents)} procès-verbaux archivés "
+          f"({documents[-1].date} → {documents[0].date})")
+
+    p = PORTEES[portee]
+    with transaction() as conn:
+        tenues = {r["date"] for r in conn.execute(
+            "SELECT DISTINCT date FROM events WHERE type=?", (p["seance"],))}
+    manquants = [d for d in documents if d.date not in tenues]
+    print(f"  {len(tenues & {d.date for d in documents})} déjà en base, "
+          f"{len(manquants)} à reprendre")
+    if limit:
+        manquants = manquants[:limit]
+
+    if not commit:
+        for d in manquants[:20]:
+            print(f"    {d.date}  {d.libelle}")
+        print("  [dry-run] rien écrit")
+        return
+
+    resume: dict[str, int] = {"delibs": 0}
+    for doc in manquants:
+        with transaction() as conn:
+            r = traiter(conn, doc, portee, avec_ocr=avec_ocr)
+            resume[r["statut"]] = resume.get(r["statut"], 0) + 1
+            resume["delibs"] += r["delibs"]
+
+    print(f"\n[conseils] {resume.get('ok', 0)} séances reprises de l'archive, "
+          f"{resume['delibs']} délibérations, "
+          f"{resume.get('sans_couche_texte', 0)} sans couche texte"
+          + ("" if avec_ocr else " (relancer avec --ocr)")
+          + f", {resume.get('inaccessible', 0)} inaccessibles")
+
+
+def import_pv_archives() -> None:
+    """Entrée appelée par run_all (step `cm_archive`)."""
+    collecter_archives("commune")
+
+
 def import_conseil_municipal() -> None:
     """Entrée appelée par run_all (step `cm`)."""
     collecter("commune")
@@ -520,6 +580,9 @@ def import_conseil_communautaire() -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Séances et délibérations")
     ap.add_argument("--portee", choices=["commune", "epci"], default="commune")
+    ap.add_argument("--archives", action="store_true",
+                    help="reprendre dans l'archive du web les séances que le "
+                         "site ne sert plus")
     ap.add_argument("--depuis", help="AAAA ou AAAA-MM-JJ")
     ap.add_argument("--limit", "-n", type=int, default=0)
     ap.add_argument("--catalogue", action="store_true",
@@ -535,12 +598,18 @@ if __name__ == "__main__":
         if not args.date:
             ap.error("--url exige --date")
         from .connecteurs.base import DocumentPublie
-        doc = DocumentPublie(date=args.date, url=args.url, libelle=args.date,
-                             source=urllib.parse.urlparse(args.url).netloc)
+        from .wayback import document_archive
+        # Une adresse d'archive n'est pas sa propre source : l'éditeur est la
+        # commune, et c'est son domaine que l'allowlist de publication connaît.
+        doc = document_archive(args.url, args.date) or DocumentPublie(
+            date=args.date, url=args.url, libelle=args.date,
+            source=urllib.parse.urlparse(args.url).netloc)
         if not args.commit:
             raise SystemExit("  [dry-run] rien écrit")
         with transaction() as conn:
             print(traiter(conn, doc, args.portee, avec_ocr=args.ocr))
+    elif args.archives:
+        collecter_archives(args.portee, args.limit, args.commit, avec_ocr=args.ocr)
     else:
         depuis = args.depuis
         if depuis and len(depuis) == 4:
