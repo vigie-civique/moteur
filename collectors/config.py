@@ -158,6 +158,13 @@ PERIMETRES = ("C1", "C2", "C3", "lien", "hors")
 COMMUNE_URL = _I.get("commune_url", "")
 EPCI_URL    = _I.get("epci_url", "")
 CONNECTEUR  = _I.get("connecteur", "wordpress_rest")
+# Rien n'oblige une commune et son intercommunalité à publier sur le même
+# outil : la première peut tenir un WordPress quand la seconde dépose ses actes
+# sur un portail de publicité légale. Sans cette clé, le connecteur de la
+# commune est employé pour les deux — c'était le cas jusqu'au 24/08/2026, et
+# l'EPCI d'une instance rendait alors 0 procès-verbal sans qu'on sache dire si
+# c'était une lacune de la source ou un outil qu'on ne savait pas lire.
+CONNECTEUR_EPCI = _I.get("connecteur_epci", "")
 PAGES       = _I.get("pages", {})     # slugs des pages utiles, par connecteur
 # Particularités de mise en forme des procès-verbaux (convention d'écriture des
 # noms, notamment) : cf. collectors/conseils.py.

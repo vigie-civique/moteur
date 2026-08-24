@@ -43,6 +43,7 @@ un découpage est une preuve interne au document, jamais une formule d'annonce.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .cm_parser import (categorize, extract_amounts, extract_vote,
                         split_into_deliberations)
@@ -146,6 +147,38 @@ def _titre_plausible(titre: str) -> bool:
     return len(mots) >= 2
 
 
+# Référence du contrôle de légalité, apposée sur tout acte télétransmis par
+# @ctes : département, SIREN de la collectivité, DATE DE L'ACTE, numéro, nature.
+#     026-200040509-20260625-DE2026116bis-BF
+# C'est la seule date de séance qu'un acte porte de façon mécanique, et elle est
+# la bonne : sur le portail relevé le 24/08/2026, six délibérations de la séance
+# du 25 juin étaient déposées sous « date d'acte » 30/06 et 06/07 — leur date de
+# TÉLÉTRANSMISSION. Le SIREN, lui, permet de vérifier que la pièce émane bien de
+# la collectivité attendue, et non d'une homonyme.
+_REFERENCE_ACTES = re.compile(
+    r"\b(\d{3}[A-Z]?)-(\d{9})-(\d{4})(\d{2})(\d{2})-([A-Za-z0-9_./]{1,30})-([A-Z]{2})\b")
+
+
+def reference_actes(texte: str) -> dict | None:
+    """La référence @ctes portée par un acte télétransmis, ou None.
+
+    Rend `{reference, departement, siren, date, numero, nature}`. La date est
+    celle de l'acte, donc de la séance qui l'a pris.
+    """
+    m = _REFERENCE_ACTES.search(texte or "")
+    if not m:
+        return None
+    dep, siren, annee, mois, jour, numero, nature = m.groups()
+    return {
+        "reference": m.group(0),
+        "departement": dep,
+        "siren": siren,
+        "date": f"{annee}-{mois}-{jour}",
+        "numero": numero,
+        "nature": nature,
+    }
+
+
 def deliberations(texte: str, pagine: bool = True) -> list[dict]:
     """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique.
 
@@ -161,6 +194,27 @@ def deliberations(texte: str, pagine: bool = True) -> list[dict]:
             # de l'intercommunalité.
             return _recoller(sorties)
     return []
+
+
+def acte_unique(titre: str, texte: str, numero_acte: str = "",
+                numero_seance: str | None = None) -> dict:
+    """Une délibération publiée SEULE, rendue dans la forme des analyseurs.
+
+    Un portail de publicité légale ne dépose pas des séances mais des actes, un
+    par fichier, avec leur numéro et leur objet déclarés par la collectivité.
+    Il n'y a alors rien à découper, et surtout rien à deviner : le régime
+    s'appelle `acte_seul` pour que la base dise d'où vient le découpage — ici,
+    d'aucun. L'enrichissement (catégorie, vote, montants) reste le même que
+    pour un acte tiré d'un procès-verbal : c'est le même texte de délibération.
+    """
+    return _enrichir({
+        "regime": "acte_seul",
+        "numero_seance": numero_seance,
+        "numero_acte": numero_acte or "",
+        "titre": (re.sub(r"\s+", " ", titre or "").strip(" :;.-") or
+                  f"Délibération {numero_acte}".strip())[:255],
+        "texte": texte or "",
+    })
 
 
 def _recoller(sorties: list[dict]) -> list[dict]:
@@ -511,8 +565,19 @@ REPRESENTATION = re.compile(
     r"([A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\- ]+ [A-ZÀ-Ÿ][a-zà-ÿ\-]+)", re.I)
 
 BLOC_PRESENTS = re.compile(
-    r"Présents?\s*:(.*?)(?:Représentés?\s*:|Absente?s?\s*:|Secrétaire"
+    r"Présents?\s*:(.*?)(?:Représentés?\s*:|Absente?s?\s*:|Pouvoirs?\s|Secrétaire"
     r"|Date de la publi|Ordre du jour|Délibérations)", re.S | re.I)
+# Même bloc, mais mis en TABLEAU : la légende occupe une cellule, la liste la
+# suivante, et il n'y a donc pas de deux-points. C'est la forme des actes du
+# conseil communautaire relevés le 24/08/2026 — « Présents ARMAGNAT Anne ; … » —
+# où le motif ci-dessus ne trouvait que le président, tiré de la formule
+# d'ouverture : un conseil de trente-deux présents publié avec un seul.
+# Sans `re.I`, à dessein : la négation exige que le mot suivant ne soit pas en
+# minuscules, ce qui écarte « les conseillers présents ont approuvé ».
+BLOC_PRESENTS_TABLEAU = re.compile(
+    r"(?:^|\n)[ \t]*Présents?[ \t]+(?![a-zà-ÿ])(.*?)"
+    r"(?:Représentés?|Absente?s?|Pouvoirs?\s|Secrétaire|Date de la publi"
+    r"|Ordre du jour|Délibérations)", re.S)
 BLOC_REPRESENTES = re.compile(
     r"Représentés?\s*:(.*?)(?:Absents?|Délibérations|Secrétaire|$)", re.S | re.I)
 BLOC_ABSENTS = re.compile(
@@ -546,6 +611,18 @@ def _borner(bloc: str) -> str:
     return bloc.strip()
 
 
+def _cle_nom(nom: str) -> str:
+    """Clé de comparaison d'un nom : capitales, sans accents.
+
+    Le président figure deux fois dans un procès-verbal — « Éric ESCANDE » dans
+    la formule d'ouverture, « ESCANDE Eric » dans la liste — et les deux
+    graphies ne diffèrent que par un accent. Comparées telles quelles, elles
+    faisaient deux présents pour une personne.
+    """
+    decompose = unicodedata.normalize("NFD", (nom or "").upper())
+    return "".join(c for c in decompose if unicodedata.category(c) != "Mn")
+
+
 def noms(bloc: str, ordre: str = "prenom_nom") -> list[str]:
     """Noms d'un bloc de présence, rendus « Prénom NOM ».
 
@@ -570,15 +647,23 @@ def noms(bloc: str, ordre: str = "prenom_nom") -> list[str]:
             bloc = bloc.replace(c + " ", " ")
         trouves += [f"{p} {n}" for p, n in PRENOM_NOM.findall(bloc)]
     else:
-        for segment in bloc.split(","):
+        # La virgule n'est pas le seul séparateur : les actes du conseil
+        # communautaire relevés le 24/08/2026 alignent « ARMAGNAT Anne ;
+        # BEAUFORT Jean ; … », et un bloc entier ne rendait qu'un seul nom.
+        # Le deux-points y figure aussi, par coquille de saisie
+        # (« L'ORPHELIN Samuel : MARCHÉ Damien ») : le traiter en séparateur
+        # rend les deux conseillers au lieu du premier.
+        # « … ; TRICOTELLE Flore et VERNIER Hugues. » — le dernier de la liste
+        # est amené par « et », et se perdait dans le segment du précédent.
+        for segment in re.split(r"[;,:]|\bet\b", bloc):
             m = NOM_PRENOM.search(segment.strip())
             if m:
                 trouves.append(f"{m.group(2)} {m.group(1)}")
 
     vus, sortie = set(), []
     for n in trouves:
-        if n.upper() not in vus:
-            vus.add(n.upper())
+        if _cle_nom(n) not in vus:
+            vus.add(_cle_nom(n))
             sortie.append(n)
     return sortie
 
@@ -593,7 +678,7 @@ def presences(texte: str, ordre: str = "prenom_nom") -> dict:
     tete = texte[:3000]
     res = {"presents": [], "absents": [], "pouvoirs": []}
 
-    m = BLOC_PRESENTS.search(tete)
+    m = BLOC_PRESENTS.search(tete) or BLOC_PRESENTS_TABLEAU.search(tete)
     if m:
         # Les procurations se glissent DANS le bloc des présents autant que dans
         # celui des absents. Les y laisser rendait présent celui qui avait donné
@@ -606,7 +691,8 @@ def presences(texte: str, ordre: str = "prenom_nom") -> dict:
     m = PRESIDENCE.search(tete)
     if m:
         president = _sans_civilite(m.group(1))
-        if president and president.upper() not in {n.upper() for n in res["presents"]}:
+        if president and _cle_nom(president) not in {_cle_nom(n)
+                                                     for n in res["presents"]}:
             res["presents"].insert(0, president)
 
     for donneur, receveur in PROCURATION.findall(tete):

@@ -41,11 +41,14 @@ from pathlib import Path
 import pdfplumber
 
 from .archive import archive_fetch
-from .config import COMMUNE_NAME, EPCI_NOM, EPCI_SIREN, HEADERS, ROOT
+from .config import (COMMUNE_NAME, COMMUNE_SIREN, EPCI_NOM, EPCI_SIREN,
+                     HEADERS, ROOT)
 from .cm_parser import link_persons_to_event
 from .connecteurs import charger
+from .connecteurs.base import date_fr
 from .db import transaction, upsert_entity
-from .pv_parsers import deliberations, presences
+from .pv_parsers import (acte_unique, deliberations, presences,
+                         reference_actes)
 from .texte_document import format_de, texte_de
 
 PDF_DIR = ROOT / "data" / "pv"
@@ -188,18 +191,31 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> 
     meta = {"libelle_source": doc.libelle, **(meta_sup or {})}
     if portee == "epci" and EPCI_SIREN:
         meta["siren_epci"] = EPCI_SIREN
-    row = conn.execute(
-        "SELECT id FROM events WHERE type=? AND source_url=?",
-        (p["seance"], doc.url)).fetchone()
+    # Un portail d'actes dépose les délibérations une par une : quarante pièces
+    # peuvent venir de la même séance, chacune avec sa propre adresse. L'identité
+    # par l'URL en ferait quarante séances. Le repère est alors la DATE — celle
+    # de l'acte, établie à la lecture, pas celle du dépôt.
+    if getattr(doc, "acte", None):
+        row = conn.execute(
+            "SELECT id FROM events WHERE type=? AND date=?",
+            (p["seance"], doc.date)).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT id FROM events WHERE type=? AND source_url=?",
+            (p["seance"], doc.url)).fetchone()
     if row:
         conn.execute("UPDATE events SET date=?, metadata=? WHERE id=?",
                      (doc.date, json.dumps(meta, ensure_ascii=False), row["id"]))
         return row["id"]
+    # La séance renvoie vers le portail qui la publie, jamais vers l'un de ses
+    # actes : le premier arrivé n'a pas à représenter les trente-neuf autres.
+    url_seance = (doc.acte or {}).get("portail") or doc.url if getattr(
+        doc, "acte", None) else doc.url
     cur = conn.execute(
         "INSERT INTO events (type,date,title,source,source_url,metadata)"
         " VALUES (?,?,?,?,?,?)",
         (p["seance"], doc.date, p["titre"].format(date=doc.date), doc.source,
-         doc.url, json.dumps(meta, ensure_ascii=False)))
+         url_seance, json.dumps(meta, ensure_ascii=False)))
     return cur.lastrowid
 
 
@@ -281,9 +297,120 @@ def ocr(chemin: Path, langue: str = "fra") -> str:
     return texte_pdf(cible)
 
 
+# « Séance du 25 juin 2026 », dans l'en-tête d'un acte. Repli de deuxième rang :
+# la référence de contrôle de légalité vaut mieux, elle est mécanique.
+_SEANCE_DU = re.compile(r"[Ss]éance\s+du\s+([^\n,;]{6,40})")
+
+
+def date_de_seance(texte: str, doc, portee: str) -> tuple[str, str, dict]:
+    """(date, provenance, contrôle) pour un acte publié seul.
+
+    Trois provenances, par force de preuve décroissante :
+
+    `reference_actes` — la référence @ctes apposée par la préfecture au moment
+    du contrôle de légalité porte la date de l'acte. C'est un fait imprimé sur
+    la pièce, et il porte aussi le SIREN de la collectivité : on en profite pour
+    vérifier que l'acte émane bien de celle qu'on collecte.
+
+    `entete` — « Séance du … » dans le corps du document. Fiable mais rédigée.
+
+    `teletransmission` — la date que le portail affiche, en dernier recours. Ce
+    n'est PAS la date de la séance : sur le portail relevé le 24/08/2026, six
+    délibérations du 25 juin y figuraient au 30 juin et au 6 juillet. La
+    provenance est écrite dans la métadonnée pour qu'un lecteur sache toujours
+    ce qu'il regarde.
+    """
+    controle: dict = {}
+    ref = reference_actes(texte)
+    if ref:
+        attendu = EPCI_SIREN if portee == "epci" else COMMUNE_SIREN
+        if attendu and ref["siren"] != attendu:
+            # Ne pas refuser la pièce : le portail d'un EPCI publie aussi les
+            # actes de son CCAS ou d'un syndicat, qui ont leur propre SIREN.
+            # Le signaler suffit, et laisse l'arbitrage à l'atelier.
+            controle["siren_inattendu"] = ref["siren"]
+            print(f"  [acte] {ref['numero']} — SIREN {ref['siren']} au lieu de "
+                  f"{attendu} : émetteur à vérifier")
+        controle["reference_actes"] = ref["reference"]
+        return ref["date"], "reference_actes", controle
+
+    m = _SEANCE_DU.search(texte or "")
+    if m:
+        date = date_fr(m.group(1))
+        if date:
+            return date, "entete", controle
+    return doc.date, "teletransmission", controle
+
+
+def traiter_acte(conn, doc, portee: str, verbose: bool = True,
+                 avec_ocr: bool = False) -> dict:
+    """Enregistre une pièce qui EST une délibération, sans rien découper.
+
+    Un portail de publicité légale publie les actes un par un, avec leur numéro
+    et leur objet. Tout ce que les analyseurs de procès-verbaux cherchent à
+    deviner est ici déclaré par la collectivité — il n'y a donc pas de découpage
+    à tenter, et en tenter un serait remplacer un fait par une inférence.
+
+    La séance reste enregistrée : c'est le contenant qui rassemble les actes
+    d'un même jour, et le seul endroit où lire les présents.
+    """
+    p = PORTEES[portee]
+    lu = lire_document(doc, avec_ocr)
+    if lu is None:
+        return {"statut": "inaccessible", "delibs": 0}
+    texte, format_, ocrise = lu
+
+    if len(texte) < MIN_TEXT_CHARS:
+        # Le portail donne l'objet et le numéro, mais pas le texte : enregistrer
+        # une délibération vide la ferait passer pour lue. La lacune se signale.
+        if verbose:
+            print(f"  [acte] {doc.acte.get('numero') or doc.url} — "
+                  f"pièce sans couche texte, non enregistrée")
+        return {"statut": "sans_couche_texte" if format_ == "pdf"
+                else "texte_trop_court", "delibs": 0}
+
+    date, provenance, controle = date_de_seance(texte, doc, portee)
+    doc.date = date
+
+    pres = presences(texte, _ordre_noms(portee))
+    seance_id = enregistrer_seance(
+        conn, doc, portee,
+        {"format": format_, "ocr": ocrise, "depuis_portail_actes": True, **pres})
+
+    delib = acte_unique(doc.acte.get("objet") or doc.libelle, texte,
+                        doc.acte.get("numero") or "")
+    eid = enregistrer_deliberation(conn, doc, portee, delib)
+    conn.execute(
+        "UPDATE events SET metadata=json_patch(metadata, ?) WHERE id=?",
+        (json.dumps({"type_acte": doc.acte.get("type") or "",
+                     "date_source": provenance,
+                     "date_teletransmission": doc.acte.get("date_teletransmission") or "",
+                     **controle}, ensure_ascii=False), eid))
+
+    # Le compte des actes d'une séance se LIT en base : la pièce en cours ne
+    # sait pas combien de sœurs elle a, et un portail qui n'affiche que la
+    # période d'affichage légal n'en connaît lui-même qu'une partie.
+    nb = conn.execute("SELECT COUNT(*) FROM events WHERE type=? AND date=?",
+                      (p["delib"], doc.date)).fetchone()[0]
+    conn.execute(
+        "UPDATE events SET metadata=json_patch(metadata, ?) WHERE id=?",
+        (json.dumps({"nb_deliberations": nb}, ensure_ascii=False), seance_id))
+
+    link_persons_to_event(conn, seance_id, pres["presents"], "présent")
+    link_persons_to_event(conn, seance_id, pres["absents"], "absent")
+    link_persons_to_event(conn, eid, pres["presents"], "présent")
+
+    if verbose:
+        print(f"  [acte] {doc.date} — {delib['numero_acte'] or 'sans numéro'} "
+              f"({provenance}), {len(pres['presents'])} présents")
+    return {"statut": "ok", "delibs": 1}
+
+
 def traiter(conn, doc, portee: str, verbose: bool = True,
             avec_ocr: bool = False) -> dict:
     """Télécharge, lit et enregistre un procès-verbal, quel que soit son format."""
+    if getattr(doc, "acte", None):
+        return traiter_acte(conn, doc, portee, verbose, avec_ocr)
     p = PORTEES[portee]
     lu = lire_document(doc, avec_ocr)
     if lu is None:
@@ -334,7 +461,7 @@ def collecter(portee: str = "commune", depuis: str | None = None,
     instance = COMMUNE_NAME if portee == "commune" else (EPCI_NOM or "EPCI")
     print(f"\n[conseils] {instance} — catalogue des procès-verbaux")
 
-    documents = charger().catalogue_pv(portee)
+    documents = charger(portee=portee).catalogue_pv(portee)
     print(f"  {len(documents)} procès-verbaux catalogués"
           + (f" ({documents[-1].date} → {documents[0].date})" if documents else ""))
     if depuis:
@@ -367,11 +494,14 @@ def collecter(portee: str = "commune", depuis: str | None = None,
                 resume["ok"] += 1
                 continue
             r = traiter(conn, doc, portee, avec_ocr=avec_ocr)
-            resume[r["statut"]] += 1
+            # `.get` et non `[]` : `traiter` rend aussi « texte_trop_court »,
+            # absent du résumé — une page web courte faisait tomber la collecte
+            # entière sur un KeyError, après des dizaines de documents lus.
+            resume[r["statut"]] = resume.get(r["statut"], 0) + 1
             resume["delibs"] += r["delibs"]
 
     reste = resume["sans_couche_texte"]
-    print(f"\n[conseils] {resume['ok']} séances lues, {resume['delibs']} "
+    print(f"\n[conseils] {resume['ok']} documents lus, {resume['delibs']} "
           f"délibérations, {reste} sans couche texte"
           + ("" if avec_ocr else " (relancer avec --ocr)")
           + f", {resume['inaccessible']} inaccessibles")

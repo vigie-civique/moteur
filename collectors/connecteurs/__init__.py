@@ -26,6 +26,12 @@ Le connecteur d'une instance se déclare dans `config/instance.json` :
     "connecteur": "wordpress_rest",
     "pages": {"commune": {"conseil": "conseil-municipal"}, …}
 
+Et, quand l'intercommunalité publie ailleurs et autrement — un portail d'actes
+là où la mairie tient un WordPress —, un second connecteur pour cette portée :
+
+    "connecteur_epci": "dematdoc",
+    "pages": {"epci": {"portail": "https://exemple.dematdoc.eu/public/14"}}
+
 Écrire un connecteur pour un site qui n'entre dans aucun des cas existants,
 c'est hériter de `Connecteur` et implémenter ces trois méthodes. La première
 question à se poser n'est pas « quel CMS ? » mais « ce site expose-t-il un point
@@ -43,10 +49,17 @@ __all__ = ["Connecteur", "Article", "DocumentPublie", "charger"]
 _cache: dict[str, Connecteur] = {}
 
 
-def charger(nom: str | None = None) -> Connecteur:
-    """Le connecteur déclaré par l'instance, instancié une fois."""
-    from ..config import CONNECTEUR
+def charger(nom: str | None = None, portee: str = "commune") -> Connecteur:
+    """Le connecteur déclaré par l'instance pour cette portée, instancié une fois.
 
+    L'EPCI retombe sur le connecteur de la commune tant que
+    `connecteur_epci` n'est pas déclaré : c'est le cas le plus fréquent, une
+    intercommunalité tenant souvent le même genre de site que ses communes.
+    """
+    from ..config import CONNECTEUR, CONNECTEUR_EPCI
+
+    if nom is None and portee == "epci" and CONNECTEUR_EPCI:
+        nom = CONNECTEUR_EPCI
     nom = nom or CONNECTEUR
     if nom not in _cache:
         try:

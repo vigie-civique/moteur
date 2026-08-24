@@ -30,6 +30,17 @@ class DocumentPublie:
     url: str
     libelle: str = ""
     source: str = ""
+    acte: dict | None = None
+    """Renseigné quand la pièce EST un acte, publiée seule, avec son identifiant.
+
+    Un portail d'actes (DematDOC et ses semblables) ne publie pas des séances
+    mais des délibérations une par une, chacune avec son numéro, son objet et
+    son type — des faits déclarés par la collectivité, pas des inférences tirées
+    d'une mise en page. Il n'y a alors rien à découper : le document porte un
+    acte et un seul, et `conseils.traiter` le sait à ce champ.
+
+    Clés attendues : `numero`, `objet`, `type`, `date_teletransmission`.
+    """
 
 
 @dataclass
