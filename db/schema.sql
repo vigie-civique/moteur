@@ -398,6 +398,25 @@ CREATE VIRTUAL TABLE IF NOT EXISTS entities_fts USING fts5(
 );
 
 -- Triggers FTS sync
+--
+-- ⚠ Une table FTS5 à CONTENU EXTERNE (`content='…'`) ne se met pas à jour par
+-- `UPDATE` ni par `DELETE` : ces deux ordres lui font relire la table source
+-- pour retirer les termes de l'ancienne version — table source qui porte DÉJÀ
+-- la nouvelle. L'index retire alors des termes qui n'y sont pas et garde ceux
+-- qu'il aurait dû retirer. Mesuré le 24/08/2026 sur la base de Saillans : après
+-- avoir changé le titre d'un acte, l'ancien mot ET le nouveau le trouvaient
+-- tous les deux. Sur un index encore petit — une base de test, précisément —
+-- SQLite ne dérive pas, il refuse : « database disk image is malformed », ce
+-- qui rendait intestable tout code mettant à jour un événement.
+--
+-- La forme correcte est la commande `'delete'` avec les ANCIENNES valeurs,
+-- suivie d'une insertion des nouvelles. Cf. sqlite.org/fts5.html#external_content_tables.
+--
+-- ⚠ `IF NOT EXISTS` : une base déjà créée garde ses anciens triggers. Les
+-- reprendre demande, une fois par instance :
+--     DROP TRIGGER events_fts_update;   -- et _delete, et les deux d'entities
+--     puis rejouer ce fichier, puis
+--     INSERT INTO events_fts(events_fts) VALUES('rebuild');
 CREATE TRIGGER IF NOT EXISTS entities_fts_insert
     AFTER INSERT ON entities BEGIN
     INSERT INTO entities_fts(rowid, name, short_name, address)
@@ -406,14 +425,16 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS entities_fts_update
     AFTER UPDATE ON entities BEGIN
-    UPDATE entities_fts
-    SET name=new.name, short_name=new.short_name, address=new.address
-    WHERE rowid=new.id;
+    INSERT INTO entities_fts(entities_fts, rowid, name, short_name, address)
+    VALUES('delete', old.id, old.name, old.short_name, old.address);
+    INSERT INTO entities_fts(rowid, name, short_name, address)
+    VALUES (new.id, new.name, new.short_name, new.address);
 END;
 
 CREATE TRIGGER IF NOT EXISTS entities_fts_delete
     AFTER DELETE ON entities BEGIN
-    DELETE FROM entities_fts WHERE rowid=old.id;
+    INSERT INTO entities_fts(entities_fts, rowid, name, short_name, address)
+    VALUES('delete', old.id, old.name, old.short_name, old.address);
 END;
 
 -- ----------------------------------------------------------------
@@ -436,17 +457,16 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS events_fts_update
     AFTER UPDATE ON events BEGIN
-    UPDATE events_fts
-    SET title=new.title,
-        content=new.content,
-        source=new.source,
-        metadata=new.metadata
-    WHERE rowid=new.id;
+    INSERT INTO events_fts(events_fts, rowid, title, content, source, metadata)
+    VALUES('delete', old.id, old.title, old.content, old.source, old.metadata);
+    INSERT INTO events_fts(rowid, title, content, source, metadata)
+    VALUES (new.id, new.title, new.content, new.source, new.metadata);
 END;
 
 CREATE TRIGGER IF NOT EXISTS events_fts_delete
     AFTER DELETE ON events BEGIN
-    DELETE FROM events_fts WHERE rowid=old.id;
+    INSERT INTO events_fts(events_fts, rowid, title, content, source, metadata)
+    VALUES('delete', old.id, old.title, old.content, old.source, old.metadata);
 END;
 
 -- ----------------------------------------------------------------
