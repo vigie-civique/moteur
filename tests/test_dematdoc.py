@@ -11,11 +11,19 @@ import json
 
 import pytest
 
-from collectors import conseils
-from collectors.connecteurs import charger
-from collectors.connecteurs.base import DocumentPublie
-from collectors.connecteurs.dematdoc import ConnecteurDematDOC, champs
-from collectors.pv_parsers import acte_unique, reference_actes
+# `collectors.conseils` lit des PDF, donc importe pdfplumber, que le job
+# « tests » de la CI n'installe pas — il n'installe que pytest, pour démontrer
+# que le cœur du moteur se teste sans réseau ni collecteur. Ce fichier y est
+# donc SAUTÉ, et joué par le job « tests-deps », qui refuse le moindre test
+# sauté. Même convention que `tests/test_api_saisie.py` pour fastapi.
+pytest.importorskip("pdfplumber",
+                    reason="job « tests-deps » : pip install -r requirements.txt")
+
+from collectors import conseils  # noqa: E402
+from collectors.connecteurs import charger  # noqa: E402
+from collectors.connecteurs.base import DocumentPublie  # noqa: E402
+from collectors.connecteurs.dematdoc import ConnecteurDematDOC, champs  # noqa: E402
+from collectors.pv_parsers import acte_unique, reference_actes  # noqa: E402
 
 PORTAIL = "https://portail.exemple.invalid/public/14"
 
