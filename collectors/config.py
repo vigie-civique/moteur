@@ -166,6 +166,14 @@ CONNECTEUR  = _I.get("connecteur", "wordpress_rest")
 # c'était une lacune de la source ou un outil qu'on ne savait pas lire.
 CONNECTEUR_EPCI = _I.get("connecteur_epci", "")
 PAGES       = _I.get("pages", {})     # slugs des pages utiles, par connecteur
+# Les portails déclarés dans `pages` (`{"epci": {"portail": "https://…"}}`).
+# Un portail de publicité légale est un site officiel de la collectivité au même
+# titre que le sien, mais c'est un TROISIÈME domaine : il ne se déduit ni de
+# `commune_url` ni d'`epci_url`. Les règles qui parlent des « sites que nous
+# lisons » — l'origine des faits, les sources publiables — doivent le connaître,
+# sans quoi ce qu'il apporte entre en base et n'en sort jamais.
+PORTAILS    = tuple(r["portail"] for r in PAGES.values()
+                    if isinstance(r, dict) and r.get("portail"))
 # Particularités de mise en forme des procès-verbaux (convention d'écriture des
 # noms, notamment) : cf. collectors/conseils.py.
 FORMAT_PV   = _I.get("format_pv", {})

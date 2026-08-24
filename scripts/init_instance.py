@@ -283,7 +283,11 @@ def adapter_regles(inst: dict, dry_run: bool) -> None:
     r.setdefault("outputs", {})["attribution"] = f"Vigie Civique {inst['commune_nom']}"
     sources = [s for s in r.get("events", {}).get("public_sources", [])
                if not s.endswith(".fr") or s in ("data.gouv.fr",)]
-    for url in (inst.get("commune_url"), inst.get("epci_url")):
+    # Les portails de publicité légale comptent autant que les sites : un EPCI
+    # qui dépose ses actes sur un portail tiers publie là et pas ailleurs.
+    portails = [(r or {}).get("portail") for r in (inst.get("pages") or {}).values()
+                if isinstance(r, dict)]
+    for url in (inst.get("commune_url"), inst.get("epci_url"), *portails):
         if url:
             sources.append(urllib.parse.urlparse(url).netloc.removeprefix("www."))
     r.setdefault("events", {})["public_sources"] = sorted(set(sources))

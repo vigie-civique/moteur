@@ -37,7 +37,8 @@ import re
 import unicodedata
 from urllib.parse import urlparse
 
-from collectors.config import COMMUNE_URL, EPCI_URL, PREFECTURE_URL
+from collectors.config import (COMMUNE_URL, EPCI_URL, PORTAILS,
+                               PREFECTURE_URL)
 
 INSTITUTIONNEL = "institutionnel"
 VERBATIM       = "verbatim"
@@ -136,7 +137,8 @@ def _domaines_locaux() -> tuple[str, ...]:
     configuration, jamais du code : c'est ce qui rend la règle transposable —
     à Saillans ou à Brassac ce sont d'autres domaines, et rien à modifier."""
     return tuple(d for d in (_hote(COMMUNE_URL), _hote(EPCI_URL),
-                             _hote(PREFECTURE_URL)) if d)
+                             _hote(PREFECTURE_URL),
+                             *(_hote(u) for u in PORTAILS)) if d)
 
 
 def origine_de(source: str | None) -> str | None:

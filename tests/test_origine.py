@@ -49,6 +49,19 @@ class TestClassement:
         assert domaine, "l'instance de test doit déclarer commune_url"
         assert origine_de(domaine) == VERBATIM
 
+    def test_le_portail_dactes_est_du_verbatim(self, monkeypatch):
+        """Un portail de publicité légale est un TROISIÈME domaine.
+
+        Il ne se déduit ni de `commune_url` ni d'`epci_url` : une intercommunalité
+        peut déposer ses actes ailleurs que sur son site. Inconnu de la règle, ce
+        qu'il apporte entre en base sans origine — donc ni protégé, ni ouvert à
+        la saisie — et n'atteint jamais le site.
+        """
+        monkeypatch.setattr("collectors.origine.PORTAILS",
+                            ("https://portail.exemple.invalid/public/14",))
+
+        assert origine_de("portail.exemple.invalid") == VERBATIM
+
     def test_les_accents_et_la_casse_ne_changent_rien(self):
         assert origine_de("Préfecture-30") == origine_de("prefecture-30")
 
