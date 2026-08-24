@@ -187,6 +187,18 @@ ACHETEUR_JETONS = tuple({COMMUNE_NAME.lower()} | {
 
 # DECP — dataset consolidé officiel data.gouv.fr
 DATAGOUV_API   = "https://www.data.gouv.fr/api/1/datasets/"
+# Les libellés de source, écrits tels quels dans `events.source` et
+# `marches_publics.source`. L'allowlist de publication (`events.public_sources`)
+# les compare à l'IDENTIQUE : ils sont donc énumérés ici plutôt que répétés en
+# clair, pour qu'un test puisse vérifier qu'aucun n'est absent de l'allowlist —
+# c'est ainsi que 53 marchés DECP d'une instance sont restés collectés et jamais
+# publiés, la liste des sources publiables ne parlant que de domaines et du BOAMP.
+SOURCE_DECP_CONSOLIDE = "DECP data.gouv.fr"
+SOURCE_DECP_V3        = "DECP v3 data.economie.gouv.fr"
+SOURCE_DECP_ECO       = "DECP data.economie.gouv.fr"
+SOURCE_BOAMP          = "BOAMP"
+SOURCES = (SOURCE_DECP_CONSOLIDE, SOURCE_DECP_V3, SOURCE_DECP_ECO, SOURCE_BOAMP)
+
 DECP_DATASET   = "donnees-essentielles-de-la-commande-publique-fichiers-consolides"
 DECP_SLUG_AWS  = "donnees-essentielles-de-la-commande-publique-decp-de-marches-publics-info-awsolutions"
 
@@ -402,7 +414,7 @@ def normalize_decp_marche(m: dict) -> dict:
     cpv = str(m.get("codeCPV", ""))[:2]
 
     return {
-        "source":         "DECP data.gouv.fr",
+        "source":         SOURCE_DECP_CONSOLIDE,
         "source_type":    "decp",
         "acheteur_id":    str(acheteur.get("id", "")),
         "acheteur_nom":   str(acheteur.get("nom", "")),
@@ -497,7 +509,7 @@ def normalize_decp_v3(rec: dict) -> dict:
         })
     division = str(rec.get("codecpv") or "")[:2]
     return {
-        "source":       "DECP v3 data.economie.gouv.fr",
+        "source":       SOURCE_DECP_V3,
         "source_type":  "decp",
         "acheteur_id":  str(rec.get("acheteur_id") or ""),
         "acheteur_nom": str(rec.get("acheteur_nom") or ""),
@@ -595,7 +607,7 @@ def normalize_decp_eco(rec: dict) -> dict:
     division = str(rec.get("codecpv_division") or "")[:2]
     cpv_label = (rec.get("referencecpv") or CPV_LABELS.get(division, "") or "")
     return {
-        "source":      "DECP data.economie.gouv.fr",
+        "source":      SOURCE_DECP_ECO,
         "source_type": "decp",
         "acheteur_id": str(rec.get("idacheteur") or ""),
         "acheteur_nom": str(rec.get("nomacheteur") or ""),
@@ -766,7 +778,7 @@ def fetch_boamp_marches() -> list[dict]:
                 else:
                     titulaires = []
                 results.append({
-                    "source":      "BOAMP",
+                    "source":      SOURCE_BOAMP,
                     "source_type": "boamp",
                     "confidence":  certitude,
                     "acheteur_id": acheteur_id_str,

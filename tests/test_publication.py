@@ -212,3 +212,33 @@ def test_un_elu_reste_publiable(bps):
     publiee, _ = bps.public_entity(
         fiche(id=7, type="person", name="Une élue", perimetre="C1"), [], {7})
     assert publiee is not None
+
+
+# ── L'allowlist des sources ──────────────────────────────────────────────────
+
+def test_toute_source_de_marche_est_publiable():
+    """Une source qu'on collecte et que l'allowlist ignore est une source morte.
+
+    `events.public_sources` compare à l'IDENTIQUE, et elle a longtemps été
+    fabriquée à partir des DOMAINES de l'instance plus quelques mots-clés —
+    « BOAMP », « bodacc », « sitadel », « interieur ». Les trois libellés DECP
+    n'y figuraient sur aucune instance : 53 marchés collectés sur l'une d'elles,
+    aucun publié, et rien ne le signalait. C'est la source la plus sûre du lot,
+    la seule qui recoupe par SIREN d'acheteur.
+
+    Ce test porte sur les règles D'EXEMPLE, celles que reçoit toute nouvelle
+    instance : c'est là que le défaut naissait.
+    """
+    import json
+
+    from collectors.marches_publics import SOURCES
+
+    regles = json.loads(
+        (ROOT / "config" / "publication_rules.exemple.json").read_text(encoding="utf-8"))
+    publiables = set(regles["events"]["public_sources"])
+
+    absentes = [s for s in SOURCES if s not in publiables]
+    assert not absentes, (
+        f"sources collectées mais non publiables : {absentes}. "
+        "Le collecteur écrit ces libellés dans events.source ; l'allowlist les "
+        "compare à l'identique.")

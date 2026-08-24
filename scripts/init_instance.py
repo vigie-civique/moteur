@@ -281,8 +281,16 @@ def adapter_regles(inst: dict, dry_run: bool) -> None:
             "lat_min": round(lat - 0.001, 4), "lat_max": round(lat + 0.001, 4),
             "lng_min": round(lng - 0.001, 4), "lng_max": round(lng + 0.001, 4)}
     r.setdefault("outputs", {})["attribution"] = f"Vigie Civique {inst['commune_nom']}"
+    # Les sources NATIONALES sont publiables partout : elles ne dépendent
+    # d'aucune commune. Réaffirmées ici parce que le filtre ci-dessous écarte
+    # tout ce qui ressemble à un domaine — or « DECP data.gouv.fr » en est un,
+    # et il a disparu de toutes les instances, laissant leurs marchés DECP
+    # collectés et jamais publiés.
+    from collectors.marches_publics import SOURCES as SOURCES_MARCHES
+
     sources = [s for s in r.get("events", {}).get("public_sources", [])
                if not s.endswith(".fr") or s in ("data.gouv.fr",)]
+    sources += list(SOURCES_MARCHES)
     # Les portails de publicité légale comptent autant que les sites : un EPCI
     # qui dépose ses actes sur un portail tiers publie là et pas ailleurs.
     portails = [(r or {}).get("portail") for r in (inst.get("pages") or {}).values()
