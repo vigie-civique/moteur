@@ -59,6 +59,7 @@ import urllib.request
 
 from .config import COMMUNE_URL, EPCI_URL, HEADERS, PAGES
 from .connecteurs.base import DocumentPublie, date_fr
+from .erreurs import SourceInterrompue
 
 CDX = "https://web.archive.org/cdx/search/cdx"
 # `id_` : les octets d'origine, sans la barre de navigation de l'archive. Sans
@@ -102,8 +103,12 @@ def instantanes(page: str, limite: int = MAX_INSTANTANES) -> list[str]:
     try:
         texte = _get(url).decode("utf-8", "replace")
     except Exception as e:                          # noqa: BLE001
-        print(f"  [wayback][erreur] index de {adresse} → {e}")
-        return []
+        # Rendre [] ferait dire « cette page n'a jamais été capturée » à un
+        # index qu'on n'a pas pu lire. Les deux se ressemblent et n'ont rien à
+        # voir : l'un est un fait sur l'archive, l'autre une panne chez nous.
+        raise SourceInterrompue(
+            f"index de l'archive injoignable pour {adresse} ({e}) — on ignore "
+            f"si cette page a été capturée ; réessayer") from e
     horodatages = []
     for ligne in texte.splitlines():
         parts = ligne.split()
@@ -129,7 +134,8 @@ def liens_pdf(html: str) -> dict[str, str]:
 
 
 def documents(page: str, source: str, motif: str = MOTIF_PV,
-              limite_instantanes: int = MAX_INSTANTANES) -> list[DocumentPublie]:
+              limite_instantanes: int = MAX_INSTANTANES,
+              incidents: list[str] | None = None) -> list[DocumentPublie]:
     """Les PV catalogués dans les instantanés d'une page de liste.
 
     Un seul document par date : la même séance revient dans tous les
@@ -137,11 +143,19 @@ def documents(page: str, source: str, motif: str = MOTIF_PV,
     (`CM 22 mai 2019.pdf` et `CM 22 mai 2019_0.pdf`, la seconde version d'un
     dépôt). Le premier trouvé fait foi, l'archive rendant les captures de la
     plus ancienne à la plus récente.
+
+    `incidents` recueille les horodatages qui n'ont pas répondu. L'appelant les
+    lit pour décider s'il peut appeler son passage complet — il n'y a pas de
+    retour d'exception ici, parce que les instantanés lus AVANT la panne ont
+    catalogué de vrais documents, et qu'il faut les traiter avant de refuser le
+    passage. Si TOUS échouent, en revanche, il n'y a rien à traiter et le
+    silence serait un mensonge : l'exception part tout de suite.
     """
     reconnu = re.compile(motif, re.I)
     par_date: dict[str, DocumentPublie] = {}
     captures = instantanes(page, limite_instantanes)
     print(f"  [wayback] {len(captures)} instantané(s) de {page}")
+    injoignables: list[str] = []
 
     for ts in captures:
         rejeu = f"https://web.archive.org/web/{ts}/{page}"
@@ -149,6 +163,9 @@ def documents(page: str, source: str, motif: str = MOTIF_PV,
             html = _get(rejeu).decode("utf-8", "replace")
         except Exception as e:                      # noqa: BLE001
             print(f"  [wayback][erreur] instantané {ts} → {e}")
+            injoignables.append(ts)
+            if incidents is not None:
+                incidents.append(ts)
             continue
         for origine, ts_pdf in liens_pdf(html).items():
             nom = urllib.parse.unquote(origine.rsplit("/", 1)[-1])
@@ -166,6 +183,11 @@ def documents(page: str, source: str, motif: str = MOTIF_PV,
                       "url_origine": origine},
             )
         time.sleep(DELAI)
+
+    if captures and len(injoignables) == len(captures):
+        raise SourceInterrompue(
+            f"les {len(captures)} instantané(s) de {page} sont injoignables — "
+            f"l'archive n'a pas été lue, on ne sait pas ce qu'elle contient")
 
     return sorted(par_date.values(), key=lambda d: d.date, reverse=True)
 
@@ -205,12 +227,16 @@ def _domaine(url: str) -> str:
     return urllib.parse.urlparse(url or "").netloc.removeprefix("www.")
 
 
-def catalogue_archive(portee: str = "commune") -> list[DocumentPublie]:
+def catalogue_archive(portee: str = "commune",
+                      incidents: list[str] | None = None) -> list[DocumentPublie]:
     """Les PV archivés des pages de liste déclarées par l'instance.
 
     Par défaut, la page des comptes rendus que le connecteur lit déjà : c'est
     elle que l'archive a capturée, et il n'y a aucune raison d'en déclarer une
     seconde tant que la commune n'a pas déménagé ses PV.
+
+    `incidents` est passé tel quel à `documents` : l'appelant sait ainsi si la
+    liste rendue est complète ou seulement ce qui a pu être lu.
     """
     reglages = PAGES.get(portee) or {}
     base = _base(portee)
@@ -222,6 +248,6 @@ def catalogue_archive(portee: str = "commune") -> list[DocumentPublie]:
     sorties: dict[str, DocumentPublie] = {}
     for chemin in [c for c in chemins if c]:
         page = chemin if chemin.startswith("http") else base + "/" + chemin.lstrip("/")
-        for doc in documents(page, _domaine(base), motif):
+        for doc in documents(page, _domaine(base), motif, incidents=incidents):
             sorties.setdefault(doc.date, doc)
     return sorted(sorties.values(), key=lambda d: d.date, reverse=True)

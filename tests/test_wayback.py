@@ -108,3 +108,89 @@ def test_catalogue_utilise_la_page_que_le_connecteur_lit_deja(monkeypatch, sans_
 
     assert [d.date for d in docs] == ["2019-06-26", "2019-05-22"]
     assert all(d.source == "lasalle.fr" for d in docs)
+
+
+# ── Une source injoignable n'est pas une source vide ────────────────────────
+# Le 25/08/2026 sur Brassac, les 12 instantanés ont échoué (panne DNS) et le
+# collecteur a conclu « aucun procès-verbal archivé trouvé » puis « ✓ terminé ».
+# Sur une commune dont le site n'a jamais été refondu, ce zéro est le résultat
+# ATTENDU : c'est ce qui rend le mensonge indétectable à la lecture du journal.
+
+
+def test_index_injoignable_ne_se_lit_pas_comme_page_jamais_capturee(monkeypatch):
+    def tombe(*a, **k):
+        raise OSError("nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(wayback, "_get", tombe)
+
+    with pytest.raises(wayback.SourceInterrompue, match="index de l'archive"):
+        wayback.instantanes(PAGE)
+
+
+def test_tous_les_instantanes_injoignables_leve(monkeypatch):
+    monkeypatch.setattr(wayback, "instantanes",
+                        lambda page, limite=0: ["20230530044423", "20240227175656"])
+    monkeypatch.setattr(wayback.time, "sleep", lambda s: None)
+
+    def tombe(*a, **k):
+        raise OSError("nodename nor servname provided, or not known")
+
+    monkeypatch.setattr(wayback, "_get", tombe)
+
+    with pytest.raises(wayback.SourceInterrompue, match="injoignables"):
+        wayback.documents(PAGE, "brassac.fr")
+
+
+def test_instantane_partiel_rend_ce_qui_a_ete_lu_et_signale(monkeypatch):
+    """Un échec sur deux : les PV lus sont rendus, l'incident est reporté.
+
+    Lever ici perdrait les documents catalogués avant la panne. C'est
+    l'appelant qui refuse le passage, une fois les séances écrites.
+    """
+    monkeypatch.setattr(wayback, "instantanes",
+                        lambda page, limite=0: ["20190722114724", "20240227175656"])
+    monkeypatch.setattr(wayback.time, "sleep", lambda s: None)
+
+    def parfois(url, *a, **k):
+        if "20240227175656" in url:
+            raise OSError("connection reset by peer")
+        return INSTANTANE.encode()
+
+    monkeypatch.setattr(wayback, "_get", parfois)
+    incidents: list[str] = []
+
+    docs = wayback.documents(PAGE, "lasalle.fr", incidents=incidents)
+
+    assert [d.date for d in docs] == ["2019-06-26", "2019-05-22"]
+    assert incidents == ["20240227175656"]
+
+
+def test_collecter_archives_refuse_de_conclure_sur_une_archive_non_lue(monkeypatch):
+    """Le cas Brassac, bout en bout : rien lu, rien catalogué → pas de « ✓ ».
+
+    C'est le seul endroit où le mensonge était visible pour l'exploitant, et
+    c'est celui qui doit échouer. Le step remonte l'échec dans `collector_runs`
+    au lieu d'y écrire `ok`.
+    """
+    from collectors import conseils
+
+    monkeypatch.setattr(conseils, "COMMUNE_NAME", "Brassac", raising=False)
+    monkeypatch.setattr("collectors.wayback.catalogue_archive",
+                        lambda portee="commune", incidents=None:
+                        (incidents.extend(["20230530044423", "20240227175656"]), [])[1])
+
+    with pytest.raises(wayback.SourceInterrompue, match="n'a pas été lue"):
+        conseils.collecter_archives("commune")
+
+
+def test_collecter_archives_annonce_le_vide_quand_il_est_reel(monkeypatch, capsys):
+    """Sans incident, zéro document reste une réponse légitime — et fréquente :
+    un site jamais refondu n'a rien perdu (Saillans, 25/08/2026)."""
+    from collectors import conseils
+
+    monkeypatch.setattr("collectors.wayback.catalogue_archive",
+                        lambda portee="commune", incidents=None: [])
+
+    conseils.collecter_archives("commune")
+
+    assert "aucun procès-verbal archivé trouvé" in capsys.readouterr().out

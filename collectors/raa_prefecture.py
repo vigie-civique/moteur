@@ -74,16 +74,11 @@ THEME_RE = re.compile(
 CONTEXT = 150  # caractères de contexte autour d'une mention
 
 
-class SourceInterrompue(RuntimeError):
-    """La source a cessé de répondre avant la fin de la collecte.
-
-    Ce n'est pas la même chose qu'un recueil retiré du site : là, on SAIT ce
-    qu'on n'a pas lu. Ici, non — la préfecture ferme les connexions au bout de
-    quelques dizaines de téléchargements, et ce qui reste n'a même pas été
-    tenté. Le distinguer d'une collecte complète est tout l'objet de cette
-    exception : le 24/08/2026, un passage a lu 74 recueils sur 263, échoué sur
-    les 189 autres, et s'est déclaré `ok` dans `collector_runs`.
-    """
+# Définie dans `erreurs` depuis le 25/08/2026 : `wayback` avait le même défaut,
+# et deux collecteurs ne peuvent pas porter deux exceptions du même nom sans que
+# l'un rattrape mal celle de l'autre. Réexportée ici, c'est le nom sous lequel
+# elle est levée et attrapée depuis le début.
+from .erreurs import SourceInterrompue  # noqa: E402,F401 — réexport
 
 
 def ensure_table(conn):

@@ -520,13 +520,24 @@ def collecter_archives(portee: str = "commune", limit: int = 0,
     même séance récupérée par deux chemins ferait deux séances, donc deux jeux
     de délibérations.
     """
+    from .erreurs import SourceInterrompue
     from .wayback import catalogue_archive
 
     instance = COMMUNE_NAME if portee == "commune" else (EPCI_NOM or "EPCI")
     print(f"\n[conseils] {instance} — procès-verbaux archivés (web.archive.org)")
 
-    documents = catalogue_archive(portee)
+    # Ce que l'archive n'a pas capturé et ce qu'on n'a pas pu lire donnent le
+    # même zéro. Le premier est un fait sur la commune — un site jamais refondu
+    # n'a rien perdu ; le second est une panne, et l'annoncer comme un résultat
+    # est d'autant plus trompeur que le zéro est plausible (25/08/2026, Brassac).
+    incidents: list[str] = []
+    documents = catalogue_archive(portee, incidents=incidents)
     if not documents:
+        if incidents:
+            raise SourceInterrompue(
+                f"{len(incidents)} instantané(s) n'ont pas répondu et aucun "
+                f"procès-verbal n'a été catalogué — l'archive n'a pas été lue, "
+                f"ce n'est pas qu'elle est vide. Relancer le step.")
         print("  aucun procès-verbal archivé trouvé")
         return
     print(f"  {len(documents)} procès-verbaux archivés "
@@ -560,6 +571,16 @@ def collecter_archives(portee: str = "commune", limit: int = 0,
           f"{resume.get('sans_couche_texte', 0)} sans couche texte"
           + ("" if avec_ocr else " (relancer avec --ocr)")
           + f", {resume.get('inaccessible', 0)} inaccessibles")
+
+    if incidents:
+        # Après le traitement, jamais avant : les séances lues sont en base et
+        # l'exception ne les défait pas. Elle refuse seulement d'appeler « ok »
+        # un passage qui n'a pas tout vu — la reprise est incrémentale, une date
+        # déjà tenue par une séance n'est pas retraitée.
+        raise SourceInterrompue(
+            f"{len(incidents)} instantané(s) n'ont pas répondu : le catalogue "
+            f"est partiel, d'autres séances dorment peut-être dans l'archive. "
+            f"Relancer le step reprendra ce qui manque.")
 
 
 def import_pv_archives() -> None:
