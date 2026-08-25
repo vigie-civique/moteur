@@ -172,6 +172,7 @@ def test_collecter_archives_refuse_de_conclure_sur_une_archive_non_lue(monkeypat
     c'est celui qui doit échouer. Le step remonte l'échec dans `collector_runs`
     au lieu d'y écrire `ok`.
     """
+    pytest.importorskip("pdfplumber", reason="job « tests-deps »")
     from collectors import conseils
 
     monkeypatch.setattr(conseils, "COMMUNE_NAME", "Brassac", raising=False)
@@ -186,6 +187,7 @@ def test_collecter_archives_refuse_de_conclure_sur_une_archive_non_lue(monkeypat
 def test_collecter_archives_annonce_le_vide_quand_il_est_reel(monkeypatch, capsys):
     """Sans incident, zéro document reste une réponse légitime — et fréquente :
     un site jamais refondu n'a rien perdu (Saillans, 25/08/2026)."""
+    pytest.importorskip("pdfplumber", reason="job « tests-deps »")
     from collectors import conseils
 
     monkeypatch.setattr("collectors.wayback.catalogue_archive",
