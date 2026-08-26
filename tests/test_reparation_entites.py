@@ -483,3 +483,17 @@ class TestRapprochements:
             "distinctes": [{"cles": [cle_arbitrage(base, a), cle_arbitrage(base, b)],
                             "motif": "deux clubs, un même adjectif"}]}), encoding="utf-8")
         assert not rapprochements(base, seuil=0.75, racine=tmp_path)
+
+
+@pytest.mark.parametrize("a, b, differents", [
+    ("Tente canadienne n°60", "Tente canadienne n°61", True),
+    ("KERGREEN 1", "KERGREEN 7", True),
+    ("Drôme Agri Solaire", "Drôme Agri Solaire 1", True),
+    ("LES 4 SAISONS", "Les 4 saisons", False),
+    ("LA CARAVANE FILME", "Caravane Film", False),
+])
+def test_un_nombre_dans_un_nom_sert_a_distinguer(a, b, differents):
+    """Sur la similarité de chaîne ces paires frôlent 0,95 — et c'est
+    précisément le chiffre qui les sépare, un caractère qui pèse tout."""
+    from scripts.fusionner_entites import nombres_differents
+    assert nombres_differents(a, b) is differents

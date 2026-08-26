@@ -386,6 +386,29 @@ def similarite(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, _cle_comparaison(a), _cle_comparaison(b)).ratio()
 
 
+def _nombres(nom: str) -> frozenset[str]:
+    """Tous les groupes de chiffres du nom BRUT.
+
+    Pas ceux de `jeton()` : il écarte les mots d'un seul caractère, donc « 1 »
+    et « 7 » — exactement les chiffres qui distinguent « KERGREEN 1 » de
+    « KERGREEN 7 ». Le filtre qui protège des initiales aveuglait celui-ci.
+    """
+    return frozenset(re.findall(r"\d+", nom or ""))
+
+
+def nombres_differents(a: str, b: str) -> bool:
+    """Un NOMBRE dans un nom sert à distinguer, pas à décrire.
+
+    « Tente canadienne n°60 » et « n°61 » sont deux tentes ; « KERGREEN 1 » et
+    « KERGREEN 7 » deux sociétés de projet ; « Drôme Agri Solaire » et « Drôme
+    Agri Solaire 1 » deux sociétés. Sur la similarité de chaîne, ces paires
+    frôlent 0,95 — c'est précisément le chiffre qui les sépare, et il pèse un
+    caractère.
+    """
+    na, nb = _nombres(a), _nombres(b)
+    return bool(na or nb) and na != nb
+
+
 def _communes_compatibles(a: str | None, b: str | None) -> bool:
     """Une fiche SANS commune ne contredit personne.
 
@@ -425,6 +448,8 @@ def rapprochements(conn, seuil: float = 0.80,
                 continue
             score = difflib.SequenceMatcher(None, a["_cle"], b["_cle"]).ratio()
             if score < seuil:
+                continue
+            if nombres_differents(a["name"], b["name"]):
                 continue
             rna = {x["_idt"]["rna"] for x in (a, b) if x["_idt"]["rna"]}
             siren = {x["_idt"]["siren"] for x in (a, b) if x["_idt"]["siren"]}
