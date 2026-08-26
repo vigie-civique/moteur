@@ -62,8 +62,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from collectors.config import (COMMUNES_FOND, DB_PATH, PROFONDEUR_STEP,  # noqa: E402
-                               STEP_META, TERRITOIRE, communes_du_step,
-                               registre_du_step)
+                               STEP_META, communes_du_step, registre_du_step)
 from collectors.db import get_conn  # noqa: E402
 from collectors.formes_juridiques import type_pour_forme  # noqa: E402
 
@@ -219,13 +218,21 @@ def annonces_orphelines(conn, ids_supprimes: set[int]) -> list[int]:
 
 
 def caches_a_retirer() -> list[Path]:
-    """Caches Overpass des communes qui ne sont plus interrogées."""
+    """Caches Overpass des communes qui ne sont plus interrogées.
+
+    Le dossier se déduit de la BASE et non de la racine du moteur : les caches
+    appartiennent à l'instance, comme elle, et `db/` et `territoire/` sont
+    côte à côte. Passer par `config.TERRITOIRE` visait le dépôt depuis lequel on
+    lance le script — c'est-à-dire, quand on purge une instance à distance avec
+    `VIGIE_DB`, un dossier qui n'a rien à voir avec la base qu'on purge.
+    """
     if not _en_fond("osm"):
         return []
-    gardes = {f"pois_{c}.geojson" for c in communes_du_step("osm")}
-    if not TERRITOIRE.exists():
+    territoire = DB_PATH.parent.parent / "territoire"
+    if not territoire.exists():
         return []
-    return sorted(p for p in TERRITOIRE.glob("pois_*.geojson")
+    gardes = {f"pois_{c}.geojson" for c in communes_du_step("osm")}
+    return sorted(p for p in territoire.glob("pois_*.geojson")
                   if p.name not in gardes)
 
 
