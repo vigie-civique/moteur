@@ -58,17 +58,21 @@
          conseil ni le même bulletin de vote, et les additionner sous le mot
          « délibérations » laissait croire à un conseil municipal deux fois plus
          actif. Le renvoi est là pour qu'aucune moitié ne se perde. -->
-    {#if interco?.deliberations}
+    {#if interco?.deliberations || interco?.marches}
       <p class="cadrage">
-        Ces chiffres sont ceux <b>de la commune</b>. La {EPCI} en décide
-        {interco.deliberations.toLocaleString('fr-FR')} de plus pour elle&nbsp;:
-        <a href="/com-com">voir ce que décide la {EPCI_COURT}</a>.
+        Ces chiffres sont ceux <b>de la commune</b>. La {EPCI} en tient
+        {#if interco.deliberations}{interco.deliberations.toLocaleString('fr-FR')} délibérations{/if}{#if interco.deliberations && interco.marches} et {/if}{#if interco.marches}{interco.marches.toLocaleString('fr-FR')} marchés{/if}
+        de plus, décidés pour la commune sans être décidés par elle&nbsp;:
+        <a href="/com-com">voir ce que fait la {EPCI_COURT}</a>.
       </p>
     {/if}
     <div class="chiffres">
       <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs recensés</span></span>
       <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations</span></span>
-      <span class="chiffre"><b>{nombre(chiffres.marches)}</b><span>marchés</span></span>
+      <span class="chiffre" class:vide={chiffres.marches === 0}>
+        <b>{nombre(chiffres.marches)}</b>
+        <span>{chiffres.marches === 0 ? 'marché recensé' : 'marchés'}</span>
+      </span>
       {#if budget}
         <span class="chiffre"><b>{millions(budget.recettes)}</b><span>budget {budget.annee}</span></span>
       {/if}
@@ -79,6 +83,15 @@
          que nous savons produire. Un badge unique mentirait sur l'un des deux,
          et le hero n'est pas l'endroit pour trois étiquettes. La phrase le dit
          en clair, chaque page de destination porte ensuite sa qualification. -->
+    {#if chiffres.marches === 0}
+      <!-- Zéro n'est pas « la commune ne commande rien » : c'est « nos sources
+           n'en recensent aucun ». La différence est tout le sujet du site. -->
+      <p class="lacune">
+        Aucun marché de la commune n'est recensé dans nos sources ouvertes —
+        ce qui ne veut pas dire qu'il n'y en a pas.
+        <a href="/couverture">Ce que nous savons et ne savons pas</a>
+      </p>
+    {/if}
     <p class="provenance">
       Les trois premiers chiffres sont ceux que notre collecte a trouvés&nbsp;;
       le budget est l'agrégat publié par l'Observatoire des finances locales.
@@ -127,7 +140,7 @@
     <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
     <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
     <span class="porte-n">
-      {#if budget}{millions(budget.depenses)} dépensés en {budget.annee} · {/if}{nombre(chiffres.marches)} marchés
+      {#if budget}{millions(budget.depenses)} dépensés en {budget.annee} · {/if}{nombre(chiffres.marches)} marchés de la commune{#if interco?.marches}, {nombre(interco.marches)} de la {EPCI_COURT}{/if}
     </span>
   </a>
   <a class="porte" href="/acteurs-publics">
@@ -217,6 +230,11 @@
     border-left: 3px solid var(--trait); padding-left: .7rem;
   }
   .cadrage b { color: var(--encre); }
+  .chiffre.vide b { color: var(--gris); }
+  .lacune {
+    margin: .6rem 0 0; font-size: .85rem; color: var(--gris);
+    border-left: 3px solid var(--ambre); padding-left: .7rem;
+  }
   .ailleurs {
     margin: .7rem 0 0; font-size: .85rem; color: var(--gris);
     border-top: 1px dashed var(--trait); padding-top: .6rem;

@@ -67,6 +67,16 @@ export function load() {
   const marchesCommune = marches.filter((m) => !m.portee || m.portee === 'commune').length
   const delibParPortee = stats.deliberations_public_par_portee || {}
 
+  // ZÉRO EST UNE RÉPONSE. Un `||` de repli aurait retenu le total du snapshot
+  // quand la commune n'a rien : les sept marchés publiés à Lasalle sont TOUS
+  // ceux de l'intercommunalité, et la page de garde annonçait « 7 marchés »
+  // comme s'ils étaient communaux. Ce zéro est le fait le plus intéressant de
+  // la page — il dit que nos sources ne recensent aucun marché de la commune.
+  // Le repli ne sert qu'à un snapshot ANTÉRIEUR à ce champ, et se décide sur
+  // la présence du champ, jamais sur la valeur du compteur.
+  const portees = (index.entities || []).some((e) => e.p)
+  const marchesPortes = marches.some((m) => m.portee)
+
   // Dernier exercice OFGL publié : un budget daté vaut mieux qu'un montant nu.
   const lignes = ofgl.ofgl || []
   const annee = lignes.reduce((max, l) => (l.year > max ? l.year : max), 0)
@@ -83,18 +93,18 @@ export function load() {
 
   return {
     chiffres: {
-      acteurs: acteursCommune || (stats.entities_public ?? null),
+      acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
       // autorisations d'urbanisme comprises. L'afficher sous le mot
       // « décisions » faisait dire à l'accueil ce qu'aucune source ne dit.
       // Le compteur porte maintenant ce qu'il nomme.
       deliberations: delibParPortee.commune ?? stats.deliberations_public ?? null,
       evenements: stats.events_public ?? null,
-      marches: marchesCommune || (stats.marches_rows ?? null),
+      marches: marchesPortes ? marchesCommune : (stats.marches_rows ?? null),
       surCarte: stats.map_features_public ?? null,
-      associations: parTypeCommune.association ?? parType.association ?? null,
-      entreprises: parTypeCommune.business ?? parType.business ?? null,
-      services: parTypeCommune.service ?? parType.service ?? null,
+      associations: portees ? (parTypeCommune.association ?? 0) : (parType.association ?? null),
+      entreprises: portees ? (parTypeCommune.business ?? 0) : (parType.business ?? null),
+      services: portees ? (parTypeCommune.service ?? 0) : (parType.service ?? null),
     },
     // Ce que l'intercommunalité décide POUR la commune. Annoncé à part, avec
     // son propre renvoi : ne pas le montrer serait cacher la moitié de ce qui
