@@ -33,8 +33,10 @@ Ce qu'il ne retire JAMAIS :
   * une fiche à laquelle quelque chose est accroché : un marché, un flux
     financier, une relation, une note d'atelier, un site web. Une entreprise
     d'ailleurs qui a remporté un marché de la commune est le matériau même du
-    graphe de la commande publique. Elle reste, et `classer_perimetre` la
-    reclasse en `lien` ;
+    graphe de la commande publique. Elle reste, et garde son périmètre : une
+    entreprise d'une commune membre est C2 parce qu'elle est là-bas, pas
+    `lien` — `lien` désigne ce qui est HORS du territoire et s'y rattache par
+    une relation ;
   * les tables des steps `institution` — fiscalité, élections, risques,
     indicateurs, urbanisme, dotations —, qui portent tout le périmètre à
     dessein.
@@ -44,8 +46,9 @@ remet `sirene` en `institution` voit ce script cesser de toucher aux
 entreprises, sans qu'une ligne change ici. Une liste écrite en dur aurait
 contredit la configuration au premier réglage.
 
-APRÈS avoir appliqué, rejouer le classement — les fiches retenues pour une
-accroche doivent passer de C2 à `lien` :
+APRÈS avoir appliqué, rejouer le classement : des milliers de fiches ont
+disparu, et les relations qui faisaient d'une entité un `lien` ont pu partir
+avec elles.
 
     python3 -m collectors.run_all --step perimetre
 """
@@ -321,7 +324,7 @@ def run(appliquer: bool = False) -> int:
     print(f"  caches territoire/         {len(caches):6} fichiers")
 
     if retenues and any(retenues.values()):
-        print("\n── retenues, à reclasser en « lien » ────────────────────────────")
+        print("\n── retenues : elles portent quelque chose, elles restent ────────")
         for table, lot in retenues.items():
             for eid, _t, nom, commune, n in sorted(lot, key=lambda x: -x[4])[:8]:
                 print(f"  [{eid:6}] {nom[:44]:44} {commune[:18]:18} {n} accroche(s)")
