@@ -15,23 +15,23 @@ export function load() {
   const stats = lire('stats.json')
   const elections = lire('elections.json', {})
   const elus = lire('elus_rne.json', {})
-  const events = lire('events.json', {})
   const relations = lire('relations.json', {})
   const conflits = lire('conflits.json', {})
 
   const listeElus = Array.isArray(elus) ? elus : elus.elus || elus.rows || []
-  const listeEvents = Array.isArray(events) ? events : events.events || []
   const listeRel = Array.isArray(relations) ? relations : relations.relations || []
   const listeConflits = Array.isArray(conflits) ? conflits : conflits.cas || []
 
-  // La carte annonce « la chronologie des votes du conseil municipal » : elle
-  // doit compter le conseil municipal. Elle comptait les deux conseils — 1 997
-  // à Lasalle, dont 833 votées par la communauté de communes.
-  const ACTES = ['deliberation', 'conseil_municipal', 'délibérations_cc', 'pv_cc']
-  const listeActes = listeEvents.filter((e) => ACTES.includes(e.type))
-  const communal = (e) => !e.portee || e.portee === 'commune'
-  const deliberations = listeActes.filter(communal).length
-  const deliberationsInterco = listeActes.length - deliberations
+  // Le compte des délibérations vient de `stats.json`, qui le calcule déjà par
+  // portée. Il était refait ici sur une liste de types PÉRIMÉE
+  // (`délibérations_cc`, `pv_cc` — les types réels sont `deliberation_cc` et
+  // `conseil_communautaire`) : les 833 délibérations communautaires de Lasalle
+  // n'étaient donc comptées nulle part, et la carte de l'intercommunalité
+  // n'affichait aucun chiffre. Un décompte recopié à trois endroits finit
+  // toujours par diverger d'un des trois.
+  const parPortee = stats.deliberations_public_par_portee || {}
+  const deliberations = parPortee.commune ?? null
+  const deliberationsInterco = parPortee.intercommunalite ?? null
 
   // Le conseil municipal seul : les élus de la commune, hors délégués
   // intercommunaux. Le rattachement se lit sur `commune`, comparé au nom
