@@ -26,6 +26,9 @@ Usage :
 """
 import argparse
 import json
+import math
+import re
+import unicodedata
 import urllib.parse
 
 from .archive import fetch_json
@@ -86,6 +89,89 @@ def _nom_lisible(etab: dict) -> str:
     return nom
 
 
+# ── Ne pas créer à côté de ce qui existe déjà ────────────────────────────────
+#
+# OpenStreetMap cartographie les écoles depuis longtemps : à Lasalle, « École
+# maternelle » et « École élémentaire du Colombier » étaient en base bien avant
+# ce collecteur, à 22 et 41 mètres de la position que donne l'Éducation
+# nationale. Créer une troisième fiche « Ecole primaire — Lasalle » aurait
+# fabriqué le doublon qu'on passe nos journées à défaire.
+#
+# Le rapprochement se fait sur DEUX signaux indépendants, jamais sur le nom
+# seul : la position (deux sources qui pointent le même bâtiment) et la nature
+# (une maternelle n'est pas une élémentaire, même à vingt mètres). Sans accord
+# des deux, on crée — un doublon se répare, une fusion abusive écrase.
+RAYON_M = 250
+
+MOTS_ECOLE = ("ecole", "college", "lycee", "groupe scolaire", "maternelle")
+
+# Ce que le libellé de nature de l'annuaire annonce, et le mot qu'on cherche
+# dans le nom d'une fiche existante.
+NIVEAUX = (
+    ("MATERNELLE", ("maternelle",)),
+    ("ELEMENTAIRE", ("elementaire", "primaire")),
+    ("PRIMAIRE", ("primaire", "elementaire")),
+    ("COLLEGE", ("college",)),
+    ("LYCEE", ("lycee",)),
+)
+
+
+def _sans_accent(texte: str | None) -> str:
+    t = unicodedata.normalize("NFKD", texte or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
+
+
+def _distance_m(lat1, lng1, lat2, lng2) -> float | None:
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    p = math.pi / 180
+    a = (0.5 - math.cos((lat2 - lat1) * p) / 2
+         + math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lng2 - lng1) * p)) / 2)
+    return 12742000 * math.asin(math.sqrt(max(0.0, a)))
+
+
+def _niveaux_attendus(etab: dict) -> tuple[str, ...]:
+    nature = (etab.get("libelle_nature") or "").upper()
+    for cle, mots in NIVEAUX:
+        if cle in nature:
+            return mots
+    return ()
+
+
+def candidat_existant(conn, etab: dict, commune_nom: str) -> int | None:
+    """Fiche scolaire déjà en base qui désigne le même établissement, ou None.
+
+    Position ET nature doivent concorder. Une fiche déjà porteuse d'un UAI est
+    écartée : elle appartient à un autre établissement de l'annuaire.
+    """
+    lat, lng = _coord(etab.get("latitude")), _coord(etab.get("longitude"))
+    if lat is None or lng is None:
+        return None
+    attendus = _niveaux_attendus(etab)
+    if not attendus:
+        return None
+
+    meilleur = None
+    for r in conn.execute(
+            "SELECT e.id, e.name, e.lat, e.lng FROM entities e"
+            " LEFT JOIN etablissements_scolaires s ON s.entity_id = e.id"
+            " WHERE e.type='service' AND e.commune=? AND s.entity_id IS NULL"
+            "   AND e.lat IS NOT NULL AND e.lng IS NOT NULL", (commune_nom,)):
+        nom = _sans_accent(r["name"])
+        if not any(mot in nom for mot in MOTS_ECOLE):
+            continue
+        if not any(mot in nom for mot in attendus):
+            continue
+        d = _distance_m(lat, lng, r["lat"], r["lng"])
+        if d is not None and d <= RAYON_M and (meilleur is None or d < meilleur[0]):
+            meilleur = (d, r["id"], r["name"])
+    if meilleur:
+        print(f"    ↳ rapproché de « {meilleur[2]} » (#{meilleur[1]}, "
+              f"{meilleur[0]:.0f} m) — pas de nouvelle fiche")
+        return meilleur[1]
+    return None
+
+
 def ensure_table(conn):
     """La fiche d'extension. `services` ne porte pas l'UAI ni les effectifs."""
     conn.execute("""
@@ -116,6 +202,9 @@ def _importer(conn, etab: dict, commune_nom: str) -> tuple[int, bool]:
     connue = conn.execute(
         "SELECT entity_id FROM etablissements_scolaires WHERE uai=?", (uai,)
     ).fetchone() if uai else None
+    # Rien sous cet UAI : peut-être une autre source a-t-elle déjà cartographié
+    # l'établissement. On l'adopte plutôt que de créer une fiche de plus.
+    adopte = None if connue else candidat_existant(conn, etab, commune_nom)
 
     nom = _nom_lisible(etab)
     adresse = ", ".join(filter(None, [
@@ -124,8 +213,8 @@ def _importer(conn, etab: dict, commune_nom: str) -> tuple[int, bool]:
                                (etab.get("nom_commune") or "").strip()])),
     ]))
 
-    if connue:
-        eid, cree = connue["entity_id"], False
+    if connue or adopte:
+        eid, cree = (connue["entity_id"] if connue else adopte), False
         # Ne jamais renommer sur une recollecte : l'atelier a pu corriger le
         # libellé, et l'annuaire ne le saura pas.
         for champ, valeur in (("address", adresse or None),

@@ -153,3 +153,73 @@ class TestLaFicheEstUnServicePublic:
         r = base_scolaire.execute(
             "SELECT lat, lng FROM entities WHERE id=?", (eid,)).fetchone()
         assert (r["lat"], r["lng"]) == (None, None)
+
+
+class TestNePasCreerACoteDeCeQuiExiste:
+    """OpenStreetMap cartographie les écoles depuis longtemps.
+
+    À Lasalle, « École maternelle » et « École élémentaire du Colombier »
+    étaient en base bien avant ce collecteur, à 22 et 41 mètres de la position
+    que donne l'Éducation nationale. Créer une troisième fiche aurait fabriqué
+    le doublon qu'on passe nos journées à défaire.
+    """
+
+    def _osm(self, base, nom, lat, lng, commune="Lasalle"):
+        eid = base.execute(
+            "INSERT INTO entities (type,name,name_norm,lat,lng,commune,confidence)"
+            " VALUES ('service',?,?,?,?,?,'verified')",
+            (nom, nom.lower(), lat, lng, commune)).lastrowid
+        base.execute("INSERT INTO services (entity_id, category) VALUES (?, 'education')",
+                     (eid,))
+        return eid
+
+    def test_la_fiche_osm_est_adoptee_au_lieu_d_etre_doublee(self, base_scolaire):
+        osm = self._osm(base_scolaire, "École élémentaire du Colombier",
+                        44.0453058, 3.8547193)
+        eid, cree = education._importer(base_scolaire, LASALLE, "Lasalle")
+        assert (eid, cree) == (osm, False)
+        assert base_scolaire.execute(
+            "SELECT COUNT(*) FROM entities").fetchone()[0] == 1
+        assert base_scolaire.execute(
+            "SELECT uai FROM etablissements_scolaires WHERE entity_id=?",
+            (osm,)).fetchone()[0] == "0301674G"
+
+    def test_la_nature_doit_concorder(self, base_scolaire):
+        """Une maternelle n'est pas une élémentaire, même à vingt mètres.
+
+        À Lasalle les deux bâtiments du Colombier sont à 22 m l'un de l'autre :
+        la seule proximité rattacherait l'UAI de l'élémentaire à la maternelle.
+        """
+        self._osm(base_scolaire, "École maternelle", 44.0456114, 3.8546669)
+        eid, cree = education._importer(base_scolaire, LASALLE, "Lasalle")
+        assert cree, "l'annuaire décrit une élémentaire, la maternelle n'est pas elle"
+        assert base_scolaire.execute(
+            "SELECT COUNT(*) FROM entities").fetchone()[0] == 2
+
+    def test_la_bonne_des_deux_est_choisie(self, base_scolaire):
+        mat = self._osm(base_scolaire, "École maternelle", 44.0456114, 3.8546669)
+        ele = self._osm(base_scolaire, "École élémentaire du Colombier",
+                        44.0453058, 3.8547193)
+        eid, _ = education._importer(base_scolaire, LASALLE, "Lasalle")
+        assert eid == ele and eid != mat
+
+    def test_au_dela_du_rayon_on_cree(self, base_scolaire):
+        # Une école de la commune voisine porte souvent le même libellé.
+        self._osm(base_scolaire, "École élémentaire", 44.10, 3.90)
+        _, cree = education._importer(base_scolaire, LASALLE, "Lasalle")
+        assert cree
+
+    def test_une_fiche_deja_dotee_d_un_uai_n_est_pas_reprise(self, base_scolaire):
+        """Elle appartient à un autre établissement de l'annuaire."""
+        autre = {**LASALLE, "identifiant_de_l_etablissement": "0300002B",
+                 "nom_etablissement": "Ecole élémentaire du Colombier"}
+        premier, _ = education._importer(base_scolaire, autre, "Lasalle")
+        second, cree = education._importer(base_scolaire, LASALLE, "Lasalle")
+        assert cree and second != premier
+
+    def test_sans_coordonnees_aucun_rapprochement(self, base_scolaire):
+        self._osm(base_scolaire, "École élémentaire du Colombier",
+                  44.0453058, 3.8547193)
+        aveugle = {**LASALLE, "latitude": "", "longitude": ""}
+        _, cree = education._importer(base_scolaire, aveugle, "Lasalle")
+        assert cree, "sans position, un seul signal ne suffit pas"
