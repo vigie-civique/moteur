@@ -21,8 +21,9 @@ import urllib.parse
 import urllib.request
 import unicodedata
 from .archive import fetch_json
-from .config import (JO_ASSO_API, CODE_POSTAL, COMMUNE_NAME, COMMUNES,
-                     COMMUNES_DELEGUEES, HEADERS, REQUEST_DELAY)
+from .config import (JO_ASSO_API, CODE_POSTAL, COMMUNE_NAME,
+                     COMMUNES_DELEGUEES, HEADERS, REQUEST_DELAY,
+                     cp_du_step, registre_du_step)
 
 
 def _norm(s: str) -> str:
@@ -35,7 +36,12 @@ def _norm(s: str) -> str:
 
 
 # Index nom normalisé → nom officiel du registre (pour taguer/filtrer les assos)
-_COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in COMMUNES.values()}
+# Borné à la PROFONDEUR du step et non au périmètre entier : le tissu associatif
+# des communes membres de l'intercommunalité n'est pas collecté (cf. la
+# profondeur de collecte dans config.py). Ce filtre-ci est le seul qui compte —
+# l'interrogation se fait par code postal, qui déborde de toute façon.
+_REGISTRE = registre_du_step("rna")
+_COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in _REGISTRE.values()}
 # Communes déléguées : le JO des associations continue d'écrire l'ancien nom
 # des communes fusionnées, parfois des décennies après. La correspondance
 # « ancien nom → commune actuelle » se lit dans `communes_deleguees` de
@@ -43,13 +49,13 @@ _COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in COMMUNES.values()}
 # rattachement. Elle a été écrite en dur pendant des mois : le moteur
 # connaissait ainsi une fusion précise, et une seule.
 for _delegee in COMMUNES_DELEGUEES.values():
-    _parent = COMMUNES.get(_delegee.get("commune", ""), {}).get("nom")
+    _parent = _REGISTRE.get(_delegee.get("commune", ""), {}).get("nom")
     if _parent:
         _COMMUNE_LOOKUP[_norm(_delegee["nom"])] = _parent
 
 
 def _match_commune(ville: str) -> str | None:
-    """Nom officiel du registre si la commune est collectée, sinon None."""
+    """Nom officiel si la commune est collectée à cette profondeur, sinon None."""
     return _COMMUNE_LOOKUP.get(_norm(ville))
 from .db import transaction, upsert_entity, upsert_relation
 from .nom_normalise import nettoyer_libelle, normaliser

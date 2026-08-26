@@ -23,6 +23,14 @@ Ce que le script NE devine pas, et qu'il laisse à renseigner :
 Ce partage est le résultat du portage documenté dans docs/portage-brassac.md :
 tout ce qui est national s'automatise, les sites officiels non.
 
+Ce que le script n'écrit PAS, volontairement : la profondeur de collecte. Elle
+est une règle du moteur — la commune en entier, l'intercommunalité comme
+institution, ses communes membres en contexte — et une instance l'hérite sans
+rien déclarer. L'écrire ici en ferait un particulier de commune, c'est-à-dire
+une valeur qu'on oublie de reporter au portage suivant. On ne déclare
+`collecte.fond` que pour s'en écarter : suivre plusieurs communes en propre, ou
+descendre sur l'intercommunalité entière. Cf. `collectors/config.py`.
+
 Usage :
   python3 scripts/init_instance.py 81037
   python3 scripts/init_instance.py 81037 --dry-run

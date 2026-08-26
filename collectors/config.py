@@ -102,6 +102,132 @@ COMMUNES_DELEGUEES: dict[str, dict] = _I.get("communes_deleguees", {})
 COMMUNES_ADRESSE = {**COMMUNES, **COMMUNES_DELEGUEES}
 COMMUNES_INSEE_ADRESSE = list(COMMUNES_ADRESSE)
 
+# ── PROFONDEUR DE COLLECTE ───────────────────────────────────────────────────
+# Le registre ci-dessus dit QUI est dans le périmètre. Il ne disait pas à quelle
+# PROFONDEUR chacun est collecté, et cette confusion coûtait cher : aspirer les
+# commerces, les associations, les mutations immobilières et les points
+# d'intérêt des quinze communes de l'intercommunalité produisait un annuaire où
+# la commune de collecte était minoritaire chez elle. Un site communal parle de
+# sa commune.
+#
+# Deux profondeurs, et deux seulement :
+#
+#   'fond'         collecte complète. Par défaut la commune de collecte, seule.
+#   'institution'  contexte institutionnel — ce que la commune délègue, partage
+#                  ou subit : élus, compétences, budgets, fiscalité, risques,
+#                  indicateurs. Porte sur TOUT le périmètre, C1 compris.
+#
+# Ce partage est une règle du moteur, pas un particulier de commune : une
+# instance l'hérite sans rien déclarer. `collecte.fond` dans `instance.json` ne
+# sert qu'à la SURCHARGER — plusieurs communes suivies en propre (un média qui
+# couvre une vallée), ou une commune qui veut réellement l'EPCI en profondeur.
+#
+# `fond` est une LISTE même quand elle n'a qu'un élément. Le reste du moteur ne
+# sait pas encore suivre plusieurs communes (COMMUNE_INSEE, le connecteur du
+# site de mairie et l'EPCI sont au singulier) ; le périmètre de collecte, lui,
+# est déjà prêt à les recevoir.
+_COLLECTE = _I.get("collecte", {})
+COMMUNES_FOND_INSEE = list(_COLLECTE.get("fond") or [COMMUNE_INSEE])
+
+_hors_registre = [c for c in COMMUNES_FOND_INSEE if c not in COMMUNES]
+if _hors_registre:
+    raise SystemExit(
+        "config/instance.json : collecte.fond cite des communes absentes du "
+        f"registre `communes` : {', '.join(_hors_registre)}.\n"
+        "Une commune collectée en profondeur doit d'abord appartenir au "
+        "périmètre, sans quoi les collecteurs l'interrogent et le classement "
+        "écarte ensuite tout ce qu'ils en ont rapporté.")
+
+COMMUNES_FOND = {c: COMMUNES[c] for c in COMMUNES_FOND_INSEE}
+# Les communes déléguées suivent leur commune de rattachement : une fusion ne
+# change pas la profondeur à laquelle on suit un territoire, seulement le code
+# sous lequel les répertoires continuent de l'indexer.
+COMMUNES_FOND_ADRESSE = {
+    **COMMUNES_FOND,
+    **{code: d for code, d in COMMUNES_DELEGUEES.items()
+       if d.get("commune") in COMMUNES_FOND},
+}
+COMMUNES_FOND_INSEE_ADRESSE = list(COMMUNES_FOND_ADRESSE)
+
+# Profondeur de chaque step qui boucle sur des communes. Piloter le périmètre de
+# collecte se fait ici et nulle part ailleurs : un collecteur ne CHOISIT pas sa
+# profondeur, il nomme son step et reçoit la liste qui lui revient. Écrite dans
+# les collecteurs, elle se serait dispersée sur quinze fichiers et aurait cessé
+# d'être réglable — c'est très exactement ce qui était arrivé au périmètre.
+PROFONDEURS = ("fond", "institution")
+PROFONDEUR_STEP = {
+    # ── fond : ce qui fait le tissu d'une commune ────────────────────────────
+    "sirene":      "fond",          # entreprises et établissements
+    "rna":         "fond",          # associations (RNA / Journal officiel)
+    "bodacc":      "fond",          # annonces légales des entreprises
+    "dvf":         "fond",          # mutations immobilières
+    "osm":         "fond",          # points d'intérêt
+    "patrimoine":  "fond",          # monuments historiques
+    "education":   "fond",          # écoles, collèges, lycées
+    # ── institution : ce qui se décide à plusieurs ───────────────────────────
+    # `rne` reste sur tout le périmètre parce que les délégués communautaires
+    # sont élus dans les communes membres : les en retirer, c'est perdre la
+    # moitié du conseil communautaire.
+    "rne":         "institution",
+    "elections":   "institution",
+    "fiscalite":   "institution",
+    "insee":       "institution",
+    "georisques":  "institution",
+    "sitadel":     "institution",
+    # Une rivière ne s'arrête pas à la limite communale.
+    "eau":         "institution",
+    "subventions": "institution",
+}
+
+for _step, _prof in _COLLECTE.get("profondeur_steps", {}).items():
+    if _step not in PROFONDEUR_STEP:
+        raise SystemExit(
+            f"config/instance.json : collecte.profondeur_steps cite « {_step} », "
+            "qui n'est pas un step à profondeur. Steps réglables : "
+            + ", ".join(sorted(PROFONDEUR_STEP)))
+    if _prof not in PROFONDEURS:
+        raise SystemExit(
+            f"config/instance.json : profondeur « {_prof} » inconnue pour "
+            f"« {_step} ». Valeurs possibles : {', '.join(PROFONDEURS)}")
+    PROFONDEUR_STEP[_step] = _prof
+
+
+def registre_du_step(step: str, adresse: bool = False) -> dict:
+    """Les communes que ce step doit interroger, par code INSEE.
+
+    `adresse=True` ajoute les communes déléguées : les sources ADRESSÉES
+    (SIRENE, DVF, Sitadel) indexent encore sous l'ancien code des communes
+    qu'une fusion a absorbées, et les oublier fait disparaître des
+    établissements et des mutations d'un territoire.
+    """
+    if step not in PROFONDEUR_STEP:
+        raise SystemExit(
+            f"collectors/config.py : le step « {step} » n'a pas de profondeur "
+            "déclarée. Un step qui boucle sur des communes doit dire "
+            "lesquelles — ajouter une entrée à PROFONDEUR_STEP.")
+    if PROFONDEUR_STEP[step] == "fond":
+        return COMMUNES_FOND_ADRESSE if adresse else COMMUNES_FOND
+    return COMMUNES_ADRESSE if adresse else COMMUNES
+
+
+def communes_du_step(step: str, adresse: bool = False) -> list[str]:
+    """Codes INSEE à interroger pour ce step."""
+    return list(registre_du_step(step, adresse))
+
+
+def cp_du_step(step: str) -> list[str]:
+    """Codes postaux à interroger pour ce step.
+
+    Rappel du registre ci-dessus : un code postal ne délimite pas une commune.
+    Les collecteurs qui l'emploient (RNA, BODACC) sur-remontent puis rejettent
+    sur le nom — et ce filtre aval doit lui aussi être borné à la profondeur du
+    step, sans quoi la réduction est annulée par la commune voisine qui partage
+    le code postal.
+    """
+    return sorted({c["cp"] for c in registre_du_step(step, adresse=True).values()
+                   if c.get("cp")})
+
+
 # ── Bruit propre à la mise en page des PV de cette mairie ─────────────────────
 # En-têtes de colonnes, intitulés d'équipements, patronymes d'agents qui
 # reviennent à chaque page : `cm_parser` les écarte du découpage en

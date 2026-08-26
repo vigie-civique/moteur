@@ -1,5 +1,5 @@
 """
-Collecteur OSM — points d'intérêt des communes du périmètre.
+Collecteur OSM — points d'intérêt des communes suivies en profondeur.
 
 L'instance de référence importait un `lasalle_pois.geojson` produit par un
 script hors dépôt : le fichier n'étant pas versionné (et n'ayant pas à l'être),
@@ -18,7 +18,8 @@ import urllib.parse
 import urllib.request
 
 from .archive import archive_fetch
-from .config import (COMMUNES, HEADERS, OVERPASS, REQUEST_DELAY, TERRITOIRE)
+from .config import (HEADERS, OVERPASS, REQUEST_DELAY, TERRITOIRE,
+                     registre_du_step)
 from .db import transaction, upsert_entity
 
 # Clés OSM retenues : ce qui relève d'un service, d'un commerce, d'un lieu
@@ -171,9 +172,14 @@ def _telecharger(insee: str, nom: str) -> list[dict] | None:
 
 
 def import_osm():
+    # Les points d'intérêt relèvent de la profondeur `fond` : la carte d'un site
+    # communal montre sa commune. Interroger Overpass sur les quinze communes de
+    # l'intercommunalité remplissait la carte de commerces qui ne s'y trouvent
+    # pas.
+    communes = registre_du_step("osm")
     features = []
     echecs = []
-    for insee, commune in COMMUNES.items():
+    for insee, commune in communes.items():
         lot = _telecharger(insee, commune["nom"])
         if lot is None:
             echecs.append(f"{commune['nom']} ({insee})")
@@ -182,7 +188,7 @@ def import_osm():
         print(f"  [osm] {commune['nom']:26} {len(lot):4} POIs")
         features += lot
     print(f"[osm] {len(features)} POIs sur "
-          f"{len(COMMUNES) - len(echecs)}/{len(COMMUNES)} communes")
+          f"{len(communes) - len(echecs)}/{len(communes)} communes")
 
     inserted = skipped = sans_lettre = 0
 

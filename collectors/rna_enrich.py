@@ -28,7 +28,7 @@ import urllib.request
 from pathlib import Path
 
 from .archive import archive_fetch
-from .config import COMMUNES_CP
+from .config import cp_du_step
 
 from .config import DB_PATH   # la base est nommée dans la config, pas ici
 DATA_DIR   = Path(__file__).parent.parent / "data"
@@ -249,6 +249,6 @@ if __name__ == "__main__":
     parser.add_argument("--cp", default=None,
                         help="Code postal Waldec (défaut : tous les CP du périmètre)")
     args = parser.parse_args()
-    cps = [args.cp] if args.cp else COMMUNES_CP
+    cps = [args.cp] if args.cp else cp_du_step("rna")
     for cp in cps:
         enrich(dry_run=args.dry_run, enrich_all=args.all, save_csv=args.save_csv, cp=cp)

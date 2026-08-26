@@ -37,7 +37,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from collectors.config        import (COMMUNE_NAME, COMMUNES, COMMUNES_INSEE,
                                       COMMUNES_CP, COMMUNES_ADRESSE,
-                                      COMMUNES_INSEE_ADRESSE, DB_PATH, STEP_META)
+                                      COMMUNES_INSEE_ADRESSE, DB_PATH, STEP_META,
+                                      communes_du_step, cp_du_step,
+                                      registre_du_step)
 from collectors.db            import (init_db, get_conn, stats,
                                       log_run_start, log_run_end)
 from collectors.osm           import import_osm
@@ -143,25 +145,34 @@ STEPS = {
     "cm_archive": ("Procès-verbaux disparus du site (web.archive.org)",
                    import_pv_archives),
     "seed":     ("Saisies locales : subventions, baux, transactions", import_cm_events),
-    # sirene et dvf sont ADRESSÉS : ils bouclent sur COMMUNES_ADRESSE, qui
-    # ajoute les communes déléguées — celles qu'une fusion a absorbées mais que
-    # les répertoires indexent toujours sous leur ancien code INSEE. Les oublier
-    # fait disparaître des établissements et des mutations d'un territoire.
-    "sirene":   ("Entreprises SIRENE (C1 — {})".format(", ".join(COMMUNES_INSEE_ADRESSE)),
-                 lambda: [import_sirene(i, COMMUNES_ADRESSE[i]["nom"])
-                          for i in COMMUNES_INSEE_ADRESSE]),
+    # Ces quatre-là décrivent le TISSU d'une commune — ses entreprises, ses
+    # associations, ses ventes, ses annonces légales. Ils tournent donc à la
+    # profondeur `fond` (cf. config.PROFONDEUR_STEP) et non sur tout le
+    # périmètre : les étendre aux communes membres de l'intercommunalité
+    # produisait un annuaire où la commune de collecte était minoritaire.
+    #
+    # sirene et dvf sont ADRESSÉS : leur registre ajoute les communes déléguées
+    # — celles qu'une fusion a absorbées mais que les répertoires indexent
+    # toujours sous leur ancien code INSEE. Les oublier fait disparaître des
+    # établissements et des mutations d'un territoire.
+    "sirene":   ("Entreprises SIRENE ({})".format(
+                     ", ".join(communes_du_step("sirene", adresse=True))),
+                 lambda: [import_sirene(i, c["nom"]) for i, c
+                          in registre_du_step("sirene", adresse=True).items()]),
     # RNA et BODACC interrogent par CODE POSTAL, qui ne délimite pas une
-    # commune : la collecte sur-remonte puis filtre sur COMMUNES. Ne pas
-    # s'étonner du nombre d'enregistrements « hors périmètre ignorés » — sur le
-    # 81100 (aire de Castres), ils sont la règle plutôt que l'exception.
-    "rna":      ("Associations RNA/JO (C1 — CP {})".format(", ".join(COMMUNES_CP)),
-                 lambda: [import_rna(cp) for cp in COMMUNES_CP]),
-    "bodacc":   ("Annonces BODACC (C1 — CP {})".format(", ".join(COMMUNES_CP)),
-                 lambda: [run_bodacc(cp=cp) for cp in COMMUNES_CP]),
-    "dvf":      ("Transactions DVF (C1 — {})".format(", ".join(COMMUNES_INSEE_ADRESSE)),
-                 lambda: [import_dvf(i) for i in COMMUNES_INSEE_ADRESSE]),
-    "insee":    ("Indicateurs INSEE Melodi (C1)", run_insee_social),
-    "georisques": ("Risques, ICPE, CATNAT (C1)", run_georisques),
+    # commune : la collecte sur-remonte puis filtre sur le registre du step. Ne
+    # pas s'étonner du nombre d'enregistrements « hors périmètre ignorés » — sur
+    # le 81100 (aire de Castres), ils sont la règle plutôt que l'exception.
+    "rna":      ("Associations RNA/JO (CP {})".format(", ".join(cp_du_step("rna"))),
+                 lambda: [import_rna(cp) for cp in cp_du_step("rna")]),
+    "bodacc":   ("Annonces BODACC (CP {})".format(", ".join(cp_du_step("bodacc"))),
+                 lambda: [run_bodacc(cp=cp) for cp in cp_du_step("bodacc")]),
+    "dvf":      ("Transactions DVF ({})".format(
+                     ", ".join(communes_du_step("dvf", adresse=True))),
+                 lambda: [import_dvf(i)
+                          for i in communes_du_step("dvf", adresse=True)]),
+    "insee":    ("Indicateurs INSEE Melodi (périmètre)", run_insee_social),
+    "georisques": ("Risques, ICPE, CATNAT (périmètre)", run_georisques),
     # Écoles, collèges, lycées. Avec la mairie, le premier équipement public
     # d'une commune rurale — et il manquait au répertoire, si bien qu'une
     # délibération portant sur le groupe scolaire ne pouvait se rattacher à
@@ -169,12 +180,12 @@ STEPS = {
     "education": ("Établissements scolaires (Éducation nationale)", run_education),
     "raa":      ("RAA de la préfecture (année courante, incrémental)",
                  lambda: run_raa(__import__("datetime").date.today().year)),
-    "patrimoine": ("Monuments historiques MH (C1)", run_pop_culture),
+    "patrimoine": ("Monuments historiques MH", run_pop_culture),
     # Source AUTORITAIRE des mandats (DGCL). Sert de contrôle des affirmations
     # tirées des sites municipaux, qui peuvent être périmés.
-    "rne":      ("Élus — Répertoire National des Élus (C1 + délégués CC)", run_rne),
-    "fiscalite": ("Taux d'imposition locaux votés (C1)", run_fiscalite),
-    "sitadel":  ("Autorisations d'urbanisme Sitadel (C1)", run_sitadel),
+    "rne":      ("Élus — Répertoire National des Élus (périmètre + délégués CC)", run_rne),
+    "fiscalite": ("Taux d'imposition locaux votés (périmètre)", run_fiscalite),
+    "sitadel":  ("Autorisations d'urbanisme Sitadel (périmètre)", run_sitadel),
     "elections": ("Résultats électoraux (Ministère de l'intérieur)", run_elections),
     # Dirigeants d'associations : absents de l'open data (RNA et JO ne les
     # publient pas). Ces deux steps produisent des CANDIDATS à valider, jamais

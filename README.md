@@ -49,6 +49,16 @@ construire sur une base qui ne l'a jamais reçu. Le défaut inverse — publier 
 qu'on n'a pas classé — a tenu jusqu'au 14/08/2026 : sur une instance neuve, il
 publiait 10 735 fiches dont 6 151 relevaient d'une commune voisine.
 
+**Être dans le périmètre ne veut pas dire être collecté au même niveau.** Le
+périmètre dit qui est suivi, la *profondeur* dit jusqu'où. La commune de
+collecte est suivie complètement ; l'intercommunalité l'est comme institution —
+compétences, élus, budgets, marchés, délibérations — et ses autres communes
+membres au titre du contexte institutionnel seulement. Leurs commerces, leurs
+associations, leurs mutations immobilières et leurs points d'intérêt ne sont pas
+aspirés : un site communal parle de sa commune. Le partage se lit dans
+`PROFONDEUR_STEP` (`collectors/config.py`), en un seul endroit, et une instance
+qui veut suivre plusieurs communes en propre le déclare dans `collecte.fond`.
+
 ## Ce que le dispositif dit de lui-même
 
 Trois principes, visibles dans le code autant que sur le site :

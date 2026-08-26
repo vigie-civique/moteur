@@ -32,7 +32,7 @@ import unicodedata
 import urllib.parse
 
 from .archive import fetch_json
-from .config import COMMUNES, COMMUNES_INSEE, REQUEST_DELAY
+from .config import COMMUNES, REQUEST_DELAY, communes_du_step
 from .db import get_conn, transaction, upsert_entity
 
 API = ("https://data.education.gouv.fr/api/explore/v2.1/"
@@ -281,7 +281,7 @@ def import_commune(insee: str, commune_nom: str) -> int:
 
 def run(insee: str | None = None) -> int:
     import time
-    cibles = [insee] if insee else COMMUNES_INSEE
+    cibles = [insee] if insee else communes_du_step("education")
     total = 0
     for i, code in enumerate(cibles):
         nom = COMMUNES.get(code, {}).get("nom", code)

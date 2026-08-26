@@ -1,12 +1,13 @@
 """
-bodacc.py — Collecteur BODACC pour les communes de l'EPCI (registre COMMUNES)
+bodacc.py — Collecteur BODACC des annonces légales d'entreprises
 
 Source : API open data BODACC (bodacc-datadila.opendatasoft.com)
 Pas de clé API requise, 100 req/10s.
 
-Périmètre : les codes postaux du registre COMMUNES_CP. Un code postal déborde
-toujours du périmètre (le 81100 couvre l'aire de Castres) → filtrage par NOM de
-commune en plus du CP, et découpage annuel des CP trop volumineux.
+Périmètre : les codes postaux des communes suivies à la profondeur `fond`
+(cf. config.PROFONDEUR_STEP). Un code postal déborde toujours du périmètre (le
+81100 couvre l'aire de Castres) → filtrage par NOM de commune en plus du CP, et
+découpage annuel des CP trop volumineux.
 
 Usage :
   python3 -m collectors.bodacc             # import complet (1er CP du registre)
@@ -24,13 +25,13 @@ import urllib.request
 from datetime import datetime
 
 from .archive import fetch_json
-from .config import (COMMUNES, COMMUNES_CP, COMMUNES_DELEGUEES,
-                     HEADERS, ROOT)
+from .config import (COMMUNES_DELEGUEES, HEADERS, ROOT,
+                     cp_du_step, registre_du_step)
 from .db import get_conn
 from .nom_normalise import reparer_encodage
 
 API_BASE = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
-CP = COMMUNES_CP[0]
+CP = cp_du_step("bodacc")[0]
 PAGE_SIZE = 100
 # Plafond dur d'Opendatasoft : au-delà, l'API renvoie 400 au lieu d'une page vide.
 MAX_OFFSET = 10000
@@ -46,13 +47,18 @@ def _norm(s: str) -> str:
 
 
 # Index nom normalisé → nom officiel du registre (pour filtrer les annonces)
-_COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in COMMUNES.values()}
+# Borné à la PROFONDEUR du step : les annonces légales des communes membres de
+# l'intercommunalité ne sont pas collectées (cf. config.py). Elles arriveraient
+# de toute façon, un code postal ne délimitant pas une commune — c'est ici
+# qu'elles sont écartées.
+_REGISTRE = registre_du_step("bodacc")
+_COMMUNE_LOOKUP = {_norm(c["nom"]): c["nom"] for c in _REGISTRE.values()}
 # Alias des communes déléguées : BODACC indexe encore sous les noms d'avant la
 # fusion. Sans ces alias, leurs annonces sont comptées « hors périmètre » et
 # disparaissent silencieusement. Les noms viennent de l'instance, jamais du
 # code — c'est le registre `communes_deleguees` de config/instance.json.
 for _code, _delegee in COMMUNES_DELEGUEES.items():
-    _rattachement = COMMUNES.get(_delegee.get("commune", ""), {}).get("nom")
+    _rattachement = _REGISTRE.get(_delegee.get("commune", ""), {}).get("nom")
     if _delegee.get("nom") and _rattachement:
         _COMMUNE_LOOKUP[_norm(_delegee["nom"])] = _rattachement
 

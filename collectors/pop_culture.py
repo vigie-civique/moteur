@@ -21,7 +21,7 @@ import time
 import urllib.parse
 
 from .archive import fetch_json
-from .config import COMMUNES, COMMUNES_INSEE, REQUEST_DELAY
+from .config import COMMUNES, REQUEST_DELAY, communes_du_step
 from .db import get_conn, upsert_entity
 
 API = "https://data.culture.gouv.fr/api/explore/v2.1/catalog/datasets"
@@ -112,7 +112,7 @@ IMPORTERS = {DS_MH: ("cog_insee_lors_de_la_protection", import_mh),
 def run(insee_list: list[str] | None = None):
     conn = get_conn()
     total = 0
-    for insee in (insee_list or COMMUNES_INSEE):
+    for insee in (insee_list or communes_du_step("patrimoine")):
         commune = COMMUNES.get(insee, {}).get("nom", insee)
         for dataset, (field, importer) in IMPORTERS.items():
             try:
