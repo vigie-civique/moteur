@@ -319,6 +319,16 @@ def domaine(url: str | None) -> str:
     return d[4:] if d.startswith("www.") else d
 
 
+def _annee_de_trace(valeur) -> int | None:
+    """Année d'une date ou d'un millésime, None si la valeur n'en porte pas.
+
+    L'ANNÉE, et pas la date : un flux financier n'a que son millésime. Lui
+    donner un jour le ferait passer pour plus précis qu'il n'est.
+    """
+    texte = str(valeur or "")[:4]
+    return int(texte) if texte.isdigit() else None
+
+
 def portee_evenement(event_type: str | None, perimetres: set[str],
                      source: str | None = None) -> str:
     """Portée d'un acte : son assemblée, sinon son éditeur, sinon ses acteurs.
@@ -1105,6 +1115,7 @@ def write_search_index(out: Path, public_entities, communes: dict[int, str],
             # `a` : 1 en activité, 0 cessée, absent si les registres se taisent.
             **({"a": 1 if e["actif"] else 0} if e.get("actif") is not None else {}),
             **({"na": e["nature"]} if e.get("nature") else {}),
+            **({"dt": e["derniere_trace"]} if e.get("derniere_trace") else {}),
             "nb": liens_count.get(e["id"], 0),
         }
         for e in public_entities
@@ -2462,9 +2473,63 @@ def build_snapshot(out: Path) -> dict:
             for row in source:
                 for eid in {row.get(k) for k in paires} - {None}:
                     citations[eid] += 1
+        # ── Dernière trace publique ──────────────────────────────────────────
+        #
+        # 28 associations et 92 entreprises de Lasalle ont des registres MUETS :
+        # ni cessées ni dissoutes, mais rien ne dit non plus qu'elles vivent.
+        # Une association qui a cessé de se réunir sans déclarer sa dissolution
+        # reste « A » au Journal officiel pour toujours — le registre ne
+        # l'apprend jamais.
+        #
+        # Ce qu'on peut dire sans rien inventer : LA DERNIÈRE FOIS QU'UNE SOURCE
+        # PUBLIQUE L'A NOMMÉE. Ce n'est pas un verdict de dormance, c'est un
+        # fait daté, et il laisse le lecteur conclure — « dernière trace : 2014 »
+        # se lit tout seul.
+        #
+        # À la différence des citations, les annonces BODACC comptent ici : une
+        # radiation de 2019 est une trace, et c'est même la plus parlante.
+        #
+        # L'ANNÉE, et pas la date : un flux financier n'a que son millésime.
+        # Lui donner un jour le ferait passer pour plus précis qu'il n'est, et
+        # un acteur documenté par un seul flux paraîtrait plus récent qu'un
+        # acteur cité dans une délibération du même exercice.
+        traces: dict[int, int] = {}
+        _annee = _annee_de_trace
+
+        def _tracer(eid, an):
+            if eid and an and an > traces.get(eid, 0):
+                traces[eid] = an
+
+        for lien in public_links:
+            ev = events_by_id_all.get(lien["event_id"])
+            if ev:
+                _tracer(lien["entity_id"], _annee(ev.get("date")))
+        for rel in public_relations:
+            for champ in ("since", "until"):
+                for eid in (rel.get("from_id"), rel.get("to_id")):
+                    _tracer(eid, _annee(rel.get(champ)))
+        for flux in public_flows:
+            for eid in (flux.get("from_id"), flux.get("to_id")):
+                _tracer(eid, _annee(flux.get("year")))
+        for marche in marches_data:
+            for eid in (marche.get("acheteur_id"), marche.get("titulaire_id")):
+                _tracer(eid, _annee(marche.get("date_notif")))
+
         for e in public_entities:
             e["citations"] = citations.get(e["id"], 0)
+            e["derniere_trace"] = traces.get(e["id"])
         stats["entities_cited"] = sum(1 for e in public_entities if e["citations"])
+        # Ce que les registres taisent, et depuis quand la source publique
+        # s'est tue. Publié pour que la lacune se mesure au lieu de se deviner.
+        muettes = [e for e in public_entities
+                   if e["type"] in ("business", "association") and e.get("actif") is None]
+        stats["entities_registres_muets"] = {
+            "total": len(muettes),
+            "sans_aucune_trace": sum(1 for e in muettes if not e.get("derniere_trace")),
+            "par_derniere_trace": dict(sorted(Counter(
+                e.get("derniere_trace") for e in muettes if e.get("derniere_trace")
+            ).items(), reverse=True)),
+        }
 
         out.mkdir(parents=True, exist_ok=True)
         write_json(out / "stats.json", stats)

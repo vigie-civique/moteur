@@ -141,6 +141,26 @@
   $: verse = flows.filter(f => f.from_id === id && f.statut !== 'demande')
                   .reduce((s, f) => s + (f.amount || 0), 0)
   $: derniere = liens.find(e => e.date)?.date
+
+  // ── L'état d'activité, dit par les registres ou tu par eux ──────────────
+  // `actif` à null n'est PAS « en activité » : une association qui a cessé de
+  // se réunir sans déclarer sa dissolution reste « A » au Journal officiel
+  // pour toujours. Quand le registre se tait, on donne à la place le seul fait
+  // qu'on possède — l'année où une source publique l'a nommée en dernier.
+  const NATURES = {
+    societe: 'Société',
+    individuelle: 'Entreprise individuelle',
+    patrimoniale: 'Société de patrimoine (activité immobilière déclarée)',
+  }
+  const ANNEE = new Date().getFullYear()
+  $: an = (d) => (d || '').toString().slice(0, 4)
+  $: etat = !entity ? null
+    : entity.actif === false
+      ? `${entity.type === 'association' ? 'Dissoute' : 'Cessée'}${an(entity.fin_activite) ? ` en ${an(entity.fin_activite)}` : ''}`
+    : entity.actif === true ? 'En activité selon les registres'
+    : null
+  $: silence = entity && entity.actif == null
+    && ['business', 'association'].includes(entity.type)
   $: anneesFlux = [...new Set(flows.map(f => f.year).filter(Boolean))].sort()
 
   const fmt = (d) => d
@@ -229,6 +249,21 @@
           <dt>Type</dt><dd>{TYPE_LABELS[entity.type] || entity.type}</dd>
           {#if entity.commune}<dt>Commune</dt><dd>{entity.commune}</dd>{/if}
           <dt>Fiabilité</dt><dd>{CONF_LABELS[entity.confidence] || entity.confidence}</dd>
+          {#if etat}<dt>État</dt><dd>{etat}</dd>{/if}
+          {#if silence}
+            <dt>État</dt>
+            <dd class="silence">
+              Les registres ne le disent pas.
+              {#if entity.derniere_trace}
+                Dernière fois qu'une source publique la nomme&nbsp;:
+                <b>{entity.derniere_trace}</b>{#if entity.derniere_trace < ANNEE - 5}
+                  — soit il y a plus de cinq ans{/if}.
+              {:else}
+                Aucune source publique ne la nomme.
+              {/if}
+            </dd>
+          {/if}
+          {#if entity.nature}<dt>Nature</dt><dd>{NATURES[entity.nature] || entity.nature}</dd>{/if}
           {#if entity.naf_label}<dt>Activité</dt><dd>{entity.naf_label}</dd>{/if}
           {#if entity.siren}<dt>SIREN</dt><dd>{entity.siren}</dd>{/if}
           {#if entity.osm_category}<dt>Catégorie</dt><dd>{entity.osm_category} {entity.osm_value || ''}</dd>{/if}
@@ -381,6 +416,8 @@
 </section>
 
 <style>
+  dd.silence { color: var(--gris); font-size: .88rem; }
+  dd.silence b { color: var(--encre); }
   /* Chronologie : l'année sert de repère, les entrées s'y accrochent. Le trait
      vertical fait la trajectoire — c'est ce qui distingue une chronologie
      d'une liste triée par date. */

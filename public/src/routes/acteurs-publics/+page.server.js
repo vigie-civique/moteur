@@ -25,10 +25,14 @@ export function load() {
   return {
     all: (d.entities || [])
       .filter((e) => TYPES_ACTEURS.includes(e.type))
-      .map(({ id, type, name, citations, perimetre, actif, fin_activite, nature }) =>
+      .map(({ id, type, name, citations, perimetre, actif, fin_activite, nature,
+              derniere_trace }) =>
         ({ id, type, name, citations, portee: portee(perimetre),
            // `actif` reste à `undefined` quand les registres se taisent : c'est
-           // une ignorance, jamais une présomption d'activité.
-           actif, fin: fin_activite || null, nature: nature || null })),
+           // une ignorance, jamais une présomption d'activité. `trace` est ce
+           // qu'on peut dire à la place — l'année où une source publique l'a
+           // nommée pour la dernière fois.
+           actif, fin: fin_activite || null, nature: nature || null,
+           trace: derniere_trace || null })),
   }
 }

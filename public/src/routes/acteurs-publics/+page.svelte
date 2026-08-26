@@ -35,10 +35,23 @@
   // le reste ne disparaît pas, il se demande — c'est de l'histoire locale.
   let activite = 'vivantes'
   const vivant = (e) => e.actif !== false
+
+  // ── Ce que les registres taisent ────────────────────────────────────────
+  // Une association qui a cessé de se réunir sans déclarer sa dissolution
+  // reste « A » au Journal officiel pour toujours : le registre ne l'apprend
+  // jamais. On ne peut donc pas dire qu'elle a disparu — mais on peut dire
+  // QUAND une source publique l'a nommée pour la dernière fois, et laisser
+  // lire. « Dernière trace : 2014 » se comprend tout seul.
+  const ANNEE = new Date().getFullYear()
+  const ANCIENNETE = 5   // au-delà, la trace est dite ancienne
+  const sansTraceRecente = (e) => vivant(e) && (!e.trace || e.trace < ANNEE - ANCIENNETE)
+
   $: nVivantes = dansPortee.filter(vivant).length
+  $: nDormantes = dansPortee.filter(sansTraceRecente).length
   $: nCessees = dansPortee.length - nVivantes
   $: dansActivite = activite === 'toutes' ? dansPortee
     : activite === 'cessees' ? dansPortee.filter(e => e.actif === false)
+    : activite === 'dormantes' ? dansPortee.filter(sansTraceRecente)
     : dansPortee.filter(vivant)
 
   // ── Ce qui produit, ce qui détient ──────────────────────────────────────
@@ -101,6 +114,7 @@
 
     <div class="scope">
       <button class:on={activite === 'vivantes'} on:click={() => activite = 'vivantes'}>En activité <b>{nVivantes}</b></button>
+      <button class:on={activite === 'dormantes'} on:click={() => activite = 'dormantes'}>dont sans trace récente <b>{nDormantes}</b></button>
       <button class:on={activite === 'cessees'} on:click={() => activite = 'cessees'}>Cessées ou dissoutes <b>{nCessees}</b></button>
       <button class:on={activite === 'toutes'} on:click={() => activite = 'toutes'}>Toutes <b>{dansPortee.length}</b></button>
     </div>
@@ -109,6 +123,11 @@
         Les registres ne les donnent ni cessées ni dissoutes. Une association
         qui a cessé de se réunir sans le déclarer y figure encore&nbsp;: le
         registre ne l'apprend jamais.
+      {:else if activite === 'dormantes'}
+        Sous-ensemble du précédent&nbsp;: aucun registre ne les donne fermées,
+        et aucune source publique ne les a nommées depuis {ANCIENNETE} ans.
+        Ce n'est pas une disparition constatée — c'est un silence, et il se
+        lit comme tel.
       {:else if activite === 'cessees'}
         Radiées au répertoire des entreprises ou dissoutes au Journal officiel.
         Conservées&nbsp;: elles apparaissent dans des délibérations passées.
@@ -154,6 +173,8 @@
           <span class="badge {e.type}">{TYPE_LABELS[e.type]}</span>
           {#if e.actif === false}
             <span class="badge fin">{e.type === 'association' ? 'dissoute' : 'cessée'}{#if annee(e.fin)} en {annee(e.fin)}{/if}</span>
+          {:else if sansTraceRecente(e)}
+            <span class="badge trace">{e.trace ? `dernière trace ${e.trace}` : 'aucune trace publique'}</span>
           {/if}
           <strong>{e.name}</strong>
           {#if e.citations}
@@ -200,6 +221,7 @@
   .badge.service { background: var(--ardoise); } .badge.association { background: var(--recette); }
   .badge.business { background: var(--ambre); } .badge.place { background: var(--ardoise); }
   .badge.fin { background: transparent; color: var(--gris); border: 1px solid var(--trait); }
+  .badge.trace { background: transparent; color: var(--gris); border: 1px dashed var(--trait); }
   .chips.natures { margin-top: -.4rem; }
   .err { color: var(--depense); }
 </style>

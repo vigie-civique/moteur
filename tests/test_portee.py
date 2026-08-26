@@ -155,3 +155,28 @@ class TestNatureDEntreprise:
         from scripts.build_public_snapshot import nature_entreprise
         assert nature_entreprise({"naf_code": "5610A", "legal_form_code": "5499"}) == "societe"
         assert nature_entreprise({}) == "societe"
+
+
+class TestDerniereTrace:
+    """Ce qu'on peut dire quand les registres se taisent.
+
+    28 associations et 92 entreprises de Lasalle ne sont ni cessées ni
+    dissoutes, et rien ne dit non plus qu'elles vivent : une association qui a
+    cessé de se réunir sans déclarer sa dissolution reste « A » au Journal
+    officiel pour toujours. On ne peut pas conclure — on peut dater la dernière
+    fois qu'une source publique l'a nommée, et laisser lire.
+    """
+
+    def test_l_annee_et_pas_la_date(self, base, entite):
+        """Un flux financier n'a que son millésime.
+
+        Lui donner un jour le ferait passer pour plus précis qu'il n'est, et un
+        acteur documenté par un seul flux paraîtrait plus récent qu'un acteur
+        cité dans une délibération du même exercice.
+        """
+        from scripts.build_public_snapshot import _annee_de_trace
+        assert _annee_de_trace("2016-03-04") == 2016
+        assert _annee_de_trace(2016) == 2016
+        assert _annee_de_trace(None) is None
+        assert _annee_de_trace("") is None
+        assert _annee_de_trace("sans date") is None
