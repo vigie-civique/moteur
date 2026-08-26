@@ -1,5 +1,6 @@
 <script>
-  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_DE, EPCI, SITE_NOM } from '$lib/instance.js'
+  import FiltrePortee from '$lib/components/FiltrePortee.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import { TYPE_LABELS } from '$lib/data.js'
 
@@ -11,13 +12,23 @@
   // flux, marché, mandat). Sans ça la page affiche les ~2 700 fiches du
   // répertoire SIRENE, dont l'écrasante majorité n'est documentée nulle part.
   let scope = 'cites'
+  // Le périmètre par défaut est la COMMUNE : c'est un site communal, et
+  // l'annuaire s'ouvrait sur un mélange où les 163 acteurs des quatorze autres
+  // communes se lisaient comme des acteurs d'ici.
+  let portee = 'commune'
   const TYPES = ['service', 'association', 'business', 'place']
 
   const cite = (e) => (e.citations || 0) > 0
   $: cites = all.filter(cite)
   $: scoped = scope === 'cites' ? cites : all
-  $: counts = scoped.reduce((a, e) => { a[e.type] = (a[e.type] || 0) + 1; return a }, {})
-  $: filtered = scoped
+  // Le décompte du sélecteur suit le périmètre COURANT (cités / tout) : afficher
+  // « 163 » à côté de l'intercommunalité alors que le filtre en montrerait 12
+  // ferait douter du reste de la page.
+  $: comptePortee = scoped.reduce(
+    (a, e) => { a[e.portee] = (a[e.portee] || 0) + 1; return a }, {})
+  $: dansPortee = portee === 'tout' ? scoped : scoped.filter(e => e.portee === portee)
+  $: counts = dansPortee.reduce((a, e) => { a[e.type] = (a[e.type] || 0) + 1; return a }, {})
+  $: filtered = dansPortee
     .filter(e => typeFilter === 'all' || e.type === typeFilter)
     .filter(e => !q || (e.name || '').toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => (b.citations || 0) - (a.citations || 0) || (a.name || '').localeCompare(b.name || ''))
@@ -30,7 +41,7 @@
   <header class="tete">
     <div>
       <h1 class="avec-icone"><Icon name="acteurs" size={26} />Qui agit&nbsp;?</h1>
-      <p class="sub">Services, associations, entreprises et lieux d'intérêt public recensés sur la commune.</p>
+      <p class="sub">Services, associations, entreprises et lieux d'intérêt public — au choix, ceux de la commune ou ceux de l'intercommunalité.</p>
     </div>
     <!-- La carte est une vue de cet annuaire : elle ne porte que les acteurs
          dont on connaît la position. Le passage doit se faire dans les deux sens. -->
@@ -52,8 +63,14 @@
       {/if}
     </p>
 
+    <FiltrePortee bind:valeur={portee} compte={comptePortee}
+      libelleTerritoire="Au-delà"
+      aide="{COMMUNE} d'abord : ce sont deux collectivités distinctes, avec
+            leurs propres compétences. La {EPCI} agit aussi ici — sur ses
+            compétences à elle, décidées par son conseil communautaire." />
+
     <div class="chips">
-      <button class:on={typeFilter === 'all'} on:click={() => typeFilter = 'all'}>Tout <b>{scoped.length}</b></button>
+      <button class:on={typeFilter === 'all'} on:click={() => typeFilter = 'all'}>Tout <b>{dansPortee.length}</b></button>
       {#each TYPES as t}
         <button class="{t}" class:on={typeFilter === t} on:click={() => typeFilter = t}>{TYPE_LABELS[t]} <b>{counts[t] || 0}</b></button>
       {/each}

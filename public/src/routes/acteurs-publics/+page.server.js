@@ -16,9 +16,16 @@ export function load() {
   const d = lire('entities.json', { entities: [] })
   // La page n'affiche que ces quatre champs : embarquer les fiches complètes
   // (16 champs, dont urls et object) triplait le poids de la page.
+  // C1 = la commune, C2 = une autre commune membre ou l'EPCI lui-même,
+  // C3/lien = au-delà. Traduit ici une fois pour toutes : les pages n'ont pas
+  // à connaître le vocabulaire du classement interne.
+  const portee = (p) =>
+    p === 'C1' ? 'commune' : p === 'C2' ? 'intercommunalite' : 'territoire'
+
   return {
     all: (d.entities || [])
       .filter((e) => TYPES_ACTEURS.includes(e.type))
-      .map(({ id, type, name, citations }) => ({ id, type, name, citations })),
+      .map(({ id, type, name, citations, perimetre }) =>
+        ({ id, type, name, citations, portee: portee(perimetre) })),
   }
 }

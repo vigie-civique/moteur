@@ -35,12 +35,37 @@ export function load() {
   // bas et nommé pour ce qu'il est. Les annonces BODACC (genre « légal »)
   // relèvent de la vie des entreprises : elles restent sur /nouveautes.
   const GOUVERNANCE = new Set(['acte', 'argent', 'marché'])
-  const recents = passes.filter((i) => GOUVERNANCE.has(i.genre)).slice(0, 6)
-  const agenda = passes.filter((i) => i.genre === 'vie').slice(0, 4)
 
-  // entity_index abrège les champs : `t` = type.
+  // ── La page de garde parle de la COMMUNE ────────────────────────────────
+  // Elle mélangeait les deux assemblées sans le dire : le conseil municipal et
+  // le conseil communautaire dans la même liste, sous le même titre. Ce ne sont
+  // ni les mêmes élus, ni le même budget, ni le même bulletin de vote. Un site
+  // communal doit d'abord répondre « qu'est-ce que MA commune a décidé », et
+  // renvoyer vers l'intercommunalité — pas la lui servir mêlée.
+  //
+  // `portee` est posée par le snapshot (cf. `portee_evenement`). Un item sans
+  // portée — snapshot d'avant ce champ — reste affiché : mieux vaut une page
+  // de garde trop large qu'une page vide après un déploiement décalé.
+  const communal = (i) => !i.portee || i.portee === 'commune'
+  const recents = passes.filter((i) => GOUVERNANCE.has(i.genre)).filter(communal).slice(0, 6)
+  const agenda = passes.filter((i) => i.genre === 'vie').filter(communal).slice(0, 4)
+  const ailleurs = passes.filter(
+    (i) => GOUVERNANCE.has(i.genre) && i.portee === 'intercommunalite').length
+
+  // entity_index abrège les champs : `t` = type, `p` = portée.
   const parType = {}
-  for (const e of index.entities || []) parType[e.t] = (parType[e.t] || 0) + 1
+  const parTypeCommune = {}
+  let acteursCommune = 0
+  for (const e of index.entities || []) {
+    parType[e.t] = (parType[e.t] || 0) + 1
+    if (!e.p || e.p === 'commune') {
+      parTypeCommune[e.t] = (parTypeCommune[e.t] || 0) + 1
+      acteursCommune++
+    }
+  }
+  const marches = lire('marches.json', { marches: [] }).marches || []
+  const marchesCommune = marches.filter((m) => !m.portee || m.portee === 'commune').length
+  const delibParPortee = stats.deliberations_public_par_portee || {}
 
   // Dernier exercice OFGL publié : un budget daté vaut mieux qu'un montant nu.
   const lignes = ofgl.ofgl || []
@@ -58,18 +83,27 @@ export function load() {
 
   return {
     chiffres: {
-      acteurs: stats.entities_public ?? null,
+      acteurs: acteursCommune || (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
       // autorisations d'urbanisme comprises. L'afficher sous le mot
       // « décisions » faisait dire à l'accueil ce qu'aucune source ne dit.
       // Le compteur porte maintenant ce qu'il nomme.
-      deliberations: stats.deliberations_public ?? null,
+      deliberations: delibParPortee.commune ?? stats.deliberations_public ?? null,
       evenements: stats.events_public ?? null,
-      marches: stats.marches_rows ?? null,
+      marches: marchesCommune || (stats.marches_rows ?? null),
       surCarte: stats.map_features_public ?? null,
-      associations: parType.association ?? null,
-      entreprises: parType.business ?? null,
-      services: parType.service ?? null,
+      associations: parTypeCommune.association ?? parType.association ?? null,
+      entreprises: parTypeCommune.business ?? parType.business ?? null,
+      services: parTypeCommune.service ?? parType.service ?? null,
+    },
+    // Ce que l'intercommunalité décide POUR la commune. Annoncé à part, avec
+    // son propre renvoi : ne pas le montrer serait cacher la moitié de ce qui
+    // engage la commune ; le mêler serait mentir sur qui l'a voté.
+    interco: {
+      deliberations: delibParPortee.intercommunalite ?? 0,
+      acteurs: (index.entities || []).filter((e) => e.p === 'intercommunalite').length,
+      marches: marches.filter((m) => m.portee === 'intercommunalite').length,
+      recents: ailleurs,
     },
     budget,
     recents,

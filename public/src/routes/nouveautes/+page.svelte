@@ -1,5 +1,6 @@
 <script>
-  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_A, EPCI, SITE_NOM } from '$lib/instance.js'
+  import FiltrePortee from '$lib/components/FiltrePortee.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import { euros } from '$lib/data.js'
 
@@ -53,7 +54,16 @@
   }
   const SENS = { entrant: '↓ reçu', sortant: '↑ versé' }
 
-  $: retenus = filtre ? items.filter(i => i.genre === filtre) : items
+  // Le périmètre se choisit avant le genre : « qui a décidé » est une question
+  // plus structurante que « de quel type d'acte il s'agit ». Par défaut, tout —
+  // c'est la page du flux complet, pas la page de garde, et un lecteur qui vient
+  // ici veut voir passer ce qui bouge, quitte à trier ensuite.
+  let portee = 'tout'
+  $: comptePortee = items.reduce(
+    (a, i) => { const p = i.portee || 'territoire'; a[p] = (a[p] || 0) + 1; return a }, {})
+  $: parPortee = portee === 'tout'
+    ? items : items.filter(i => (i.portee || 'territoire') === portee)
+  $: retenus = filtre ? parPortee.filter(i => i.genre === filtre) : parPortee
 
   // 1. À venir : daté après l'arrêt des données. Ce n'est pas « ce qui a
   //    changé », mais le masquer ferait disparaître l'agenda du mois.
@@ -114,6 +124,14 @@
       <p class="source">Données arrêtées au {dateLongue(arreteLe)}</p>
     {/if}
   </header>
+
+  <FiltrePortee bind:valeur={portee} compte={comptePortee}
+    libelleTerritoire="Sur le territoire"
+    aide="« {COMMUNE} » : ce que le conseil municipal a décidé et ce qui la
+          concerne directement. « {EPCI} » : ce que le conseil communautaire a
+          voté, sur ses compétences. « Sur le territoire » : ce qui se passe ici
+          sans qu'aucun élu l'ait voté — annonces légales, permis, vie
+          associative." />
 
   <div class="filtres">
     <button class:actif={!filtre} on:click={() => filtre = ''}>Tout</button>

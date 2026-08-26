@@ -285,6 +285,53 @@ TYPES_REVUS = {
 TYPES_DELIBERES = ("deliberation", "deliberation_cc")
 
 
+# ── Portée d'un acte : la commune, ou l'intercommunalité qui décide pour elle ─
+#
+# Un site communal qui mélange les deux sur sa page de garde dit au lecteur que
+# tout se vaut. Or ce ne sont pas les mêmes élus, pas le même budget, pas le
+# même bulletin de vote : c'est la distinction la plus utile qu'un habitant
+# puisse faire, et elle disparaissait dans un compteur unique.
+#
+# Trois valeurs seulement, et la troisième est une honnêteté :
+#   commune           la commune l'a décidé, ou l'acte la concerne directement ;
+#   intercommunalite  l'EPCI l'a décidé, ou l'acte concerne une autre commune
+#                     membre — ce sont des compétences transférées, pas
+#                     confisquées, et le lecteur a le droit de les voir à part ;
+#   territoire        ni l'un ni l'autre n'agit : une annonce BODACC, une
+#                     autorisation d'urbanisme, un fait qui SE PASSE ici sans
+#                     que personne d'élu l'ait voté. Les ranger sous « commune »
+#                     gonflerait le compteur de l'action publique avec la vie
+#                     des entreprises.
+PORTEE_PAR_TYPE = {
+    "deliberation":          "commune",
+    "conseil_municipal":     "commune",
+    "deliberation_cc":       "intercommunalite",
+    "conseil_communautaire": "intercommunalite",
+}
+
+
+def portee_evenement(event_type: str | None, perimetres: set[str]) -> str:
+    """Portée d'un acte : son assemblée si elle est connue, sinon ses acteurs.
+
+    Le type prime : une délibération du conseil communautaire est
+    intercommunale même quand elle ne cite que des acteurs de la commune —
+    c'est l'EPCI qui l'a votée. À défaut, ce sont les acteurs rattachés qui
+    disent de qui l'acte parle, et C1 l'emporte sur C2 : un acte qui touche à
+    la fois la commune et une voisine intéresse d'abord la commune.
+    """
+    connue = PORTEE_PAR_TYPE.get(event_type or "")
+    if connue:
+        return connue
+    if "C1" in perimetres:
+        return "commune"
+    if "C2" in perimetres:
+        return "intercommunalite"
+    return "territoire"
+
+
+PORTEE_PAR_PERIMETRE = {"C1": "commune", "C2": "intercommunalite"}
+
+
 def charger_revue(conn) -> dict[str, dict[int, dict]]:
     """{object_type: {object_id: {statut, confidence, note, corrections}}}."""
     if not table_exists(conn, "annotations"):
@@ -970,6 +1017,10 @@ def write_search_index(out: Path, public_entities, communes: dict[int, str],
             "t": e["type"],
             "s": e.get("short_name") or None,
             "c": communes.get(e["id"]) or None,
+            # `p` : la commune ou l'intercommunalité. Un caractère de plus par
+            # ligne, et l'annuaire peut trier les deux sans charger
+            # `entities.json` (1,1 Mo) juste pour lire un champ.
+            "p": PORTEE_PAR_PERIMETRE.get(e.get("perimetre") or "") or "territoire",
             "nb": liens_count.get(e["id"], 0),
         }
         for e in public_entities
@@ -1934,6 +1985,20 @@ def build_snapshot(out: Path) -> dict:
         exclusions["event_links"]["endpoint_not_public"] = len(link_rows) - len(public_links)
         counters["event_links_public"] = len(public_links)
 
+        # ── Portée de chaque acte ────────────────────────────────────────────
+        # Après les liens, parce que c'est un acte SANS type d'assemblée connu
+        # qui a besoin de ses acteurs pour dire de qui il parle. Une annonce
+        # BODACC visant une entreprise de Lasalle est communale ; la même
+        # visant Val-d'Aigoual ne l'est pas.
+        perimetre_par_entite = {e["id"]: e.get("perimetre") for e in public_entities}
+        perimetres_par_acte: dict[int, set[str]] = defaultdict(set)
+        for l in public_links:
+            per = perimetre_par_entite.get(l["entity_id"])
+            if per:
+                perimetres_par_acte[l["event_id"]].add(per)
+        for e in public_events:
+            e["portee"] = portee_evenement(e["type"], perimetres_par_acte[e["id"]])
+
         flow_rows = rows(conn, """
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,
                    ff.source, ff.confidence,
@@ -2121,6 +2186,14 @@ def build_snapshot(out: Path) -> dict:
         exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \
             delier_renvois_morts(marches_data, public_ids)
 
+        # La portée d'un marché est celle de son ACHETEUR. Un marché de la
+        # communauté de communes n'est pas un marché de la commune, même quand
+        # il est exécuté sur son territoire — et sans ce champ, la page des
+        # marchés les additionnait sans le dire.
+        for m in marches_data:
+            m["portee"] = PORTEE_PAR_PERIMETRE.get(
+                perimetre_par_entite.get(m.get("acheteur_id")) or "") or "territoire"
+
         # Plans de financement votés (participations aux opérations du syndicat
         # d'électrification). Exportés à part des marchés : aucune entreprise
         # n'est retenue, les mêler fausserait le décompte des attributions.
@@ -2229,6 +2302,14 @@ def build_snapshot(out: Path) -> dict:
             # l'accueil affiche. Le total reste publié, sous son vrai nom.
             "deliberations_public": sum(
                 1 for e in public_events if e["type"] in TYPES_DELIBERES),
+            # Le compteur unique disait « 1 997 délibérations » sur la page de
+            # garde d'un site COMMUNAL, dont 833 votées par une autre assemblée.
+            # Les deux chiffres existent, ils n'ont pas à être additionnés pour
+            # être annoncés.
+            "deliberations_public_par_portee": dict(Counter(
+                e["portee"] for e in public_events if e["type"] in TYPES_DELIBERES)),
+            "events_public_par_portee": dict(
+                Counter(e.get("portee") for e in public_events)),
             "events_public_par_type": dict(
                 Counter(e["type"] for e in public_events)),
             # Dette de réplication, mesurée et non promise (cf. /methode).
@@ -2672,6 +2753,10 @@ def build_snapshot(out: Path) -> dict:
                 "url": safe_url(m.get("source_url")), "montant": m.get("montant"),
                 "acteur_id": m.get("titulaire_id"),
                 "acteur_nom": joli_nom(m.get("titulaire_nom") or m.get("acheteur_nom")),
+                # C'est l'ACHETEUR qui donne la portée d'un marché, jamais le
+                # titulaire : une entreprise de Nîmes qui remporte un marché de
+                # la commune ne le rend pas nîmois.
+                "portee": m.get("portee"),
             })
 
         for e in public_events:
@@ -2693,6 +2778,7 @@ def build_snapshot(out: Path) -> dict:
                 "montant": e.get("montant_principal"),
                 "montant_indicatif": e.get("montant_indicatif"),
                 "categorie": e.get("categorie"), "id": e["id"],
+                "portee": e.get("portee"),
                 "corrige": e.get("corrige"), "note_revue": e.get("note_revue"),
             })
 
@@ -2725,6 +2811,10 @@ def build_snapshot(out: Path) -> dict:
                 # 240 600 € de Fonds Vert *demandés* s'affichaient comme acquis.
                 "statut": f.get("statut"),
                 "perimetre": f.get("perimetre"),
+                # À ne pas confondre avec `perimetre` juste au-dessus, qui dit
+                # « detail » ou « agregat ». `portee` dit qui agit.
+                "portee": PORTEE_PAR_PERIMETRE.get(
+                    perimetre_par_entite.get(acteur_id) or "") or "territoire",
                 "sens": f.get("sens"),
                 "corrige": f.get("corrige"), "note_revue": f.get("note_revue"),
             })

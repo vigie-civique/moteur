@@ -1,5 +1,5 @@
 <script>
-  import { COMMUNE, EPCI } from '$lib/instance.js'
+  import { COMMUNE, EPCI, EPCI_COURT } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
   // Accueil refondu le 11/08/2026. C'était une carte plein écran : 1 135 points
@@ -7,7 +7,7 @@
   // ni ce qu'on peut y chercher. La carte devient /carte ; l'accueil annonce,
   // oriente, puis montre ce qui vient de bouger.
   export let data
-  $: ({ chiffres, budget, recents, agenda, arreteLe } = data)
+  $: ({ chiffres, budget, recents, agenda, arreteLe, interco } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -53,6 +53,18 @@
       qui exerce certaines compétences pour elle, reconstitués à partir des
       seules données publiques.
     </p>
+    <!-- Cette page ne montre QUE la commune. L'intercommunalité décide aussi
+         pour elle, et sur des compétences lourdes — mais ce n'est ni le même
+         conseil ni le même bulletin de vote, et les additionner sous le mot
+         « délibérations » laissait croire à un conseil municipal deux fois plus
+         actif. Le renvoi est là pour qu'aucune moitié ne se perde. -->
+    {#if interco?.deliberations}
+      <p class="cadrage">
+        Ces chiffres sont ceux <b>de la commune</b>. La {EPCI} en décide
+        {interco.deliberations.toLocaleString('fr-FR')} de plus pour elle&nbsp;:
+        <a href="/com-com">voir ce que décide la {EPCI_COURT}</a>.
+      </p>
+    {/if}
     <div class="chiffres">
       <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs recensés</span></span>
       <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations</span></span>
@@ -120,7 +132,7 @@
   </a>
   <a class="porte" href="/acteurs-publics">
     <span class="porte-titre"><Icon name="acteurs" size={18} />Qui agit&nbsp;?</span>
-    <p>Entreprises, associations, services publics et lieux de la commune.</p>
+    <p>Entreprises, associations, services publics et lieux de la commune — et, au choix, ceux de l'intercommunalité.</p>
     <!-- 327 + 966 ne fait pas 1 807 : les services publics, lieux et personnes
          complètent le total. Annoncer « parmi » évite au lecteur de tenter
          l'addition et de conclure qu'il manque des acteurs. -->
@@ -131,7 +143,7 @@
 {#if recents.length}
   <section class="flux">
     <header>
-      <h2>Ce qui vient d'être décidé</h2>
+      <h2>Ce que la commune vient de décider</h2>
       {#if arreteLe}<span class="arrete">données arrêtées au {dateLongue(arreteLe)}</span>{/if}
       <a class="tout" href="/nouveautes">Tout le flux <Icon name="fleche" size={14} /></a>
     </header>
@@ -150,6 +162,13 @@
         </li>
       {/each}
     </ul>
+    {#if interco?.recents}
+      <p class="ailleurs">
+        Sur la même période, la {EPCI_COURT} a pris
+        {interco.recents.toLocaleString('fr-FR')} décisions qui engagent aussi
+        la commune. <a href="/deliberations">Les voir avec les autres actes</a>
+      </p>
+    {/if}
   </section>
 {/if}
 
@@ -191,6 +210,18 @@
 </section>
 
 <style>
+  /* Le cadrage de périmètre : une phrase, pas un bandeau. Elle doit se lire
+     avant les chiffres sans leur voler la vedette. */
+  .cadrage {
+    margin: .6rem 0 0; font-size: .88rem; color: var(--gris);
+    border-left: 3px solid var(--trait); padding-left: .7rem;
+  }
+  .cadrage b { color: var(--encre); }
+  .ailleurs {
+    margin: .7rem 0 0; font-size: .85rem; color: var(--gris);
+    border-top: 1px dashed var(--trait); padding-top: .6rem;
+  }
+
   /* L'agenda est volontairement plus discret que le fil des décisions : même
      structure, moins de poids. */
   .flux.agenda { margin-top: 1.25rem; }

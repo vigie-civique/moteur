@@ -2,6 +2,7 @@
   import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
   import Niveau from '$lib/components/Niveau.svelte'
+  import FiltrePortee from '$lib/components/FiltrePortee.svelte'
 
   // Rendu au build par +page.server.js : le tableau est déjà dans le HTML.
   export let data
@@ -9,6 +10,11 @@
   $: constat = data.constat
 
   let year = 'all'
+  // Un marché de la communauté de communes n'est pas un marché de la commune,
+  // même exécuté sur son territoire : ce ne sont ni le même budget ni le même
+  // acheteur. La page les additionnait sans le dire. Par défaut « tout », parce
+  // que la page compare les deux — le choix, lui, doit exister.
+  let portee = 'tout'
 
   const yearOf = (m) => (m.date_notif || '').slice(0, 4)
   const isAttrib = (m) => m.titulaire_nom && m.montant
@@ -24,8 +30,12 @@
     return s.slice(0, 8)
   }
 
-  $: yearsAvail = [...new Set(marches.map(yearOf).filter(Boolean))].sort((a, b) => b - a)
-  $: base = marches.filter(m => year === 'all' || yearOf(m) === year)
+  $: comptePortee = marches.reduce(
+    (a, m) => { const p = m.portee || 'territoire'; a[p] = (a[p] || 0) + 1; return a }, {})
+  $: dansPortee = portee === 'tout'
+    ? marches : marches.filter(m => (m.portee || 'territoire') === portee)
+  $: yearsAvail = [...new Set(dansPortee.map(yearOf).filter(Boolean))].sort((a, b) => b - a)
+  $: base = dansPortee.filter(m => year === 'all' || yearOf(m) === year)
   $: attribues = base.filter(isAttrib).sort((a, b) => (b.montant || 0) - (a.montant || 0))
   $: avis = base.filter(m => !isAttrib(m))
   $: totalAttrib = sum(attribues)
@@ -75,6 +85,14 @@
     {/if}
   </header>
 
+  {#if marches.length}
+    <FiltrePortee bind:valeur={portee} compte={comptePortee}
+      libelleTerritoire="Autres acheteurs"
+      aide="L'acheteur donne la portée, jamais le titulaire : une entreprise
+            extérieure qui remporte un marché de la commune ne le rend pas
+            extérieur." />
+  {/if}
+
   {#if !marches.length}<p class="err">Aucun marché dans ce jeu de données.</p>{/if}
 
   {#if marches.length}
@@ -82,9 +100,9 @@
          somme que nous faisons, et elle vaut ce que vaut la collecte. Un
          marché non recensé ne s'y voit pas. -->
     <Niveau type="calcul" base="les marchés recensés dans les délibérations et les données ouvertes">
-      Sur la période <b>{periode}</b>, <b>{marches.filter(isAttrib).length}</b> marchés attribués sont recensés
-      (titulaire et montant connus), pour <b>{eurosC(sum(marches.filter(isAttrib)))}</b>,
-      auxquels s'ajoutent <b>{marches.filter(m => !isAttrib(m)).length}</b> avis de consultation.
+      Sur la période <b>{periode}</b>, <b>{dansPortee.filter(isAttrib).length}</b> marchés attribués sont recensés
+      (titulaire et montant connus), pour <b>{eurosC(sum(dansPortee.filter(isAttrib)))}</b>,
+      auxquels s'ajoutent <b>{dansPortee.filter(m => !isAttrib(m)).length}</b> avis de consultation.
       {#if constat}
         <br />
         <b>{constat.pourMoitie}</b> titulaires réunissent à eux seuls
