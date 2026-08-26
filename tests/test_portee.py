@@ -74,3 +74,84 @@ def test_traduction_du_perimetre_d_entite(perimetre, attendu):
     rattachement que rien ne fonde.
     """
     assert PORTEE_PAR_PERIMETRE.get(perimetre) == attendu
+
+
+# ── L'éditeur situe l'acte quand aucune assemblée ne l'a voté ────────────────
+
+class TestLEditeurCompte:
+    """Ce que la mairie publie sur son propre site concerne la commune.
+
+    Les 39 annonces d'agenda de Lasalle n'ont aucun acteur rattaché : elles
+    sortaient en « territoire » et ont disparu de la page de garde le jour où
+    celle-ci est devenue communale. Un filtre correct sur une donnée
+    incomplète — le pire des deux mondes, parce que rien ne le signale.
+    """
+
+    def test_le_site_de_la_commune_donne_une_portee_communale(self):
+        from scripts.build_public_snapshot import portee_evenement
+        assert portee_evenement("local_event", set(), "exemple.invalid") == "commune"
+
+    def test_le_site_de_l_epci_donne_une_portee_intercommunale(self):
+        from scripts.build_public_snapshot import portee_evenement
+        assert portee_evenement("local_event", set(), "https://epci.exemple.invalid/agenda") == "intercommunalite"
+
+    def test_l_assemblee_prime_encore_sur_l_editeur(self):
+        # Une délibération communautaire mise en ligne par la mairie reste
+        # communautaire : c'est l'EPCI qui l'a votée, pas celui qui l'héberge.
+        from scripts.build_public_snapshot import portee_evenement
+        assert portee_evenement("deliberation_cc", set(), "exemple.invalid") == "intercommunalite"
+
+    def test_une_source_tierce_ne_situe_rien(self):
+        from scripts.build_public_snapshot import portee_evenement
+        assert portee_evenement("bodacc_divers", set(), "bodacc.fr") == "territoire"
+
+
+# ── Ce qu'une fiche ne disait pas d'elle-même ───────────────────────────────
+
+class TestEtatDActivite:
+    """Sur 744 « entreprises » publiées à Lasalle, 388 étaient CESSÉES."""
+
+    def test_une_entreprise_radiee_n_est_pas_active(self):
+        from scripts.build_public_snapshot import etat_activite
+        assert etat_activite({"biz_status": "C", "business_closing_date": "2015-03-01"}) \
+            == (False, "2015-03-01")
+
+    def test_une_association_dissoute_n_est_pas_active(self):
+        from scripts.build_public_snapshot import etat_activite
+        assert etat_activite({"asso_status": "D", "dissolution_date": "2019-06-02"}) \
+            == (False, "2019-06-02")
+
+    def test_le_registre_de_l_association_prime_sur_celui_des_entreprises(self):
+        # Une association dissoute au JO dont l'établissement SIRENE traîne
+        # encore en « A » est dissoute. Le RNA est le registre qui fait foi.
+        from scripts.build_public_snapshot import etat_activite
+        assert etat_activite({"asso_status": "D", "biz_status": "A"})[0] is False
+
+    def test_le_silence_des_registres_n_est_pas_une_activite(self):
+        # C'est la case où se cachent les structures dormantes : une
+        # association qui a cessé de se réunir sans le déclarer reste « A »
+        # pour toujours. `None` dit qu'on ne sait pas, et ça se voit.
+        from scripts.build_public_snapshot import etat_activite
+        assert etat_activite({}) == (None, None)
+        assert etat_activite({"business_closing_date": "2020-01-01"}) == (None, "2020-01-01")
+
+
+class TestNatureDEntreprise:
+    """505 des 744 étaient individuelles, 112 ne font que détenir."""
+
+    def test_l_activite_immobiliere_l_emporte_sur_la_forme(self):
+        # Une entreprise individuelle qui loue des logements détient ;
+        # une SCI en NAF construction construit. C'est ce que la structure
+        # FAIT qui répond à la question, pas comment elle est montée.
+        from scripts.build_public_snapshot import nature_entreprise
+        assert nature_entreprise({"naf_code": "6820A", "legal_form_code": "1000"}) == "patrimoniale"
+        assert nature_entreprise({"naf_code": "4120A", "legal_form_code": "6540"}) == "societe"
+
+    def test_l_entreprise_individuelle_se_distingue(self):
+        from scripts.build_public_snapshot import nature_entreprise
+        assert nature_entreprise({"naf_code": "4399C", "legal_form_code": "1000"}) == "individuelle"
+
+    def test_tout_le_reste_est_une_societe(self):
+        from scripts.build_public_snapshot import nature_entreprise
+        assert nature_entreprise({"naf_code": "5610A", "legal_form_code": "5499"}) == "societe"
+        assert nature_entreprise({}) == "societe"

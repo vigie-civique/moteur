@@ -25,7 +25,10 @@ export function load() {
   return {
     all: (d.entities || [])
       .filter((e) => TYPES_ACTEURS.includes(e.type))
-      .map(({ id, type, name, citations, perimetre }) =>
-        ({ id, type, name, citations, portee: portee(perimetre) })),
+      .map(({ id, type, name, citations, perimetre, actif, fin_activite, nature }) =>
+        ({ id, type, name, citations, portee: portee(perimetre),
+           // `actif` reste à `undefined` quand les registres se taisent : c'est
+           // une ignorance, jamais une présomption d'activité.
+           actif, fin: fin_activite || null, nature: nature || null })),
   }
 }

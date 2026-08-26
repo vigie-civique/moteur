@@ -53,16 +53,31 @@ export function load() {
     (i) => GOUVERNANCE.has(i.genre) && i.portee === 'intercommunalite').length
 
   // entity_index abrège les champs : `t` = type, `p` = portée.
+  // `a` : 1 en activité, 0 cessée, ABSENT quand les registres se taisent.
+  // Une fiche muette compte comme vivante — elle n'est pas donnée fermée. Ce
+  // n'est pas la même chose que « active », et la page l'écrit.
+  const vivant = (e) => e.a !== 0
   const parType = {}
   const parTypeCommune = {}
   let acteursCommune = 0
+  let cesseesCommune = 0
   for (const e of index.entities || []) {
     parType[e.t] = (parType[e.t] || 0) + 1
     if (!e.p || e.p === 'commune') {
-      parTypeCommune[e.t] = (parTypeCommune[e.t] || 0) + 1
-      acteursCommune++
+      if (vivant(e)) {
+        parTypeCommune[e.t] = (parTypeCommune[e.t] || 0) + 1
+        acteursCommune++
+      } else cesseesCommune++
     }
   }
+  // Ce qui produit, distingué de ce qui détient. 505 des « entreprises » de
+  // Lasalle sont individuelles et 112 ont pour activité déclarée la gestion
+  // immobilière : le chiffre unique décrivait un tissu économique qui n'existe
+  // pas. Cf. `nature_entreprise` dans le constructeur de snapshot.
+  const entreprisesVivantes = (index.entities || [])
+    .filter((e) => e.t === 'business' && (!e.p || e.p === 'commune') && vivant(e))
+  const parNature = {}
+  for (const e of entreprisesVivantes) parNature[e.na || 'societe'] = (parNature[e.na || 'societe'] || 0) + 1
   const marches = lire('marches.json', { marches: [] }).marches || []
   const marchesCommune = marches.filter((m) => !m.portee || m.portee === 'commune').length
   const delibParPortee = stats.deliberations_public_par_portee || {}
@@ -105,6 +120,11 @@ export function load() {
       associations: portees ? (parTypeCommune.association ?? 0) : (parType.association ?? null),
       entreprises: portees ? (parTypeCommune.business ?? 0) : (parType.business ?? null),
       services: portees ? (parTypeCommune.service ?? 0) : (parType.service ?? null),
+      // Ce que le chiffre unique cachait : la part qui produit, la part qui
+      // détient, et ce qui a fermé.
+      entreprisesProductives: (parNature.societe || 0) + (parNature.individuelle || 0),
+      entreprisesPatrimoniales: parNature.patrimoniale || 0,
+      cessees: cesseesCommune,
     },
     // Ce que l'intercommunalité décide POUR la commune. Annoncé à part, avec
     // son propre renvoi : ne pas le montrer serait cacher la moitié de ce qui

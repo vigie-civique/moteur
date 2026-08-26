@@ -67,7 +67,7 @@
       </p>
     {/if}
     <div class="chiffres">
-      <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs recensés</span></span>
+      <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs en activité</span></span>
       <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations</span></span>
       <span class="chiffre" class:vide={chiffres.marches === 0}>
         <b>{nombre(chiffres.marches)}</b>
@@ -93,6 +93,11 @@
       </p>
     {/if}
     <p class="provenance">
+      {#if chiffres.cessees}
+        {nombre(chiffres.cessees)} fiches d'acteurs fermés ou dissous sont
+        conservées hors de ce compte — elles apparaissent dans des
+        délibérations passées. <a href="/acteurs-publics">Les retrouver dans l'annuaire</a>.
+      {/if}
       Les trois premiers chiffres sont ceux que notre collecte a trouvés&nbsp;;
       le budget est l'agrégat publié par l'Observatoire des finances locales.
       <a href="/methode">Comment nous distinguons un fait d'un calcul</a>
@@ -149,7 +154,15 @@
     <!-- 327 + 966 ne fait pas 1 807 : les services publics, lieux et personnes
          complètent le total. Annoncer « parmi » évite au lecteur de tenter
          l'addition et de conclure qu'il manque des acteurs. -->
-    <span class="porte-n">parmi lesquels {nombre(chiffres.associations)} associations et {nombre(chiffres.entreprises)} entreprises</span>
+    <!-- « 294 associations et 744 entreprises » comptait 37 associations
+         dissoutes, 388 entreprises cessées et 112 sociétés dont l'activité
+         déclarée est la gestion immobilière. Le chiffre unique décrivait un
+         tissu économique qui n'existe pas. -->
+    <span class="porte-n">
+      en activité&nbsp;: {nombre(chiffres.associations)} associations,
+      {nombre(chiffres.entreprisesProductives)} entreprises{#if chiffres.entreprisesPatrimoniales}
+      et {nombre(chiffres.entreprisesPatrimoniales)} sociétés de patrimoine{/if}
+    </span>
   </a>
 </section>
 

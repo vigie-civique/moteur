@@ -34,6 +34,8 @@ sys.path.insert(0, str(ROOT))
 # snapshot ne redéclare ni la liste des communes ni le SIREN de l'EPCI.
 from collectors.config import (  # noqa: E402
     COMMUNE_INSEE as INSEE_C1,
+    COMMUNE_URL as URL_COMMUNE,
+    EPCI_URL as URL_EPCI,
     EPCI_COMMUNES as COMMUNES_EPCI,
     EPCI_NOM as EPCI_NOM_C2,
     EPCI_SIREN as EPCI_SIREN_C2,
@@ -310,18 +312,41 @@ PORTEE_PAR_TYPE = {
 }
 
 
-def portee_evenement(event_type: str | None, perimetres: set[str]) -> str:
-    """Portée d'un acte : son assemblée si elle est connue, sinon ses acteurs.
+def domaine(url: str | None) -> str:
+    """Domaine nu d'une adresse ou d'un libellé de source, sans `www.`."""
+    d = (url or "").strip().lower()
+    d = d.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+    return d[4:] if d.startswith("www.") else d
 
-    Le type prime : une délibération du conseil communautaire est
+
+def portee_evenement(event_type: str | None, perimetres: set[str],
+                     source: str | None = None) -> str:
+    """Portée d'un acte : son assemblée, sinon son éditeur, sinon ses acteurs.
+
+    L'assemblée prime : une délibération du conseil communautaire est
     intercommunale même quand elle ne cite que des acteurs de la commune —
-    c'est l'EPCI qui l'a votée. À défaut, ce sont les acteurs rattachés qui
-    disent de qui l'acte parle, et C1 l'emporte sur C2 : un acte qui touche à
-    la fois la commune et une voisine intéresse d'abord la commune.
+    c'est l'EPCI qui l'a votée.
+
+    Vient ensuite L'ÉDITEUR, et c'est ce qui manquait : les 39 annonces
+    d'agenda publiées par la mairie sur son propre site n'ont aucun acteur
+    rattaché, et sortaient donc en « territoire ». L'agenda communal a
+    disparu de la page de garde le jour où elle est devenue communale — un
+    filtre correct sur une donnée incomplète. Ce que la mairie publie
+    elle-même concerne la commune, c'est le sens même de le publier.
+
+    En dernier ressort, les acteurs rattachés disent de qui l'acte parle, et
+    C1 l'emporte sur C2 : un acte qui touche la commune et une voisine
+    intéresse d'abord la commune.
     """
     connue = PORTEE_PAR_TYPE.get(event_type or "")
     if connue:
         return connue
+    src = domaine(source)
+    if src:
+        if src == domaine(URL_COMMUNE):
+            return "commune"
+        if src == domaine(URL_EPCI):
+            return "intercommunalite"
     if "C1" in perimetres:
         return "commune"
     if "C2" in perimetres:
@@ -810,6 +835,52 @@ def exiger_perimetre_classe(conn) -> int:
     return total - classees
 
 
+# ── Ce qu'une fiche ne disait pas d'elle-même ────────────────────────────────
+#
+# ACTIVITÉ. Sur les 744 « entreprises » publiées à Lasalle, 377 étaient CESSÉES
+# — plus de la moitié. Sur les 294 associations, 22 sont dissoutes au Journal
+# officiel et 15 cessées au répertoire. Un annuaire qui les aligne sans le dire
+# décrit une commune qui n'existe plus, et un habitant qui cherche un artisan
+# tombe une fois sur deux sur une entreprise fermée depuis dix ans.
+#
+# Ce que la source dit vraiment : SIRENE porte `A` (active) ou `C`/`F` (cessée,
+# fermée), le RNA porte `A` ou `D` (dissoute). Elle ne dit RIEN de plus — une
+# association qui a cessé de se réunir sans déclarer sa dissolution reste `A`
+# pour toujours. `actif` vaut donc None quand la source se tait : c'est une
+# ignorance, pas une présomption d'activité.
+FIN_DACTIVITE = {"C", "F", "D"}
+
+
+def etat_activite(row_data: dict) -> tuple[bool | None, str | None]:
+    """(actif, date de fin) d'après les registres. None quand ils se taisent."""
+    statut = row_data.get("asso_status") or row_data.get("biz_status")
+    fin = row_data.get("dissolution_date") or row_data.get("business_closing_date")
+    if not statut:
+        return (None, fin or None)
+    return (statut.upper() not in FIN_DACTIVITE, fin or None)
+
+
+# NATURE. « 744 entreprises » comptait 524 entreprises individuelles et 85
+# sociétés dont l'activité déclarée est la gestion immobilière — des structures
+# qui détiennent un patrimoine, pas des entreprises qui produisent. Les
+# distinguer n'est pas un jugement : c'est le code NAF et la forme juridique,
+# tels que l'INSEE les publie.
+#
+# L'activité l'emporte sur la forme juridique : une SCI en NAF 41 (construction)
+# construit, une entreprise individuelle en NAF 68 loue. C'est ce que la
+# structure FAIT qui répond à la question posée, pas comment elle est montée.
+NAF_IMMOBILIER = "68"
+
+
+def nature_entreprise(row_data: dict) -> str:
+    """`patrimoniale`, `individuelle` ou `societe`."""
+    if str(row_data.get("naf_code") or "").startswith(NAF_IMMOBILIER):
+        return "patrimoniale"
+    if str(row_data.get("legal_form_code") or "") == "1000":
+        return "individuelle"
+    return "societe"
+
+
 def public_entity(
     row_data: dict,
     urls: list[dict],
@@ -886,6 +957,14 @@ def public_entity(
         "urls": urls,
     }
 
+    if entity_type in ("business", "association"):
+        actif, fin = etat_activite(row_data)
+        # `actif` à None = les registres ne disent rien. À ne jamais lire comme
+        # « en activité » : c'est justement la case où se cachent les structures
+        # dormantes qui n'ont jamais déclaré leur fin.
+        public["actif"] = actif
+        public["fin_activite"] = fin
+
     if entity_type == "business":
         public.update({
             "siren": row_data.get("siren"),
@@ -893,11 +972,13 @@ def public_entity(
             "naf_label": row_data.get("naf_label"),
             "status": row_data.get("biz_status"),
             "creation_date": row_data.get("business_creation_date"),
+            "nature": nature_entreprise(row_data),
         })
     elif entity_type == "association":
         public.update({
             "rna_id": row_data.get("rna_id"),
             "object": row_data.get("asso_object"),
+            "status": row_data.get("asso_status"),
             "creation_date": row_data.get("asso_creation_date"),
         })
     elif entity_type == "place":
@@ -1021,6 +1102,9 @@ def write_search_index(out: Path, public_entities, communes: dict[int, str],
             # ligne, et l'annuaire peut trier les deux sans charger
             # `entities.json` (1,1 Mo) juste pour lire un champ.
             "p": PORTEE_PAR_PERIMETRE.get(e.get("perimetre") or "") or "territoire",
+            # `a` : 1 en activité, 0 cessée, absent si les registres se taisent.
+            **({"a": 1 if e["actif"] else 0} if e.get("actif") is not None else {}),
+            **({"na": e["nature"]} if e.get("nature") else {}),
             "nb": liens_count.get(e["id"], 0),
         }
         for e in public_entities
@@ -1717,7 +1801,9 @@ def build_snapshot(out: Path) -> dict:
                 b.siren, b.naf_code, b.naf_label, b.status AS biz_status,
                 b.legal_form_code,
                 b.creation_date AS business_creation_date,
+                b.closing_date AS business_closing_date,
                 a.rna_id, a.object AS asso_object,
+                a.status AS asso_status, a.dissolution_date,
                 a.creation_date AS asso_creation_date,
                 pl.osm_category, pl.osm_value,
                 s.category AS service_category, s.operator, s.opening_hours
@@ -1997,7 +2083,8 @@ def build_snapshot(out: Path) -> dict:
             if per:
                 perimetres_par_acte[l["event_id"]].add(per)
         for e in public_events:
-            e["portee"] = portee_evenement(e["type"], perimetres_par_acte[e["id"]])
+            e["portee"] = portee_evenement(e["type"], perimetres_par_acte[e["id"]],
+                                           e.get("source"))
 
         flow_rows = rows(conn, """
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,
@@ -2310,6 +2397,17 @@ def build_snapshot(out: Path) -> dict:
                 e["portee"] for e in public_events if e["type"] in TYPES_DELIBERES)),
             "events_public_par_portee": dict(
                 Counter(e.get("portee") for e in public_events)),
+            # « 744 entreprises » comptait 377 fiches cessées. Le volume d'un
+            # annuaire n'est pas l'état d'un territoire : les deux se comptent.
+            "entities_public_par_activite": {
+                t: dict(Counter(
+                    "en_activite" if e.get("actif") is True
+                    else "cessee" if e.get("actif") is False else "inconnu"
+                    for e in public_entities if e["type"] == t))
+                for t in ("business", "association")},
+            "entreprises_publiques_par_nature": dict(Counter(
+                e.get("nature") for e in public_entities
+                if e["type"] == "business")),
             "events_public_par_type": dict(
                 Counter(e["type"] for e in public_events)),
             # Dette de réplication, mesurée et non promise (cf. /methode).

@@ -27,11 +27,41 @@
   $: comptePortee = scoped.reduce(
     (a, e) => { a[e.portee] = (a[e.portee] || 0) + 1; return a }, {})
   $: dansPortee = portee === 'tout' ? scoped : scoped.filter(e => e.portee === portee)
-  $: counts = dansPortee.reduce((a, e) => { a[e.type] = (a[e.type] || 0) + 1; return a }, {})
-  $: filtered = dansPortee
+
+  // ── En activité, ou plus ────────────────────────────────────────────────
+  // L'annuaire alignait 388 entreprises cessées et 37 associations dissoutes
+  // sans le dire : un habitant qui cherche un artisan tombait une fois sur deux
+  // sur une fiche fermée depuis dix ans. Par défaut on montre ce qui vit ;
+  // le reste ne disparaît pas, il se demande — c'est de l'histoire locale.
+  let activite = 'vivantes'
+  const vivant = (e) => e.actif !== false
+  $: nVivantes = dansPortee.filter(vivant).length
+  $: nCessees = dansPortee.length - nVivantes
+  $: dansActivite = activite === 'toutes' ? dansPortee
+    : activite === 'cessees' ? dansPortee.filter(e => e.actif === false)
+    : dansPortee.filter(vivant)
+
+  // ── Ce qui produit, ce qui détient ──────────────────────────────────────
+  // 505 des 744 « entreprises » sont des entreprises individuelles et 112 ont
+  // pour activité déclarée la gestion immobilière. Ce n'est pas un jugement :
+  // c'est le code NAF et la forme juridique, tels que l'INSEE les publie.
+  const NATURES = {
+    societe: 'Sociétés',
+    individuelle: 'Entreprises individuelles',
+    patrimoniale: 'Sociétés de patrimoine',
+  }
+  let nature = 'all'
+  $: natureVisible = typeFilter === 'business'
+  $: comptesNature = dansActivite.reduce(
+    (a, e) => { if (e.nature) a[e.nature] = (a[e.nature] || 0) + 1; return a }, {})
+  $: filtered = dansActivite
     .filter(e => typeFilter === 'all' || e.type === typeFilter)
+    .filter(e => !natureVisible || nature === 'all' || e.nature === nature)
     .filter(e => !q || (e.name || '').toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => (b.citations || 0) - (a.citations || 0) || (a.name || '').localeCompare(b.name || ''))
+  $: counts = dansActivite.reduce((a, e) => { a[e.type] = (a[e.type] || 0) + 1; return a }, {})
+
+  const annee = (d) => (d || '').slice(0, 4)
 </script>
 
 <svelte:head><title>Acteurs publics — {SITE_NOM}</title>
@@ -69,12 +99,45 @@
             leurs propres compétences. La {EPCI} agit aussi ici — sur ses
             compétences à elle, décidées par son conseil communautaire." />
 
+    <div class="scope">
+      <button class:on={activite === 'vivantes'} on:click={() => activite = 'vivantes'}>En activité <b>{nVivantes}</b></button>
+      <button class:on={activite === 'cessees'} on:click={() => activite = 'cessees'}>Cessées ou dissoutes <b>{nCessees}</b></button>
+      <button class:on={activite === 'toutes'} on:click={() => activite = 'toutes'}>Toutes <b>{dansPortee.length}</b></button>
+    </div>
+    <p class="scope-hint">
+      {#if activite === 'vivantes'}
+        Les registres ne les donnent ni cessées ni dissoutes. Une association
+        qui a cessé de se réunir sans le déclarer y figure encore&nbsp;: le
+        registre ne l'apprend jamais.
+      {:else if activite === 'cessees'}
+        Radiées au répertoire des entreprises ou dissoutes au Journal officiel.
+        Conservées&nbsp;: elles apparaissent dans des délibérations passées.
+      {:else}
+        Tout l'annuaire, actives et fermées confondues.
+      {/if}
+    </p>
+
     <div class="chips">
-      <button class:on={typeFilter === 'all'} on:click={() => typeFilter = 'all'}>Tout <b>{dansPortee.length}</b></button>
+      <button class:on={typeFilter === 'all'} on:click={() => typeFilter = 'all'}>Tout <b>{dansActivite.length}</b></button>
       {#each TYPES as t}
         <button class="{t}" class:on={typeFilter === t} on:click={() => typeFilter = t}>{TYPE_LABELS[t]} <b>{counts[t] || 0}</b></button>
       {/each}
     </div>
+  {/if}
+
+  {#if natureVisible}
+    <div class="chips natures">
+      <button class:on={nature === 'all'} on:click={() => nature = 'all'}>Toutes natures <b>{dansActivite.filter(e => e.type === 'business').length}</b></button>
+      {#each Object.entries(NATURES) as [cle, label]}
+        <button class:on={nature === cle} on:click={() => nature = cle}>{label} <b>{comptesNature[cle] || 0}</b></button>
+      {/each}
+    </div>
+    <p class="scope-hint">
+      Une <b>société de patrimoine</b> a pour activité déclarée la gestion
+      immobilière (code NAF 68)&nbsp;: elle détient ou loue, elle ne produit
+      pas. Une <b>entreprise individuelle</b> est exercée en nom propre.
+      La distinction vient de l'INSEE, pas de nous.
+    </p>
   {/if}
 
   <div class="filters">
@@ -89,6 +152,9 @@
       <li>
         <a href="/entite/{e.id}">
           <span class="badge {e.type}">{TYPE_LABELS[e.type]}</span>
+          {#if e.actif === false}
+            <span class="badge fin">{e.type === 'association' ? 'dissoute' : 'cessée'}{#if annee(e.fin)} en {annee(e.fin)}{/if}</span>
+          {/if}
           <strong>{e.name}</strong>
           {#if e.citations}
             <span class="cit">{e.citations} acte{e.citations > 1 ? 's' : ''} public{e.citations > 1 ? 's' : ''}</span>
@@ -133,5 +199,7 @@
   .badge { align-self: flex-start; font-size: .7rem; padding: .1rem .5rem; border-radius: 99px; color: #fff; }
   .badge.service { background: var(--ardoise); } .badge.association { background: var(--recette); }
   .badge.business { background: var(--ambre); } .badge.place { background: var(--ardoise); }
+  .badge.fin { background: transparent; color: var(--gris); border: 1px solid var(--trait); }
+  .chips.natures { margin-top: -.4rem; }
   .err { color: var(--depense); }
 </style>
