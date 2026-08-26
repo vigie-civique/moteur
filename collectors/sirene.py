@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 from .archive import fetch_json
 from .config import SIRENE_API, COMMUNE_INSEE, COMMUNE_NAME, HEADERS, REQUEST_DELAY, naf_theme
+from .formes_juridiques import type_pour_forme
 from .db import transaction, upsert_entity, upsert_person, upsert_relation
 
 
@@ -144,9 +145,13 @@ def _import_one(conn, item: dict, counters: tuple, commune: str = COMMUNE_NAME):
     if isinstance(address, str) and "NON-DIFFUSIBLE" in address:
         address = None
 
-    # Entité principale
+    # Entité principale. Le type vient de la FORME JURIDIQUE, pas du collecteur :
+    # SIRENE immatricule aussi les associations et les personnes morales de droit
+    # public, et les typer « business » les publiait en entreprises — ou les
+    # dédoublait, l'index unique portant sur (type, name). Cf. formes_juridiques.
+    etype = type_pour_forme(form_cod)
     eid = upsert_entity(conn,
-        type="business",
+        type=etype,
         name=nom,
         short_name=siren,
         lat=lat,
@@ -156,7 +161,10 @@ def _import_one(conn, item: dict, counters: tuple, commune: str = COMMUNE_NAME):
         commune=commune
     )
 
-    # Extension businesses
+    # Extension businesses — écrite quel que soit le type. C'est la fiche du
+    # répertoire des entreprises (SIREN, NAF, forme juridique, état
+    # administratif) : elle documente une association immatriculée aussi bien
+    # qu'une société, et c'est par son SIREN qu'on la retrouvera.
     conn.execute(
         "INSERT OR IGNORE INTO businesses"
         " (entity_id,siren,siret_siege,naf_code,naf_label,"
@@ -167,6 +175,23 @@ def _import_one(conn, item: dict, counters: tuple, commune: str = COMMUNE_NAME):
          form_cod, form_lbl, status, capital, eff,
          creation, closing, json.dumps(item, ensure_ascii=False))
     )
+
+    # Extension du type réel, quand il y en a une. Pour une association, le
+    # SIREN est LE point de rencontre avec le RNA — qui ne le publie pas
+    # toujours : sans lui, les deux collecteurs n'ont que le nom pour se
+    # reconnaître, et deux graphies font deux fiches.
+    if etype == "association":
+        conn.execute(
+            "INSERT OR IGNORE INTO associations"
+            " (entity_id,siren,status,creation_date) VALUES (?,?,?,?)",
+            (eid, siren, status, creation or None))
+        conn.execute(
+            "UPDATE associations SET siren=? WHERE entity_id=?"
+            " AND (siren IS NULL OR siren='')", (siren, eid))
+    elif etype == "service":
+        conn.execute(
+            "INSERT OR IGNORE INTO services (entity_id,category) VALUES (?,?)",
+            (eid, naf_theme(naf_code) if naf_code else None))
 
     # Dirigeants
     for dirigeant in (item.get("dirigeants") or []):

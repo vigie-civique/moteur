@@ -882,7 +882,8 @@ def _db_context_for_topic(topic: str, conn) -> str:
         data = rows(conn, """
             SELECT e.name, b.naf_label, b.creation_date, b.status, b.employees_range
             FROM businesses b JOIN entities e ON e.id = b.entity_id
-            WHERE b.status = 'A' ORDER BY e.name LIMIT 80
+            WHERE b.status = 'A' AND e.type = 'business'
+            ORDER BY e.name LIMIT 80
         """)
         if data:
             lines = [f"- {r['name']} | {r['naf_label'] or '?'} | créée {r['creation_date'] or '?'} | {r['employees_range'] or '?'} sal." for r in data]

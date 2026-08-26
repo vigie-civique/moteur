@@ -52,7 +52,7 @@ def _match_commune(ville: str) -> str | None:
     """Nom officiel du registre si la commune est collectée, sinon None."""
     return _COMMUNE_LOOKUP.get(_norm(ville))
 from .db import transaction, upsert_entity, upsert_relation
-from .nom_normalise import nettoyer_libelle
+from .nom_normalise import nettoyer_libelle, normaliser
 
 
 # ----------------------------------------------------------------
@@ -225,13 +225,48 @@ def import_rna(cp: str = CODE_POSTAL):
         print(f"[rna] {poses} associations enrichies depuis le site communal")
 
 
+def titre_du_record(item: dict) -> str:
+    """Le nom ACTUEL de l'association, tel que l'annonce le dit.
+
+    `titre` est vide sur une annonce de Modification. Le repli tenait alors sur
+    `titre_search` — qui est un champ d'INDEXATION, pas un nom : il empile
+    l'ancien titre, le nouveau, puis leurs formes normalisées. « VIVALTO » en
+    ressortait « VIVALTO. VIV'ALTO », un nom que personne ne porte, et qui ne
+    pouvait plus rejoindre la fiche « VIVALTO » créée par l'annonce voisine.
+
+    Sur une Modification, le nom actuel est `modification.nouveauTitre`. C'est
+    la source qui le dit, à cet endroit précis : rien n'est deviné ici.
+    """
+    titre = item.get("titre")
+    if not titre:
+        titre = (_contenu(item).get("modification") or {}).get("nouveauTitre")
+    if not titre:
+        # Dernier recours seulement : mieux vaut un nom d'indexation qu'un
+        # identifiant en guise de nom, mais l'un comme l'autre se voient.
+        titre = item.get("titre_search") or item.get("numero_rna") or item.get("id", "")
+    return nettoyer_libelle(titre)
+
+
+def _contenu(item: dict) -> dict:
+    """Le bloc `assoLoi1901` de l'annonce, ou vide s'il est illisible."""
+    brut = item.get("contenu")
+    if isinstance(brut, dict):
+        return brut.get("assoLoi1901") or {}
+    if isinstance(brut, str):
+        try:
+            return (json.loads(brut) or {}).get("assoLoi1901") or {}
+        except (ValueError, AttributeError):
+            return {}
+    return {}
+
+
 def _import_jo_record(conn, item: dict):
     # Schéma dataset jo_associations (Opendatasoft v2.1, refonte 2024)
     rna_id  = item.get("numero_rna") or item.get("id", "")
     # Le RNA publie ses titres tels que déposés : entre guillemets, avec un
     # point final, parfois deux fois de suite. `nettoyer_libelle` retire cette
     # ponctuation de saisie — et rien d'autre, la casse comprise.
-    titre   = nettoyer_libelle(item.get("titre") or item.get("titre_search") or rna_id)
+    titre   = titre_du_record(item)
     objet   = item.get("objet", "")
     cp      = item.get("codepostal_actuel", "") or ""
     ville   = (item.get("commune_actuelle") or "").strip()
@@ -258,15 +293,36 @@ def _import_jo_record(conn, item: dict):
     # dans `address`, l'autre dans `commune`.
     addr_str = nettoyer_libelle(" ".join(filter(None, [addr, cp, commune or ville])))
 
-    eid = upsert_entity(conn,
-        type="association",
-        name=titre,
-        lat=float(lat) if lat else None,
-        lng=float(lng) if lng else None,
-        address=addr_str or None,
-        confidence="verified",
-        commune=commune
-    )
+    # L'IDENTIFIANT d'abord, le nom ensuite. Une association a plusieurs
+    # annonces au Journal officiel — création, puis modifications — et elle n'y
+    # porte pas toujours le même libellé. Chercher par le nom en faisait une
+    # entité par graphie ; le `INSERT OR IGNORE` qui suivait échouait alors en
+    # silence sur `rna_id UNIQUE`, laissant une entité sans fiche, sans
+    # identifiant et sans objet — irrattachable autrement qu'à la main.
+    connue = conn.execute(
+        "SELECT entity_id FROM associations WHERE rna_id=?", (rna_id,)
+    ).fetchone() if rna_id else None
+
+    if connue:
+        eid = connue["entity_id"]
+        _completer_entite(conn, eid, lat, lng, addr_str, commune)
+        # Un `nouveauTitre` est une déclaration de changement de nom : la source
+        # dit que l'association s'appelle DÉSORMAIS ainsi. On la renomme — sauf
+        # si ce nom est déjà pris par une autre fiche, auquel cas c'est une
+        # fusion, et la fusion ne se décide pas au fil d'une collecte.
+        nouveau = (_contenu(item).get("modification") or {}).get("nouveauTitre")
+        if nouveau:
+            _renommer_si_libre(conn, eid, nettoyer_libelle(nouveau))
+    else:
+        eid = upsert_entity(conn,
+            type="association",
+            name=titre,
+            lat=float(lat) if lat else None,
+            lng=float(lng) if lng else None,
+            address=addr_str or None,
+            confidence="verified",
+            commune=commune
+        )
 
     conn.execute(
         "INSERT OR IGNORE INTO associations"
@@ -276,3 +332,50 @@ def _import_jo_record(conn, item: dict):
          diss[:10] if diss else None,
          json.dumps(item, ensure_ascii=False))
     )
+    # Une annonce plus récente en dit plus : compléter ce qui était vide, sans
+    # jamais écraser ce qu'une autre source a déjà renseigné.
+    conn.execute(
+        "UPDATE associations SET"
+        "   object   = COALESCE(NULLIF(object,''), ?),"
+        "   status   = COALESCE(NULLIF(status,''), ?),"
+        "   raw_data = COALESCE(NULLIF(raw_data,''), ?)"
+        " WHERE entity_id=?",
+        (objet, status, json.dumps(item, ensure_ascii=False), eid))
+    if is_diss and diss:
+        conn.execute(
+            "UPDATE associations SET status='D', dissolution_date=?"
+            " WHERE entity_id=?", (diss[:10], eid))
+
+
+def _completer_entite(conn, eid: int, lat, lng, addr_str, commune) -> None:
+    """Remplit les cases vides d'une entité déjà connue. N'écrase rien."""
+    champs = {"lat": float(lat) if lat else None,
+              "lng": float(lng) if lng else None,
+              "address": addr_str or None,
+              "commune": commune}
+    row = conn.execute(
+        "SELECT lat,lng,address,commune FROM entities WHERE id=?", (eid,)).fetchone()
+    if row is None:
+        return
+    maj = {k: v for k, v in champs.items() if v is not None and not row[k]}
+    if maj:
+        conn.execute(
+            f"UPDATE entities SET {','.join(f'{k}=?' for k in maj)} WHERE id=?",
+            (*maj.values(), eid))
+
+
+def _renommer_si_libre(conn, eid: int, nom: str) -> bool:
+    """Renomme l'association si le nom est libre. Rend False s'il est pris."""
+    if not nom:
+        return False
+    actuel = conn.execute("SELECT name FROM entities WHERE id=?", (eid,)).fetchone()
+    if actuel is None or actuel["name"] == nom:
+        return False
+    pris = conn.execute(
+        "SELECT id FROM entities WHERE type='association' AND name=? AND id<>?",
+        (nom, eid)).fetchone()
+    if pris:
+        return False
+    conn.execute("UPDATE entities SET name=?, name_norm=? WHERE id=?",
+                 (nom, normaliser(nom), eid))
+    return True
