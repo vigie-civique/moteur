@@ -185,6 +185,10 @@ def test_les_steps_a_profondeur_existent_dans_run_all():
     Elle produirait un step réglable que personne n'appelle, et un collecteur
     qui continue de tourner à la profondeur qu'il veut.
     """
+    # `run_all` importe les quarante collecteurs, donc la lecture des PDF. Le
+    # job de tests léger ne les installe pas — la suite ne doit dépendre ni des
+    # collecteurs ni de l'API —, `tests-deps` les joue.
+    pytest.importorskip("pdfplumber", reason="job « tests-deps »")
     from collectors.config import PROFONDEUR_STEP
     from collectors.run_all import STEPS
     assert set(PROFONDEUR_STEP) <= set(STEPS), (
