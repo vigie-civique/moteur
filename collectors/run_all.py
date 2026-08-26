@@ -52,6 +52,7 @@ from collectors.bodacc        import run as run_bodacc
 from collectors.dvf           import import_dvf
 from collectors.insee_social  import run as run_insee_social
 from collectors.georisques    import run as run_georisques
+from collectors.education     import run as run_education
 from collectors.raa_prefecture import run as run_raa
 from collectors.pop_culture   import run as run_pop_culture
 from collectors.rne          import run as run_rne
@@ -161,6 +162,11 @@ STEPS = {
                  lambda: [import_dvf(i) for i in COMMUNES_INSEE_ADRESSE]),
     "insee":    ("Indicateurs INSEE Melodi (C1)", run_insee_social),
     "georisques": ("Risques, ICPE, CATNAT (C1)", run_georisques),
+    # Écoles, collèges, lycées. Avec la mairie, le premier équipement public
+    # d'une commune rurale — et il manquait au répertoire, si bien qu'une
+    # délibération portant sur le groupe scolaire ne pouvait se rattacher à
+    # rien. Passe AVANT `origine` et `perimetre`, qui classent ce qui existe.
+    "education": ("Établissements scolaires (Éducation nationale)", run_education),
     "raa":      ("RAA de la préfecture (année courante, incrémental)",
                  lambda: run_raa(__import__("datetime").date.today().year)),
     "patrimoine": ("Monuments historiques MH (C1)", run_pop_culture),

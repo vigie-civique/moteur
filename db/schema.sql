@@ -147,6 +147,31 @@ CREATE TABLE IF NOT EXISTS services (
 );
 
 -- ----------------------------------------------------------------
+-- ÉTABLISSEMENTS SCOLAIRES (extends entities where type='service')
+-- Annuaire de l'Éducation nationale. `uai` est l'identifiant national d'un
+-- établissement — le SIREN de l'école : stable, opposable, et la SEULE clé de
+-- déduplication acceptable. « Ecole primaire » est le nom de milliers
+-- d'établissements, et deux communes voisines en portent le même.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS etablissements_scolaires (
+    entity_id    INTEGER PRIMARY KEY REFERENCES entities(id) ON DELETE CASCADE,
+    uai          TEXT UNIQUE,
+    nature       TEXT,   -- école élémentaire, collège, lycée…
+    secteur      TEXT,   -- Public | Privé
+    etat         TEXT,   -- OUVERT | FERME
+    ouverture    TEXT,
+    fermeture    TEXT,
+    eleves       INTEGER,
+    telephone    TEXT,
+    courriel     TEXT,
+    site         TEXT,
+    raw_data     TEXT,
+    created_at   TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_etab_uai ON etablissements_scolaires(uai);
+
+-- ----------------------------------------------------------------
 -- LIEUX / POIs (extends entities where type='place')
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS places (
