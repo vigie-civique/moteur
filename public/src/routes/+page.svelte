@@ -87,9 +87,11 @@
       <!-- Zéro n'est pas « la commune ne commande rien » : c'est « nos sources
            n'en recensent aucun ». La différence est tout le sujet du site. -->
       <p class="lacune">
-        Aucun marché de la commune n'est recensé dans nos sources ouvertes —
-        ce qui ne veut pas dire qu'il n'y en a pas.
-        <a href="/couverture">Ce que nous savons et ne savons pas</a>
+        La commune n'apparaît comme acheteur dans aucune source ouverte de
+        commande publique. Ce n'est pas une lacune de collecte&nbsp;:
+        <b>la publication n'est obligatoire qu'au-delà de 40 000 €&nbsp;HT</b>,
+        et en dessous rien n'est publié nulle part.
+        <a href="/marches">Ce que cela laisse dans l'ombre</a>
       </p>
     {/if}
     <p class="provenance">

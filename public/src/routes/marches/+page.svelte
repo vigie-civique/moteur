@@ -85,6 +85,26 @@
     {/if}
   </header>
 
+  <!-- Le seuil est le fait le plus important de cette page, et il n'y figurait
+       pas. Sans lui, « 0 marché de la commune » se lit « la commune n'achète
+       rien » — alors que ça veut dire « elle achète en dessous de ce que la loi
+       oblige à publier ». Une page de commande publique qui tait son seuil de
+       publication décrit un vide qu'elle a elle-même fabriqué. -->
+  <p class="seuil">
+    <b>Ce que cette page ne peut pas montrer.</b>
+    La publication des données essentielles n'est obligatoire qu'à partir de
+    <b>40 000 €&nbsp;HT</b>. En dessous, un marché est légalement attribué sans
+    qu'aucun registre national n'en garde trace&nbsp;: ni le BOAMP, ni les DECP.
+    Pour une commune de cette taille, l'essentiel de la commande publique passe
+    sous ce seuil — et ne se lit, quand elle se lit, que dans les procès-verbaux
+    du conseil.
+    {#if comptePortee.commune === undefined}
+      Ici, <b>aucun marché de la commune</b> n'apparaît dans les sources
+      ouvertes&nbsp;; les avis qui la mentionnent émanent de
+      l'intercommunalité ou du département.
+    {/if}
+  </p>
+
   {#if marches.length}
     <FiltrePortee bind:valeur={portee} compte={comptePortee}
       libelleTerritoire="Autres acheteurs"
