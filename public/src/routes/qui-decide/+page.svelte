@@ -18,10 +18,10 @@
       valeur: nombre(data.elus), unite: 'élus en fonction' },
     { icone: 'intercommunalite', titre: `L'intercommunalité (${EPCI_COURT})`, href: '/com-com',
       sub: `Délégués ${COMMUNE_DE}, compétences, délibérations communautaires.`,
-      valeur: null, unite: `${EPCI}` },
+      valeur: nombre(data.deliberationsInterco), unite: 'actes votés par la CC' },
     { icone: 'document', titre: 'Délibérations & décisions', href: '/deliberations',
       sub: 'La chronologie des votes du conseil municipal.',
-      valeur: nombre(data.deliberations), unite: 'actes publiés' },
+      valeur: nombre(data.deliberations), unite: 'actes du conseil municipal' },
     // « Graphe d'influence » faisait franchir au lecteur une étape que les
     // données ne permettent pas : une relation documentée n'établit pas une
     // influence. Le titre dit maintenant ce que la page montre réellement.

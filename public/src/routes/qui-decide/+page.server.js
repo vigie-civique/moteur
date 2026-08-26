@@ -24,8 +24,14 @@ export function load() {
   const listeRel = Array.isArray(relations) ? relations : relations.relations || []
   const listeConflits = Array.isArray(conflits) ? conflits : conflits.cas || []
 
-  const deliberations = listeEvents.filter((e) =>
-    ['deliberation', 'conseil_municipal', 'délibérations_cc', 'pv_cc'].includes(e.type)).length
+  // La carte annonce « la chronologie des votes du conseil municipal » : elle
+  // doit compter le conseil municipal. Elle comptait les deux conseils — 1 997
+  // à Lasalle, dont 833 votées par la communauté de communes.
+  const ACTES = ['deliberation', 'conseil_municipal', 'délibérations_cc', 'pv_cc']
+  const listeActes = listeEvents.filter((e) => ACTES.includes(e.type))
+  const communal = (e) => !e.portee || e.portee === 'commune'
+  const deliberations = listeActes.filter(communal).length
+  const deliberationsInterco = listeActes.length - deliberations
 
   // Le conseil municipal seul : les élus de la commune, hors délégués
   // intercommunaux. Le rattachement se lit sur `commune`, comparé au nom
@@ -36,7 +42,8 @@ export function load() {
   return {
     elus: listeElus.length || null,
     elusCommune: elusCommune || null,
-    deliberations: deliberations || stats.events_public || null,
+    deliberations,
+    deliberationsInterco,
     relations: listeRel.length || stats.relations_public || null,
     conflits: listeConflits.length || null,
     // Compté sur le snapshot, jamais écrit en dur : la carte a annoncé « 7

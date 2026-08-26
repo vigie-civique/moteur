@@ -140,7 +140,7 @@
     <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
     <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
     <span class="porte-n">
-      {#if budget}{millions(budget.depenses)} dépensés en {budget.annee} · {/if}{nombre(chiffres.marches)} marchés de la commune{#if interco?.marches}, {nombre(interco.marches)} de la {EPCI_COURT}{/if}
+      {#if budget}{millions(budget.depenses)} dépensés en {budget.annee} · {/if}{nombre(chiffres.marches)} marché{chiffres.marches > 1 ? 's' : ''} de la commune{#if interco?.marches}, {nombre(interco.marches)} de la {EPCI_COURT}{/if}
     </span>
   </a>
   <a class="porte" href="/acteurs-publics">

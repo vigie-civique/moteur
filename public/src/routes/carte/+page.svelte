@@ -1,5 +1,5 @@
 <script>
-  import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_DE, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import Icon from '$lib/components/Icon.svelte'
   import { loadJSON, TYPE_LABELS } from '$lib/data.js'
@@ -27,8 +27,18 @@
     { key: 'places',       type: 'place',       label: 'Lieux' },
   ]
   let groups = {}             // key -> L.layerGroup
-  let counts = {}             // key -> nb features
+  let counts = {}             // key -> nb features affichées
+  let sources = {}            // key -> FeatureCollection complète
   let visible = { businesses: true, associations: true, services: true, places: true }
+
+  // La carte couvre les quinze communes de l'intercommunalité : sans ce choix,
+  // un habitant qui cherche « les associations d'ici » en voit trois fois trop
+  // et ne peut pas les distinguer. Par défaut la commune, comme l'annuaire.
+  let portee = 'commune'
+  const PORTEE_DE = (p) =>
+    p === 'C1' ? 'commune' : p === 'C2' ? 'intercommunalite' : 'territoire'
+  const retenu = (feat) =>
+    portee === 'tout' || PORTEE_DE(feat.properties?.perimetre) === portee
 
   function toggle(key) {
     if (!map || !groups[key]) return
@@ -36,6 +46,44 @@
     if (visible[key]) groups[key].addTo(map)
     else map.removeLayer(groups[key])
   }
+
+  function dessiner() {
+    if (!map || !L) return
+    for (const layer of LAYERS) {
+      if (groups[layer.key]) map.removeLayer(groups[layer.key])
+      const fc = sources[layer.key]
+      if (!fc) continue
+      const gardees = (fc.features || []).filter(retenu)
+      counts[layer.key] = gardees.length
+      groups[layer.key] = L.geoJSON({ type: 'FeatureCollection', features: gardees }, {
+        pointToLayer: (feat, latlng) => L.circleMarker(latlng, {
+          radius: 5, color: '#fff', weight: 1.5,
+          fillColor: TYPE_COLORS[feat.properties?.type] || '#5c6b72', fillOpacity: 0.9,
+        }),
+        onEachFeature: (feat, lyr) => {
+          const p = feat.properties || {}
+          lyr.bindPopup(
+            `<strong>${p.name || '?'}</strong><br><span style="color:#5c6b72">${TYPE_LABELS[p.type] || p.type || ''}</span>` +
+            (p.id ? `<br><a href="/entite/${p.id}">Voir la fiche →</a>` : '')
+          )
+        },
+      })
+      if (visible[layer.key]) groups[layer.key].addTo(map)
+    }
+    counts = { ...counts }
+  }
+
+  // Redessiner au changement de périmètre — jamais au premier rendu, où la
+  // carte n'est pas encore montée.
+  $: if (map && portee) dessiner()
+
+  $: comptePortee = Object.values(sources).reduce((a, fc) => {
+    for (const f of fc.features || []) {
+      const p = PORTEE_DE(f.properties?.perimetre)
+      a[p] = (a[p] || 0) + 1
+    }
+    return a
+  }, {})
 
   onMount(async () => {
     try {
@@ -50,25 +98,11 @@
       }).addTo(map)
 
       for (const layer of LAYERS) {
-        let fc
-        try { fc = await loadJSON(`layers/${layer.key}.geojson`) } catch { continue }
-        counts[layer.key] = (fc.features || []).length
-        groups[layer.key] = L.geoJSON(fc, {
-          pointToLayer: (feat, latlng) => L.circleMarker(latlng, {
-            radius: 5, color: '#fff', weight: 1.5,
-            fillColor: TYPE_COLORS[feat.properties?.type] || '#5c6b72', fillOpacity: 0.9,
-          }),
-          onEachFeature: (feat, lyr) => {
-            const p = feat.properties || {}
-            lyr.bindPopup(
-              `<strong>${p.name || '?'}</strong><br><span style="color:#5c6b72">${TYPE_LABELS[p.type] || p.type || ''}</span>` +
-              (p.id ? `<br><a href="/entite/${p.id}">Voir la fiche →</a>` : '')
-            )
-          },
-        })
-        groups[layer.key].addTo(map)
+        try { sources[layer.key] = await loadJSON(`layers/${layer.key}.geojson`) }
+        catch { continue }
       }
-      counts = { ...counts }
+      sources = { ...sources }
+      dessiner()
     } catch (e) {
       error = e.message
     } finally {
@@ -106,6 +140,15 @@
   {#if error}<div class="toast err">Erreur de chargement : {error}</div>{/if}
   {#if loading}<div class="toast">Chargement de la carte…</div>{/if}
 
+  <div class="portee-carte">
+    {#each [['commune', COMMUNE], ['intercommunalite', EPCI_COURT], ['tout', 'Tout']] as [cle, label]}
+      <button class:on={portee === cle} on:click={() => (portee = cle)}
+              aria-pressed={portee === cle}>
+        {label}{#if comptePortee[cle]} <em>{comptePortee[cle]}</em>{/if}
+      </button>
+    {/each}
+  </div>
+
   <div class="legende">
     {#each LAYERS as layer}
       <button class="chip" class:off={!visible[layer.key]} on:click={() => toggle(layer.key)}
@@ -118,6 +161,20 @@
 </div>
 
 <style>
+  /* Le choix de périmètre est au-dessus de la légende des types : « où » se
+     décide avant « quoi ». */
+  .portee-carte {
+    position: absolute; left: 1rem; bottom: 4.2rem; z-index: 600;
+    display: flex; gap: .35rem; flex-wrap: wrap;
+  }
+  .portee-carte button {
+    padding: .3rem .65rem; border: 1px solid var(--trait); border-radius: 999px;
+    background: rgba(255,255,255,.94); color: var(--gris);
+    font-size: .8rem; cursor: pointer; box-shadow: var(--ombre);
+  }
+  .portee-carte button.on { background: var(--encre); color: #fff; border-color: var(--encre); }
+  .portee-carte em { font-style: normal; opacity: .7; }
+
   .carte { position: relative; height: calc(100dvh - 58px); min-height: 480px; }
   .map { position: absolute; inset: 0; }
 
