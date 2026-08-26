@@ -36,23 +36,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from collectors.config import COMMUNE_NAME, EPCI_NOM  # noqa: E402
+from collectors.config import COMMUNE_NAME, COMMUNES_ADRESSE, EPCI_NOM  # noqa: E402
 from collectors.db import get_conn  # noqa: E402
 from collectors.marches_publics import _norme_acheteur  # noqa: E402
+from collectors.marches_publics import attribution_acheteur  # noqa: E402
+
+# Les autres noms du périmètre, pour qu'un nom tronqué par la source ne soit
+# accepté que s'il ne convient qu'à une seule collectivité.
+_HOMONYMES = tuple(c["nom"] for c in COMMUNES_ADRESSE.values())
 
 
 def attribution(acheteur_nom: str) -> str:
-    """'commune', 'epci', ou '' si le nom ne permet pas de conclure.
+    """'commune', 'epci', ou '' — la règle vit dans le collecteur, pas ici.
 
-    Le nom doit être EN TÊTE : un organisme tiers met le sien devant. Cherché
-    en sous-chaîne, « Siaep de Lasalle » devenait la mairie de Lasalle.
+    Elle y était recopiée : une requalification pouvait donc trancher autrement
+    que la collecte qui l'avait précédée, et le test de l'une ne disait rien de
+    l'autre.
     """
-    n = _norme_acheteur(acheteur_nom)
-    if n.startswith(_norme_acheteur(COMMUNE_NAME)):
-        return "commune"
-    if n.startswith(_norme_acheteur(EPCI_NOM)):
-        return "epci"
-    return ""
+    return attribution_acheteur(acheteur_nom, homonymes=_HOMONYMES)
 
 
 def purger(conn, source: str, appliquer: bool) -> int:

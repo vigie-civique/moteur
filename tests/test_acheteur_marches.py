@@ -19,23 +19,23 @@ from __future__ import annotations
 
 import pytest
 
-from collectors.marches_publics import _norme_acheteur
+from collectors.marches_publics import attribution_acheteur
 
 EPCI = "CC Causses Aigoual Cévennes Terres Solidaires"
 COMMUNE = "Lasalle"
+# Deux communes membres du même périmètre, pour la règle d'ambiguïté.
+HOMONYMES = ("Saint-André-de-Valborgne", "Saint-André-de-Majencoules",
+             "Val-d'Aigoual", "Lasalle")
 
 
 def attribue(nom_acheteur: str) -> str:
-    """Reproduit la décision du collecteur : commune, EPCI, ou rien.
+    """La décision du collecteur — la VRAIE, pas une copie.
 
-    Le nom doit être EN TÊTE : un organisme tiers met le sien devant.
+    Ce fichier en tenait une reproduction, et vérifiait donc sa propre copie :
+    la règle a changé le 26/08/2026 sans que rien ici ne bronche.
     """
-    n = _norme_acheteur(nom_acheteur)
-    if n.startswith(_norme_acheteur(COMMUNE)):
-        return "commune"
-    if n.startswith(_norme_acheteur(EPCI)):
-        return "epci"
-    return ""
+    return attribution_acheteur(nom_acheteur, commune=COMMUNE, epci=EPCI,
+                                homonymes=HOMONYMES)
 
 
 @pytest.mark.parametrize("nom", [
@@ -81,3 +81,54 @@ def test_un_marche_non_attribue_reste_probable():
     donc hors publication, et attend un arbitrage dans l'atelier."""
     certitude = "verified" if attribue("GHT Cévennes Gard Camargue") else "probable"
     assert certitude == "probable"
+
+
+# ── La source TRONQUE le nom officiel — 26/08/2026 ───────────────────────────
+#
+# Le cas symétrique du précédent, et il manquait. L'intercommunalité s'appelle
+# « CC Causses Aigoual Cévennes Terres Solidaires » ; le BOAMP l'écrit sans son
+# qualificatif final. Le nom déclaré est un préfixe du nom OFFICIEL — l'inverse
+# de ce qui était testé. Résultat mesuré sur la base de production : 45 marchés
+# BOAMP sans acheteur, dont la construction d'une crèche dans la commune, et
+# 7 marchés publiés sur 53. Les deux instances voisines en publiaient 58 et 45.
+
+def test_le_nom_tronque_par_la_source_designe_l_epci():
+    assert attribue("CC Causses Aigoual Cévennes") == "epci"
+    assert attribue("Communauté de communes Causses Aigoual Cévennes") == "epci"
+
+
+def test_com_communes_est_une_communaute_de_communes():
+    """Trois lettres qui coûtaient dix-huit marchés.
+
+    « com » n'était pas dans les mots de structure : il restait collé en tête
+    de la forme normalisée, et aucun rapprochement n'était possible.
+    """
+    assert attribue("COM COMMUNES CAUSSES AIGOUAL CEVENNES") == "epci"
+
+
+def test_un_fragment_trop_court_ne_designe_personne():
+    """« CC » se normalise en chaîne vide, « Saint » est le préfixe d'un département."""
+    assert attribue("CC") == ""
+    assert attribue("Causses") == ""
+
+
+def test_une_troncature_ambigue_est_refusee():
+    """Deux communes membres commencent pareil : le fragment ne tranche pas.
+
+    « Saint-André-de-Valborgne » et « Saint-André-de-Majencoules » sont dans le
+    même périmètre. Accepter « Saint-André » attribuerait à l'une ce que l'autre
+    a acheté — et le nom seul ne permet pas de savoir laquelle.
+    """
+    assert attribue("Saint-André") == ""
+
+
+def test_une_troncature_reste_refusee_a_un_tiers():
+    """La règle n'ouvre rien à ce que le préfixe étranger interdisait."""
+    assert attribue("Siaep de Lasalle") == ""
+    assert attribue("Régie eau et assainissement Causses Aigoual Cévennes") == ""
+    assert attribue("Terres australes et antarctiques françaises") == ""
+
+
+def test_le_suffixe_reste_accepte():
+    """L'acquis d'avant : « CC Machin — service eau » est bien la CC."""
+    assert attribue("CC Causses Aigoual Cévennes Terres Solidaires — service eau") == "epci"

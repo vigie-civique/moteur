@@ -33,10 +33,11 @@ from .config import (
     COMMUNE_INSEE, COMMUNE_NAME, COMMUNES_ADRESSE, COMMUNES_CP, DEPARTEMENT,
     COMMUNE_SIREN as COMMUNE_SIREN_CFG,
     COMMUNE_SIRET as COMMUNE_SIRET_CFG, EPCI_NOM, EPCI_SIREN,
-    HEADERS, REQUEST_DELAY
+    HEADERS, NATIONAL_STORE, REQUEST_DELAY
 )
 from .db import transaction, upsert_entity
 from .archive import archive_fetch
+from .national_store import ecrire_atomiquement, est_frais
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -65,9 +66,64 @@ def _norme_acheteur(nom: str) -> str:
     # ils s'effacent. « syndicat », « sivom », « siaep » NON — ce sont d'autres
     # personnes morales, et les effacer reviendrait à confondre le syndicat des
     # eaux avec la mairie dont il porte le nom.
-    t = re.sub(r"\b(cc|ca|cu|communaute|communautes|commune|communes|mairie|mairies"
+    # « com » : le BOAMP écrit « COM COMMUNES CAUSSES AIGOUAL CEVENNES ».
+    # Sans lui, « com » restait collé en tête de la forme normalisée et aucun
+    # rapprochement n'était possible — 18 marchés d'une intercommunalité, sur
+    # une seule instance, restaient sans acheteur pour ces trois lettres.
+    t = re.sub(r"\b(cc|ca|cu|com|communaute|communautes|commune|communes|mairie|mairies"
                r"|ville|villes|de|du|des|d|la|le|les|l)\b", " ", t)
     return re.sub(r"[^a-z0-9]+", "", t)
+
+
+# Longueur minimale, en caractères normalisés, d'un nom TRONQUÉ par la source
+# pour qu'il puisse désigner une collectivité. En dessous, un fragment attrape
+# n'importe quoi : « CC » se normalise en chaîne vide, et « Saint » serait le
+# préfixe de la moitié d'un département.
+SEUIL_TRONCATURE = 10
+
+
+def attribution_acheteur(nom: str, commune: str = "", epci: str = "",
+                         homonymes: tuple[str, ...] = ()) -> str:
+    """'commune', 'epci', ou '' si le nom déclaré ne permet pas de conclure.
+
+    Le nom officiel EN TÊTE du nom déclaré : « CC Machin — service eau » est
+    bien la CC. Ce qui est refusé, c'est un PRÉFIXE étranger — « Siaep de
+    Lasalle » est le syndicat des eaux, pas la mairie, et « Paris Terres
+    d'Envol » est un EPCI de Seine-Saint-Denis.
+
+    Et le cas symétrique, qui manquait : la source TRONQUE le nom officiel.
+    L'intercommunalité de la première instance s'appelle « CC Causses Aigoual
+    Cévennes Terres Solidaires » ; le BOAMP l'écrit « CC Causses Aigoual
+    Cévennes », sans le qualificatif final. Le nom déclaré est alors un préfixe
+    du nom officiel, l'inverse de ce qui était testé, et 25 marchés — dont la
+    construction d'une crèche dans la commune — restaient sans acheteur.
+
+    Une troncature n'est acceptée que si elle ne convient qu'à UNE cible.
+    `homonymes` porte les autres noms du périmètre : deux communes membres
+    s'appellent « Saint-André-de-Valborgne » et « Saint-André-de-Majencoules »,
+    et « Saint-André » ne désigne ni l'une ni l'autre.
+
+    Le nom passe par les rectifications déclarées de l'instance : le BOAMP
+    écrit « CC Causes Aigoual Cévennes » sur dix-huit avis, un S manquant qu'on
+    ne devine pas par une règle mais qui se DÉCLARE une fois (cf.
+    `nom_normalise.rectifier`).
+    """
+    from .nom_normalise import rectifier
+    n = _norme_acheteur(rectifier(nom))
+    if not n:
+        return ""
+    autres = tuple(_norme_acheteur(h) for h in homonymes)
+    for cible, officiel in (("commune", commune or COMMUNE_NAME),
+                            ("epci", epci or EPCI_NOM)):
+        o = _norme_acheteur(officiel)
+        if not o:
+            continue
+        if n.startswith(o):
+            return cible
+        if (len(n) >= SEUIL_TRONCATURE and o.startswith(n)
+                and not any(a != o and a.startswith(n) for a in autres)):
+            return cible
+    return ""
 
 
 # ── Recouper un acheteur avec le territoire ──────────────────────────────────
@@ -296,7 +352,7 @@ def year_from_title(title: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-DECP_CACHE = Path(__file__).resolve().parent.parent / "data" / "raw" / "decp"
+DECP_CACHE = NATIONAL_STORE / "decp"
 DECP_CACHE_JOURS = 7
 DECP_ESSAIS = 3
 
@@ -324,10 +380,8 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
     """
     DECP_CACHE.mkdir(parents=True, exist_ok=True)
     cache = DECP_CACHE / nom
-    if cache.exists():
-        age_jours = (time.time() - cache.stat().st_mtime) / 86400
-        if age_jours < DECP_CACHE_JOURS:
-            return cache.read_bytes()
+    if est_frais(cache, DECP_CACHE_JOURS):
+        return cache.read_bytes()
 
     dernier = None
     for essai in range(1, DECP_ESSAIS + 1):
@@ -335,7 +389,7 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 raw = resp.read()
-            cache.write_bytes(raw)
+            ecrire_atomiquement(cache, raw)
             return raw
         except Exception as e:
             dernier = e
@@ -738,13 +792,12 @@ def fetch_boamp_marches() -> list[dict]:
                 #
                 # Un suffixe reste accepté — « CC Machin — service eau » est
                 # bien la CC. Ce qui est refusé, c'est un PRÉFIXE étranger.
-                acheteur_norme = _norme_acheteur(acheteur)
-                if acheteur_norme.startswith(_norme_acheteur(COMMUNE_NAME)):
-                    reconnu = COMMUNE_SIREN
-                elif acheteur_norme.startswith(_norme_acheteur(EPCI_NOM)):
-                    reconnu = CAC_SIREN
-                else:
-                    reconnu = ""
+                # La règle vit dans `attribution_acheteur`, une seule fois :
+                # elle était recopiée ici, dans le script de requalification et
+                # dans son test, qui vérifiait donc sa propre copie.
+                cible = attribution_acheteur(
+                    acheteur, homonymes=tuple(c["nom"] for c in COMMUNES_ADRESSE.values()))
+                reconnu = {"commune": COMMUNE_SIREN, "epci": CAC_SIREN}.get(cible, "")
 
                 # Le recoupement : l'adresse que l'acheteur déclare lui-même.
                 # C'est le seul rattachement au territoire que le BOAMP permette
