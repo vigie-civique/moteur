@@ -416,3 +416,70 @@ def test_un_vrai_nom_dans_le_sigle_reste_fusionnable(base, entite):
     assert not cles_generiques(membres)
     g = [x for x in grappes(base) if {m["id"] for m in x["membres"]} == {a, b}]
     assert g and g[0]["obstacle"] is None
+
+
+# ── Rapprochement approchant ────────────────────────────────────────────────
+
+class TestRapprochements:
+    """« Caravane Film » et « LA CARAVANE FILME » sont la même association.
+
+    `grappes()` les rate deux fois : `film` et `filme` diffèrent d'une lettre,
+    et l'une des deux fiches n'a aucune commune (périmètre `lien`, née d'un
+    compte rendu). Elles portaient pourtant 360 € et 450 € de subventions de la
+    même commune — le partage d'argent déjà vu sur Vivalto.
+    """
+
+    def test_une_lettre_de_difference_est_rattrapee(self, base, entite):
+        from scripts.fusionner_entites import rapprochements
+        a = entite("LA CARAVANE FILME", "association", "Lasalle")
+        b = entite("Caravane Film", "association", None)
+        paires = [p for p in rapprochements(base)
+                  if {m["id"] for m in p["membres"]} == {a, b}]
+        assert paires and paires[0]["score"] > 0.90
+
+    def test_une_fiche_sans_commune_ne_contredit_personne(self, base, entite):
+        """La source la nomme, elle ne la situe pas.
+
+        Exiger l'égalité stricte des communes excluait du rapprochement
+        précisément les fiches qui en ont le plus besoin.
+        """
+        from scripts.fusionner_entites import _communes_compatibles
+        assert _communes_compatibles("Lasalle", None)
+        assert _communes_compatibles(None, "Lasalle")
+        assert _communes_compatibles("Lasalle", "lasalle")
+        assert not _communes_compatibles("Lasalle", "Soudorgues")
+
+    def test_l_ordre_des_mots_ne_compte_pas(self):
+        """« LAFONT CEDRIC » et « CEDRIC LAFONT » : l'inversion nom/prénom est
+        la variante la plus fréquente du répertoire des entreprises."""
+        from scripts.fusionner_entites import similarite
+        assert similarite("LAFONT CEDRIC", "CEDRIC LAFONT") == 1.0
+
+    def test_deux_identifiants_nationaux_closent_la_question(self, base, entite):
+        from scripts.fusionner_entites import rapprochements
+        a = entite("LES 4 SAISONS", "business", "Val-d'Aigoual")
+        b = entite("LES 4 SAISON", "business", "Val-d'Aigoual")
+        base.execute("INSERT INTO businesses (entity_id,siren) VALUES (?,?)", (a, "477876346"))
+        base.execute("INSERT INTO businesses (entity_id,siren) VALUES (?,?)", (b, "898730593"))
+        base.commit()
+        assert not [p for p in rapprochements(base)
+                    if {m["id"] for m in p["membres"]} == {a, b}]
+
+    def test_un_nom_trop_court_ne_prouve_rien(self, base, entite):
+        """« MC » et « MCI » font 0,80 de similarité et n'ont rien à voir."""
+        from scripts.fusionner_entites import rapprochements
+        entite("MC", "business", "Crest")
+        entite("MCI", "business", "Crest")
+        assert not rapprochements(base)
+
+    def test_une_paire_declaree_distincte_ne_revient_pas(self, base, entite, tmp_path):
+        from scripts.fusionner_entites import cle_arbitrage, rapprochements
+        a = entite("Club taurin lasallois", "association", "Lasalle")
+        b = entite("Tennis Club lasallois", "association", "Lasalle")
+        base.commit()
+        assert rapprochements(base, seuil=0.75)
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "arbitrages_entites.json").write_text(json.dumps({
+            "distinctes": [{"cles": [cle_arbitrage(base, a), cle_arbitrage(base, b)],
+                            "motif": "deux clubs, un même adjectif"}]}), encoding="utf-8")
+        assert not rapprochements(base, seuil=0.75, racine=tmp_path)

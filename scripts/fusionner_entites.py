@@ -18,6 +18,7 @@ part avec elle. C'est voulu : c'est un doublon, pas une perte.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import sqlite3
@@ -349,6 +350,92 @@ def cles_generiques(membres: list[dict]) -> bool:
         if t and not t <= _FORMES:
             return False
     return True
+
+
+# ── Rapprochement APPROCHANT ─────────────────────────────────────────────────
+#
+# `grappes()` ne voit que l'identité exacte des jetons. « Caravane Film » et
+# « LA CARAVANE FILME » lui échappent deux fois : `film` et `filme` diffèrent
+# d'une lettre, et l'une des deux fiches n'a AUCUNE commune (périmètre `lien`).
+# Elles portaient pourtant 360 € et 450 € de subventions de la même commune,
+# à la même association — le partage d'argent qu'on avait vu sur Vivalto.
+#
+# Même chose pour les 59 fiches dont la collision `rna_id UNIQUE` a mangé
+# l'identité : 22 ont une jumelle séparée par une variante d'écriture
+# (SALENDRINQUE/SALINDRENQUE, AUMOMERIE/AUMONERIE).
+#
+# CE MODULE PROPOSE, IL NE FUSIONNE PAS. À 0,80 de similarité on est déjà dans
+# le domaine où deux amicales de villages voisins se ressemblent : la décision
+# reste humaine, et se déclare comme les autres.
+
+#: En dessous, une ressemblance ne prouve rien : « MC » et « MCI » font 0,80.
+LONGUEUR_MINIMALE = 6
+
+
+def _cle_comparaison(nom: str) -> str:
+    """Les jetons triés, recollés. Compare des MOTS, pas un ordre d'écriture.
+
+    « LAFONT CEDRIC » et « CEDRIC LAFONT » sont la même chaîne une fois triée —
+    ce qui est le but : l'inversion nom/prénom est la variante la plus fréquente
+    du répertoire des entreprises.
+    """
+    return " ".join(sorted(jeton(nom)))
+
+
+def similarite(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, _cle_comparaison(a), _cle_comparaison(b)).ratio()
+
+
+def _communes_compatibles(a: str | None, b: str | None) -> bool:
+    """Une fiche SANS commune ne contredit personne.
+
+    C'est le cas des entités nées d'un compte rendu : la source les nomme, elle
+    ne les situe pas. Exiger l'égalité stricte les excluait toutes du
+    rapprochement, précisément celles qui en ont le plus besoin.
+    """
+    a, b = (a or "").strip().lower(), (b or "").strip().lower()
+    return not a or not b or a == b
+
+
+def rapprochements(conn, seuil: float = 0.80,
+                   types=("association", "business", "service", "place"),
+                   racine=None) -> list[dict]:
+    """Paires de fiches qui se ressemblent sans être identiques.
+
+    Écarte ce qu'on sait déjà : identité exacte (c'est le travail de
+    `grappes()`), identifiants nationaux distincts, et paires déjà déclarées
+    distinctes par un humain.
+    """
+    lignes = [dict(r) for r in conn.execute(
+        "SELECT id, name, type, commune FROM entities"
+        f" WHERE type IN ({','.join('?' * len(types))})", types)]
+    for r in lignes:
+        r["_cle"] = _cle_comparaison(r["name"])
+        r["_idt"] = identifiants(conn, r["id"])
+
+    declares = arbitrages_declares(racine)
+    trouves = []
+    for i, a in enumerate(lignes):
+        if len(a["_cle"]) < LONGUEUR_MINIMALE:
+            continue
+        for b in lignes[i + 1:]:
+            if len(b["_cle"]) < LONGUEUR_MINIMALE or a["_cle"] == b["_cle"]:
+                continue
+            if not _communes_compatibles(a["commune"], b["commune"]):
+                continue
+            score = difflib.SequenceMatcher(None, a["_cle"], b["_cle"]).ratio()
+            if score < seuil:
+                continue
+            rna = {x["_idt"]["rna"] for x in (a, b) if x["_idt"]["rna"]}
+            siren = {x["_idt"]["siren"] for x in (a, b) if x["_idt"]["siren"]}
+            if len(rna) > 1 or len(siren) > 1:
+                continue          # deux personnes morales, la question est close
+            cles = {cle_arbitrage(conn, a["id"]), cle_arbitrage(conn, b["id"])}
+            if any(cles <= d for d in declares):
+                continue
+            trouves.append({"score": score, "membres": [a, b]})
+    trouves.sort(key=lambda t: -t["score"])
+    return trouves
 
 
 def ouvrir(chemin) -> sqlite3.Connection:
