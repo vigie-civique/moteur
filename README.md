@@ -164,6 +164,19 @@ qu'une heure.
 
 ## Installation
 
+Les fichiers nationaux volumineux restent hors de Git. Par défaut, DECP et le
+cache DVF vivent sous `data/raw/`. Plusieurs instances installées sur la même
+machine peuvent partager un seul magasin en définissant son chemin absolu :
+
+```bash
+export VIGIE_NATIONAL_STORE=/chemin/vers/vigie-national
+```
+
+Le magasin contient les consolidés DECP, les réponses DVF Cerema par commune et
+les CSV DVF départementaux utilisés en repli. Supprimer une base communale ne
+supprime pas ce magasin ; il peut être purgé séparément lorsqu'on souhaite
+récupérer l'espace disque.
+
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
 

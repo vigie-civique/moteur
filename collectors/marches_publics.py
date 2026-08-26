@@ -33,10 +33,11 @@ from .config import (
     COMMUNE_INSEE, COMMUNE_NAME, COMMUNES_ADRESSE, COMMUNES_CP, DEPARTEMENT,
     COMMUNE_SIREN as COMMUNE_SIREN_CFG,
     COMMUNE_SIRET as COMMUNE_SIRET_CFG, EPCI_NOM, EPCI_SIREN,
-    HEADERS, REQUEST_DELAY
+    HEADERS, NATIONAL_STORE, REQUEST_DELAY
 )
 from .db import transaction, upsert_entity
 from .archive import archive_fetch
+from .national_store import ecrire_atomiquement, est_frais
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -351,7 +352,7 @@ def year_from_title(title: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-DECP_CACHE = Path(__file__).resolve().parent.parent / "data" / "raw" / "decp"
+DECP_CACHE = NATIONAL_STORE / "decp"
 DECP_CACHE_JOURS = 7
 DECP_ESSAIS = 3
 
@@ -379,10 +380,8 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
     """
     DECP_CACHE.mkdir(parents=True, exist_ok=True)
     cache = DECP_CACHE / nom
-    if cache.exists():
-        age_jours = (time.time() - cache.stat().st_mtime) / 86400
-        if age_jours < DECP_CACHE_JOURS:
-            return cache.read_bytes()
+    if est_frais(cache, DECP_CACHE_JOURS):
+        return cache.read_bytes()
 
     dernier = None
     for essai in range(1, DECP_ESSAIS + 1):
@@ -390,7 +389,7 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 raw = resp.read()
-            cache.write_bytes(raw)
+            ecrire_atomiquement(cache, raw)
             return raw
         except Exception as e:
             dernier = e

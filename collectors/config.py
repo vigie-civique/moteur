@@ -381,6 +381,14 @@ ASSOC_DIR   = ROOT / "associations"
 ENTRE_DIR   = ROOT / "entreprises"
 SEED_LOCAL  = ROOT / "config" / "seed_local.json"
 
+# Magasin des gros jeux nationaux réutilisables entre instances. Sans variable,
+# le moteur conserve son comportement autonome sous data/raw/. Un portail peut
+# fixer un dossier extérieur aux copies de génération : aucune donnée n'entre
+# dans Git et les communes lisent les mêmes téléchargements.
+NATIONAL_STORE = pathlib.Path(
+    os.environ.get("VIGIE_NATIONAL_STORE") or ROOT / "data" / "raw"
+).expanduser().resolve()
+
 # ── API nationales ───────────────────────────────────────────────────────────
 # Ce bloc est le cœur générique du dispositif : ces sources sont indexées par
 # code INSEE, code postal ou SIREN, et fonctionnent pour n'importe quelle

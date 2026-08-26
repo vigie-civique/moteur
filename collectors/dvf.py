@@ -8,8 +8,29 @@ import time
 import urllib.parse
 import urllib.request
 from .archive import archive_fetch, fetch_json
-from .config import DVF_API, COMMUNE_INSEE, DEPARTEMENT, HEADERS, REQUEST_DELAY
+from .config import (DVF_API, COMMUNE_INSEE, DEPARTEMENT, HEADERS,
+                     NATIONAL_STORE, REQUEST_DELAY)
 from .db import transaction
+from .national_store import ecrire_atomiquement, est_frais
+
+
+DVF_CACHE = NATIONAL_STORE / "dvf"
+DVF_CEREMA_CACHE_JOURS = 90
+DVF_BULK_COURANT_CACHE_JOURS = 30
+
+
+def _cache_cerema(insee: str):
+    return DVF_CACHE / "cerema" / f"{insee}.json"
+
+
+def _cache_departement(year: str):
+    return DVF_CACHE / "departements" / year / f"{DEPARTEMENT}.csv.gz"
+
+
+def _resultats_cerema(data) -> list[dict]:
+    if isinstance(data, dict):
+        return data.get("results", [])
+    return data if isinstance(data, list) else []
 
 
 def fetch_dvf_cerema(insee: str = COMMUNE_INSEE, limit: int = 1000) -> list[dict]:
@@ -25,11 +46,29 @@ def fetch_dvf_cerema(insee: str = COMMUNE_INSEE, limit: int = 1000) -> list[dict
         "offset": 0
     })
     url = f"{DVF_API}?{params}"
+    cache = _cache_cerema(insee)
     try:
-        data = fetch_json(url, source="dvf-cerema", timeout=20)
-        results = data.get("results", data if isinstance(data, list) else [])
-        print(f"  [dvf] {insee} API Cerema → {len(results)} mutations")
+        if est_frais(cache, DVF_CEREMA_CACHE_JOURS):
+            data = json.loads(cache.read_bytes())
+            origine = "magasin partagé"
+        else:
+            data = fetch_json(url, source="dvf-cerema", timeout=20)
+            ecrire_atomiquement(
+                cache, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
+            )
+            origine = "API Cerema"
+        results = _resultats_cerema(data)
+        print(f"  [dvf] {insee} {origine} → {len(results)} mutations")
     except Exception as e:
+        if cache.is_file() and cache.stat().st_size > 0:
+            try:
+                data = json.loads(cache.read_bytes())
+                results = _resultats_cerema(data)
+                print(f"  [dvf] {insee} API indisponible, cache périmé repris "
+                      f"→ {len(results)} mutations")
+                return results
+            except Exception:
+                pass
         print(f"  [dvf] {insee} API Cerema indisponible: {e}")
 
     return results
@@ -55,32 +94,44 @@ def fetch_dvf_csv_bulk(insee: str = COMMUNE_INSEE) -> list[dict]:
     for year in annees:
         url = (f"https://files.data.gouv.fr/geo-dvf/latest/csv"
                f"/{year}/departements/{DEPARTEMENT}.csv.gz")
+        cache = _cache_departement(year)
         try:
-            print(f"  [dvf] {insee} téléchargement {year}/{DEPARTEMENT}.csv.gz...")
-            req = urllib.request.Request(url, headers=HEADERS)
+            # Les millésimes clos sont immuables. Seul celui de l'année en
+            # cours expire, car data.gouv le complète au fil des publications.
+            frais = None if int(year) < date.today().year else DVF_BULK_COURANT_CACHE_JOURS
+            if est_frais(cache, frais):
+                compressed = cache.read_bytes()
+                print(f"  [dvf] {insee} magasin partagé {year}/{DEPARTEMENT}.csv.gz")
+            else:
+                print(f"  [dvf] {insee} téléchargement {year}/{DEPARTEMENT}.csv.gz...")
+                req = urllib.request.Request(url, headers=HEADERS)
 
-            # Le CSV départemental fait ~1,3 Mo ; sur une connexion instable
-            # (partage iPhone), la moitié des téléchargements est coupée en
-            # cours de route par un EOF SSL. On réessaie avant d'abandonner —
-            # sans reprise, la collecte laisse des trous silencieux.
-            compressed = None
-            derniere_erreur = None
-            for tentative in range(3):
-                try:
-                    with urllib.request.urlopen(req, timeout=90) as resp:
-                        compressed = resp.read()
-                    break
-                except urllib.error.HTTPError:
-                    raise           # 404 : millésime non publié, inutile d'insister
-                except Exception as e:
-                    derniere_erreur = e
-                    if tentative < 2:
-                        attente = 3 * (tentative + 1)
-                        print(f"  [dvf] {insee} {year} coupé ({type(e).__name__}), "
-                              f"nouvelle tentative dans {attente}s...")
-                        time.sleep(attente)
-            if compressed is None:
-                raise derniere_erreur
+                # Sur une connexion instable, les téléchargements peuvent être
+                # coupés en cours de route. Le fichier partagé n'est publié
+                # qu'après réception complète.
+                compressed = None
+                derniere_erreur = None
+                for tentative in range(3):
+                    try:
+                        with urllib.request.urlopen(req, timeout=90) as resp:
+                            compressed = resp.read()
+                        ecrire_atomiquement(cache, compressed)
+                        break
+                    except urllib.error.HTTPError:
+                        raise       # 404 : millésime non publié, inutile d'insister
+                    except Exception as e:
+                        derniere_erreur = e
+                        if tentative < 2:
+                            attente = 3 * (tentative + 1)
+                            print(f"  [dvf] {insee} {year} coupé ({type(e).__name__}), "
+                                  f"nouvelle tentative dans {attente}s...")
+                            time.sleep(attente)
+                if compressed is None:
+                    if cache.is_file() and cache.stat().st_size > 0:
+                        compressed = cache.read_bytes()
+                        print(f"  [dvf] {insee} cache périmé repris pour {year}")
+                    else:
+                        raise derniere_erreur
 
             raw = gzip.decompress(compressed).decode("utf-8", errors="replace")
             reader = csv.DictReader(io.StringIO(raw))
