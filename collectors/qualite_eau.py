@@ -1,11 +1,10 @@
 """
-qualite_eau.py — Qualité des cours d'eau du vallon (Hub'Eau, api qualité rivières).
+qualite_eau.py — Qualité des cours d'eau (Hub'Eau, API qualité rivières).
 
-Stations physico-chimie sur les 7 communes (Salindrenque à Thoiras ×2, Gardon
-de St-Jean, ruisseau d'Aiguesmortes…) : stations → table eau_stations,
-analyses → table eau_analyses (clé naturelle code_analyse, INSERT OR IGNORE —
-jamais d'écrasement). Collecte incrémentale : repart de la dernière date de
-prélèvement connue par station.
+Stations physico-chimiques des communes suivies en profondeur : stations →
+table eau_stations, analyses → table eau_analyses (clé naturelle code_analyse,
+INSERT OR IGNORE — jamais d'écrasement). Collecte incrémentale : repart de la
+dernière date de prélèvement connue par station.
 
 Usage :
   python3 -m collectors.qualite_eau                    # collecte incrémentale
@@ -19,7 +18,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from .config import COMMUNES_INSEE, HEADERS
+from .config import HEADERS, communes_du_step
 from .db import get_conn
 
 API = "https://hubeau.eaufrance.fr/api/v2/qualite_rivieres"
@@ -85,7 +84,8 @@ def _get_json(url: str, timeout: int = 120, retries: int = 3) -> dict:
 
 
 def fetch_stations(conn) -> list[str]:
-    url = (f"{API}/station_pc?code_commune={','.join(COMMUNES_INSEE)}"
+    cibles = communes_du_step("eau")
+    url = (f"{API}/station_pc?code_commune={','.join(cibles)}"
            f"&size=200&format=json")
     data = _get_json(url)
     codes = []
@@ -139,7 +139,8 @@ def run(since: str | None):
     conn = get_conn()
     ensure_tables(conn)
     codes = fetch_stations(conn)
-    print(f"[eau] {len(codes)} station(s) sur les 7 communes")
+    print(f"[eau] {len(codes)} station(s) sur "
+          f"{len(communes_du_step('eau'))} commune(s) en profondeur")
     total = 0
     for code in codes:
         lib = conn.execute("SELECT libelle FROM eau_stations WHERE code_station=?",

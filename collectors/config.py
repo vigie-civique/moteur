@@ -164,6 +164,7 @@ PROFONDEUR_STEP = {
     "osm":         "fond",          # points d'intérêt
     "patrimoine":  "fond",          # monuments historiques
     "education":   "fond",          # écoles, collèges, lycées
+    "eau":         "fond",          # stations et analyses des cours d'eau
     # ── institution : ce qui se décide à plusieurs ───────────────────────────
     # `rne` reste sur tout le périmètre parce que les délégués communautaires
     # sont élus dans les communes membres : les en retirer, c'est perdre la
@@ -174,8 +175,6 @@ PROFONDEUR_STEP = {
     "insee":       "institution",
     "georisques":  "institution",
     "sitadel":     "institution",
-    # Une rivière ne s'arrête pas à la limite communale.
-    "eau":         "institution",
     "subventions": "institution",
 }
 

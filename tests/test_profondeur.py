@@ -73,6 +73,7 @@ def test_sans_declaration_le_fond_est_la_commune_de_collecte(instance):
     assert cfg.COMMUNES_FOND_INSEE == ["99001"]
     assert cfg.communes_du_step("sirene") == ["99001"]
     assert cfg.communes_du_step("osm") == ["99001"]
+    assert cfg.communes_du_step("eau") == ["99001"]
 
 
 def test_les_steps_institutionnels_couvrent_tout_le_perimetre(instance):
@@ -203,7 +204,7 @@ def test_les_collecteurs_de_fond_ne_bouclent_plus_sur_le_perimetre_entier():
     observable qu'à la collecte.
     """
     fichiers = ["rna.py", "rna_enrich.py", "bodacc.py", "osm.py",
-                "education.py", "pop_culture.py"]
+                "education.py", "pop_culture.py", "qualite_eau.py"]
     fautifs = []
     for nom in fichiers:
         texte = (ROOT / "collectors" / nom).read_text(encoding="utf-8")
