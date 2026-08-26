@@ -20,6 +20,9 @@ config/dossiers_locaux.json
 # physiques (un acquéreur, un locataire de la commune). Elles se partagent par
 # l'export de décisions vers un dépôt PRIVÉ, jamais par le dépôt du moteur.
 config/saisies.json
+# Arbitrages d'entités : les fiches qu'un humain a décidé de garder
+# distinctes. Propre à une instance, comme seed_local.json.
+config/arbitrages_entites.json
 config/saisies.json.tmp
 # Idem pour l'export lui-même, produit dans l'arborescence de l'instance.
 decisions/

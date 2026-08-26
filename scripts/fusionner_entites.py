@@ -22,6 +22,11 @@ import json
 import re
 import sqlite3
 import unicodedata
+from pathlib import Path
+
+# Racine de l'instance : ce module vit dans `<instance>/scripts/`.
+RACINE = Path(__file__).resolve().parent.parent
+FICHIER_ARBITRAGES = "config/arbitrages_entites.json"
 
 # Tables dont la clé primaire EST l'entité : elles ne se déplacent pas, elles
 # se complètent — la fiche gardée garde ce qu'elle sait, et hérite du reste.
@@ -224,9 +229,52 @@ def fusionner(conn, garde: int, absorbe: int) -> dict:
     return bouge
 
 
+# ── Arbitrages déclarés ─────────────────────────────────────────────────────
+
+def cle_arbitrage(conn, eid: int) -> str:
+    """Clé STABLE d'une fiche, pour qu'un arbitrage survive à une recollecte.
+
+    Un `id` est un compteur local : une décision écrite « garder #4304 et #4458
+    distincts » ne désigne plus rien après une base reconstruite. La clé vient
+    donc de la SOURCE — SIREN, numéro RNA, identifiant OSM — et ne retombe sur
+    le nom que lorsqu'aucun registre ne nomme la chose. Même esprit que
+    `scripts/decisions.py`, dont c'est déjà le principe.
+    """
+    idt = identifiants(conn, eid)
+    if idt["rna"]:
+        return f"rna:{idt['rna']}"
+    if idt["siren"]:
+        return f"siren:{idt['siren']}"
+    if _existe(conn, "places"):
+        r = conn.execute("SELECT osm_id FROM places WHERE entity_id=?", (eid,)).fetchone()
+        if r and r["osm_id"]:
+            return f"osm:{r['osm_id']}"
+    r = conn.execute("SELECT type, name_norm, commune FROM entities WHERE id=?",
+                     (eid,)).fetchone()
+    if r is None:
+        return f"inconnu:{eid}"
+    return f"nom:{r['type']}:{r['name_norm']}:{(r['commune'] or '').lower()}"
+
+
+def arbitrages_declares(racine: Path | str | None = None) -> list[set[str]]:
+    """Les grappes qu'un humain a déjà tranchées : « ces fiches restent distinctes ».
+
+    Sans ça, l'arbitrage s'évapore : la détection les reproposerait à chaque
+    passage, et la personne qui reprend le dossier referait le même travail
+    sans savoir qu'il a été fait.
+    """
+    chemin = Path(racine or RACINE) / FICHIER_ARBITRAGES
+    try:
+        données = json.loads(chemin.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    return [set(e.get("cles") or []) for e in (données.get("distinctes") or [])]
+
+
 # ── Grappes de doublons ──────────────────────────────────────────────────────
 
-def grappes(conn, types=("association", "business", "service", "place")) -> list[dict]:
+def grappes(conn, types=("association", "business", "service", "place"),
+            racine: Path | str | None = None) -> list[dict]:
     """Fiches de même nom normalisé, groupées, avec ce qui empêche de les fusionner.
 
     Les personnes sont hors sujet : « ALAIN ANDRE » l'entreprise et « Alain
@@ -241,9 +289,16 @@ def grappes(conn, types=("association", "business", "service", "place")) -> list
         if t:
             par_cle.setdefault((t, (r["commune"] or "").strip().lower()), []).append(dict(r))
 
+    declares = arbitrages_declares(racine)
     out = []
     for (_, _), membres in par_cle.items():
         if len(membres) < 2:
+            continue
+        # Une grappe déjà tranchée ne revient pas : elle est arbitrée dès que
+        # TOUTES ses fiches sont couvertes par une même déclaration. Un membre
+        # nouveau la fait ressortir — c'est voulu, il n'a pas été arbitré.
+        cles = {cle_arbitrage(conn, m["id"]) for m in membres}
+        if any(cles <= d for d in declares):
             continue
         idts = [identifiants(conn, m["id"]) for m in membres]
         rna = {i["rna"] for i in idts if i["rna"]}

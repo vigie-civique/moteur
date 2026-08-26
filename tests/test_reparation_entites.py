@@ -333,3 +333,57 @@ def test_fusion_herite_d_un_identifiant_unique(base, entite):
     a = base.execute("SELECT rna_id, object FROM associations WHERE entity_id=?",
                      (garde,)).fetchone()
     assert a["rna_id"] == "W303001619" and a["object"] == "musique"
+
+
+# ── Un arbitrage se déclare, sinon il s'évapore ──────────────────────────────
+
+def test_un_arbitrage_declare_ne_revient_plus(base, entite, tmp_path):
+    """Sans déclaration, la détection reproposerait la même grappe à chaque
+    passage, et la personne qui reprend le dossier referait le travail."""
+    from scripts.fusionner_entites import arbitrages_declares, cle_arbitrage
+
+    a = entite("MARTIN FREDERIC", "business", "Val-d'Aigoual")
+    b = entite("FREDERIC MARTIN", "business", "Val-d'Aigoual")
+    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)", (a, "852399203"))
+    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)", (b, "802530220"))
+    base.commit()
+    assert [g for g in grappes(base) if g["obstacle"]]
+
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "arbitrages_entites.json").write_text(json.dumps({
+        "distinctes": [{"cles": ["siren:852399203", "siren:802530220"],
+                        "motif": "l'entreprise individuelle et la société du même artisan"}]
+    }), encoding="utf-8")
+
+    assert arbitrages_declares(tmp_path) == [{"siren:852399203", "siren:802530220"}]
+    assert not grappes(base, racine=tmp_path)
+    assert cle_arbitrage(base, a) == "siren:852399203"
+
+
+def test_un_membre_nouveau_fait_ressortir_la_grappe(base, entite, tmp_path):
+    """Ce qui n'a pas été arbitré doit revenir. Une déclaration ne vaut que
+    pour les fiches qu'elle nomme."""
+    a = entite("LES 4 SAISONS", "business", "Val-d'Aigoual")
+    b = entite("Les 4 Saisons", "business", "Val-d'Aigoual")
+    c = entite("Les 4 saisons", "place", "Val-d'Aigoual")
+    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)", (a, "477876346"))
+    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)", (b, "898730593"))
+    base.execute("INSERT INTO places (entity_id, osm_id) VALUES (?,?)", (c, 4242))
+    base.commit()
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "arbitrages_entites.json").write_text(json.dumps({
+        "distinctes": [{"cles": ["siren:477876346", "siren:898730593"], "motif": "deux sociétés"}]
+    }), encoding="utf-8")
+    assert grappes(base, racine=tmp_path)      # le lieu n'a pas été arbitré
+
+
+def test_une_cle_d_arbitrage_vient_de_la_source(base, entite):
+    """Un `id` est un compteur local : il ne survit pas à une base reconstruite."""
+    from scripts.fusionner_entites import cle_arbitrage
+
+    lieu = entite("La Soierie", "place", "Lasalle")
+    base.execute("INSERT INTO places (entity_id, osm_id) VALUES (?,?)", (lieu, 987654))
+    sans_registre = entite("Comité des fêtes", "association", "Lasalle")
+    base.commit()
+    assert cle_arbitrage(base, lieu) == "osm:987654"
+    assert cle_arbitrage(base, sans_registre).startswith("nom:association:")
