@@ -43,6 +43,22 @@ RNA_FORT = re.compile(r"^W\d{9}$")
 _STOP = {"de", "du", "des", "d", "la", "le", "les", "l", "et", "en", "a", "au",
          "aux", "pour", "sur", "the", "of"}
 
+# Mots qui disent la FORME d'une structure, jamais laquelle. « SARL ET 7 » et
+# « SARL R.D.P. » se réduisent tous deux à {sarl} : les initiales tombent
+# (un caractère), « et » est un mot vide, le chiffre aussi. Deux sociétés sans
+# rapport se retrouvaient dans la même grappe — sauvées ici par leurs SIREN
+# distincts, mais rien ne garantit que deux fiches sans identifiant le soient.
+#
+# Une grappe dont TOUS les jetons sont dans cette liste n'est pas une
+# ressemblance de nom : c'est une absence de nom. Elle sort en arbitrage.
+_FORMES = {
+    "sarl", "sas", "sasu", "eurl", "sci", "scp", "scm", "scop", "scic", "sci",
+    "sa", "snc", "sca", "sem", "gaec", "earl", "gfa", "gie", "asa", "asl",
+    "association", "societe", "groupement", "ets", "etablissements", "cabinet",
+    "entreprise", "compagnie", "cie", "syndicat", "amicale", "comite", "club",
+    "union", "federation", "collectif", "atelier", "maison", "residence",
+}
+
 
 def jeton(nom: str) -> frozenset[str]:
     """Jeu de mots normalisé — apostrophes SOUDÉES, pas découpées.
@@ -309,6 +325,9 @@ def grappes(conn, types=("association", "business", "service", "place"),
             obstacle = f"deux identifiants RNA distincts ({', '.join(sorted(rna))})"
         elif len(siren) > 1:
             obstacle = f"deux SIREN distincts ({', '.join(sorted(siren))})"
+        elif cles_generiques(membres):
+            obstacle = ("le nom ne porte que des mots de forme "
+                        "(SARL, SCI…) — ce n'est pas une ressemblance de nom")
         elif "place" in types_presents and len(types_presents) > 1:
             # Un point OSM qui porte le nom d'une association peut être le local
             # qu'elle occupe — et un local peut en abriter plusieurs. Le nom ne
@@ -316,6 +335,20 @@ def grappes(conn, types=("association", "business", "service", "place"),
             obstacle = "un lieu et une structure portent le même nom"
         out.append({"membres": membres, "identifiants": idts, "obstacle": obstacle})
     return out
+
+
+def cles_generiques(membres: list[dict]) -> bool:
+    """La grappe ne tient-elle QUE sur des mots de forme juridique ?
+
+    « SARL ET 7 » et « SARL R.D.P. » se réduisent l'un et l'autre à {sarl} :
+    les initiales tombent (un caractère), « et » est un mot vide, le chiffre
+    aussi. Ce n'est pas la même société — c'est le même statut.
+    """
+    for m in membres:
+        t = jeton(m.get("name") or "")
+        if t and not t <= _FORMES:
+            return False
+    return True
 
 
 def ouvrir(chemin) -> sqlite3.Connection:

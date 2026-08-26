@@ -387,3 +387,32 @@ def test_une_cle_d_arbitrage_vient_de_la_source(base, entite):
     base.commit()
     assert cle_arbitrage(base, lieu) == "osm:987654"
     assert cle_arbitrage(base, sans_registre).startswith("nom:association:")
+
+
+def test_un_sigle_ne_fait_pas_une_ressemblance_de_nom(base, entite):
+    """« SARL ET 7 » et « SARL R.D.P. » se réduisent l'un et l'autre à {sarl}.
+
+    Les initiales tombent (un caractère), « et » est un mot vide, le chiffre
+    aussi. Deux sociétés sans rapport se retrouvaient dans la même grappe —
+    sauvées à Brassac par leurs SIREN distincts, mais rien ne garantit que deux
+    fiches sans identifiant le soient.
+    """
+    from scripts.fusionner_entites import cles_generiques, jeton
+
+    entite("SARL ET 7", "business", "Roquecourbe")
+    entite("SARL R.D.P.", "business", "Roquecourbe")
+    assert jeton("SARL ET 7") == jeton("SARL R.D.P.") == frozenset({"sarl"})
+    g = [x for x in grappes(base) if len(x["membres"]) == 2]
+    assert g and "mots de forme" in (g[0]["obstacle"] or "")
+
+
+def test_un_vrai_nom_dans_le_sigle_reste_fusionnable(base, entite):
+    """« SCI DE LA FABREGUETTE » porte un nom : seule la forme est générique."""
+    from scripts.fusionner_entites import cles_generiques
+
+    a = entite("SCI DE LA FABREGUETTE", "business", "Lasalle")
+    b = entite("Sci de la Fabréguette", "business", "Lasalle")
+    membres = [{"name": "SCI DE LA FABREGUETTE"}, {"name": "Sci de la Fabréguette"}]
+    assert not cles_generiques(membres)
+    g = [x for x in grappes(base) if {m["id"] for m in x["membres"]} == {a, b}]
+    assert g and g[0]["obstacle"] is None
