@@ -64,3 +64,10 @@ public/static/kit/
 # Sauvegardes de collecte (vigie_collecte.sh) et journaux d'exécution.
 db/*.db.*
 logs/
+
+# Le portail national est un dépôt à part (vigie-civique/portail). Un clone posé
+# ici n'appartient pas au moteur : sans cette règle, un `git add -A` y inscrirait
+# un gitlink sans .gitmodules — une référence que personne ne peut résoudre — et,
+# si son .git venait à disparaître, ses caches et son .env.local partiraient dans
+# ce dépôt public (la règle .env ci-dessus ne couvre pas .env.local).
+/portail-local/
