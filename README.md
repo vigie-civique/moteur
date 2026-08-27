@@ -177,6 +177,10 @@ les CSV DVF départementaux utilisés en repli. Supprimer une base communale ne
 supprime pas ce magasin ; il peut être purgé séparément lorsqu'on souhaite
 récupérer l'espace disque.
 
+C'est un cache, jamais une source : il peut être monté en lecture seule, ou
+appartenir à l'instance qui l'alimente. Une instance qui ne peut pas y écrire
+collecte normalement — elle télécharge, elle se sert, elle ne partage pas.
+
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
 

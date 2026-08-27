@@ -378,7 +378,10 @@ def _telecharger_decp(url: str, nom: str) -> bytes | None:
     source. Les fichiers d'années révolues ne bougent plus, mais celui du mois
     en cours est réécrit tous les jours.
     """
-    DECP_CACHE.mkdir(parents=True, exist_ok=True)
+    # Pas de mkdir ici : le magasin peut être monté en lecture seule, et un
+    # dossier à créer faisait alors échouer la fonction AVANT le téléchargement
+    # — le fichier était joignable, on n'y allait pas. ecrire_atomiquement crée
+    # le dossier au moment où il y a quelque chose à écrire, et sait renoncer.
     cache = DECP_CACHE / nom
     if est_frais(cache, DECP_CACHE_JOURS):
         return cache.read_bytes()
