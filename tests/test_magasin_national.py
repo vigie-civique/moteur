@@ -2,31 +2,39 @@
 from __future__ import annotations
 
 import gzip
+import io
+import json
 from datetime import date
 
 import pytest
 
 
+class ReponseFactice(io.BytesIO):
+    """Une réponse HTTP se lit en flux et se ferme : `copier_atomiquement` la
+    consomme par blocs, elle n'est jamais rendue d'un bloc."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
 def test_decp_reutilise_le_fichier_du_magasin(tmp_path, monkeypatch):
+    pytest.importorskip("ijson", reason="job « tests-deps »")
     from collectors import marches_publics as marches
 
     monkeypatch.setattr(marches, "DECP_CACHE", tmp_path / "decp")
     appels = []
 
-    class Reponse:
-        def __enter__(self):
-            return self
+    def urlopen(*a, **k):
+        appels.append(1)
+        return ReponseFactice(b'{"marches":[]}')
 
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            appels.append(1)
-            return b'{"marches":[]}'
-
-    monkeypatch.setattr(marches.urllib.request, "urlopen", lambda *a, **k: Reponse())
-    assert marches._telecharger_decp("https://example.test/decp", "decp-2025.json")
-    assert marches._telecharger_decp("https://example.test/decp", "decp-2025.json")
+    monkeypatch.setattr(marches.urllib.request, "urlopen", urlopen)
+    for _ in range(2):
+        with marches._consolide_decp("https://example.test/decp", "decp-2025.json") as chemin:
+            assert chemin is not None and chemin.read_bytes() == b'{"marches":[]}'
     assert len(appels) == 1
 
 
@@ -108,6 +116,7 @@ def test_decp_lit_un_cache_deja_rempli_dans_un_magasin_ferme(
     propriété que le magasin promet — une instance qui n'alimente pas doit
     quand même se servir, sans réseau.
     """
+    pytest.importorskip("ijson", reason="job « tests-deps »")
     from collectors import marches_publics as marches
 
     cache = magasin_en_lecture_seule / "decp"
@@ -121,33 +130,32 @@ def test_decp_lit_un_cache_deja_rempli_dans_un_magasin_ferme(
         raise AssertionError("le fichier est là : rien à télécharger")
 
     monkeypatch.setattr(marches.urllib.request, "urlopen", reseau_interdit)
-    assert marches._telecharger_decp("https://example.test/decp", "decp-2025.json")
+    with marches._consolide_decp("https://example.test/decp", "decp-2025.json") as chemin:
+        assert chemin is not None and chemin.read_bytes() == b'{"marches":[]}'
 
 
 def test_decp_rend_le_contenu_que_le_magasin_refuse(
     magasin_en_lecture_seule, monkeypatch
 ):
     """Contenu en main + écriture refusée = collecte réussie, sans réessai."""
+    pytest.importorskip("ijson", reason="job « tests-deps »")
     from collectors import marches_publics as marches
 
     magasin_en_lecture_seule.chmod(0o500)
     monkeypatch.setattr(marches, "DECP_CACHE", magasin_en_lecture_seule / "decp")
     appels = []
 
-    class Reponse:
-        def __enter__(self):
-            return self
+    def urlopen(*a, **k):
+        appels.append(1)
+        return ReponseFactice(b'{"marches":[]}')
 
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            appels.append(1)
-            return b'{"marches":[]}'
-
-    monkeypatch.setattr(marches.urllib.request, "urlopen", lambda *a, **k: Reponse())
+    monkeypatch.setattr(marches.urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(marches.time, "sleep", lambda *a: None)
-    assert marches._telecharger_decp("https://example.test/decp", "decp-2025.json") == b'{"marches":[]}'
+    with marches._consolide_decp("https://example.test/decp", "decp-2025.json") as chemin:
+        assert chemin is not None and chemin.read_bytes() == b'{"marches":[]}'
+        # Le fichier vit hors du magasin fermé : ailleurs, mais lisible.
+        temporaire = chemin
+    assert not temporaire.exists(), "le temporaire doit disparaître à la sortie"
     assert len(appels) == 1
 
 
@@ -197,3 +205,115 @@ def test_dvf_bulk_ne_retelecharge_pas_quand_le_magasin_refuse(
     annees = date.today().year - 2019
     assert len(lignes) == annees
     assert len(appels) == annees
+
+
+# ── Un consolidé DECP se lit en flux, jamais d'un bloc ───────────────────────
+#
+# `decp-2019.json` pèse 944 Mo pour 803 487 marchés. `json.loads` en demandait
+# 5,31 Go — 5,6 fois le fichier — ce qui faisait du step `marches` le poste le
+# plus gourmand d'une collecte entière, devant le build du site. Sur un serveur
+# à 4 Go, la collecte échouait faute de mémoire.
+
+
+CONSOLIDE_TABLEAU = b"""{"marches": [
+  {"id": "A", "acheteur": {"id": "21300140700011", "nom": "Commune"}, "montant": 1000.5},
+  {"id": "B", "acheteur": {"id": "99999999900011", "nom": "Ailleurs"}, "montant": 2000}
+]}"""
+
+CONSOLIDE_OBJET = b"""{"marches": {"marche": [
+  {"id": "C", "acheteur": {"id": "21300140700011", "nom": "Commune"}, "montant": 3000},
+  {"id": "D", "acheteur": {"id": "99999999900011", "nom": "Ailleurs"}, "montant": 4000}
+]}}"""
+
+
+@pytest.mark.parametrize("contenu,attendu", [
+    (CONSOLIDE_TABLEAU, "A"),
+    (CONSOLIDE_OBJET, "C"),
+])
+def test_les_deux_formes_de_consolide_sont_lues(tmp_path, monkeypatch, contenu, attendu):
+    """`{"marches": [...]}` en 2019, `{"marches": {"marche": [...]}}` depuis 2024.
+
+    Le préfixe ijson diffère : une seule forme reconnue, et le collecteur rendrait
+    zéro marché sans rien signaler — le pire des résultats.
+    """
+    pytest.importorskip("ijson", reason="job « tests-deps »")
+    from collectors import marches_publics as marches
+
+    cache = tmp_path / "decp"
+    cache.mkdir()
+    (cache / "decp.json").write_bytes(contenu)
+    monkeypatch.setattr(marches, "DECP_CACHE", cache)
+    monkeypatch.setattr(marches, "COMMUNE_SIREN", "213001407")
+    monkeypatch.setattr(marches, "CAC_SIREN", "200070316")
+    monkeypatch.setattr(marches, "ACHETEUR_JETONS", ())
+
+    trouves = marches.extract_marches_from_file("https://example.test/x", "decp.json")
+    assert [m["id"] for m in trouves] == [attendu]
+
+
+def test_les_montants_restent_des_nombres_ordinaires(tmp_path, monkeypatch):
+    """ijson rend des Decimal par défaut : ni SQLite ni json.dumps n'en veulent.
+
+    Le défaut ne se verrait pas ici mais beaucoup plus loin, à l'écriture.
+    """
+    pytest.importorskip("ijson", reason="job « tests-deps »")
+    from collectors import marches_publics as marches
+
+    cache = tmp_path / "decp"
+    cache.mkdir()
+    (cache / "decp.json").write_bytes(CONSOLIDE_TABLEAU)
+    monkeypatch.setattr(marches, "DECP_CACHE", cache)
+    monkeypatch.setattr(marches, "COMMUNE_SIREN", "213001407")
+    monkeypatch.setattr(marches, "CAC_SIREN", "200070316")
+    monkeypatch.setattr(marches, "ACHETEUR_JETONS", ())
+
+    montant = marches.extract_marches_from_file("https://example.test/x", "decp.json")[0]["montant"]
+    assert isinstance(montant, float)
+    json.dumps({"montant": montant})     # ce que fait la suite du collecteur
+
+
+def test_la_memoire_ne_suit_pas_la_taille_du_fichier(tmp_path, monkeypatch):
+    """La propriété qui justifie tout le changement : lire 100 fois plus gros ne
+    coûte pas 100 fois plus de mémoire.
+
+    Mesuré par `tracemalloc` sur le tas Python, seul endroit où vivaient les
+    5,31 Go : les tampons `bytes`/`str` du fichier entier, puis son arbre
+    d'objets. Le seuil est large — on vérifie un ORDRE DE GRANDEUR, pas un
+    chiffre : ce test doit rougir si quelqu'un rétablit un `read()` global, pas
+    parce qu'une version d'ijson garde quelques kilo-octets de plus.
+    """
+    pytest.importorskip("ijson", reason="job « tests-deps »")
+    import tracemalloc
+    from collectors import marches_publics as marches
+
+    cache = tmp_path / "decp"
+    cache.mkdir()
+    remplissage = [
+        {"id": f"X{i}", "acheteur": {"id": "99999999900011", "nom": "Ailleurs"},
+         "objet": "libellé de remplissage " * 20}
+        for i in range(20_000)
+    ]
+    gros = {"marches": [
+        {"id": "A", "acheteur": {"id": "21300140700011", "nom": "Commune"}},
+        *remplissage,
+    ]}
+    fichier = cache / "decp.json"
+    fichier.write_text(json.dumps(gros), encoding="utf-8")
+    taille = fichier.stat().st_size
+    assert taille > 5_000_000, "l'épreuve n'a de sens que sur un gros fichier"
+
+    monkeypatch.setattr(marches, "DECP_CACHE", cache)
+    monkeypatch.setattr(marches, "COMMUNE_SIREN", "213001407")
+    monkeypatch.setattr(marches, "CAC_SIREN", "200070316")
+    monkeypatch.setattr(marches, "ACHETEUR_JETONS", ())
+
+    tracemalloc.start()
+    trouves = marches.extract_marches_from_file("https://example.test/x", "decp.json")
+    _, pic = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert [m["id"] for m in trouves] == ["A"]
+    assert pic < taille / 4, (
+        f"pic de {pic / 1e6:.1f} Mo pour un fichier de {taille / 1e6:.1f} Mo : "
+        "le consolidé est de nouveau chargé d'un bloc"
+    )

@@ -20,8 +20,12 @@ Usage :
 """
 
 import argparse
+import contextlib
+import gzip
 import json
 import re
+import shutil
+import tempfile
 import time
 import unicodedata
 import urllib.error
@@ -37,7 +41,8 @@ from .config import (
 )
 from .db import transaction, upsert_entity
 from .archive import archive_fetch
-from .national_store import ecrire_atomiquement, est_frais
+from .national_store import (copier_atomiquement, est_frais,
+                             magasin_ecrivable)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -362,104 +367,140 @@ def _nom_cache(titre: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", titre)[:120] or "decp.json"
 
 
-def _telecharger_decp(url: str, nom: str) -> bytes | None:
-    """Télécharge un fichier DECP consolidé, avec cache et reprise.
+@contextlib.contextmanager
+def _consolide_decp(url: str, nom: str):
+    """Met un consolidé DECP à disposition SUR LE DISQUE, jamais en mémoire.
 
-    Les fichiers annuels pèsent plusieurs centaines de Mo et static.data.gouv.fr
-    rend la main lentement : un `read()` de 120 s expire régulièrement en milieu
-    de transfert. Trois conséquences, corrigées ici :
+    Les fichiers annuels pèsent plusieurs centaines de Mo — 944 Mo pour 2019 — et
+    static.data.gouv.fr rend la main lentement : un `read()` de 120 s expire
+    régulièrement en milieu de transfert. Quatre conséquences, corrigées ici :
 
       - un seul fichier manquant faisait échouer tout le step en fin de course
         (`_relever_echecs_reseau`), et emportait les quatre steps suivants ;
       - relancer la collecte retéléchargeait les 37 fichiers déjà lus ;
-      - l'échec n'était pas réessayé, alors qu'il est presque toujours passager.
+      - l'échec n'était pas réessayé, alors qu'il est presque toujours passager ;
+      - **le fichier était intégralement chargé en mémoire** avant d'être parsé.
 
     Le cache est daté : au-delà de DECP_CACHE_JOURS, le fichier est repris à la
     source. Les fichiers d'années révolues ne bougent plus, mais celui du mois
     en cours est réécrit tous les jours.
+
+    Rend `None` quand la source est injoignable et qu'aucun cache ne subsiste.
+    Quand le magasin refuse l'écriture, le fichier vit dans un temporaire, le
+    temps de la lecture : un cache partagé en lecture seule n'interrompt pas une
+    collecte.
     """
-    # Pas de mkdir ici : le magasin peut être monté en lecture seule, et un
-    # dossier à créer faisait alors échouer la fonction AVANT le téléchargement
-    # — le fichier était joignable, on n'y allait pas. ecrire_atomiquement crée
-    # le dossier au moment où il y a quelque chose à écrire, et sait renoncer.
     cache = DECP_CACHE / nom
     if est_frais(cache, DECP_CACHE_JOURS):
-        return cache.read_bytes()
+        yield cache
+        return
 
-    dernier = None
-    for essai in range(1, DECP_ESSAIS + 1):
-        req = urllib.request.Request(url, headers=HEADERS)
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                raw = resp.read()
-            ecrire_atomiquement(cache, raw)
-            return raw
-        except Exception as e:
-            dernier = e
-            # Un 404 ou un 403 ne s'améliorera pas en attendant : seules les
-            # coupures et les erreurs serveur méritent un nouvel essai.
-            if isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429:
-                break
-            if essai < DECP_ESSAIS:
-                attente = 5 * essai
-                print(f"\n    essai {essai}/{DECP_ESSAIS} échoué ({e}), "
-                      f"nouvelle tentative dans {attente}s…", end=" ", flush=True)
-                time.sleep(attente)
+    # Décidé AVANT d'ouvrir la connexion : une réponse HTTP ne se rembobine pas.
+    partage = magasin_ecrivable(DECP_CACHE)
+    dossier_temporaire = None if partage else tempfile.mkdtemp(prefix="vigie-decp-")
+    destination = cache if partage else Path(dossier_temporaire) / nom
 
-    # Un fichier périmé vaut mieux que rien : on le signale comme tel.
-    if cache.exists():
-        print(f"\n    [réseau KO] reprise du cache local ({nom})", end=" ", flush=True)
-        return cache.read_bytes()
+    try:
+        dernier = None
+        for essai in range(1, DECP_ESSAIS + 1):
+            req = urllib.request.Request(url, headers=HEADERS)
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    if copier_atomiquement(destination, resp):
+                        yield destination
+                        return
+                    raise OSError(f"écriture impossible dans {destination.parent}")
+            except Exception as e:
+                dernier = e
+                # Un 404 ou un 403 ne s'améliorera pas en attendant : seules les
+                # coupures et les erreurs serveur méritent un nouvel essai.
+                if isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429:
+                    break
+                if essai < DECP_ESSAIS:
+                    attente = 5 * essai
+                    print(f"\n    essai {essai}/{DECP_ESSAIS} échoué ({e}), "
+                          f"nouvelle tentative dans {attente}s…", end=" ", flush=True)
+                    time.sleep(attente)
 
-    print(f"\n  [erreur téléchargement] {url[:60]} → {dernier}")
-    _echecs_reseau.append(f"{url[:80]} → {dernier}")
-    return None
+        # Un fichier périmé vaut mieux que rien : on le signale comme tel.
+        if cache.exists():
+            print(f"\n    [réseau KO] reprise du cache local ({nom})", end=" ", flush=True)
+            yield cache
+            return
+
+        print(f"\n  [erreur téléchargement] {url[:60]} → {dernier}")
+        _echecs_reseau.append(f"{url[:80]} → {dernier}")
+        yield None
+    finally:
+        if dossier_temporaire:
+            shutil.rmtree(dossier_temporaire, ignore_errors=True)
+
+
+def _ouvrir_decp(chemin: Path):
+    """Ouvre un consolidé en flux, qu'il soit gzippé ou non."""
+    with chemin.open("rb") as sonde:
+        gzippe = sonde.read(2) == b"\x1f\x8b"
+    return gzip.open(chemin, "rb") if gzippe else chemin.open("rb")
+
+
+def _chemin_des_marches(chemin: Path) -> str:
+    """Les consolidés ont DEUX formes, et le préfixe ijson en dépend.
+
+        {"marches": [ … ]}                → marches.item      (2019)
+        {"marches": {"marche": [ … ]}}    → marches.marche.item (2024, 2025)
+
+    Sondé sur les premiers kilo-octets : la forme se lit à l'ouverture, il n'y a
+    aucune raison de parcourir le fichier deux fois pour la découvrir.
+    """
+    with _ouvrir_decp(chemin) as flux:
+        debut = flux.read(4096).decode("utf-8", errors="replace")
+    apres = debut.split('"marches"', 1)[-1].lstrip()
+    if apres.startswith(":"):
+        apres = apres[1:].lstrip()
+    return "marches.item" if apres.startswith("[") else "marches.marche.item"
 
 
 def extract_marches_from_file(url: str, nom: str = "") -> list[dict]:
-    """Télécharge et filtre un fichier DECP consolidé JSON sur le périmètre."""
-    import gzip as _gzip
+    """Filtre un consolidé DECP sur le périmètre, marché par marché.
+
+    Le fichier n'est jamais monté en mémoire. `json.loads` sur le consolidé 2019
+    demandait 5,3 Go — 5,6 fois la taille du fichier — et faisait de ce step le
+    poste le plus gourmand de toute une collecte, loin devant le build du site.
+    Le parcours incrémental retient les quelques marchés du périmètre et laisse
+    filer les 803 000 autres.
+    """
+    import ijson
+
     # Le nom de cache vient du titre de la ressource (decp-2025-03.json), pas de
     # l'URL : data.gouv sert ces fichiers derrière un identifiant opaque.
-    raw = _telecharger_decp(url, _nom_cache(nom or url))
-    if raw is None:
-        return []
-
-    try:
-        data = json.loads(_gzip.decompress(raw))
-    except Exception:
-        try:
-            data = json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception as e:
-            print(f"  [erreur parsing JSON] {e}")
+    with _consolide_decp(url, _nom_cache(nom or url)) as chemin:
+        if chemin is None:
             return []
 
-    # Format DECP consolidé officiel : {"marches": [{...}]}
-    if isinstance(data, dict):
-        items = data.get("marches", [])
-        if isinstance(items, dict):
-            items = items.get("marche", [])
-    elif isinstance(data, list):
-        items = data
-    else:
-        return []
+        found = []
+        try:
+            prefixe = _chemin_des_marches(chemin)
+            with _ouvrir_decp(chemin) as flux:
+                # use_float : sans lui ijson rend des Decimal, que ni SQLite ni
+                # json.dumps ne savent écrire — les montants tomberaient plus loin.
+                for m in ijson.items(flux, prefixe, use_float=True):
+                    if not isinstance(m, dict):
+                        continue
+                    acheteur = m.get("acheteur") or {}
+                    if not isinstance(acheteur, dict):
+                        continue
+                    acheteur_id  = str(acheteur.get("id", ""))
+                    acheteur_nom = str(acheteur.get("nom", "")).lower()
 
-    found = []
-    for m in items:
-        if not isinstance(m, dict):
-            continue
-        acheteur = m.get("acheteur") or {}
-        if not isinstance(acheteur, dict):
-            continue
-        acheteur_id  = str(acheteur.get("id", ""))
-        acheteur_nom = str(acheteur.get("nom", "")).lower()
+                    is_commune = acheteur_id.startswith(COMMUNE_SIREN)
+                    is_epci    = acheteur_id.startswith(CAC_SIREN)
+                    is_name    = any(j in acheteur_nom for j in ACHETEUR_JETONS)
 
-        is_commune = acheteur_id.startswith(COMMUNE_SIREN)
-        is_epci    = acheteur_id.startswith(CAC_SIREN)
-        is_name    = any(j in acheteur_nom for j in ACHETEUR_JETONS)
-
-        if is_commune or is_epci or is_name:
-            found.append(m)
+                    if is_commune or is_epci or is_name:
+                        found.append(m)
+        except Exception as e:
+            print(f"  [erreur lecture DECP] {e}")
+            return []
 
     return found
 

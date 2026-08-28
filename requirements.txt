@@ -37,6 +37,11 @@ certifi==2026.7.22    # archive.py : vérification SSL. Arrive avec requests, ma
                       # le code l'importe en propre — donc il se déclare en propre.
 openpyxl==3.1.5       # dgf_notifications.py : les exports .xlsx du portail DGCL.
                       # Sans lui, le mode CSV marche et le mode Excel casse tard.
+ijson==3.5.1          # marches_publics.py : parcours INCRÉMENTAL des consolidés
+                      # DECP. Le fichier 2019 pèse 944 Mo ; `json.loads` en
+                      # demandait 5,3 Go de mémoire vive — plus que n'en a un
+                      # petit serveur. En flux, le pic tombe à 23 Mo pour la même
+                      # durée (backend C `yajl2_c`, livré avec la roue).
 
 # ─── Lecture des procès-verbaux (PDF, puis OCR si le PDF est une image) ──────
 pdfplumber==0.11.10

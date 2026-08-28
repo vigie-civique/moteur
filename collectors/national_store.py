@@ -15,6 +15,7 @@ il le garde, il ne le partage simplement pas.
 from __future__ import annotations
 
 import os
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -69,3 +70,49 @@ def ecrire_atomiquement(path: Path, contenu: bytes) -> bool:
             temporaire.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def copier_atomiquement(path: Path, source, taille_bloc: int = 1 << 20) -> bool:
+    """Écrit un flux dans le magasin sans jamais le charger entièrement en mémoire.
+
+    Même contrat que ``ecrire_atomiquement`` — publication par remplacement, et
+    un refus d'écriture rend ``False`` au lieu de lever. La différence est le
+    plafond de mémoire : un consolidé DECP annuel pèse jusqu'à 950 Mo, et
+    ``resp.read()`` en faisait autant de mémoire vive avant même le parsing.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _signaler_refus(path, e)
+        return False
+
+    temporaire = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.part")
+    try:
+        with temporaire.open("wb") as sortie:
+            shutil.copyfileobj(source, sortie, taille_bloc)
+        os.replace(temporaire, path)
+        return True
+    except OSError as e:
+        _signaler_refus(path, e)
+        return False
+    finally:
+        try:
+            temporaire.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def magasin_ecrivable(dossier: Path) -> bool:
+    """Dit si le magasin accepte une écriture, AVANT d'ouvrir une connexion.
+
+    Le savoir après coup ne servirait à rien : une réponse HTTP ne se rembobine
+    pas, et un consolidé de 950 Mo ne se retélécharge pas pour rien.
+    """
+    try:
+        dossier.mkdir(parents=True, exist_ok=True)
+        sonde = dossier / f".ecriture-{os.getpid()}-{uuid.uuid4().hex}"
+        sonde.touch()
+        sonde.unlink()
+        return True
+    except OSError:
+        return False
