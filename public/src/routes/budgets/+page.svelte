@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE, COMMUNE_DE, INSEE, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
+  import SourceAbsente from '$lib/components/SourceAbsente.svelte'
   import { euros } from '$lib/data.js'
 
   // Rendu au build par +page.server.js.
@@ -9,6 +10,7 @@
   $: annexe = data.budget.annexe || []
   $: ofgl = data.ofgl.ofgl || []
   $: vote = data.budgetVote.budget_vote || []
+  $: sourceVote = data.sourceVote || { etat: 'servie', sources: [] }
   // Exercice par défaut = année OFGL la plus récente (réalisé consolidé).
   // Calculé au premier rendu seulement : ensuite `year` suit le sélecteur.
   let year = null
@@ -24,7 +26,7 @@
     ? [...new Set(ofgl.map(r => r.year))]
     : [...new Set(annuel.map(r => r.year))]
   $: years = [...new Set([...realizedYears, ...voteYears])].sort((a, b) => b - a)
-  const isVoteOnly = (y) => voteYears.includes(y) && !ofglYearsSet.has(y)
+  $: isVoteOnly = (y) => voteYears.includes(y) && !ofglYearsSet.has(y)
   $: isVoteYear = isVoteOnly(year)
   // Données du budget voté pour l'exercice choisi.
   $: voteRows = vote.filter(r => r.year === year)
@@ -55,7 +57,15 @@
   $: gH = (name) => { const r = ofglOf(ofglYearRows, name); return r ? r.euros_par_habitant : null }
 
   // ─── DGFiP : détail par compte (où va / d'où vient l'argent) ───────────────────
-  const lines = (cat) => annuel
+  //
+  // `$:` et non `const` : une fonction déclarée en `const` qui lit `annuel` et
+  // `year` ne crée aucune dépendance réactive. `$: depRows = lines(…)` ne
+  // mentionne ni l'un ni l'autre — Svelte ne réexécutait donc jamais ce calcul
+  // quand on changeait d'exercice, et pire, l'ordonnait à l'hydratation AVANT
+  // `$: annuel = …` : `annuel.filter` sur `undefined` cassait l'hydratation de
+  // toute la page, ce qui figeait AUSSI le sélecteur. Même piège que dans
+  // territoire/+page.svelte.
+  $: lines = (cat) => annuel
     .filter(r => r.year === year && r.categorie === cat && (r.montant || 0) > 0)
     .sort((a, b) => b.montant - a.montant)
   $: depRows = lines('depenses_fonctionnement')
@@ -97,7 +107,7 @@
   ]
   let showPerHab = false
   $: ofglIndex = (() => { const m = new Map(); for (const r of ofgl) m.set(r.agregat + '|' + r.year, r); return m })()
-  const ofglCell = (name, y) => ofglIndex.get(name + '|' + y) || null
+  $: ofglCell = (name, y) => ofglIndex.get(name + '|' + y) || null
   // Un agrégat n'est affiché que s'il a au moins une valeur sur la période.
   $: ofglGroupsShown = OFGL_GROUPS
     .map(g => ({ title: g.title, items: g.items.filter(name => ofglYears.some(y => ofglCell(name, y))) }))
@@ -144,12 +154,12 @@
   // Un montant seul n'apprend rien : 1,83 M€, est-ce beaucoup ? Trois questions
   // rendent un chiffre lisible — combien, comparé à quoi, comment ça évolue.
   // Le €/hab répond à la deuxième, la série à la troisième.
-  const serieDe = (agregat) => {
+  $: serieDe = (agregat) => {
     const m = new Map()
     for (const r of ofgl) if (r.agregat === agregat && r.montant != null) m.set(r.year, r.montant)
     return m
   }
-  const evolution = (agregat, depuis) => {
+  $: evolution = (agregat, depuis) => {
     const m = serieDe(agregat)
     const av = m.get(depuis), ap = m.get(year)
     if (av == null || ap == null || !av) return null
@@ -192,6 +202,11 @@
   </header>
 
   {#if !ofgl.length && !annuel.length}<p class="muted">Aucune donnée budgétaire.</p>{/if}
+
+  {#if sourceVote.etat === 'absente' && !vote.length}
+    <SourceAbsente etat={sourceVote.etat} sources={sourceVote.sources}
+                   dernier={sourceVote.dernier} quoi="Le budget primitif voté" />
+  {/if}
 
   {#if year}
     {#if isVoteYear}
