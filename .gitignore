@@ -61,7 +61,13 @@ db/*.db
 db/*.db-wal
 db/*.db-shm
 data/
-territoire/
+# Ancré : sans la barre de tête, `territoire/` désignait N'IMPORTE QUEL
+# répertoire de ce nom, à n'importe quelle profondeur — dont
+# `public/src/routes/territoire/`, la page « Le territoire en chiffres ». Ses
+# deux fichiers étaient déjà suivis, donc rien n'a été perdu ; mais un fichier
+# NEUF y aurait été ignoré en silence. Ce qu'on veut ignorer, c'est le
+# répertoire d'instance à la racine (les GeoJSON du périmètre communal).
+/territoire/
 venv/
 public/static/data/
 dashboard/node_modules/
