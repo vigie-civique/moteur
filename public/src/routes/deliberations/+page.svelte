@@ -2,11 +2,16 @@
   import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import { libelleAnnee } from '$lib/actes.js'
   import Niveau from '$lib/components/Niveau.svelte'
+  import SourceAbsente from '$lib/components/SourceAbsente.svelte'
 
   // Rendu au build par +page.server.js : sommaire des millésimes + index
   // compact des titres. Les actes eux-mêmes vivent sur /deliberations/<année>.
   export let data
   $: ({ annees, index, total, nCM, nCC, anneeCourante, nCourante, votes } = data)
+  // Aucune délibération collectée : ne pas afficher « 0 acte », qui se lit
+  // « le conseil n'a rien décidé » au lieu de « nous n'avons pas collecté les
+  // comptes rendus ». C'est le cas de tout dossier national.
+  $: source = data.source || { etat: 'servie', sources: [] }
 
   let q = '', instance = 'all'
 
@@ -34,7 +39,10 @@
   <h1>Délibérations &amp; actes officiels</h1>
   <p class="sub">Conseil municipal, communauté de communes et actes issus des sources officielles. (Agenda culturel → <a href="/vie-locale">Vie locale</a>.)</p>
 
-  {#if !total}
+  {#if source.etat === 'absente'}
+    <SourceAbsente etat={source.etat} sources={source.sources} dernier={source.dernier} travailManuel
+                   quoi="Les actes des assemblées" />
+  {:else if !total}
     <p class="err">Aucun acte dans ce jeu de données.</p>
   {:else}
     <!-- « 592 actes » ne figure dans aucun document : c'est le compte de ce que

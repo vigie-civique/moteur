@@ -1,7 +1,7 @@
 <script>
   import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
-  import { INSTITUTIONAL, libelleAnnee } from '$lib/actes.js'
+  import { INSTITUTIONAL, instanceDe, libelleAnnee } from '$lib/actes.js'
   import { axesDe } from '$lib/provenance.js'
 
   // Rendu au build par +page.server.js : les actes du millésime sont déjà
@@ -11,7 +11,7 @@
 
   let q = '', instance = 'all'
 
-  const inst = (e) => INSTITUTIONAL[e.type]?.instance
+  const inst = (e) => instanceDe(e)
   $: filtered = items
     .filter((e) => instance === 'all' || inst(e) === instance)
     .filter((e) => !q || (e.title || '').toLowerCase().includes(q.toLowerCase()))

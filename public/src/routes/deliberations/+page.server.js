@@ -10,8 +10,9 @@
 // le découpage faisait perdre.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
-import { DATA_DIR } from '$lib/donnees.server.js'
+import { INSTITUTIONAL, anneeDe, instanceDe } from '$lib/actes.js'
+import { DATA_DIR, lireJSON } from '$lib/donnees.server.js'
+import { etatSource } from '$lib/couverture.js'
 
 export const prerender = true
 
@@ -29,7 +30,7 @@ export function load() {
     if (!parAnnee.has(a)) parAnnee.set(a, { annee: a, total: 0, cm: 0, cc: 0 })
     const g = parAnnee.get(a)
     g.total++
-    if (INSTITUTIONAL[e.type].instance === 'CM') g.cm++
+    if (instanceDe(e) === 'CM') g.cm++
     else g.cc++
   }
 
@@ -44,7 +45,7 @@ export function load() {
     date: e.date || null,
     titre: e.title || '',
     annee: anneeDe(e),
-    instance: INSTITUTIONAL[e.type].instance,
+    instance: instanceDe(e),
     label: INSTITUTIONAL[e.type].label,
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
@@ -62,11 +63,14 @@ export function load() {
   const anneeCourante = new Date().toISOString().slice(0, 4)
 
   return {
+    // Un dossier national exclut par conception les collecteurs de PV : sans
+    // cette information la page affichait « 0 acte » comme un résultat.
+    source: etatSource(lireJSON('couverture.json', {}), 'deliberations'),
     annees,
     index,
     total: actes.length,
-    nCM: actes.filter((e) => INSTITUTIONAL[e.type].instance === 'CM').length,
-    nCC: actes.filter((e) => INSTITUTIONAL[e.type].instance === 'CC').length,
+    nCM: actes.filter((e) => instanceDe(e) === 'CM').length,
+    nCC: actes.filter((e) => instanceDe(e) === 'CC').length,
     anneeCourante,
     nCourante: parAnnee.get(anneeCourante)?.total ?? 0,
     votes: avecVote.length ? {
