@@ -1,7 +1,8 @@
 <script>
-  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
+  import { CENTROID_LAT, CENTROID_LNG, COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { euros } from '$lib/data.js'
+  import { poserFond } from '$lib/carte/fond.js'
   import Niveau from '$lib/components/Niveau.svelte'
 
   // Données rendues au build par +page.server.js ; seule la carte Leaflet
@@ -11,6 +12,7 @@
   $: constat = data.constat
   let mapEl, map, L
   let mapErreur = ''
+  let fondAbsent = ''
   let natureFilter = 'all'
 
   // La carte, elle, reste client-only : Leaflet a besoin du DOM. Son échec
@@ -20,10 +22,17 @@
       const pts = dvf.filter((t) => t.lat && t.lng)
       L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
-      map = L.map(mapEl, { attributionControl: true }).setView([43.99, 3.87], 13)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(map)
+      // Le centre était écrit en dur sur les coordonnées de Lasalle — 43.99,
+      // 3.87 — dans un moteur qui sert trois communes. Invisible tant qu'il y a
+      // des mutations, puisque le cadrage sur les points le corrige aussitôt ;
+      // une commune sans DVF publiable ouvrait sa page d'urbanisme sur les
+      // Cévennes. Le centroïde de l'instance, comme /carte.
+      map = L.map(mapEl, { attributionControl: true })
+        .setView([CENTROID_LAT, CENTROID_LNG], 13)
+      // Fond servi avec le site, jamais chez un tiers : l'IP du lecteur ne part
+      // nulle part, et le dossier hors-ligne a une carte. Cf. $lib/carte/fond.js
+      const fond = await poserFond(L, map)
+      if (!fond.ok) fondAbsent = fond.raison
       for (const t of pts) {
         L.circleMarker([t.lat, t.lng], {
           radius: 5, color: '#f97316', weight: 1, fillColor: '#fb923c', fillOpacity: 0.75,
@@ -135,6 +144,9 @@
     </p>
   {/if}
   {#if mapErreur}<p class="err">La carte n'a pas pu être affichée : {mapErreur}</p>{/if}
+  {#if fondAbsent}<p class="err">Le fond de carte n'a pas pu être chargé —
+    les mutations ci-dessous restent à leur position exacte. Fond attendu&nbsp;:
+    <code>static/carte/fond.pmtiles</code> (<code>scripts/carte_fond.py</code>).</p>{/if}
 
   {#if dvf.length}
     <div class="tiles">

@@ -78,6 +78,34 @@ const VALEURS_CASSEES = [
   { motif: /(?<![\w-])Invalid Date(?![\w-])/, nom: 'Invalid Date' },
 ]
 
+// Fonds de carte servis par des tiers.
+//
+// Trois cartes du site les chargeaient ailleurs — CARTO pour /carte,
+// `tile.openstreetmap.org` pour /urbanisme et /entite. L'adresse IP de chaque
+// lecteur partait donc chez un tiers, sur un site dont la page Confidentialité
+// promet qu'aucun traceur ne le suit ; le dossier hors-ligne n'avait aucun
+// fond ; et la politique d'usage des tuiles d'openstreetmap.org exclut l'usage
+// systématique qu'en fait un site prérendu de plusieurs milliers de fiches.
+//
+// Corrigé en deux fois : /carte le 29/08/2026, /urbanisme et /entite le
+// 30/08/2026. Deux fois, parce que la première correction n'a pas été
+// contrôlée — rien dans la chaîne ne pouvait dire qu'il en restait deux. C'est
+// ce que ce garde-fou répare : la prochaine carte ajoutée au site sera prise
+// ici si elle appelle un tiers.
+//
+// ⚠️ Ce sont les hôtes de TUILES qui sont refusés, jamais openstreetmap.org
+// lui-même : l'attribution ODbL exige un lien vers `www.openstreetmap.org`, et
+// une fiche a le droit de citer `openstreetmap.org/node/…` comme sa source.
+// Un lien est une chose que le lecteur clique, une tuile est une requête que
+// son navigateur fait sans lui demander.
+const FONDS_TIERS = /(?:[a-z0-9-]+\.)*(?:tile\.openstreetmap\.org|tile\.osm\.org|cartocdn\.com|cartodb-basemaps[a-z0-9-]*\.global\.ssl\.fastly\.net|stadiamaps\.com|api\.mapbox\.com|opentopomap\.org|server\.arcgisonline\.com|tiles\.wmflabs\.org|maptiler\.com)/
+
+// Le fond tiers ne vit pas dans le HTML : il est écrit dans le bundle que la
+// page charge. Un contrôle limité aux `.html` aurait vu le site du 29/08 tout
+// propre, alors que deux modules de `_app/immutable/nodes/` appelaient encore
+// openstreetmap. On lit donc aussi ce qui est SERVI à côté des pages.
+const EXT_SERVIES = /\.(html|js|css)$/
+
 /** Texte réellement affiché : hors balises, hors commentaires HTML. */
 const texteAffiche = (html) => html
   .replace(/<script[\s\S]*?<\/script>/g, ' ')
@@ -86,11 +114,15 @@ const texteAffiche = (html) => html
   .replace(/<[^>]+>/g, ' ')
 
 const pages = []
+const servis = []
 ;(function parcourir(dir) {
   for (const f of readdirSync(dir)) {
     const p = join(dir, f)
     if (statSync(p).isDirectory()) parcourir(p)
-    else if (f.endsWith('.html')) pages.push(p)
+    else {
+      if (f.endsWith('.html')) pages.push(p)
+      if (EXT_SERVIES.test(f)) servis.push(p)
+    }
   }
 })(BUILD)
 
@@ -119,6 +151,15 @@ for (const p of pages) {
   }
 }
 
+for (const p of servis) {
+  const rel = p.slice(BUILD.length + 1)
+  const m = readFileSync(p, 'utf8').match(FONDS_TIERS)
+  if (m) {
+    problemes.push(`${rel} : appelle un fond de carte tiers (${m[0]}) — `
+      + "l'IP du lecteur partirait chez lui")
+  }
+}
+
 // Un contrôle qui passe sur zéro page ne contrôle rien, et son « ✓ » est plus
 // dangereux qu'une erreur : c'est exactement ce qu'il a affiché le 23/08/2026
 // devant un répertoire inexistant. Le garde-fou doit d'abord se garantir
@@ -136,7 +177,9 @@ if (problemes.length) {
   console.error("\nPage vide : les données doivent être lues au build dans")
   console.error('+page.server.js — gabarit src/routes/marches/+page.server.js.')
   console.error("Valeur cassée : le gabarit affiche un champ que le `load` ne")
-  console.error("renvoie pas, ou un calcul sur une valeur absente.\n")
+  console.error("renvoie pas, ou un calcul sur une valeur absente.")
+  console.error("Fond tiers : poser le fond avec `poserFond` de")
+  console.error("src/lib/carte/fond.js, jamais un L.tileLayer distant.\n")
   process.exit(1)
 }
 

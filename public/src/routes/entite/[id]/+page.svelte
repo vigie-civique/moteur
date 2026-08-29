@@ -2,6 +2,7 @@
   import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { TYPE_LABELS, euros } from '$lib/data.js'
+  import { poserFond } from '$lib/carte/fond.js'
 
   // Fiche acteur. Jusqu'au 26/07/2026 elle n'affichait que nom, type, fiabilité
   // et un point sur la carte : les 6 154 liens acteur↔événement de la base
@@ -78,6 +79,7 @@
   }
 
   let mapEl, map, L
+  let fondAbsent = ''
 
   const ROLE_LABELS = {
     sujet: 'Concerné', 'mentionné': 'Cité', organisateur: 'Organisateur',
@@ -124,9 +126,13 @@
     L = (await import('leaflet')).default
     await import('leaflet/dist/leaflet.css')
     map = L.map(mapEl, { attributionControl: true, zoomControl: false }).setView([entity.lat, entity.lng], 15)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map)
+    // Fond servi avec le site, jamais chez un tiers. C'est la page la plus
+    // nombreuse du site — un millier de fiches par instance — donc celle qui
+    // envoyait le plus d'adresses de lecteurs à openstreetmap.org, et sur
+    // laquelle la politique d'usage de leurs tuiles était le plus clairement
+    // dépassée. Cf. $lib/carte/fond.js
+    const fond = await poserFond(L, map)
+    if (!fond.ok) fondAbsent = fond.raison
     L.circleMarker([entity.lat, entity.lng], { radius: 8, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: .9 }).addTo(map)
   })
 
@@ -410,6 +416,8 @@
 
       {#if entity.lat && entity.lng}
         <div class="map" bind:this={mapEl}></div>
+        {#if fondAbsent}<p class="sans-fond">Fond de carte indisponible — le
+          repère reste à sa position exacte.</p>{/if}
       {/if}
     </div>
   {/if}
@@ -507,6 +515,7 @@
   .events a { font-size: .78rem; color: var(--gris); margin-left: .4rem; }
 
   .map { height: 320px; border-radius: 10px; border: 1px solid var(--trait); }
+  .sans-fond { margin: .5rem 0 0; font-size: .82rem; color: var(--gris); }
   .err { color: var(--depense); }
   @media (max-width: 760px) {
     .cols { grid-template-columns: 1fr; } .map { height: 260px; }
