@@ -52,15 +52,31 @@
   $: medMaison = median(maisons.map(t => t.price))
   $: medM2 = median(dvf.filter(t => matches(t, /maison|appartement/i)).map(t => t.price_per_m2))
 
-  // Marché immobilier par an : volume de mutations + prix médian €/m² du bâti
+  // Marché immobilier par an : prix médian €/m² du bâti, et volume de mutations.
+  //
+  // La HAUTEUR porte le prix, pas le nombre : c'est le prix qu'on vient lire sur
+  // un graphique intitulé « le marché immobilier ». L'échelle part de zéro —
+  // tronquée, elle ferait passer 5 % d'écart pour un doublement.
+  //
+  // `nBati` est compté à part parce que la médiane ne repose que sur lui : une
+  // commune peut enregistrer trente mutations dans l'année dont deux maisons.
+  // Sur deux ventes, une « médiane » n'en est pas une, et le graphique
+  // annoncerait une flambée de 764 % — c'est le cas réel de Montselgues en 2022.
   $: dvfYears = [...new Set(dvf.map(t => (t.date || '').slice(0, 4)).filter(Boolean))].sort()
   $: dvfByYear = dvfYears.map(y => {
     const inYear = dvf.filter(t => (t.date || '').slice(0, 4) === y)
-    const bati = inYear.filter(t => matches(t, /maison|appartement/i))
-    return { year: y, n: inYear.length, medM2: median(bati.map(t => t.price_per_m2)) }
+    const bati = inYear.filter(t => matches(t, /maison|appartement/i) && t.price_per_m2)
+    return { year: y, n: inYear.length, nBati: bati.length,
+             medM2: median(bati.map(t => t.price_per_m2)) }
   })
-  $: dvfYrMax = Math.max(...dvfByYear.map(d => d.n), 1)
   $: dvfM2Max = Math.max(...dvfByYear.map(d => d.medM2 || 0), 1)
+  // En dessous, une médiane ne résume rien : elle désigne une vente ou deux.
+  const MEDIANE_FRAGILE = 5
+  // Au-dessus, elle cesse d'être du bruit d'échantillon. Le paragraphe « ce que
+  // ces chiffres ne disent pas » était écrit pour une commune à vingt ventes
+  // par an : il affirmait « aucune tendance mesurable » à une ville qui en
+  // enregistre quatre cents, où c'est faux.
+  const ECHANTILLON_SOLIDE = 30
 
   // Répartition par nature de bien
   $: byNature = Object.entries(
@@ -98,14 +114,24 @@
       <b>{constat.haute.toLocaleString('fr-FR')} €/m²</b>.
     </Niveau>
     <p class="lecture">
-      <b>Ce que ces chiffres ne disent pas.</b> Cet écart n'est pas un mouvement
-      du marché&nbsp;: avec {constat.minEchantillon} à {constat.maxEchantillon} ventes
-      par an, une seule maison atypique déplace la médiane de plusieurs centaines
-      d'euros au mètre carré. Il n'y a pas de tendance mesurable à lire ici, et
-      la courbe ci-dessous ne doit pas être interprétée comme telle. DVF
-      enregistre par ailleurs des transactions sans leur contexte&nbsp;: une vente
-      entre proches, un bien à rénover et une maison restaurée y figurent au
-      même titre.
+      <b>Ce que ces chiffres ne disent pas.</b>
+      {#if constat.maxEchantillon < ECHANTILLON_SOLIDE}
+        Cet écart n'est pas un mouvement du marché&nbsp;: avec
+        {constat.minEchantillon} à {constat.maxEchantillon} ventes par an, une
+        seule maison atypique déplace la médiane de plusieurs centaines d'euros
+        au mètre carré. Il n'y a pas de tendance mesurable à lire ici, et la
+        courbe ci-dessous ne doit pas être interprétée comme telle.
+      {:else}
+        Avec {constat.minEchantillon} à {constat.maxEchantillon} ventes par an,
+        la médiane annuelle est stable et l'écart ci-dessus se lit&nbsp;: une
+        vente atypique ne la déplace plus. Elle ne dit rien, en revanche, de la
+        composition du marché — une année où il se vend surtout de petits
+        appartements de centre-ville rend un prix au m² plus élevé sans qu'aucun
+        bien n'ait renchéri.
+      {/if}
+      DVF enregistre par ailleurs des transactions sans leur contexte&nbsp;: une
+      vente entre proches, un bien à rénover et une maison restaurée y figurent
+      au même titre.
     </p>
   {/if}
   {#if mapErreur}<p class="err">La carte n'a pas pu être affichée : {mapErreur}</p>{/if}
@@ -139,20 +165,26 @@
 
   {#if dvfByYear.length > 1}
     <h2>Le marché immobilier, année par année</h2>
-    <p class="hint">Nombre de mutations enregistrées et prix médian au m² du bâti (maisons &amp; appartements), sur {periode}.</p>
+    <p class="hint">Prix médian au m² du bâti (maisons &amp; appartements) et nombre de mutations enregistrées, sur {periode}.</p>
     <div class="scrollx">
       <div class="yrbars">
         {#each dvfByYear as d}
-          <div class="ycol" title="{d.year} : {d.n} mutation(s){d.medM2 ? `, ${Math.round(d.medM2)} €/m²` : ''}">
+          <div class="ycol" title="{d.year} : {d.medM2 ? Math.round(d.medM2) + ' €/m² médian sur ' + d.nBati + ' vente(s) de bâti' : 'aucune vente de bâti chiffrée'} · {d.n} mutation(s) au total">
             <span class="ym2">{d.medM2 ? Math.round(d.medM2).toLocaleString('fr-FR') + ' €/m²' : '—'}</span>
-            <span class="ybar" style="height:{Math.max(6, 100 * d.n / dvfYrMax)}%"></span>
-            <span class="yn">{d.n}</span>
+            <span class="ytrack"><span class="ybar" class:fragile={d.nBati > 0 && d.nBati < MEDIANE_FRAGILE}
+                  style="height:{d.medM2 ? Math.max(2, 100 * d.medM2 / dvfM2Max) : 0}%"></span></span>
+            <span class="yn" class:fragile={d.nBati > 0 && d.nBati < MEDIANE_FRAGILE}>{d.n}</span>
             <span class="yyear">{d.year}</span>
           </div>
         {/each}
       </div>
     </div>
-    <p class="ylegend"><span class="sw"></span> hauteur = nombre de mutations · valeur du haut = prix médian €/m² du bâti</p>
+    <p class="ylegend"><span class="sw"></span> hauteur et valeur du haut = prix médian €/m² du bâti, échelle depuis zéro ·
+      nombre du bas = mutations enregistrées dans l'année
+      {#if dvfByYear.some(d => d.nBati > 0 && d.nBati < MEDIANE_FRAGILE)}
+        · <span class="sw fragile"></span> médiane établie sur moins de {MEDIANE_FRAGILE} ventes de bâti : elle désigne une vente ou deux, pas un marché
+      {/if}
+    </p>
   {/if}
 
   {#if byNature.length}
@@ -168,8 +200,11 @@
     </ul>
   {/if}
 
-  <details open>
+  <details>
     <summary>Transactions {natureFilter !== 'all' ? `— ${natureFilter}` : ''} ({dvfFiltered.length})</summary>
+    <p class="muted">Le détail vente par vente sert à vérifier un cas précis, pas
+      à lire le marché — les constats ci-dessus s'en chargent. Données brutes et
+      complètes&nbsp;: <a href="https://explore.data.gouv.fr/immobilier" target="_blank" rel="noopener">DVF sur data.gouv.fr</a>.</p>
     <table>
       <thead><tr><th>Date</th><th>Parcelle</th><th>Nature</th><th class="r">Surface</th><th class="r">Prix</th><th class="r">€/m²</th></tr></thead>
       <tbody>
@@ -227,13 +262,25 @@
   th { color: var(--gris); } .r { text-align: right; font-variant-numeric: tabular-nums; }
   .scrollx { overflow-x: auto; }
   .yrbars { display: flex; align-items: flex-end; gap: .55rem; height: 170px; padding: .5rem 0; border-bottom: 1px solid var(--trait); min-width: 420px; }
-  .ycol { flex: 1; min-width: 34px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: .15rem; }
+  /* En grille, pas en flex-column : une barre en pourcentage placée à côté de
+     trois libellés est un élément flexible comme eux, donc `flex-shrink` la
+     rabote — les cinq barres finissaient TOUTES à 94 px, quelle que soit leur
+     valeur. Le pourcentage ne veut dire quelque chose que dans une piste qui
+     lui est réservée. */
+  .ycol { flex: 1; min-width: 34px; display: grid; grid-template-rows: auto 1fr auto auto;
+          justify-items: center; height: 100%; gap: .15rem; }
+  .ytrack { display: flex; align-items: flex-end; width: 100%; height: 100%; justify-content: center; }
   .ym2 { font-size: .66rem; color: var(--ambre); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .ybar { width: 62%; max-width: 38px; background: var(--ambre); border-radius: 4px 4px 0 0; min-height: 6px; }
+  .ybar { width: 62%; max-width: 38px; background: var(--ambre); border-radius: 4px 4px 0 0; min-height: 2px; }
   .yn { font-size: .72rem; color: var(--gris); font-weight: 700; font-variant-numeric: tabular-nums; }
   .yyear { font-size: .72rem; color: var(--gris); }
   .ylegend { color: var(--gris-clair); font-size: .76rem; margin: .5rem 0 0; display: flex; align-items: center; gap: .4rem; }
   .ylegend .sw { width: 11px; height: 11px; border-radius: 3px; background: var(--ambre); display: inline-block; }
+  /* Une médiane sur deux ventes se lit, mais ne se lit pas comme les autres. */
+  .ybar.fragile, .ylegend .sw.fragile {
+    background: repeating-linear-gradient(45deg, var(--ambre) 0 3px, var(--papier) 3px 6px);
+  }
+  .yn.fragile { color: var(--gris-clair); }
   .pointer { margin-top: 1.5rem; padding: .7rem .9rem; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; font-size: .9rem; color: #9a3412; }
   .pointer a { color: #c2410c; font-weight: 600; }
   .muted { color: var(--gris-clair); font-size: .85rem; } .err { color: var(--depense); }

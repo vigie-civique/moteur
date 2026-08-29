@@ -96,6 +96,12 @@
   })
   $: inYrMax = Math.max(...flowsByYear.map(d => d.in), 1)
   $: outYrMax = Math.max(...flowsByYear.map(d => d.out), 1)
+  // Une série entièrement nulle ne se dessine pas : elle occupait la moitié de
+  // la largeur avec neuf colonnes vides et aucune explication. Sur une commune
+  // sans flux sortant recensé, le graphique « reçu » prend toute la place et
+  // l'absence se dit en une phrase.
+  $: aDesEntrees = flowsByYear.some(d => d.in > 0)
+  $: aDesSorties = flowsByYear.some(d => d.out > 0)
 
   // La commune reçoit-elle une dotation pour l'année choisie ? (sinon, couverture partielle)
   $: dotationCovered = inflows.some(f => ['DGF', 'concours_etat', 'dotations_subventions'].includes(f.type))
@@ -212,8 +218,11 @@
     <!-- Vue annualisée : reçu / versé par an -->
     {#if flowsByYear.length > 1}
       <h2>Reçu &amp; {verbeOut}, année par année</h2>
-      <p class="hint">Deux échelles distinctes : le « reçu » (dotations, concours, emprunts) est bien plus élevé que ce qui part vers les acteurs locaux (subventions et marchés).</p>
-      <div class="yr2">
+      {#if aDesEntrees && aDesSorties}
+        <p class="hint">Deux échelles distinctes : le « reçu » (dotations, concours, emprunts) est bien plus élevé que ce qui part vers les acteurs locaux (subventions et marchés).</p>
+      {/if}
+      <div class="yr2" class:seul={!aDesEntrees || !aDesSorties}>
+        {#if aDesEntrees}
         <div class="yrblock">
           <span class="yrhead in">Reçu par la commune</span>
           <div class="yrbars">
@@ -221,12 +230,14 @@
               <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.in)} reçu — cliquer pour voir le détail"
                       on:click={() => year = d.year}>
                 <span class="yval">{d.in ? eurosC(d.in) : ''}</span>
-                <span class="ybar in" style="height:{Math.max(2, 100 * d.in / inYrMax)}%"></span>
+                <span class="ytrack"><span class="ybar in" style="height:{Math.max(2, 100 * d.in / inYrMax)}%"></span></span>
                 <span class="yyear">{d.year}</span>
               </button>
             {/each}
           </div>
         </div>
+        {/if}
+        {#if aDesSorties}
         <div class="yrblock">
           <span class="yrhead out">Versé par la commune</span>
           <div class="yrbars">
@@ -234,13 +245,21 @@
               <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.out)} {verbeOut} — cliquer pour voir le détail"
                       on:click={() => year = d.year}>
                 <span class="yval">{d.out ? eurosC(d.out) : ''}</span>
-                <span class="ybar out" style="height:{Math.max(2, 100 * d.out / outYrMax)}%"></span>
+                <span class="ytrack"><span class="ybar out" style="height:{Math.max(2, 100 * d.out / outYrMax)}%"></span></span>
                 <span class="yyear">{d.year}</span>
               </button>
             {/each}
           </div>
         </div>
+        {/if}
       </div>
+      {#if !aDesSorties}
+        <p class="hint">Aucun flux <b>sortant</b> n'a été recensé sur {periode} :
+          ni subvention versée, ni marché attribué n'a pu être rattaché à la
+          commune dans les sources ouvertes.</p>
+      {:else if !aDesEntrees}
+        <p class="hint">Aucun flux <b>entrant</b> n'a été recensé sur {periode}.</p>
+      {/if}
     {/if}
 
     <!-- Cessions de patrimoine communal (ventes = recettes, sens inverse du flux stocké) -->
@@ -415,17 +434,27 @@
 
   /* Vue annualisée reçu / versé */
   .yr2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: .5rem; }
+  .yr2.seul { grid-template-columns: 1fr; }
   .yrhead { display: block; font-size: .8rem; font-weight: 700; margin-bottom: .4rem; }
   .yrhead.in { color: var(--recette); } .yrhead.out { color: var(--ardoise-fonce); }
-  .yrbars { display: flex; align-items: flex-end; gap: .35rem; height: 130px; padding: .5rem 0; border-bottom: 1px solid var(--trait); overflow-x: auto; }
-  .ycol { flex: 1; min-width: 26px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: .12rem;
+  /* 130 px moins la valeur, l'année et les marges laissaient 82 px de barre :
+     neuf exercices s'y écrasaient, valeurs et années se chevauchant. */
+  .yrbars { display: flex; align-items: flex-end; gap: .45rem; height: 210px; padding: .5rem 0; border-bottom: 1px solid var(--trait); overflow-x: auto; }
+  /* Grille et non flex-column : en flex, `flex-shrink` rabote une barre
+     exprimée en pourcentage dès que les libellés qui l'entourent réclament de
+     la place, et toutes les colonnes finissent à la même hauteur. */
+  .ycol { flex: 1; min-width: 40px; display: grid; grid-template-rows: auto 1fr auto; justify-items: center;
+          height: 100%; gap: .12rem;
           background: none; border: 0; padding: 0 0 .1rem; cursor: pointer; border-bottom: 2px solid transparent; }
+  .ytrack { display: flex; align-items: flex-end; justify-content: center; width: 100%; height: 100%; }
   .ycol.sel { border-bottom-color: var(--encre); }
   .ycol.sel .yyear, .ycol.sel .yval { color: var(--encre); font-weight: 700; }
-  .yval { font-size: .6rem; color: var(--gris-clair); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .yval { font-size: .68rem; color: var(--gris); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .ybar { width: 60%; max-width: 30px; border-radius: 4px 4px 0 0; min-height: 2px; }
   .ybar.in { background: var(--recette); } .ybar.out { background: var(--ardoise); }
-  .yyear { font-size: .64rem; color: var(--gris); transform: rotate(-45deg); transform-origin: center; white-space: nowrap; }
+  /* Une année tenue droite se lit ; inclinée à -45° dans une colonne de 26 px,
+     elle chevauchait sa voisine. La colonne est élargie, la rotation inutile. */
+  .yyear { font-size: .68rem; color: var(--gris); white-space: nowrap; }
   @media (max-width: 640px) { .yr2 { grid-template-columns: 1fr; } }
 
   .bars { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .55rem; }
