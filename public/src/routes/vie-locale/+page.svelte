@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE_DE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
+  import SourceAbsente from '$lib/components/SourceAbsente.svelte'
 
   // Vie locale — v1 (décision 03/07/2026) : agenda et événements du territoire.
   const AGENDA_TYPES = new Set(['local_event', 'evenement_culturel', 'exposition'])
@@ -8,6 +9,7 @@
   // Rendu au build par +page.server.js.
   export let data
   $: all = data.all
+  $: source = data.source || { etat: 'servie', sources: [] }
   let q = ''
   const today = new Date().toISOString().slice(0, 10)
 
@@ -47,11 +49,17 @@
 
 <section>
   <h1 class="avec-icone"><Icon name="vie" size={26} />La vie locale</h1>
-  <p class="sub">Événements, manifestations et vie associative locales,
-     collectés depuis les sources publiques locales : site de la commune,
-     de l'intercommunalité et des associations.</p>
+  {#if source.etat === 'absente'}
+    <p class="sub">Événements, manifestations et vie associative locales.</p>
+    <SourceAbsente etat={source.etat} sources={source.sources} dernier={source.dernier} travailManuel
+                   quoi="L'agenda local" />
+  {:else}
+    <p class="sub">Événements, manifestations et vie associative locales,
+       collectés depuis les sources publiques locales : site de la commune,
+       de l'intercommunalité et des associations.</p>
+  {/if}
 
-  <div class="filters">
+  <div class="filters" class:masque={source.etat === 'absente'}>
     <input placeholder="Rechercher un événement…" bind:value={q} />
     <!-- Le compteur s'affichait à 0 pendant le chargement : le visiteur lisait
          « aucun événement » alors que la page en avait 1 320 à venir. -->
@@ -86,13 +94,17 @@
     </ul>
   {/if}
 
-  {#if !filtered.length}
+  {#if !filtered.length && source.etat === 'servie'}
     <p class="empty">Aucun événement ne correspond.</p>
+  {:else if !filtered.length && source.etat === 'vide'}
+    <SourceAbsente etat="vide" sources={source.sources} dernier={source.dernier} />
   {/if}
 </section>
 
 <style>
   section { max-width: 860px; margin: 0 auto; padding: 1.5rem; }
+  /* Un champ de recherche sur un corpus qui n'existe pas n'a rien à filtrer. */
+  .filters.masque { display: none; }
   h1 { color: var(--encre); }
   h2 { color: var(--encre); margin-top: 1.6rem; }
   .sub { color: var(--gris); }

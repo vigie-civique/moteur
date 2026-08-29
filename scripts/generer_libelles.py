@@ -161,6 +161,12 @@ def construire() -> dict:
         # qu'une instance n'a pas le sien : la page invite alors à écrire plutôt
         # que de pointer vers une adresse fausse.
         "DEPOT_URL": inst.get("depot_url", ""),
+        # Où commander un dossier relu à la main. Renseignée par le service qui
+        # produit les dossiers nationaux, VIDE partout ailleurs : une instance
+        # communale suivie n'a rien à vendre à ses lecteurs, et le site ne doit
+        # afficher d'offre nulle part par défaut. Elle ne sert qu'à une chose —
+        # quand une source n'a PAS été interrogée, dire où ce travail se fait.
+        "DOSSIER_COMPLET_URL": inst.get("dossier_complet_url", ""),
         # Centre de la carte de l'atelier, qui portait les coordonnées de la
         # commune d'origine en dur. `init_instance.py` renseigne le centroïde ;
         # sans lui, la carte s'ouvre sur le centre de la France métropolitaine

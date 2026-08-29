@@ -8,7 +8,8 @@
 // qu'on ne sait pas compter.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DATA_DIR } from '$lib/donnees.server.js'
+import { DATA_DIR, lireJSON } from '$lib/donnees.server.js'
+import { etatSource } from '$lib/couverture.js'
 
 export const prerender = true
 
@@ -27,5 +28,8 @@ export function load() {
     sansLocalisation: q.missing ?? null,
     domicileMasque: q.hidden_ei_domicile ?? null,
     personneMasquee: q.hidden_person ?? null,
+    // Sans POI collecté, la carte est vide : le dire plutôt que de laisser
+    // croire qu'il n'y a rien à voir sur ce territoire.
+    source: etatSource(lireJSON('couverture.json', {}), 'carte'),
   }
 }

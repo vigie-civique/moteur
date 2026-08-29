@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { AGENDA_TYPES } from '$lib/actes.js'
 import { DATA_DIR } from '$lib/donnees.server.js'
+import { etatSource } from '$lib/couverture.js'
 
 export const prerender = true
 
@@ -17,5 +18,9 @@ export function load() {
   return {
     all: (d.events || []).filter((e) => AGENDA_TYPES.has(e.type))
       .sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+    // Un dossier national n'interroge pas les sites locaux : sans cette
+    // information, sa page affichait « 0 événement » sous un texte annonçant
+    // qu'elle les avait consultés.
+    source: etatSource(lire('couverture.json', {}), 'agenda'),
   }
 }
