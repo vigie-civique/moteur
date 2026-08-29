@@ -13,6 +13,20 @@ public/static/carte/
 # Seul le premier était ignoré — le second se serait retrouvé versionné au
 # premier `git add -A` d'une instance.
 dashboard/static/public_api/
+# La version PRÉCÉDENTE du snapshot, et la version NEUVE en cours d'écriture.
+# La publication en deux temps ne copie pas par-dessus le répertoire servi :
+# elle écrit à côté, contrôle, puis échange par deux renommages
+# (scripts/publication.py). Ces répertoires-là sont donc le mécanisme lui-même
+# — le retour arrière de `revenir_a_la_version_precedente` — et non des rebuts :
+# ne pas les supprimer, seulement les tenir hors du dépôt.
+#
+# `dashboard/static/public_api/` et `public/static/data/` étaient ignorés ; pas
+# leurs voisins `.public_api.precedent/` et `.data.precedent/`, 1 441 fichiers
+# et 18 Mo chacun, que le premier `git add -A` d'une instance aurait versionnés.
+# C'est le même défaut que celui noté juste au-dessus, d'un cran plus bas : une
+# règle écrite pour un chemin ne couvre pas ce que le code écrit À CÔTÉ.
+.*.precedent/
+.*.neuf/
 public/static/docs/
 config/profils_locaux.json
 config/seed_local.json
@@ -56,6 +70,9 @@ dashboard/.svelte-kit/
 # Écrits par l'amorçage et le générateur de libellés : ils décrivent une
 # commune. Le dépôt en livre les exemples.
 config/publication_rules.json
+# Et ses sauvegardes : chaque geste qui touche aux règles en dépose une copie
+# `…json.avant-<date>`, que la règle ci-dessus ne couvre pas.
+config/publication_rules.json.*
 public/src/lib/instance.js
 dashboard/src/lib/instance.js
 
@@ -68,6 +85,11 @@ public/static/kit/
 # Sauvegardes de collecte (vigie_collecte.sh) et journaux d'exécution.
 db/*.db.*
 logs/
+
+# Le cache local de wrangler, écrit à chaque mise en ligne. Il porte l'identifiant
+# du compte Cloudflare et la liste des projets Pages : rien de secret, mais rien
+# qui appartienne au moteur non plus.
+.wrangler/
 
 # Le portail national est un dépôt à part (vigie-civique/portail). Un clone posé
 # ici n'appartient pas au moteur : sans cette règle, un `git add -A` y inscrirait
