@@ -59,6 +59,32 @@ const ATTENTE = /Chargement[^<]{0,40}(…|\.\.\.)/
 // est forcément une coquille : l'en-tête et le pied de page pèsent déjà ~6 Ko.
 const MINI_RENDU = 6500
 
+// Valeurs qui trahissent un calcul cassé plutôt qu'une donnée absente.
+//
+// Le contrôle ne les cherchait NULLE PART : la page « Le territoire en
+// chiffres » a servi onze « undefined » en production, dans la comparaison des
+// niveaux de vie, parce qu'une projection à cinq champs avait jeté le sixième
+// que le gabarit affichait. Le build passait, les pages étaient pleines, et le
+// défaut n'était visible qu'à l'œil, sur le site en ligne.
+//
+// ⚠️ Avec la casse et des limites de mot, sinon « NaN » se trouve dans
+// fi-NAN-ces et gouver-NAN-ce : cherché sans bornes, il accusait 162 pages à
+// tort. `undefined` et `null` ne sont retenus qu'en TEXTE affiché — un attribut
+// HTML ou une classe peut légitimement les contenir.
+const VALEURS_CASSEES = [
+  { motif: /(?<![\w-])undefined(?![\w-])/, nom: 'undefined' },
+  { motif: /(?<![\w-])NaN(?![\w-])/,       nom: 'NaN' },
+  { motif: /\[object Object\]/,             nom: '[object Object]' },
+  { motif: /(?<![\w-])Invalid Date(?![\w-])/, nom: 'Invalid Date' },
+]
+
+/** Texte réellement affiché : hors balises, hors commentaires HTML. */
+const texteAffiche = (html) => html
+  .replace(/<script[\s\S]*?<\/script>/g, ' ')
+  .replace(/<style[\s\S]*?<\/style>/g, ' ')
+  .replace(/<!--[\s\S]*?-->/g, ' ')
+  .replace(/<[^>]+>/g, ' ')
+
 const pages = []
 ;(function parcourir(dir) {
   for (const f of readdirSync(dir)) {
@@ -83,6 +109,14 @@ for (const p of pages) {
   if (rendu.length < MINI_RENDU) {
     problemes.push(`${rel} : ${rendu.length} o de HTML rendu (< ${MINI_RENDU}) — page probablement vide`)
   }
+
+  const texte = texteAffiche(html)
+  for (const { motif, nom } of VALEURS_CASSEES) {
+    if (motif.test(texte)) {
+      const m = texte.match(new RegExp(`.{0,60}${nom.replace(/[[\]]/g, '\\$&')}.{0,40}`))
+      problemes.push(`${rel} : affiche « ${nom} » — ${(m ? m[0] : '').trim().replace(/\s+/g, ' ')}`)
+    }
+  }
 }
 
 // Un contrôle qui passe sur zéro page ne contrôle rien, et son « ✓ » est plus
@@ -97,10 +131,12 @@ if (pages.length === 0) {
 }
 
 if (problemes.length) {
-  console.error(`\n✖ ${problemes.length} page(s) livrée(s) sans contenu :\n`)
+  console.error(`\n✖ ${problemes.length} problème(s) dans le rendu :\n`)
   for (const p of problemes) console.error('  ' + p)
-  console.error('\nLes données doivent être lues au build dans +page.server.js.')
-  console.error('Gabarit : src/routes/marches/+page.server.js\n')
+  console.error("\nPage vide : les données doivent être lues au build dans")
+  console.error('+page.server.js — gabarit src/routes/marches/+page.server.js.')
+  console.error("Valeur cassée : le gabarit affiche un champ que le `load` ne")
+  console.error("renvoie pas, ou un calcul sur une valeur absente.\n")
   process.exit(1)
 }
 
