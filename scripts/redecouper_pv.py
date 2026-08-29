@@ -97,20 +97,44 @@ def relire(portee: str, avec_ocr: bool) -> set[str]:
 def perimes(conn, lues: set[str]) -> tuple[list, list]:
     """(à retirer, retenus) parmi les actes encore marqués."""
     a_retirer, retenus = [], []
+    requetes = tables_accrochees(conn)
     for eid, date, titre, type_, url in conn.execute(
             f"SELECT id, date, title, type, source_url FROM events "
             f"WHERE type IN ({','.join('?' * len(TYPES))}) "
             f"AND json_extract(metadata, '$.{MARQUE}') = 1", TYPES):
         if url not in lues:
             continue          # séance non relue : on ne conclut rien
-        accroches = sum(conn.execute(q, (eid,)).fetchone()[0] for q in (
-            "SELECT COUNT(*) FROM financial_flows WHERE event_id=?",
-            "SELECT COUNT(*) FROM marches_publics WHERE event_id=?",
-            "SELECT COUNT(*) FROM annotations WHERE object_type='deliberation'"
-            " AND object_id=?",
-        ))
+        accroches = sum(conn.execute(q, (eid,)).fetchone()[0] for q in requetes)
         (retenus if accroches else a_retirer).append((eid, date, titre, type_, accroches))
     return a_retirer, retenus
+
+
+def tables_accrochees(conn) -> list[str]:
+    """Les requêtes qui disent si un acte porte encore quelque chose.
+
+    Cette liste était écrite à la main — `financial_flows`, `marches_publics`,
+    `annotations` — et elle a vieilli : `approbations_projets`, ajoutée depuis,
+    n'y figurait pas. Un acte périmé qu'elle référençait était donc classé
+    « ne porte rien », puis sa suppression échouait sur la clé étrangère et
+    interrompait toute la reprise, à mi-chemin.
+
+    Elle se déduit maintenant du SCHÉMA : toute table qui référence `events`
+    sans effacement en cascade protège l'acte qu'elle cite.
+    """
+    requetes = []
+    for nom, sql in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' "
+            "AND sql LIKE '%REFERENCES events%'"):
+        for ligne in (sql or "").splitlines():
+            if "REFERENCES events" not in ligne or "CASCADE" in ligne:
+                continue
+            colonne = ligne.strip().split()[0]
+            requetes.append(f"SELECT COUNT(*) FROM {nom} WHERE {colonne}=?")
+    # `annotations` ne déclare pas de clé étrangère : elle désigne l'acte par
+    # un couple (type, id) que le schéma ne peut pas relier.
+    requetes.append("SELECT COUNT(*) FROM annotations "
+                    "WHERE object_type='deliberation' AND object_id=?")
+    return requetes
 
 
 def demarquer(conn) -> None:

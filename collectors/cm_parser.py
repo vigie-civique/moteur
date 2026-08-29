@@ -60,9 +60,31 @@ def categorize(title: str):
 # ── Extraction des montants ────────────────────────────────────────────────────
 
 def extract_amounts(text: str) -> list[dict]:
-    """Retourne liste de {value: float, context: str}"""
-    # Patterns : 1 234,56 € ou 1234.56€ ou 1 234 € (entier)
-    pat = r'([\d][\d\s\xa0]*(?:[,.]\d{2,3})?)\s*€'
+    """Retourne liste de {value: float, context: str}.
+
+    Le montant doit être ISOLÉ. L'ancien motif — « un chiffre, puis n'importe
+    quelle suite de chiffres et d'espaces » — recollait ce qui précédait :
+
+        « CD30 145 834,00 € »        →  30 145 834 €   (CD30 = le département)
+        « FEDER 2021-2027 458 784,55 € » → 2 027 458 784 €
+        « facture 25/5/2023 14 275.20€ » →   202 314 275 €
+
+    Une commune de 1 200 habitants publiait ainsi des lignes à 30 M€. Les
+    groupes de milliers font donc exactement trois chiffres, et rien
+    d'alphanumérique ne peut coller le montant à gauche.
+    """
+    # 1 234,56 € · 1234.56€ · 1 234 € · 12 345 678,90 €
+    #
+    # Le tiret est ADMIS devant : « une baisse de -36 706,26 € » est un montant
+    # signé, pas un collage — l'exclure faisait lire 706,26 €.
+    #
+    # ⚠️ Limite assumée : quand l'OCR mange l'espace d'un mot (« de6 185,92 € »),
+    # le chiffre collé à la lettre est perdu et l'on lit 185,92 €. Rien ne
+    # distingue ce cas de « CD30 145 834,00 € », où le 30 appartient au nom du
+    # département. Entre lire 185,92 au lieu de 6 185,92 et publier 30 145 834
+    # au lieu de 145 834, la première erreur est la moins trompeuse.
+    pat = (r'(?<![\w,.])(\d{1,3}(?:[\s\xa0]\d{3})*(?:[,.]\d{2})?'
+           r'|\d+(?:[,.]\d{2})?)\s*€')
     results = []
     for m in re.finditer(pat, text):
         raw = m.group(1).replace('\xa0','').replace(' ','').replace(',','.')
@@ -80,29 +102,118 @@ def extract_amounts(text: str) -> list[dict]:
 # ── Extraction des votes ───────────────────────────────────────────────────────
 
 def extract_vote(text: str) -> dict | None:
-    """Parse 'par X voix Pour et Y abstention(s)/contre'"""
-    pat = (r'(?:par\s+)?(\d+)\s+voix\s+[«""]?\s*[Pp]our\s*[»""]?'
-           r'(?:\s+et\s+(\d+)\s+(abstention|contre)s?)?'
-           r'(?:\s+et\s+(\d+)\s+(abstention|contre)s?)?')
-    m = re.search(pat, text, re.IGNORECASE)
-    if not m:
-        if re.search(r'à l.unanimité', text, re.IGNORECASE):
-            return {'pour': None, 'contre': 0, 'abstentions': 0, 'unanimite': True}
+    """Lit un décompte de voix, quel que soit l'ORDRE des mentions.
+
+    L'ancien motif n'acceptait qu'une seule tournure — « X voix pour et Y
+    contre/abstention », dans cet ordre. Sur les 254 passages de vote des
+    procès-verbaux de la commune, il en manquait 48, soit un sur cinq :
+
+        21×  « par 3 voix contre (MF, JPE et AR) et 10 voix pour »
+        10×  « par 1 « abstention » et 11 voix »          (le « pour » implicite)
+         9×  « 1 voix contre (Jean Pierre ESPAZE), 1 … »
+         8×  « abstention (Armelle ROUVERET) et 11 voix pour »
+
+    Et le manque n'était pas neutre : une opposition écrite AVANT le « pour »
+    était lue comme zéro. Les 26 délibérations dont le texte porte « N voix
+    contre » étaient toutes enregistrées à 0 contre — la page publiait donc
+    « 657 actes sur 729 adoptés sans une voix contre », un chiffre faux dans le
+    sens rassurant.
+
+    Chaque mention est donc lue pour elle-même. Un « N voix » resté sans
+    qualificatif est compté « pour » — et seulement si aucun « pour » explicite
+    n'a été trouvé, faute de quoi on doublerait le décompte.
+    """
+    if not text:
         return None
-    vote = {'pour': int(m.group(1)), 'contre': 0, 'abstentions': 0, 'unanimite': False}
-    # parse optional groups
-    for i in (2, 4):
-        if m.group(i):
-            n = int(m.group(i))
-            typ = (m.group(i+1) or '').lower()
-            if 'abstention' in typ:
-                vote['abstentions'] = n
-            elif 'contre' in typ:
-                vote['contre'] = n
-    # Named abstainers / against
-    named = re.findall(r'\(([A-Z][A-Za-zÀ-ÿ\s\-]+)\)', text)
+
+    # Le décompte se lit AUTOUR de sa première mention, dans le paragraphe qui
+    # la porte. Un même bloc contient parfois deux délibérations, chacune avec
+    # son vote : prendre le texte entier les additionnerait.
+    #
+    # ⚠️ Borner sur « après en avoir délibéré » puis couper à la première
+    # ponctuation était trop serré : le « pour » tombait hors fenêtre et un
+    # « 11 voix pour, 3 abstentions » devenait « 3 abstentions » sans pour.
+    # La fenêtre part donc de la mention elle-même, s'étend des deux côtés, et
+    # ne franchit pas la frontière de paragraphe.
+    premiere = re.search(r"\d+[^\S\n]*(?:voix|votes?|abstentions?|contres?|pour)\b",
+                         text, re.IGNORECASE)
+    if premiere is None:
+        if re.search(r"à l.unanimité", text, re.IGNORECASE):
+            return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
+        return None
+    # La fenêtre est la LIGNE qui porte la première mention — pas un rayon de
+    # caractères autour d'elle.
+    #
+    # Un bloc mal découpé enchaîne deux délibérations, chacune avec son vote.
+    # Une fenêtre large les ADDITIONNE : « par 3 voix contre et 10 voix pour »,
+    # deux fois, donnait 20 pour et 6 contre dans un conseil de treize membres.
+    # Les huit tournures relevées tiennent toutes sur une ligne ; c'est donc la
+    # bonne unité, et elle est infranchissable.
+    i = premiere.start()
+    debut = text.rfind("\n", 0, i) + 1
+    fin_ligne = text.find("\n", i)
+    fin_ligne = fin_ligne if fin_ligne != -1 else len(text)
+    # La phrase de vote se ferme par « : », qui introduit les décisions. Elle
+    # déborde parfois d'une ligne — la mise en page coupe au milieu d'une
+    # parenthèse : « par 3 abstentions (M. ESPAZE et Mme\nROUVERET) et 11 voix
+    # « Pour » : ». S'arrêter à la ligne perdait alors les 11 voix.
+    #
+    # Une ligne de débord au plus : au-delà, on retomberait sur la délibération
+    # suivante et l'on additionnerait deux votes.
+    deux_points = text.find(":", i)
+    if deux_points != -1 and text.count("\n", i, deux_points) <= 1:
+        fin = max(fin_ligne, deux_points)
+    else:
+        fin = fin_ligne
+    passage = text[debut:fin]
+
+    if not re.search(r"\d+[^\S\n]*(?:voix|votes?|abstentions?|contres?|pour)", passage, re.IGNORECASE):
+        if re.search(r"à l.unanimité", text, re.IGNORECASE):
+            return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
+        return None
+
+    vote = {"pour": None, "contre": 0, "abstentions": 0, "unanimite": False}
+    trouve = False
+    # « 12 voix « Pour » », « 1 abstention », « 2 voix Contre », « 3 votes contre »
+    for n, mot in re.findall(
+            r"(\d+)[^\S\n]*(?:voix|votes?)?[^\S\n]*[«\"“„]?[^\S\n]*(pour|contres?|abstentions?)\b",
+            passage, re.IGNORECASE):
+        n, mot = int(n), mot.lower()
+        trouve = True
+        if mot.startswith("abstention"):
+            vote["abstentions"] += n
+        elif mot.startswith("contre"):
+            vote["contre"] += n
+        else:
+            vote["pour"] = (vote["pour"] or 0) + n
+
+    # « par 1 abstention et 11 voix » : le « pour » n'est pas écrit. Il ne se
+    # devine que si rien d'autre ne l'a déjà renseigné.
+    if vote["pour"] is None:
+        for n in re.findall(r"(\d+)[^\S\n]*voix(?![^\S\n]*[«\"“„]?[^\S\n]*(?:pour|contre|abstention))",
+                            passage, re.IGNORECASE):
+            vote["pour"] = int(n)
+            trouve = True
+            break
+
+    if not trouve:
+        if re.search(r"à l.unanimité", text, re.IGNORECASE):
+            return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
+        return None
+
+    # « à l'unanimité » et un décompte peuvent coexister : « adopté à
+    # l'unanimité par 13 voix pour ». L'unanimité n'est vraie que sans opposition.
+    if re.search(r"à l.unanimité", text, re.IGNORECASE) \
+            and not vote["contre"] and not vote["abstentions"]:
+        vote["unanimite"] = True
+
+    # Votants nommés : uniquement dans la parenthèse qui SUIT une mention de
+    # vote. L'ancienne version prenait toute parenthèse commençant par une
+    # majuscule, et rangeait « (Anciennement Mandragora) » parmi les votants.
+    named = re.findall(
+        r"(?:contres?|abstentions?)\s*[»\"”]?\s*\(([^)]{2,60})\)", passage, re.IGNORECASE)
     if named:
-        vote['nommés'] = named
+        vote["nommés"] = [n.strip() for n in named]
     return vote
 
 
@@ -250,6 +361,22 @@ def is_section_header(text: str) -> bool:
         return False
     # Exclure les lignes de séparation
     if re.match(r'^[_\-=*]+$', t):
+        return False
+    # Une LIGNE DE TABLEAU comptable n'est pas un titre de délibération.
+    # « 1022 F.C.T.V.A. 52 710,01 », « 6061 EDF 500,00 », « ASART 1 500,00 » :
+    # un libellé suivi d'un montant, dans un tableau budgétaire ou une liste de
+    # subventions. Le découpeur en faisait des délibérations à part entière —
+    # d'où les 43 actes intitulés d'un nom et d'un chiffre, et le contenu de la
+    # vraie délibération réparti entre eux.
+    if re.search(r'[\d\s]-?\d{1,3}(?:[\s\xa0]\d{3})*[,.]\d{2}\s*€?$', t):
+        return False
+    # Un FRAGMENT DE LISTE DE VOTANTS n'est pas un titre non plus :
+    # « (MM. ESPAZE, FIGUIERE) », « Mme ROUVERET) », « (M. ESPAZE), DECIDE ».
+    # Le découpeur coupait au milieu du décompte des voix, séparant une
+    # délibération de son propre vote.
+    if t.startswith('(') or re.match(r'^(?:MM?|Mme|Mmes)\.?\s+[A-ZÀ-Ÿ]', t):
+        return False
+    if t.endswith(')') and re.search(r'\b(?:MM?\.|Mme|Mmes)\s', t):
         return False
     # Exclure les sous-items de listes d'associations ou de candidats (ligne courte + ":")
     if re.match(r'^[A-ZÀÂÇÉÈÊËÎÏÔÙÛÜ\s\'\-\.]+\s*:\s*$', t) and len(t) < 50:
