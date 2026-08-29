@@ -22,6 +22,21 @@ import { base } from '$app/paths'
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
 
+/** Source PMTiles qui télécharge le fichier une fois et sert les plages depuis
+ *  la mémoire — l'interface attendue par la bibliothèque. */
+class FichierEntier {
+  constructor(url) { this.url = url; this.tampon = null }
+  getKey() { return this.url }
+  async getBytes(offset, length) {
+    if (!this.tampon) {
+      const r = await fetch(this.url)
+      if (!r.ok) throw new Error(`${r.status} sur ${this.url}`)
+      this.tampon = await r.arrayBuffer()
+    }
+    return { data: this.tampon.slice(offset, offset + length) }
+  }
+}
+
 /**
  * Pose le fond de carte sur une carte Leaflet.
  *
@@ -38,7 +53,21 @@ export async function poserFond(L, carte) {
       import('protomaps-leaflet'),
     ])
     const url = `${base}/carte/fond.pmtiles`
-    const source = new PMTiles(url)
+    // Le fichier est chargé ENTIER, une fois, plutôt que lu par plages.
+    //
+    // Un PMTiles se lit normalement par requêtes Range. Or Cloudflare Pages les
+    // IGNORE : il répond 200 avec les 3,3 Mo complets, sans `accept-ranges`, et
+    // la bibliothèque refuse alors le fichier — carte sans fond, en production,
+    // alors que le fichier était bien servi. `python -m http.server`, celui du
+    // dossier hors-ligne, faisait la même chose ; on avait corrigé le serveur
+    // embarqué sans vérifier l'hébergeur.
+    //
+    // Dépendre d'une capacité que l'hébergeur n'offre pas est un pari : à cette
+    // taille — 3 Mo, mis en cache par le navigateur, une seule requête au lieu
+    // de deux cent cinquante — le charger d'un bloc est plus simple et marche
+    // partout. Le jour où un fond dépassera la dizaine de mégaoctets, il faudra
+    // un hébergement qui gère Range, et le dire ici.
+    const source = new PMTiles(new FichierEntier(url))
     // Lecture de l'en-tête AVANT de monter la couche : c'est le seul moyen de
     // distinguer « fichier absent » de « fichier présent mais illisible », et
     // de le dire à l'appelant plutôt que de laisser une carte grise sans
