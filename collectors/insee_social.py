@@ -58,7 +58,15 @@ LABELS = {
     "EMP_1T2_Y15T64":          "Actifs 15-64 ans",
     "EMP_1_Y15T64":            "Actifs occupés 15-64 ans",
     "EMP_2_Y15T64":            "Chômeurs 15-64 ans",
-    "FILO_D2_SL":              "Niveau de vie médian (€/an)",
+    # MED = médiane, D2 = deuxième décile : deux mesures différentes. Le libellé
+    # « médian » était posé sur D2, l'indicateur que le collecteur ne ramène
+    # même pas — et FILO_MED_SL, celui qu'il ramène et que le site affiche,
+    # n'avait aucun libellé. Le montant est en euros par an et par UNITÉ DE
+    # CONSOMMATION, pas par personne : le dire ici, c'est le dire partout.
+    "FILO_MED_SL":             "Niveau de vie médian (€/an et par unité de consommation)",
+    "FILO_D1_SL":              "Niveau de vie du 1er décile (€/an et par UC)",
+    "FILO_D9_SL":              "Niveau de vie du 9e décile (€/an et par UC)",
+    "FILO_D2_SL":              "Niveau de vie du 2e décile (€/an et par UC)",
     "BPE_TOTAL":               "Équipements — total",
 }
 

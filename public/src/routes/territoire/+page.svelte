@@ -12,6 +12,9 @@
   export let data
   $: insee = data.insee
   $: constat = data.constat
+  // Calculées au build : le nom de commune n'est plus dans `insee` (projection).
+  $: voisines = data.voisines || []
+  $: anneeFilo = data.anneeFilo || ''
 
   // Le collecteur ne renseigne pas tous les libellés : on complète les codes
   // qui portent le propos, plutôt que d'afficher « EMP_1_Y15T64 » au lecteur.
@@ -21,7 +24,7 @@
     DWELLINGS_DW_SEC_DW_OCC: 'Résidences secondaires',
     DWELLINGS_DW_VAC: 'Logements vacants',
     BRTH: 'Naissances', DEATH: 'Décès', SUP: 'Superficie (km²)',
-    FILO_MED_SL: 'Niveau de vie médian',
+    FILO_MED_SL: 'Niveau de vie médian (par unité de consommation)',
     POPREF_PMUN: 'Population municipale',
     EMP_1_Y15T64: 'Actifs occupés (15-64 ans)',
     EMP_1T2_Y15T64: 'Actifs (15-64 ans)',
@@ -52,6 +55,27 @@
     .filter(r => estCommune(r) && r.indicateur === code && r.valeur != null)
     .sort((a, b) => (a.annee || '').localeCompare(b.annee || ''))
 
+  // Y a-t-il quoi que ce soit à montrer ? La page ne se juge plus sur la seule
+  // série de population : n'importe laquelle de ses sections suffit.
+  $: aQuelqueChose = pop.length || logements.length || ageTotal > 0
+                     || voisines.length > 1 || revenu || superficie || actifs
+
+  // Le titre et le commentaire de la section « population » suivent la COURBE
+  // de cette commune-ci. Écrits en dur, ils annonçaient « une population revenue
+  // à son niveau de 1968 » à une commune ayant perdu un quart de ses habitants,
+  // et « regagné 0 % depuis son point bas » à une autre dont le point bas est
+  // l'année en cours. Le régime est calculé dans +page.server.js.
+  //
+  // De même, la page ne tient plus à la seule série POP : une commune peut avoir
+  // 152 indicateurs INSEE et aucune série historique de population. Elle
+  // affichait alors « Aucun indicateur disponible » et masquait le logement, les
+  // âges et les niveaux de vie, qui étaient là. Chaque section décide pour elle.
+  //
+  // Enfin le niveau de vie : « la moitié des habitants vit avec moins » était
+  // faux et faisait paraître le chiffre trop élevé. FiLoSoFi mesure un niveau de
+  // vie par UNITÉ DE CONSOMMATION — revenu disponible du ménage divisé par 1
+  // pour le premier adulte, 0,5 par personne de 14 ans ou plus, 0,3 par enfant.
+  // Un couple avec deux jeunes enfants compte 2,1 UC.
   $: pop = serie('POP')
   $: logements = serie('DWELLINGS')
   $: principales = serie('DWELLINGS_DW_MAIN')
@@ -77,8 +101,9 @@
   $: ageTotal = ages.reduce((s, a) => s + a.valeur, 0)
   $: ageMax = Math.max(...ages.map(a => a.valeur), 1)
 
-  // La part de résidences secondaires est le chiffre structurant d'un village
-  // cévenol : on le met en avant plutôt que de le noyer dans un tableau.
+  // La part de résidences secondaires est mise en avant plutôt que noyée dans
+  // le tableau : c'est le chiffre qui distingue une commune habitée à l'année
+  // d'une commune de villégiature.
   $: partSecondaires = (r) => {
     const tot = logements.find(l => l.annee === r.annee)?.valeur
     return tot ? (r.valeur / tot) * 100 : null
@@ -87,11 +112,9 @@
   $: dernierSec = secondaires[secondaires.length - 1]
   $: dernierVac = vacants[vacants.length - 1]
 
-  // Le niveau de vie est publié pour chaque commune de l'intercommunalité : la comparaison
-  // situe la commune sans avoir à la chercher ailleurs.
-  $: voisines = insee
-    .filter(r => r.indicateur === 'FILO_MED_SL' && r.valeur != null)
-    .sort((a, b) => b.valeur - a.valeur)
+  // Le niveau de vie est publié pour chaque commune de l'intercommunalité : la
+  // comparaison situe la commune sans avoir à la chercher ailleurs. La liste
+  // vient du serveur, où le nom de commune existe encore.
   $: voisinesMax = Math.max(...voisines.map(v => v.valeur), 1)
 
   const nb = (v, d = 0) => v == null ? '—'
@@ -103,7 +126,7 @@
 
 <svelte:head>
   <title>Le territoire en chiffres — {SITE_NOM}</title>
-  <meta name="description" content="Population, logement, revenus et emploi {COMMUNE_A} depuis 1968 — portrait statistique du village à partir des recensements INSEE." />
+  <meta name="description" content="Population, logement, revenus et emploi {COMMUNE_A} — portrait statistique de la commune à partir des recensements INSEE." />
 </svelte:head>
 
 <section>
@@ -118,11 +141,25 @@
 
   {#if constat}
     <Niveau type="calcul" base="les recensements INSEE de {constat.premier.annee} à {constat.dernier.annee}">
-      {COMMUNE} comptait <b>{constat.premier.valeur.toLocaleString('fr-FR')}</b> habitants
-      en {constat.premier.annee} et <b>{constat.dernier.valeur.toLocaleString('fr-FR')}</b> en
-      {constat.dernier.annee} — le même nombre à deux près, après
-      {constat.premier.annee === constat.creux.annee ? 'une longue baisse' : `un creux à ${constat.creux.valeur.toLocaleString('fr-FR')} habitants en ${constat.creux.annee}`}.
-      La commune a donc regagné <b>{constat.reprise} %</b> depuis son point bas.
+      {COMMUNE} comptait <b>{nb(constat.premier.valeur)}</b> habitants
+      en {constat.premier.annee} et <b>{nb(constat.dernier.valeur)}</b> en
+      {constat.dernier.annee}
+      {#if constat.regime === 'stable'}
+        — le même nombre à {Math.abs(constat.ecart)} près{#if constat.creuxInterne}, après un creux à
+        {nb(constat.creux.valeur)} habitants en {constat.creux.annee}. La commune a donc regagné
+        <b>{constat.reprise} %</b> depuis son point bas{/if}.
+      {:else if constat.regime === 'baisse'}
+        — <b>{Math.abs(constat.ecartTotal)} % de moins</b>, et son point bas est
+        l'année la plus récente&nbsp;: la baisse n'est pas enrayée.
+      {:else if constat.regime === 'reprise'}
+        — <b>{Math.abs(constat.ecartTotal)} % de moins</b> qu'au départ, mais
+        <b>{constat.reprise} % de plus</b> qu'au creux de {constat.creux.annee}
+        ({nb(constat.creux.valeur)} habitants)&nbsp;: la population remonte sans avoir
+        retrouvé son niveau de {constat.premier.annee}.
+      {:else}
+        — <b>{constat.ecartTotal} % de plus</b>{#if constat.creuxInterne}, après un creux à
+        {nb(constat.creux.valeur)} habitants en {constat.creux.annee}{/if}.
+      {/if}
     </Niveau>
     <p class="lecture">
       <b>Ce que ce chiffre ne dit pas.</b> Une population stable en nombre peut
@@ -133,28 +170,41 @@
     </p>
   {/if}
 
-  {#if pop.length}
+  {#if aQuelqueChose}
     <div class="tiles">
-      <div class="tile">
-        <span class="tval">{nb(popActuelle?.valeur)}</span>
-        <span class="tlabel">habitants ({popActuelle?.annee})</span>
-      </div>
+      {#if popActuelle}
+        <div class="tile">
+          <span class="tval">{nb(popActuelle.valeur)}</span>
+          <span class="tlabel">habitants ({popActuelle.annee})</span>
+        </div>
+      {/if}
       {#if superficie}
         <div class="tile">
-          <span class="tval">{nb(popActuelle?.valeur / superficie.valeur, 1)}</span>
-          <span class="tlabel">hab./km² · {nb(superficie.valeur, 1)} km²</span>
+          {#if popActuelle}
+            <span class="tval">{nb(popActuelle.valeur / superficie.valeur, 1)}</span>
+            <span class="tlabel">hab./km² · {nb(superficie.valeur, 1)} km²</span>
+          {:else}
+            <span class="tval">{nb(superficie.valeur, 1)}</span>
+            <span class="tlabel">km²</span>
+          {/if}
         </div>
       {/if}
       {#if revenu}
-        <div class="tile">
+        <div class="tile" title="Revenu disponible du ménage rapporté à sa composition (unité de consommation), et non revenu par personne.">
           <span class="tval">{eur(revenu.valeur)}</span>
-          <span class="tlabel">niveau de vie médian ({revenu.annee})</span>
+          <span class="tlabel">niveau de vie médian par UC ({revenu.annee})</span>
         </div>
       {/if}
       {#if dernierSec && dernierLog}
         <div class="tile">
           <span class="tval">{pct((dernierSec.valeur / dernierLog.valeur) * 100)}</span>
           <span class="tlabel">de résidences secondaires</span>
+        </div>
+      {/if}
+      {#if dernierVac && dernierLog}
+        <div class="tile" title="Recensement : tout logement inoccupé au 1er janvier, quelle que soit la durée de la vacance.">
+          <span class="tval">{pct((dernierVac.valeur / dernierLog.valeur) * 100)}</span>
+          <span class="tlabel">de logements vacants ({dernierVac.annee})</span>
         </div>
       {/if}
       {#if actifs}
@@ -165,12 +215,19 @@
       {/if}
     </div>
 
-    <!-- ── Population ───────────────────────────────────────────────── -->
-    <h2>Une population revenue à son niveau de 1968</h2>
+    {#if pop.length}
+    <h2>
+      {#if !constat}Population au recensement
+      {:else if constat.regime === 'stable'}Une population stable depuis {constat.premier.annee}
+      {:else if constat.regime === 'baisse'}Une population en recul depuis {constat.premier.annee}
+      {:else if constat.regime === 'reprise'}Une population qui remonte depuis {constat.creux.annee}
+      {:else}Une population en hausse depuis {constat.premier.annee}{/if}
+    </h2>
     <p class="note">
       Population au recensement, de {pop[0]?.annee} à {pop[pop.length - 1]?.annee}.
-      Après un creux dans les années 1970-1990, le village a retrouvé en {pop[pop.length - 1]?.annee}
-      le nombre d'habitants qu'il comptait en {pop[0]?.annee}. Survolez une barre pour le détail.
+      {#if constat && constat.creuxInterne}Le point bas date de {constat.creux.annee}
+      ({nb(constat.creux.valeur)} habitants).{/if}
+      Survolez une barre pour le détail.
     </p>
     <div class="chart-wrap">
       <div class="chart pop">
@@ -183,12 +240,19 @@
       </div>
     </div>
 
+    {:else}
+      <h2>Population</h2>
+      <p class="note">La série historique des recensements n'a pas été collectée
+         pour cette commune. Les autres indicateurs ci-dessous, eux, l'ont été.</p>
+    {/if}
+
+    {#if logements.length}
     <!-- ── Logement ─────────────────────────────────────────────────── -->
     <h2>Logement : la part des résidences secondaires</h2>
     <p class="note">
-      Répartition du parc de logements à chaque recensement. C'est le chiffre
-      structurant d'un village cévenol : il conditionne l'école, les commerces
-      ouverts à l'année et la pression sur le foncier.
+      Répartition du parc de logements à chaque recensement. La part des
+      résidences secondaires conditionne l'école, les commerces ouverts à
+      l'année et la pression sur le foncier.
     </p>
     <div class="chart-wrap">
       <table>
@@ -210,7 +274,7 @@
               <td class="r">{nb(tot)}</td>
               <td class="r">{nb(pr)}</td>
               <td class="r">{nb(se)} <span class="muted">({pct(tot ? se / tot * 100 : null)})</span></td>
-              <td class="r">{nb(va)}</td>
+              <td class="r">{nb(va)} <span class="muted">({pct(tot ? va / tot * 100 : null)})</span></td>
               <td>
                 <div class="stack" title="Principales {nb(pr)} · Secondaires {nb(se)} · Vacants {nb(va)}">
                   <span class="s1" style="width:{tot ? pr / tot * 100 : 0}%"></span>
@@ -228,6 +292,16 @@
       <span><i class="s2"></i> Résidences secondaires</span>
       <span><i class="s3"></i> Logements vacants</span>
     </p>
+    <p class="lecture">
+      <b>Ce que « vacant » recouvre ici.</b> Le recensement compte tout logement
+      inoccupé au 1<sup>er</sup> janvier, sans distinguer la durée&nbsp;: un bien
+      entre deux locataires y figure comme un logement fermé depuis dix ans. La
+      <b>vacance de plus de deux ans</b>, celle qui pèse vraiment sur le
+      logement d'une commune, est mesurée par le fichier LOVAC du Cerema, dont
+      la diffusion est soumise à convention parce qu'il désigne des logements et
+      leurs propriétaires&nbsp;: elle n'est pas publiée ici.
+    </p>
+    {/if}
 
     <!-- ── Âges ─────────────────────────────────────────────────────── -->
     {#if ageTotal > 0}
@@ -246,8 +320,12 @@
     {#if voisines.length > 1}
       <h2>Niveau de vie dans l'intercommunalité</h2>
       <p class="note">
-        Niveau de vie médian par commune ({voisines[0].annee}) : la moitié des
-        habitants vit avec moins que ce montant par an, l'autre moitié avec plus.
+        Niveau de vie médian par commune ({anneeFilo}) : la moitié des habitants
+        appartient à un ménage dont le niveau de vie est inférieur à ce montant,
+        l'autre moitié supérieur. Ce n'est ni un salaire ni un revenu par
+        personne&nbsp;: c'est le revenu disponible du ménage — impôts directs
+        déduits, prestations comprises — rapporté à sa composition (1 unité pour
+        le premier adulte, 0,5 par personne de 14 ans ou plus, 0,3 par enfant).
       </p>
       <div class="ages">
         {#each voisines as v}
@@ -262,9 +340,11 @@
     {/if}
 
     <p class="src">
-      Source : INSEE — recensements de la population, séries historiques
-      (1968-2023), dispositif FiLoSoFi (niveaux de vie), récupérés via l'API
-      Melodi. Le niveau de vie médian est publié à l'échelle communale.
+      Source : INSEE — recensements de la population, séries historiques,
+      dispositif FiLoSoFi (niveaux de vie), récupérés via l'API Melodi. Le
+      niveau de vie médian est publié à l'échelle communale, en euros par an et
+      par unité de consommation ; l'INSEE le couvre du secret statistique sur
+      les communes les plus petites, qui sont alors absentes de la comparaison.
       La structure par âge porte sur le recensement {anneeAge}.
     </p>
   {:else}
