@@ -96,3 +96,24 @@ def test_deux_deliberations_dans_un_bloc_ne_s_additionnent_pas():
         "et 10 voix « pour » :")
     v = extract_vote(bloc)
     assert (v["pour"], v["contre"]) == (10, 3), "les deux votes ont été additionnés"
+
+
+@pytest.mark.parametrize("texte", [
+    "Le total des dépenses 2016 s'élève à 1 147 555,28 € pour la commune",
+    "BUDGET 2024 pour la commune, section investissement",
+    "les taux 2019 pour la part communale",
+])
+def test_un_millesime_n_est_pas_un_decompte(texte):
+    """Un décompte de voix ne dépasse pas l'effectif d'une assemblée.
+
+    « 2016 … pour » se lit comme 2 016 voix pour. 232 délibérations de Lasalle
+    en portaient un après la première correction du parseur — un défaut mis en
+    ligne avant d'être vu. Aucun conseil communautaire n'a mille délégués.
+    """
+    assert extract_vote(texte) is None
+
+
+def test_un_gros_conseil_communautaire_reste_lisible():
+    """La borne ne doit pas exclure une vraie grande assemblée."""
+    v = extract_vote("Le conseil communautaire, par 87 voix pour, adopte")
+    assert v["pour"] == 87

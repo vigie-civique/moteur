@@ -101,6 +101,11 @@ def extract_amounts(text: str) -> list[dict]:
 
 # ── Extraction des votes ───────────────────────────────────────────────────────
 
+# Au-delà, ce n'est plus une assemblée : le plus grand conseil communautaire de
+# France compte moins de deux cents délégués.
+EFFECTIF_MAX = 200
+
+
 def extract_vote(text: str) -> dict | None:
     """Lit un décompte de voix, quel que soit l'ORDRE des mentions.
 
@@ -197,6 +202,19 @@ def extract_vote(text: str) -> dict | None:
             break
 
     if not trouve:
+        if re.search(r"à l.unanimité", text, re.IGNORECASE):
+            return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
+        return None
+
+    # Un décompte de voix ne dépasse pas l'effectif d'une assemblée.
+    #
+    # « Le total des dépenses 2016 s'élève à … » et « BUDGET 2024 pour la
+    # commune » donnaient des votes à 2 016 et 2 024 voix : un MILLÉSIME suivi
+    # d'un mot de vote. 232 actes de Lasalle en portaient un. Aucun conseil
+    # communautaire de France n'a mille délégués ; au-delà de deux cents, ce
+    # n'est pas un vote qu'on lit, c'est une année ou un montant.
+    if any((v or 0) > EFFECTIF_MAX for v in
+           (vote["pour"], vote["contre"], vote["abstentions"])):
         if re.search(r"à l.unanimité", text, re.IGNORECASE):
             return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
         return None

@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from collectors import conseils  # noqa: E402
 from collectors.connecteurs import charger  # noqa: E402
+from collectors.connecteurs.base import DocumentPublie  # noqa: E402
 from collectors.db import get_conn, transaction  # noqa: E402
 
 MARQUE = "_redecoupage"
@@ -67,6 +68,44 @@ def marquer(conn) -> int:
     return cur.rowcount
 
 
+def deja_en_cache(portee: str, connus: set[str]) -> list:
+    """Les procès-verbaux que la base connaît et que le site ne propose plus.
+
+    `catalogue_pv` interroge le SITE de la collectivité : il ne rend que ce qui
+    y est encore publié. Sur Lasalle, 65 séances — alors que 193 PDF dorment
+    dans `data/pv/`, collectés au fil des ans. Les actes des séances retirées du
+    site gardaient donc leur découpage d'origine, faux titres compris, et rien
+    ne le disait : c'est là que se concentraient les fragments de tableau de
+    2016 à 2019.
+
+    Or `lire_document` relit le cache disque sans réseau. Ces séances sont donc
+    relisibles telles quelles — il suffisait de les proposer. On ne retient que
+    celles dont le PDF est effectivement en cache : une URL sans fichier ferait
+    un téléchargement, et un 404 sur un site refondu.
+    """
+    from collectors.conseils import _cible_cache
+
+    documents = []
+    with transaction() as conn:
+        lignes = conn.execute(
+            f"SELECT DISTINCT source_url, MIN(date) AS date FROM events "
+            f"WHERE type IN ({','.join('?' * len(TYPES))}) AND source_url IS NOT NULL "
+            f"GROUP BY source_url", TYPES).fetchall()
+    for url, date in lignes:
+        if url in connus or not str(url).lower().endswith(".pdf"):
+            continue
+        cache = _cible_cache(url)
+        if cache.exists() and cache.stat().st_size > 0:
+            documents.append(DocumentPublie(date=date or "", url=url,
+                                            libelle=cache.name, source=_domaine(url)))
+    return documents
+
+
+def _domaine(url: str) -> str:
+    import urllib.parse
+    return urllib.parse.urlparse(url).netloc
+
+
 def relire(portee: str, avec_ocr: bool) -> set[str]:
     """Relit les procès-verbaux d'une portée ; rend les URL effectivement lues.
 
@@ -77,7 +116,12 @@ def relire(portee: str, avec_ocr: bool) -> set[str]:
     paraissait corrigée alors qu'elle l'était à un tiers.
     """
     documents = charger().catalogue_pv(portee)
-    print(f"\n[redécoupage] {portee} — {len(documents)} procès-verbaux catalogués")
+    publies = len(documents)
+    # Complété par ce que la base connaît déjà et que le site ne publie plus.
+    archives = deja_en_cache(portee, {d.url for d in documents}) if portee == "commune" else []
+    documents = documents + archives
+    print(f"\n[redécoupage] {portee} — {publies} procès-verbaux catalogués"
+          + (f" + {len(archives)} archivés hors du site" if archives else ""))
     lues, statuts = set(), {}
     for doc in documents:
         with transaction() as conn:
