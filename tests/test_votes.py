@@ -117,3 +117,15 @@ def test_un_gros_conseil_communautaire_reste_lisible():
     """La borne ne doit pas exclure une vraie grande assemblée."""
     v = extract_vote("Le conseil communautaire, par 87 voix pour, adopte")
     assert v["pour"] == 87
+
+
+def test_un_numero_d_article_n_est_pas_un_decompte():
+    """Un décompte s'écrit avec le mot qui le désigne.
+
+    « Vu les articles L.153-36 à L.153-48 … pour le PLUi » donnait 123 voix
+    pour, sur une délibération d'urbanisme. La borne d'effectif ne pouvait rien :
+    123 délégués est un nombre plausible. C'est l'absence du mot « voix » qui
+    tranche.
+    """
+    assert extract_vote("Vu le Code de l'Urbanisme et notamment ses articles "
+                        "L.153-36 à L.153-48 et R.104-33 pour le PLUi") is None

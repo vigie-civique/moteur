@@ -177,6 +177,14 @@ def extract_vote(text: str) -> dict | None:
             return {"pour": None, "contre": 0, "abstentions": 0, "unanimite": True}
         return None
 
+    # Un décompte s'écrit avec le mot qui le désigne. Sans « voix », « vote » ou
+    # « suffrage » dans le passage, un nombre suivi de « pour » n'est pas un
+    # vote : « Vu les articles L.153-36 à L.153-48 … pour le PLUi » donnait
+    # 123 voix pour, et la borne d'effectif ne l'attrapait pas — 123 est un
+    # nombre de délégués plausible.
+    if not re.search(r"\b(?:voix|votes?|suffrages?|unanimité)\b", passage, re.IGNORECASE):
+        return None
+
     vote = {"pour": None, "contre": 0, "abstentions": 0, "unanimite": False}
     trouve = False
     # « 12 voix « Pour » », « 1 abstention », « 2 voix Contre », « 3 votes contre »
