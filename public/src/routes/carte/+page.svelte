@@ -1,6 +1,9 @@
 <script>
+  import SourceAbsente from '$lib/components/SourceAbsente.svelte'
   import { COMMUNE, COMMUNE_DE, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
+  import { CENTROID_LAT, CENTROID_LNG } from '$lib/instance.js'
+  import { poserFond } from '$lib/carte/fond.js'
   import Icon from '$lib/components/Icon.svelte'
   import { loadJSON, TYPE_LABELS } from '$lib/data.js'
 
@@ -30,6 +33,9 @@
   let counts = {}             // key -> nb features affichées
   let sources = {}            // key -> FeatureCollection complète
   let visible = { businesses: true, associations: true, services: true, places: true }
+  // Une carte sans fond reste utile : les repères sont là, et leur position
+  // aussi. Le dire vaut mieux que de laisser croire à une carte cassée.
+  let fondAbsent = ''
 
   // La carte couvre les quinze communes de l'intercommunalité : sans ce choix,
   // un habitant qui cherche « les associations d'ici » en voit trois fois trop
@@ -45,6 +51,20 @@
     visible[key] = !visible[key]
     if (visible[key]) groups[key].addTo(map)
     else map.removeLayer(groups[key])
+  }
+
+  // Une carte s'ouvre sur ce qu'elle a à montrer. Sans ce recadrage, elle
+  // s'ouvrait sur un centre fixe et il fallait chercher ses propres repères.
+  function cadrerSurLesReperes() {
+    if (!map || !L) return
+    const pts = []
+    for (const fc of Object.values(sources)) {
+      for (const f of (fc?.features || [])) {
+        const c = f.geometry?.coordinates
+        if (c && c.length === 2 && retenu(f)) pts.push([c[1], c[0]])
+      }
+    }
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.08))
   }
 
   function dessiner() {
@@ -90,12 +110,15 @@
       L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
 
+      // Le centre vient de l'instance. Il était écrit en dur — 44.0456, 3.8546,
+      // soit la commune d'origine du moteur : toute autre instance ouvrait sa
+      // carte à des centaines de kilomètres de ses propres repères, et le
+      // lecteur voyait une carte vide. Le recadrage sur les points, plus bas,
+      // est le vrai remède ; ce centre ne sert plus qu'avant leur chargement.
       map = L.map(mapEl, { attributionControl: true, zoomControl: true })
-        .setView([44.0456, 3.8546], 14)
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd', maxZoom: 20,
-      }).addTo(map)
+        .setView([CENTROID_LAT, CENTROID_LNG], 14)
+      const fond = await poserFond(L, map)
+      if (!fond.ok) fondAbsent = fond.raison
 
       for (const layer of LAYERS) {
         try { sources[layer.key] = await loadJSON(`layers/${layer.key}.geojson`) }
@@ -103,6 +126,7 @@
       }
       sources = { ...sources }
       dessiner()
+      cadrerSurLesReperes()
     } catch (e) {
       error = e.message
     } finally {
@@ -123,6 +147,10 @@
     <Icon name="fleche" size={15} />Annuaire complet
   </a>
 
+  {#if data.source && data.source.etat !== 'servie'}
+    <SourceAbsente etat={data.source.etat} sources={data.source.sources}
+                   dernier={data.source.dernier} quoi="Les lieux de la carte" />
+  {/if}
   {#if data.surCarte && data.total}
     <p class="perimetre">
       <b>{data.surCarte.toLocaleString('fr-FR')}</b> des
@@ -138,6 +166,9 @@
   {/if}
 
   {#if error}<div class="toast err">Erreur de chargement : {error}</div>{/if}
+  {#if fondAbsent}<p class="sans-fond">Le fond de carte n'a pas pu être chargé —
+    les repères ci-dessous restent à leur position exacte. Fond attendu&nbsp;:
+    <code>static/carte/fond.pmtiles</code> (<code>scripts/carte_fond.py</code>).</p>{/if}
   {#if loading}<div class="toast">Chargement de la carte…</div>{/if}
 
   <div class="portee-carte">
@@ -184,6 +215,9 @@
     font-size: .85rem; box-shadow: var(--ombre);
   }
   .toast.err { color: var(--depense); }
+  .sans-fond { margin: .5rem 0; padding: .6rem .8rem; border-left: 3px solid var(--ambre);
+               background: var(--papier); font-size: .85rem; color: var(--gris); }
+  .sans-fond code { font-size: .8rem; }
 
   .vers-annuaire {
     position: absolute; top: 1rem; right: 1rem; z-index: 600;

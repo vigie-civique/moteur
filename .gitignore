@@ -4,6 +4,10 @@
 db/*.db
 db/*.db-*
 public/static/data/
+# Le fond de carte est un artefact d'instance, produit par scripts/carte_fond.py
+# et borné à l'emprise de la commune : il n'appartient pas au moteur, pas plus
+# que le snapshot. Il arrive dans le site par le build, comme les données.
+public/static/carte/
 # Le snapshot publié, dans les deux emplacements où il atterrit : le site public
 # le lit dans public/static/data, l'atelier le sert depuis dashboard/static.
 # Seul le premier était ignoré — le second se serait retrouvé versionné au

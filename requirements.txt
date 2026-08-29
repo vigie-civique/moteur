@@ -63,3 +63,7 @@ pillow==12.3.0
 # Tests : `pip install pytest`, et rien d'autre — la suite ne doit dépendre ni des
 # collecteurs ni de l'API, sans quoi un test sort sur le réseau. C'est pour cela
 # qu'elle n'installe pas ce fichier. Cf. CONTRIBUTING.md et la CI.
+
+# Extraction du fond de carte (scripts/carte_fond.py). Optionnelle : une
+# instance qui garde un fond distant n'en a pas besoin, et le script le dit.
+pmtiles==3.7.0
