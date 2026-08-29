@@ -108,8 +108,22 @@ def import_competences(conn, epci_id: int, data: dict, dry_run: bool) -> int:
 
 
 def import_delegues(conn, epci_id: int, data: dict, dry_run: bool) -> dict:
+    """Les délégués DE LA FICHE, avec la date à laquelle elle a été arrêtée.
+
+    BANATIC n'annonce pas un mandat en cours : il publie un ÉTAT, daté par
+    `dateDerniereModification`. Sur la CC Causses-Aigoual-Cévennes, cet état
+    remonte au 15/10/2025 — antérieur aux municipales de mars 2026 : ses
+    28 délégués sont ceux de la mandature précédente. Fusionnés sans précaution
+    aux 22 du Répertoire National des Élus, ils donnaient 45 personnes « qui
+    siègent », dont trois que le lecteur savait sorties du conseil.
+
+    La date est donc portée par la relation elle-même. Une correction posée à la
+    main dans la base — comme celle du 15/03/2026, qui clôturait ces mandats —
+    ne survit pas à la première recollecte : le point d'écriture est ici.
+    """
+    etat_au = (data.get("dateDerniereModification") or "")[:10] or None
     res = {"delegues": 0, "personnes_creees": 0, "relations": 0,
-           "communes_corrigees": []}
+           "communes_corrigees": [], "etat_au": etat_au}
     for d in data.get("delegues", []):
         prenom = (d.get("prenom") or "").strip()
         nom = (d.get("nom") or "").strip()
@@ -144,12 +158,23 @@ def import_delegues(conn, epci_id: int, data: dict, dry_run: bool) -> dict:
                          " WHERE id=?", (commune, pid))
             res["communes_corrigees"].append(
                 f"{nom_complet} : {avant['commune']} → {commune}")
+        meta = json.dumps({"fonction": d.get("fonction"),
+                           "commune_representee": commune,
+                           # Ce que la source atteste, et sa date : c'est au
+                           # lecteur du snapshot d'en tirer les conséquences.
+                           "etat_au": etat_au}, ensure_ascii=False)
         upsert_relation(conn, pid, epci_id, rel, source="banatic",
-                        confidence="verified",
-                        metadata=json.dumps(
-                            {"fonction": d.get("fonction"),
-                             "commune_representee": commune},
-                            ensure_ascii=False))
+                        confidence="verified", metadata=meta)
+        # `upsert_relation` fait un INSERT OR IGNORE : sur une base déjà
+        # collectée, il ne touche RIEN. La date d'état n'y serait jamais
+        # arrivée, et le correctif n'aurait valu que pour une base neuve —
+        # exactement le genre de correction qui a l'air posée et ne l'est pas.
+        # Une fiche BANATIC est un état à une date : à chaque passage, c'est
+        # l'état du jour qui fait foi.
+        conn.execute(
+            "UPDATE relations SET metadata = ? "
+            " WHERE from_id = ? AND to_id = ? AND relation_type = ? AND source = 'banatic'",
+            (meta, pid, epci_id, rel))
         res["relations"] += 1
     return res
 

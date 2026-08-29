@@ -496,7 +496,16 @@ MONTANT_MAX = 50_000_000
 # lui-même (« responsable » de la commission, « volet agricole ») et rien de la
 # personne. Le reste du bloc porte des données de travail — nom complet,
 # année de naissance, notes d'enquête — qui ne sortent pas.
-RELATION_META_PUBLIQUE = ("role", "precision")
+# Liste blanche : rien d'autre ne sort des métadonnées d'une relation.
+#
+# Deux champs y manquaient alors que le code les lisait déjà : `fonction_rne`
+# (la fonction telle que le Répertoire National des Élus l'écrit — le code
+# retombait donc toujours sur son libellé par défaut, sans le savoir) et
+# `etat_au` (la date à laquelle la source a arrêté son état, sur laquelle
+# repose le tri entre mandature en cours et mandature précédente). Une liste
+# blanche protège, mais elle rend `None` en silence : ce qu'elle omet n'a pas
+# l'air absent, il a l'air vide.
+RELATION_META_PUBLIQUE = ("role", "precision", "fonction_rne", "etat_au")
 
 
 def relation_meta_publique(brut: str | None) -> dict:
@@ -512,7 +521,62 @@ def relation_meta_publique(brut: str | None) -> dict:
             if isinstance(meta.get(k), str)}
 
 
-def public_event_detail(metadata: dict, event_type: str) -> dict:
+# Ce qu'un montant est, dans une délibération.
+#
+# Le contexte de chaque montant est capté à l'extraction (80 caractères avant,
+# 40 après) : il dit souvent ce que le chiffre représente. Une délibération de
+# subvention écrit « Montant demandé : 2 200 € ; Montant attribué : 500 € » —
+# retenir le plus élevé, c'est publier la DEMANDE comme si le conseil l'avait
+# votée. C'est ce qui affichait « 2 200 € » sur un acte où 100 € ont été votés.
+DEMANDE_RE = re.compile(
+    r"(demand\w+|sollicit\w+|estim\w+|propos\w+|devis|prévisionnel\w*)", re.I)
+ACCORDE_RE = re.compile(
+    r"(attribu\w+|accord\w+|allou\w+|vot\w+|vers\w+|octroi\w+)", re.I)
+
+
+def _sans_accents(t: str) -> str:
+    return unicodedata.normalize("NFKD", (t or "").lower()) \
+        .encode("ascii", "ignore").decode()
+
+
+def montant_de_la_decision(montants: list, titre: str | None = None) -> tuple[float | None, list]:
+    """Le montant DÉCIDÉ, et les autres — plutôt que le plus gros du texte.
+
+    Trois règles, de la plus sûre à la plus faible :
+
+    1. si des montants sont dits ACCORDÉS (« DECIDE d'attribuer … 100 € »),
+       la décision est parmi eux ;
+    2. sinon, les montants explicitement DEMANDÉS sont écartés du calcul ;
+    3. entre plusieurs candidats, celui dont le contexte nomme le titre de
+       l'acte l'emporte — un bloc de subventions en contient plusieurs, un par
+       association, et le titre dit de laquelle il s'agit.
+
+    À défaut, on retombe sur le plus élevé, comme avant.
+    """
+    retenus = []
+    for m in montants:
+        v = m.get("montant", m.get("value")) if isinstance(m, dict) else m
+        if not isinstance(v, (int, float)) or not (MONTANT_MIN <= v <= MONTANT_MAX):
+            continue
+        ctx = m.get("context", "") if isinstance(m, dict) else ""
+        retenus.append((v, ctx, bool(ACCORDE_RE.search(ctx)), bool(DEMANDE_RE.search(ctx))))
+    if not retenus:
+        return None, []
+
+    accordes = [r for r in retenus if r[2] and not r[3]]
+    candidats = accordes or [r for r in retenus if not r[3]] or retenus
+
+    cle = _sans_accents(titre or "")
+    if len(cle) > 5:
+        nommes = [r for r in candidats if cle in _sans_accents(r[1])]
+        if nommes:
+            candidats = nommes
+
+    principal = max(c[0] for c in candidats)
+    return principal, sorted({r[0] for r in retenus}, reverse=True)[:5]
+
+
+def public_event_detail(metadata: dict, event_type: str, titre: str | None = None) -> dict:
     """Détail publiable d'un événement : vote, montants, thème, ordre du jour.
 
     Ne sort JAMAIS `personnes_citees` : ce sont des noms bruts extraits par OCR,
@@ -537,19 +601,15 @@ def public_event_detail(metadata: dict, event_type: str) -> dict:
 
     montants = metadata.get("montants")
     if isinstance(montants, list) and montants:
-        valeurs = []
-        for m in montants:
-            v = m.get("montant", m.get("value")) if isinstance(m, dict) else m
-            # Bornes de plausibilité : l'extraction OCR rapporte des numéros
-            # d'article comme des euros (« 1 € ») et des concaténations de
-            # chiffres comme des montants (213 087 450 € pour une communauté de
-            # communes dont le budget total tient en 10 M€). Publier ces valeurs
-            # décrédibilise toute la colonne montants.
-            if isinstance(v, (int, float)) and MONTANT_MIN <= v <= MONTANT_MAX:
-                valeurs.append(v)
+        # Bornes de plausibilité appliquées dans `montant_de_la_decision` :
+        # l'extraction OCR rapporte des numéros d'article comme des euros
+        # (« 1 € ») et des concaténations de chiffres comme des montants
+        # (213 087 450 € pour une communauté de communes dont le budget tient en
+        # 10 M€). Publier ces valeurs décrédibilise toute la colonne montants.
+        principal, valeurs = montant_de_la_decision(montants, titre)
         if valeurs:
-            detail["montant_principal"] = max(valeurs)
-            detail["montants"] = sorted(valeurs, reverse=True)[:5]
+            detail["montant_principal"] = principal
+            detail["montants"] = valeurs
             # `montant_principal` est le plus élevé des montants cités, pas le
             # coût de l'acte : sur un document qui porte 20 délibérations, il
             # affichait 2 197 037 € en face d'une ligne, comme si c'était son
@@ -2038,7 +2098,7 @@ def build_snapshot(out: Path) -> dict:
                 # l'export : 493 délibérations sur 508 portent le décompte du vote
                 # et 471 un montant, et la page publique n'affichait qu'une ligne
                 # date + titre. C'est la matière même du contrôle citoyen.
-                **public_event_detail(metadata, event_type),
+                **public_event_detail(metadata, event_type, event["title"]),
                 # Trois axes vérifiables au lieu d'un label à croire.
                 **provenance(
                     event, source, event_type,
@@ -2668,9 +2728,29 @@ def build_snapshot(out: Path) -> dict:
             """)
         } if table_exists(conn, "elus_rne") else {}
 
+        # Un RENOUVELLEMENT invalide toute liste antérieure.
+        #
+        # Le filtre `until` ci-dessus ne suffit pas : aucune source ne clôt les
+        # mandats qu'elle publie, et la clôture posée à la main le 15/03/2026
+        # avait disparu à la recollecte suivante. BANATIC, lui, DATE son état
+        # (`etat_au`, écrit par le collecteur) : il suffit de le comparer à la
+        # dernière élection municipale connue de la base. Un état arrêté au
+        # 15/10/2025 décrit la mandature d'avant mars 2026 — ses 28 délégués
+        # s'ajoutaient aux 22 du RNE et la page en annonçait 45.
+        #
+        # Les sources non datées sont conservées : on n'écarte que ce qu'on sait
+        # périmé, jamais ce qu'on ignore.
+        dernier_scrutin = (conn.execute(
+            "SELECT MAX(date) FROM events WHERE type = 'election'").fetchone() or [None])[0]
+
         par_personne: dict[int, dict] = {}
+        perimes: list[str] = []
         for d in delegues_bruts:
             if d["id"] in par_personne:
+                continue
+            etat_au = relation_meta_publique(d.get("metadata")).get("etat_au")
+            if dernier_scrutin and etat_au and etat_au < dernier_scrutin:
+                perimes.append(f"{d['name']} ({d['source']}, état du {etat_au})")
                 continue
             fonction = relation_meta_publique(d.get("metadata")).get("fonction_rne") \
                 or {"président_cc": "Président",
@@ -2749,6 +2829,11 @@ def build_snapshot(out: Path) -> dict:
             # la répartition des sièges ne viennent pas du même endroit.
             "sieges_source": "BANATIC (répartition arrêtée le 15/10/2025)",
             "delegues_source": "Répertoire National des Élus (publication du 11/08/2026)",
+            # Ce qui a été écarté comme périmé, et pourquoi : un compteur qui
+            # tombe de 45 à 22 doit pouvoir s'expliquer sans relire le code.
+            "delegues_ecartes": len(perimes),
+            "delegues_ecartes_motif": (
+                f"listes antérieures au scrutin du {dernier_scrutin}" if perimes else ""),
             "delegues_a_confirmer": delegues_hors_banatic,
             "note_sources": (
                 "Les délégués sont ceux du Répertoire National des Élus, "

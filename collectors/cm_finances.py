@@ -268,6 +268,20 @@ def run_subventions(commit: bool):
             "VALUES (?,?,'subventionné','cm_finances','verified',?)",
             (COMMUNE_ID, to_id, f'{{"year": {year}, "amount": {amount}}}'),
         )
+        # Qui reçoit une subvention votée par une délibération est cité PAR
+        # cette délibération : c'est vrai par construction, et c'est pourtant
+        # ce lien qui manquait.
+        #
+        # « Cités dans un acte » ne montrait aucune association — pas une seule
+        # sur 44 bénéficiaires — parce que le rôle `sujet` n'était posé que par
+        # le BODACC, l'urbanisme, les commissions et les élections. Une
+        # association subventionnée depuis dix ans n'apparaissait donc jamais
+        # dans les actes qui la subventionnent, alors que l'argent, lui, était
+        # en base et rattaché au bon acte.
+        if eid:
+            w.execute(
+                "INSERT OR IGNORE INTO event_entities (event_id, entity_id, role) "
+                "VALUES (?,?,'bénéficiaire')", (eid, to_id))
 
     ins = created = 0
     with transaction() as w:
