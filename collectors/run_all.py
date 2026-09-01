@@ -56,6 +56,7 @@ from collectors.insee_social  import run as run_insee_social
 from collectors.georisques    import run as run_georisques
 from collectors.education     import run as run_education
 from collectors.raa_prefecture import run as run_raa
+from collectors.crc import run_crc
 from collectors.pop_culture   import run as run_pop_culture
 from collectors.rne          import run as run_rne
 from collectors.fiscalite    import run as run_fiscalite
@@ -180,6 +181,18 @@ STEPS = {
     "education": ("Établissements scolaires (Éducation nationale)", run_education),
     "raa":      ("RAA de la préfecture (année courante, incrémental)",
                  lambda: run_raa(__import__("datetime").date.today().year)),
+    # L'audit officiel d'une collectivité, quand il existe : contradictoire,
+    # public, et la pièce la plus lourde qu'un dossier puisse contenir.
+    #
+    # Placé après `raa` — même famille, des documents publics sur l'institution
+    # plutôt que sur son tissu. Ne boucle sur aucune commune membre : il
+    # interroge LA commune et SON intercommunalité, et n'a donc pas de
+    # profondeur à régler dans PROFONDEUR_STEP.
+    #
+    # ⚠️ Ne rien trouver est le cas ORDINAIRE : sous 3 500 habitants une commune
+    # n'est presque jamais contrôlée, et c'est l'intercommunalité qui porte le
+    # rapport quand il y en a un.
+    "crc":      ("Rapports des chambres régionales des comptes", run_crc),
     "patrimoine": ("Monuments historiques MH", run_pop_culture),
     # Source AUTORITAIRE des mandats (DGCL). Sert de contrôle des affirmations
     # tirées des sites municipaux, qui peuvent être périmés.

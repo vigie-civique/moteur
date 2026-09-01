@@ -108,6 +108,9 @@ DOMAINES_NATIONAUX = re.compile(
     r"economie\.gouv\.fr|ign\.fr|geopf\.fr|pappers\.fr|opendatacommons\.org|"
     r"github\.com|tesseract-ocr\.github\.io|creativecommons\.org|"
     r"etalab\.gouv\.fr|legifrance\.gouv\.fr|service-public\.fr|cnil\.fr|"
+    # La juridiction financière : même site pour toutes les instances, et il
+    # n'existe pas d'API — la recherche du site EST la source.
+    r"ccomptes\.fr|"
     # Portails nationaux de la commande publique, et vocabulaires normalisés
     # cités par le format de publication : ce ne sont pas des sites de commune.
     r"boamp\.fr|marches-publics\.gouv\.fr|popoloproject\.com|w3\.org|"
