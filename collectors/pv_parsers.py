@@ -326,6 +326,22 @@ def _puces(texte: str, pagine: bool = True) -> list[dict]:
     return sorties
 
 
+# Ce qu'une ligne garde quand on lui ôte ce que l'océrisation abîme : la casse,
+# les accents, la ponctuation, et la VALEUR des nombres — jamais les nombres
+# eux-mêmes, réduits à une marque. Les supprimer ferait d'une ligne de tableau
+# budgétaire la copie exacte de sa voisine, et `_sans_entetes` les emporterait
+# toutes les deux : « Chap 011 Charges de personnel 5 000,00 » et « Chap 012
+# Achats 7 000,00 » doivent rester DISTINCTES, et elles le restent par leur
+# libellé. Ce qui doit se rejoindre, ce sont les graphies successives d'un même
+# en-tête : « ID : 030-213001407-20260630-DEL2606_12-DE » et
+# « ID :690-218001407-20260680-DEL2606 19-DE » sont la même ligne, deux fois.
+def _forme_normalisee(ligne: str) -> str:
+    sans_accent = "".join(
+        c for c in unicodedata.normalize("NFKD", ligne)
+        if not unicodedata.combining(c)).lower()
+    return re.sub(r"[^a-z#]+", " ", re.sub(r"\d+", "#", sans_accent)).strip()
+
+
 def _sans_entetes(texte: str, pagine: bool = True) -> str:
     """Retire les lignes répétées d'un document PAGINÉ : en-tête et pied de page.
 
@@ -341,14 +357,49 @@ def _sans_entetes(texte: str, pagine: bool = True) -> str:
     trouvait plus une seule ancre, et les huit budgets — dont la Cantine à
     162 724,13 € — n'étaient nulle part. Appliquer à une page web le remède d'un
     PDF, c'est soigner un mal qu'elle n'a pas.
+
+    🔴 Le comptage portait sur des chaînes IDENTIQUES, et c'est ce qui le rendait
+    inopérant sur un document océrisé : **la reconnaissance optique n'écrit
+    jamais deux fois le même en-tête**. Le PV du 30/06/2026 de Lasalle répète le
+    sien sur ses 47 pages, en 47 graphies différentes — « ID : 030-213001407-… »,
+    « ID :690-218001407-… », « ID :030-213001407-20260680-DEL2608. 14-DE ».
+    `Counter` n'en voyait aucune quatre fois, aucune n'était retirée, et
+    `_capitales` prenait chacune pour le titre d'une délibération : 37 actes
+    produits pour 5 réels. La protection était défaite par le bruit même dont
+    elle devait protéger. Le comptage porte désormais sur la FORME NORMALISÉE.
+
+    ⚠️ Le seuil reste ABSOLU, et ce n'est pas par paresse. Normaliser regroupe
+    plus largement, et j'ai d'abord cru qu'il fallait proportionner le seuil au
+    nombre de pages — du mobilier paraît une fois par page. La mesure dit le
+    contraire, sur les deux corpus de Lasalle à la fois : à `max(4, pages//3)`,
+    les 22 premiers PV scannés rendent 1 546 actes contre 748 à quatre, et les
+    60 PV sains 933 contre 868. Un seuil qui monte avec la longueur du document
+    laisse passer le mobilier des documents longs, qui sont précisément les plus
+    abîmés. Quatre, mesuré meilleur des deux côtés.
+
+    🔴 Une ligne qui porte un MONTANT n'est jamais du mobilier, et rien ne la
+    retire. C'est la garde qui manquait, et son absence a fait revenir le défaut
+    de la Cantine par une autre porte. Marquer les nombres rend identiques des
+    lignes qui ne diffèrent que par leurs sommes : un procès-verbal qui vote
+    huit budgets aligne huit fois « Section de fonctionnement : Dépenses …
+    Recettes … », que le comptage voyait alors comme un en-tête répété. Or le
+    texte nettoyé ici ne sert pas qu'à trouver les titres — c'est LUI qui
+    devient le corps de l'acte, et `extract_amounts` y puise. Mesuré sur les 134
+    procès-verbaux textuels de Lasalle avant la garde : 240 600 € du Fonds Vert,
+    401 000 € HT d'une opération, 2 200 € de subvention à une association
+    disparaissaient du corps où on venait les lire. Du mobilier de page ne porte
+    jamais d'euros ; la garde ne coûte donc rien à ce qu'elle doit retirer.
     """
     if not pagine:
         return texte
     from collections import Counter
     lignes = texte.splitlines()
-    compte = Counter(l.strip() for l in lignes if l.strip())
-    repetees = {l for l, n in compte.items() if n >= 4 and len(l) < 60}
-    return "\n".join(l for l in lignes if l.strip() not in repetees)
+    compte = Counter(_forme_normalisee(l) for l in lignes
+                     if l.strip() and not _MONTANT_TITRE.search(l))
+    repetees = {f for f, n in compte.items() if n >= 4 and 0 < len(f) < 60}
+    return "\n".join(l for l in lignes
+                     if not l.strip() or _MONTANT_TITRE.search(l)
+                     or _forme_normalisee(l) not in repetees)
 
 
 def _apres_entete(texte: str) -> str:
