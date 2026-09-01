@@ -28,9 +28,25 @@ PY="${PY:-$ROOT/venv/bin/python3}"
 DEPLOYER=0
 [ "${1:-}" = "--deployer" ] && DEPLOYER=1
 
+# Quel hébergeur, et pourquoi rien n'est choisi par défaut.
+#
+# Ce moteur est destiné à être REPRIS : il ne doit imposer aucun fournisseur.
+# `rsync` n'est pas « OVH » — c'est « une machine à vous, jointe par ssh », ce
+# qui vaut pour un VPS, un serveur associatif ou un mutualisé. Et `cloudflare`
+# reste là pour qui l'utilise déjà.
+#
+# Sans indication, on déduit de `CF_PROJECT` afin de ne pas casser les appels
+# existants ; à défaut on REFUSE, plutôt que de deviner. Un script qui choisit
+# tout seul où publier un site public publiera un jour au mauvais endroit.
+cible() {
+  if [ -n "${VIGIE_CIBLE:-}" ]; then echo "$VIGIE_CIBLE"; return; fi
+  if [ -n "${CF_PROJECT:-}" ]; then echo cloudflare; return; fi
+  echo indecis
+}
+
 # Contrôlé AVANT de travailler : découvrir qu'il manque un nom de projet après
 # trois minutes de build, c'est trois minutes perdues pour une variable.
-if [ "$DEPLOYER" -eq 1 ]; then
+if [ "$DEPLOYER" -eq 1 ] && [ "$(cible)" = "cloudflare" ]; then
   if [ -z "${CF_PROJECT:-}" ]; then
     echo "✖ CF_PROJECT non défini : nom du projet Cloudflare Pages à publier." >&2
     echo "  Sans --deployer, le site est construit dans public/build/ et" >&2
@@ -83,10 +99,49 @@ if [ "$DEPLOYER" -eq 0 ]; then
   exit 0
 fi
 
-echo "4/4 — Mise en ligne Cloudflare Pages ($CF_PROJECT)"
-# --branch=main force l'environnement Production : sans lui, wrangler détecte la
-# branche git courante et déploie en Preview — la production reste vide.
-( cd "$ROOT/public" && npx wrangler pages deploy build \
-    --project-name="$CF_PROJECT" --branch=main --commit-dirty=true )
+# L'en-tête de ce fichier annonçait depuis toujours qu'« un simple rsync vers un
+# OVH » suffirait, `public/build/` étant un site statique ordinaire : il n'y
+# avait qu'à l'écrire. Fait le 01/09/2026, en déplaçant l'instance de Lasalle
+# hors de Cloudflare Pages — le portail en était sorti le 31/08 et l'expliquait
+# longuement pendant que les sites qu'il recommande y restaient.
+case "$(cible)" in
+  rsync)
+    : "${VIGIE_CIBLE_HOTE:?cible rsync : VIGIE_CIBLE_HOTE manquant (hôte ssh)}"
+    : "${VIGIE_CIBLE_CHEMIN:?cible rsync : VIGIE_CIBLE_CHEMIN manquant (dossier servi)}"
+    echo "4/4 — Mise en ligne par rsync ($VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN)"
 
-echo "✓ Site public en ligne."
+    # `--delete` : une page retirée d'une collecte doit disparaître du site.
+    # Sans lui, un fichier supprimé du build resterait servi indéfiniment — et
+    # un site de transparence qui garde une page qu'il a cessé de publier ment
+    # par omission inverse.
+    #
+    # `_redirects` est EXCLU : Cloudflare Pages le lisait, un serveur ordinaire
+    # l'ignore. Ses règles doivent être traduites dans la configuration du
+    # serveur ; le laisser ferait croire qu'elles agissent encore.
+    #
+    # `VIGIE_CIBLE_RSYNC_PATH` sert quand le compte qui se connecte n'est pas
+    # celui qui possède les fichiers — sinon le serveur finit par servir des
+    # fichiers que la publication suivante ne peut plus remplacer.
+    rsync -az --delete --exclude='_redirects' \
+      ${VIGIE_CIBLE_RSYNC_PATH:+--rsync-path="$VIGIE_CIBLE_RSYNC_PATH"} \
+      "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/"
+    echo "✓ Site public en ligne."
+    ;;
+  cloudflare)
+    echo "4/4 — Mise en ligne Cloudflare Pages ($CF_PROJECT)"
+    # --branch=main force l'environnement Production : sans lui, wrangler
+    # détecte la branche git courante et déploie en Preview — la production
+    # reste vide.
+    ( cd "$ROOT/public" && npx wrangler pages deploy build \
+        --project-name="$CF_PROJECT" --branch=main --commit-dirty=true )
+    echo "✓ Site public en ligne."
+    ;;
+  *)
+    echo "✖ Aucun hébergeur indiqué. Choisir explicitement :" >&2
+    echo "    VIGIE_CIBLE=rsync VIGIE_CIBLE_HOTE=… VIGIE_CIBLE_CHEMIN=…" >&2
+    echo "    VIGIE_CIBLE=cloudflare CF_PROJECT=…" >&2
+    echo "  Le build est prêt dans public/build/ : il se téléverse tel quel" >&2
+    echo "  chez n'importe quel hébergeur statique." >&2
+    exit 1
+    ;;
+esac
