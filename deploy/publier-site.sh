@@ -79,6 +79,16 @@ echo "1/4 — Snapshot public (base → snapshot → public/static/data)"
 # à la place de la commune. Lancer alors `python3 -m collectors.run_all --step perimetre`.
 "$PY" "$ROOT/scripts/build_public_snapshot.py" | tail -5
 
+# macOS sème des .DS_Store dans tout répertoire ouvert au Finder, et
+# `verify_snapshot.py` les REFUSE — à juste titre : ce sont des fichiers du
+# poste, ils n'ont rien à faire dans un site publié.
+#
+# Le nettoyage vivait dans `vigie_maj_instance.sh`, un script personnel. Une
+# construction lancée directement échouait donc sur l'invariant, alors que la
+# même construction lancée par l'autre chemin passait. Un nettoyage n'a de sens
+# qu'au POINT DE PASSAGE OBLIGÉ : ici.
+find "$ROOT/public/static/data" "$ROOT/public/build" -name '.DS_Store' -delete 2>/dev/null || true
+
 echo "2/4 — Invariants du snapshot"
 # Contrôle adverse, indépendant du builder : confidences privées, relations hors
 # liste, coordonnées de personnes, secrets, et part de la commune dans ce qui est
