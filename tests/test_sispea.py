@@ -168,15 +168,23 @@ class TestDeclaration:
         assert "D102.0" in INDICATEURS["AEP"]
         assert "D204.0" in INDICATEURS["AC"]
 
-    def test_le_step_est_declare_partout_ou_il_doit_l_etre(self):
+    def test_le_step_est_declare_dans_la_configuration(self):
         """Un collecteur qui n'est cité par personne ne tourne jamais — le
         défaut qui avait laissé une base sans budget alors que le site en
-        publiait les pages."""
+        publiait les pages. Ces deux tables-là se lisent sans les collecteurs."""
         from collectors.config import PROFONDEUR_STEP, STEP_META
-        from collectors.run_all import STEPS
-        assert "sispea" in STEPS
         assert "sispea" in STEP_META
         assert PROFONDEUR_STEP["sispea"] == "fond"
+
+    def test_le_step_est_appelable(self):
+        """`run_all` importe les quarante collecteurs, donc la lecture des PDF.
+        Le job de tests léger ne les installe pas — la suite ne doit dépendre ni
+        des collecteurs ni de l'API —, `tests-deps` les joue. Sans ce garde-fou,
+        ce test a fait rougir la CI sur `pdfplumber`, exactement comme le test
+        de cohérence des steps le 26/08."""
+        pytest.importorskip("pdfplumber", reason="job « tests-deps »")
+        from collectors.run_all import STEPS
+        assert "sispea" in STEPS
 
 
 class TestDegradation:
