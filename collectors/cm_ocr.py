@@ -57,6 +57,34 @@ SOURCE = urllib.parse.urlparse(COMMUNE_URL).netloc.removeprefix("www.")
 
 # En-dessous de ce nombre de caractères extraits, on considère le PDF « scanné » → OCR.
 MIN_TEXT_CHARS = 400
+
+# Les options d'`ocrmypdf`, à UN SEUL endroit : elles étaient recopiées ici et
+# dans `conseils.ocr`, et deux copies d'un réglage divergent au premier
+# ajustement. La langue n'en fait pas partie — elle se passe à l'appel.
+#
+# `--oversample 400` a été ajouté le 02/09/2026, après mesure. Les pages
+# scannées de l'instance de référence portent DEUX images superposées : un fond
+# en couleur à 150 ou 200 ppi et un calque de texte bitonal à 300 ppi. La
+# rastérisation par défaut n'atteignait pas 300 et jetait la finesse du calque —
+# celle qui porte précisément les lettres.
+#
+# Mesuré sur 80 pages de dix procès-verbaux, au vocabulaire que la commune écrit
+# elle-même (`~/Claude/scripts/vigie_banc_ocr.py`) : les formes inconnues
+# DISTINCTES tombent de 1 046 à 931, soit −11 %. « Bernard » lu « bemard » 9
+# fois puis 3, « préfecture » lue « prefeciure » 5 fois puis 1, « nombre de » et
+# « conseillers » entrelacés 8 fois puis 4. Le gain suit exactement la présence
+# du calque à 300 ppi : les documents à 200 ppi n'y gagnent rien, ce qui est la
+# preuve du mécanisme et non une coïncidence.
+#
+# ⚠️ La part de mots lus, elle, ne monte que de 93,5 % à 94,2 %. C'est le bon
+# ordre de grandeur pour une masse dominée par des mots courants déjà justes, et
+# c'est pourquoi l'indicateur retenu est le nombre de formes ABÎMÉES DISTINCTES :
+# une moyenne écrasée par ce qui marche déjà ne dit rien de ce qui casse.
+#
+# ⚠️ Coûte le double de temps. Les `.ocr.pdf` déjà en cache ne sont PAS refaits :
+# le bénéfice ne vient qu'à une nouvelle océrisation.
+OPTIONS_OCRMYPDF = ["--force-ocr", "--output-type", "pdf",
+                    "--optimize", "0", "--jobs", "4", "--oversample", "400"]
 # Découpe : « N° DEL 2606_02 », « DEL 2606_02 », etc. → capture l'identifiant AAMM_XX.
 # Le séparateur est ce que l'OCR a bien voulu lire du trait d'union bas : le CM
 # du 30/06/2026 sort « 2606.08 » et « 2606 _18 », et ces deux délibérations
@@ -135,8 +163,7 @@ def ensure_text(pdf: Path, lang: str = "fra") -> str:
         _check_ocr_tooling(lang)
         print(f"  OCR ({lang}) → {ocr_pdf.name} …")
         subprocess.run(
-            ["ocrmypdf", "-l", lang, "--force-ocr", "--output-type", "pdf",
-             "--optimize", "0", "--jobs", "4", str(pdf), str(ocr_pdf)],
+            ["ocrmypdf", "-l", lang, *OPTIONS_OCRMYPDF, str(pdf), str(ocr_pdf)],
             check=True, capture_output=True,
         )
     return _extract_text(ocr_pdf)
