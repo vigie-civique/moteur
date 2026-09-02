@@ -242,3 +242,32 @@ def test_toute_source_de_marche_est_publiable():
         f"sources collectées mais non publiables : {absentes}. "
         "Le collecteur écrit ces libellés dans events.source ; l'allowlist les "
         "compare à l'identique.")
+
+
+def test_toute_source_d_evenement_est_publiable():
+    """Le même défaut, généralisé : ce qui écrit un `event` doit être publiable.
+
+    `ccomptes` a été ajouté aux trois instances le 01/09 et OUBLIÉ dans les
+    règles d'exemple : une instance amorcée depuis ce fichier collectait les
+    rapports de chambre régionale des comptes et ne les publiait jamais. Le
+    défaut ne se voit pas — la collecte réussit, la page reste vide.
+
+    Ce test lit les constantes `SOURCE` des collecteurs qui écrivent dans
+    `events`, et exige qu'elles figurent dans l'allowlist d'exemple. Ajouter un
+    collecteur d'événements sans l'y déclarer fait donc échouer la suite, au
+    lieu de produire une source morte.
+    """
+    import json
+
+    from collectors import crc, plu
+
+    regles = json.loads(
+        (ROOT / "config" / "publication_rules.exemple.json").read_text(encoding="utf-8"))
+    publiables = set(regles["events"]["public_sources"])
+
+    # Les collecteurs qui écrivent un `event` avec leur propre libellé de source.
+    sources = {"crc": crc.SOURCE, "plu": plu.SOURCE}
+    absentes = {nom: s for nom, s in sources.items() if s not in publiables}
+    assert not absentes, (
+        f"collecteurs dont la source n'est pas publiable : {absentes}. "
+        "L'événement sera collecté et jamais publié, sans que rien ne le dise.")
