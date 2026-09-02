@@ -113,13 +113,15 @@
     ]
   },
   "events": {
-    "_sources_note": "Sources ajoutées le 26/07/2026 après arbitrage : `interieur` (résultats électoraux — agrégats, aucune donnée personnelle) et `sitadel` (autorisations d'urbanisme — `DENOM_DEM` ne nomme que des personnes morales ; les permis sont par ailleurs affichés publiquement en mairie et sur le terrain). Pour les permis SANS personne morale nommée, l'export retire le numéro et le nom de voie et ne garde que le lieu-dit et la parcelle : le croisement avec DVF est préservé sans constituer un annuaire « qui a construit à quelle porte ».",
+    "_sources_note": "Sources ajoutées le 26/07/2026 après arbitrage : `interieur` (résultats électoraux — agrégats, aucune donnée personnelle) et `sitadel` (autorisations d'urbanisme — `DENOM_DEM` ne nomme que des personnes morales ; les permis sont par ailleurs affichés publiquement en mairie et sur le terrain). Pour les permis SANS personne morale nommée, l'export retire le numéro et le nom de voie et ne garde que le lieu-dit et la parcelle : le croisement avec DVF est préservé sans constituer un annuaire « qui a construit à quelle porte ». 02/09/2026 : `ccomptes` (rapports des chambres régionales des comptes) et `gpu` (dépôt du document d'urbanisme au Géoportail) ajoutés. ⚠️ `ccomptes` manquait ICI alors que les trois instances l'avaient : une instance amorcée depuis ce fichier collectait les rapports de CRC et ne les publiait jamais — le geste décisif n'est pas la collecte, c'est l'allowlist.",
     "public_sources": [
       "BOAMP",
       "DECP data.economie.gouv.fr",
       "DECP data.gouv.fr",
       "DECP v3 data.economie.gouv.fr",
       "bodacc",
+      "ccomptes",
+      "gpu",
       "interieur",
       "sitadel"
     ],

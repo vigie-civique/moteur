@@ -2430,6 +2430,20 @@ def build_snapshot(out: Path) -> dict:
               FROM sispea_indicateurs ORDER BY code_service, annee, code
         """) if table_exists(conn, "sispea_indicateurs") else []
 
+        # ── État énergétique du parc (DPE) ───────────────────────────────────
+        # Des AGRÉGATS, jamais une ligne : le collecteur n'a rapatrié aucune
+        # adresse de logement, et il n'y a donc rien d'autre à publier ici. La
+        # couverture accompagne les parts — sans elle, une part calculée sur un
+        # parc mal géocodé se lirait comme une part du parc entier.
+        dpe_agregats = rows(conn, """
+            SELECT insee, jeu, dimension, modalite, nombre FROM dpe_agregats
+             ORDER BY insee, jeu, dimension, modalite
+        """) if table_exists(conn, "dpe_agregats") else []
+        dpe_couverture = rows(conn, """
+            SELECT insee, jeu, diagnostics, secteur_cp, sans_commune, code_postal
+              FROM dpe_couverture ORDER BY insee, jeu
+        """) if table_exists(conn, "dpe_couverture") else []
+
         risques = rows(conn, """
             SELECT insee, commune, num_risque, libelle FROM risques_gaspar
             ORDER BY commune, libelle
@@ -2449,6 +2463,43 @@ def build_snapshot(out: Path) -> dict:
             SELECT insee, commune, dataset, indicateur, libelle, annee, valeur, dims
             FROM insee_indicateurs ORDER BY dataset, indicateur, annee
         """) if table_exists(conn, "insee_indicateurs") else []
+
+        # Équipements et services (BPE). `geo_type` distingue le communal de
+        # l'intercommunal : l'INSEE ne publie l'ÉVOLUTION qu'à partir de l'EPCI,
+        # et une page qui présenterait cette trajectoire comme communale
+        # mentirait. Le champ voyage donc jusqu'au JSON.
+        equipements = rows(conn, """
+            SELECT geo_type, geo_code, geo_nom, annee, niveau, code, libelle, nombre
+              FROM equipements ORDER BY geo_type, annee, niveau, code
+        """) if table_exists(conn, "equipements") else []
+
+        # Transport déclaré et dispositifs de l'État. Seuls les arrêts DANS la
+        # commune sortent : ceux que la boîte englobante a ramassés chez le
+        # voisin gonfleraient la desserte communale. Leur nombre est publié à
+        # part, pour que l'écart reste lisible.
+        mobilite_aom = rows(conn, """
+            SELECT insee, nom, siren, forme, departement FROM mobilite_aom
+        """) if table_exists(conn, "mobilite_aom") else []
+        mobilite_arrets = rows(conn, """
+            SELECT insee, reseau, arret, lat, lng FROM mobilite_arrets
+             WHERE dans_commune = 1 ORDER BY reseau, arret
+        """) if table_exists(conn, "mobilite_arrets") else []
+        arrets_hors_commune = (conn.execute(
+            "SELECT COUNT(*) FROM mobilite_arrets WHERE dans_commune = 0").fetchone()[0]
+            if table_exists(conn, "mobilite_arrets") else 0)
+        dispositifs = rows(conn, """
+            SELECT insee, code, libelle, reference FROM dispositifs_etat
+             ORDER BY insee, libelle
+        """) if table_exists(conn, "dispositifs_etat") else []
+
+        # Cadastre : le parcellaire ne se publie pas parcelle par parcelle (des
+        # milliers de lignes qu'aucune page ne lit), mais son RÉSUMÉ situe le
+        # territoire — combien de parcelles, quelle surface cadastrée.
+        cadastre_resume = rows(conn, """
+            SELECT insee, COUNT(*) AS parcelles, COUNT(DISTINCT section) AS sections,
+                   SUM(contenance) AS contenance_m2
+              FROM cadastre_parcelles GROUP BY insee
+        """) if table_exists(conn, "cadastre_parcelles") else []
 
         stats = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -2636,11 +2687,22 @@ def build_snapshot(out: Path) -> dict:
             "eau_series": eau_series,
             "eau_couverture": eau_couverture,
             "eau_qualification": eau_qualif,
+            "dpe_agregats": dpe_agregats,
+            "dpe_couverture": dpe_couverture,
             "risques": risques,
             "icpe": icpe,
             "catnat": catnat,
         })
-        write_json(out / "territoire.json", {"insee": insee_data, "total": len(insee_data)})
+        write_json(out / "territoire.json", {
+            "insee": insee_data,
+            "total": len(insee_data),
+            "equipements": equipements,
+            "mobilite_aom": mobilite_aom,
+            "mobilite_arrets": mobilite_arrets,
+            "mobilite_arrets_hors_commune": arrets_hors_commune,
+            "dispositifs_etat": dispositifs,
+            "cadastre": cadastre_resume,
+        })
 
         # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
         # Popolo (popoloproject.com) est le vocabulaire commun des projets de
@@ -2948,7 +3010,27 @@ def build_snapshot(out: Path) -> dict:
                 renvois_retires += 1
             u["date_precision"] = "annee"   # cf. contrôle de divulgation SDES
             urbanisme_public.append(u)
+        # Le document d'urbanisme au GPU, et ce qu'il fait du territoire. Les
+        # parts ne sortent QUE si la couverture a été vérifiée — le collecteur
+        # les laisse à NULL sinon, et le JSON transporte le contrôle avec elles.
+        plu_documents = rows(conn, """
+            SELECT insee, partition, titre, du_type, portee, date_appro,
+                   gpu_status, gpu_maj
+              FROM urbanisme_documents WHERE couvre = 1 ORDER BY insee, date_appro
+        """) if table_exists(conn, "urbanisme_documents") else []
+        plu_zonage = rows(conn, """
+            SELECT insee, typezone, famille, zones, aire_m2, part_pct, couverture
+              FROM urbanisme_zonage ORDER BY insee, part_pct DESC
+        """) if table_exists(conn, "urbanisme_zonage") else []
+        plu_statut = rows(conn, """
+            SELECT insee, nom, rnu, aire_km2, documents, releve_le
+              FROM urbanisme_statut ORDER BY insee
+        """) if table_exists(conn, "urbanisme_statut") else []
+
         write_json(out / "urbanisme.json", {
+            "documents": plu_documents,
+            "zonage": plu_zonage,
+            "statut": plu_statut,
             "autorisations": urbanisme_public,
             "total": len(urbanisme_public),
             "note_dates": "Dates ramenées à l'année pour les petites communes "
@@ -3126,6 +3208,37 @@ def build_snapshot(out: Path) -> dict:
         stats["redactions_personnes"] = redactions.get("remplacements", 0)
 
         conflits = export_conflits(conn, public_ids)
+        # ── Transparence : qui doit déclarer, et où en est sa déclaration ────
+        # ⚖️ Ce fichier NOMME des personnes. Elles y figurent au titre d'une
+        # fonction publique et d'un registre que la loi ordonne de publier —
+        # c'est le même registre qui les nomme, et le lien y renvoie. Le contenu
+        # des déclarations n'est pas collecté, donc pas publié.
+        # Une absence de ligne ne dit pas « personne n'a déclaré » : sous
+        # 20 000 habitants, la loi n'exige rien. La page doit l'écrire.
+        hatvp = rows(conn, """
+            SELECT portee, prenom, nom, qualite, type_document, statut,
+                   date_depot, date_publication, url
+              FROM hatvp_declarations ORDER BY portee, nom
+        """) if table_exists(conn, "hatvp_declarations") else []
+        # Les décisions de justice administrative citant la commune. Le TITRE,
+        # la juridiction, la date, le numéro et le lien vers Légifrance — jamais
+        # l'extrait conservé en base. Les textes de JADE sont pseudonymisés, mais
+        # un extrait de quatre cents caractères reste du récit d'affaire : le
+        # lien renvoie au texte intégral chez celui qui l'établit.
+        justice = rows(conn, """
+            SELECT portee, juridiction, date_dec, numero, titre, type_recours, url
+              FROM justice_decisions ORDER BY date_dec DESC
+        """) if table_exists(conn, "justice_decisions") else []
+        write_json(out / "transparence.json", {
+            "hatvp": hatvp,
+            "justice": justice,
+            "total": len(hatvp),
+            "note": "Liste des responsables publics soumis à l'obligation de "
+                    "déclaration (HATVP). Sous 20 000 habitants, l'obligation ne "
+                    "s'applique généralement pas : une liste vide ne signale "
+                    "aucun manquement.",
+        })
+
         write_json(out / "conflits.json", conflits)
         stats["conflits_cas"] = conflits["total"]
         stats["conflits_par_statut"] = dict(

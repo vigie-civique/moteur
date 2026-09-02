@@ -9,7 +9,12 @@ Jeux collectés (headline par commune, table insee_indicateurs) :
   - DS_RP_EMPLOI_LR_PRINC    : actifs / chômeurs 15-64 (totaux sexes+diplômes)
   - DS_FILOSOFI_CC           : niveau de vie / pauvreté — souvent sous secret
                                statistique (<2000 hab) → valeurs vides ignorées
-  - DS_BPE                   : équipements par type (commerces, santé, écoles…)
+
+⚠️ `DS_BPE` était collecté ici et n'en sortait jamais : 502 lignes par instance
+sous des codes comme `BPE_A129`, sans libellé, qu'aucune page ne lisait. Le jeu
+est passé dans `collectors/equipements.py`, avec la nomenclature officielle qui
+le rend lisible et la seule série que l'INSEE publie sous le département. Il
+n'est plus collecté ici : un fait, un endroit.
 
 Chaque réponse API est archivée (raw_documents, source insee-melodi) et
 rejouable depuis raw_documents. Insert : INSERT OR REPLACE (donnée officielle
@@ -18,7 +23,7 @@ rafraîchie, UNIQUE(insee, dataset, indicateur, annee)).
 Usage :
   python3 -m collectors.insee_social               # 7 communes, tous les jeux
   python3 -m collectors.insee_social --insee 30140
-  python3 -m collectors.insee_social --dataset DS_BPE
+  python3 -m collectors.insee_social --dataset DS_FILOSOFI_CC
   python3 -m collectors.insee_social --stats
 """
 import argparse
@@ -38,7 +43,6 @@ DATASETS = [
     "DS_RP_POPULATION_PRINC",
     "DS_RP_EMPLOI_LR_PRINC",
     "DS_FILOSOFI_CC",
-    "DS_BPE",
 ]
 
 # Libellés lisibles des indicateurs clés (les autres gardent leur code)
@@ -67,7 +71,6 @@ LABELS = {
     "FILO_D1_SL":              "Niveau de vie du 1er décile (€/an et par UC)",
     "FILO_D9_SL":              "Niveau de vie du 9e décile (€/an et par UC)",
     "FILO_D2_SL":              "Niveau de vie du 2e décile (€/an et par UC)",
-    "BPE_TOTAL":               "Équipements — total",
 }
 
 
@@ -146,21 +149,6 @@ def _extract(dataset: str, obs: dict) -> tuple[str, str, float, dict] | None:
         ind = f"EMP_{dims.get('EMPSTA_ENQ', '')}_{dims.get('AGE', '')}"
     elif dataset == "DS_FILOSOFI_CC":
         ind = f"FILO_{dims.get('FILOSOFI_MEASURE', '')}"
-    elif dataset == "DS_BPE":
-        if dims.get("BPE_MEASURE") != "FACILITIES":
-            return None
-        ftype = dims.get("FACILITY_TYPE", "")
-        if ftype == "_T":
-            # Lignes agrégées : totaux par sous-domaine, domaine, ou général
-            sdom, dom = dims.get("FACILITY_SDOM", "_T"), dims.get("FACILITY_DOM", "_T")
-            if sdom != "_T":
-                ind = f"BPE_SDOM_{sdom}"
-            elif dom != "_T":
-                ind = f"BPE_DOM_{dom}"
-            else:
-                ind = "BPE_TOTAL"
-        else:
-            ind = f"BPE_{ftype}"
     else:
         return None
 

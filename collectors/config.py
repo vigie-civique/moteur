@@ -166,6 +166,12 @@ PROFONDEUR_STEP = {
     "education":   "fond",          # écoles, collèges, lycées
     "eau":         "fond",          # stations et analyses des cours d'eau
     "sispea":      "fond",          # prix et performance de l'eau potable
+    "plu":         "fond",          # document d'urbanisme déposé au GPU
+    "equipements": "fond",          # commerces, santé, écoles (BPE)
+    "dpe":         "fond",          # état énergétique du parc de logements
+    "mobilite":    "fond",          # AOM, arrêts déclarés, dispositifs de l'État
+    "sante":       "fond",          # établissements sanitaires et médico-sociaux
+    "cadastre":    "fond",          # parcellaire — une commune, un fichier
     # ── institution : ce qui se décide à plusieurs ───────────────────────────
     # `rne` reste sur tout le périmètre parce que les délégués communautaires
     # sont élus dans les communes membres : les en retirer, c'est perdre la
@@ -360,6 +366,29 @@ STEP_META = {
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
     "sispea":     (365, 26, "sispea_indicateurs", ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
+    # Ce qu'on compte est le RELEVÉ, pas la trouvaille : une commune au RNU n'a
+    # aucun document, et c'est le cas ordinaire. Compter `urbanisme_documents`
+    # ferait rougir une source qui a parfaitement fonctionné — cf.
+    # [[feedback-un-zero-qui-vient-dune-absence]]. 180 jours : un document
+    # d'urbanisme se révise en années, son dépôt au GPU en mois.
+    "plu":        (180, 27, "urbanisme_statut",  ""),
+    # L'INSEE publie UN millésime de la BPE par an, à l'été.
+    "equipements":(365, 15, "equipements",       ""),
+    # L'ADEME publie en continu : un mois suffit à voir la source se taire.
+    "dpe":        (30,  15, "dpe_couverture",    ""),
+    # Un GTFS se republie en continu, la table de l'ANCT quelques fois par an :
+    # 30 jours suit le plus vif des deux.
+    "mobilite":   (30,  18, "mobilite_aom",      ""),
+    # Le ministère dépose une extraction par mois.
+    "sante":      (30,  15, "etablissements_sante", ""),
+    # Le plan cadastral est mis à jour tous les trimestres.
+    "cadastre":   (90,  13, "cadastre_parcelles", ""),
+    # La HATVP met sa liste à jour en continu, mais ce qu'elle change pour une
+    # commune est rare : 30 jours suffisent à voir la source se taire.
+    "hatvp":      (30,  20, "hatvp_declarations", ""),
+    # Les incréments de la DILA sont quotidiens ; 30 jours de retard restent
+    # rattrapables sans reprendre le corpus.
+    "justice":    (30,  21, "justice_decisions", ""),
     # Pas une source : une dérivation de ce que les autres ont écrit. Journalisée
     # quand même, parce qu'un classement qui n'a pas tourné bloque la publication
     # et doit se lire dans collector_runs comme n'importe quelle panne. Fraîcheur

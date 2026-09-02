@@ -16,6 +16,19 @@ export function load() {
   const d = lire('dvf.json', { dvf: [] })
   const dvf = d.dvf || []
 
+  // Le document d'urbanisme, tel que le Géoportail le connaît. Trois cas, et
+  // il faut les distinguer à l'écran : la commune est au RNU (aucun document
+  // local), elle a déposé un document, ou elle n'a rien déposé sans être au
+  // RNU — ce dernier cas étant celui qui mérite une question.
+  const u = lire('urbanisme.json', {})
+  const statut = (u.statut || [])[0] || null
+  const documents = u.documents || []
+  // Les parts ne sont publiées que si le collecteur a vérifié que le document
+  // couvre bien la commune. Il les laisse à NULL sinon : la page doit alors
+  // dire pourquoi, pas afficher un vide.
+  const zonage = (u.zonage || []).filter((z) => z.part_pct != null)
+  const couverture = (u.zonage || [])[0]?.couverture ?? null
+
   // Constat sur le marché du bâti — et surtout sur ce qu'on ne peut PAS en
   // conclure. Avec vingt à quarante ventes par an, la médiane saute de 630 à
   // 1 284 €/m² d'une année sur l'autre : c'est du bruit d'échantillon, pas un
@@ -44,6 +57,7 @@ export function load() {
 
   return {
     dvf,
+    urbanisme: { statut, documents, zonage, couverture },
     constat: annees.length > 1 ? {
       annees,
       ventes: bati.length,

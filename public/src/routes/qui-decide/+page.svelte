@@ -8,6 +8,9 @@
   export let data
 
   const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const jour = (d) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
+  $: hatvp = data.hatvp || []
+  $: justice = data.justice || []
 
   $: cartes = [
     { icone: 'elections', titre: 'Les élections', href: '/elections',
@@ -62,9 +65,60 @@
       </a>
     {/each}
   </div>
+
+  <h2>Transparence et contentieux</h2>
+  <div class="bloc">
+    <h3>Déclarations d'intérêts</h3>
+    {#if hatvp.length}
+      <p class="dit">La Haute Autorité pour la transparence de la vie publique
+        recense ici {hatvp.length} responsable(s) soumis à l'obligation de
+        déclaration.</p>
+      <ul>
+        {#each hatvp as d}
+          <li>
+            <b>{d.prenom} {d.nom}</b> — {d.qualite}.
+            Déclaration {d.type_document === 'dsp' ? 'de situation patrimoniale' : "d'intérêts"} :
+            <i>{d.statut}</i>{#if d.date_publication} (publiée le {jour(d.date_publication)}){/if}.
+            {#if d.url}<a href={d.url} rel="noopener">dossier à la HATVP ↗</a>{/if}
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="dit">Aucun responsable public n'est ici soumis à l'obligation de
+        déclarer ses intérêts à la Haute Autorité : le seuil est de
+        20 000 habitants pour les communes comme pour les intercommunalités.
+        <b>Une liste vide ne signale donc aucun manquement</b> — elle dit que la
+        loi n'exige rien à cette échelle.</p>
+    {/if}
+
+    <h3>Décisions de justice administrative</h3>
+    {#if justice.length}
+      <ul>
+        {#each justice as d}
+          <li>
+            {jour(d.date_dec)} — {d.juridiction}, n° {d.numero}
+            {#if d.type_recours}<span class="muted">({d.type_recours})</span>{/if}
+            {#if d.url}· <a href={d.url} rel="noopener">texte intégral ↗</a>{/if}
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="dit">Aucune décision citant la commune n'a été relevée dans les
+        publications récentes du fonds JADE (juridictions administratives).</p>
+    {/if}
+  </div>
 </section>
 
 <style>
+  h2 { margin: 2.4rem 0 .4rem; font-size: 1.25rem; }
+  h3 { margin: 1.2rem 0 .3rem; font-size: 1rem; }
+  .bloc { background: var(--blanc); border: 1px solid var(--trait);
+          border-radius: var(--rayon); padding: 1rem 1.2rem; }
+  .bloc ul { margin: .3rem 0 .6rem; padding-left: 1.1rem; font-size: .9rem; line-height: 1.7; }
+  .dit { font-size: .9rem; color: var(--gris); max-width: 74ch; margin: .2rem 0 .5rem; }
+  .dit b { color: var(--encre); }
+  .muted { color: var(--gris); }
+
   .hub { max-width: 1080px; margin: 0 auto; padding: 2.2rem 1.4rem 3.5rem; }
   .intro { display: flex; gap: .8rem; align-items: flex-start; margin-bottom: 1.4rem; }
   .intro :global(.icon) { color: var(--ardoise); margin-top: .35rem; }

@@ -61,6 +61,14 @@ from collectors.pop_culture   import run as run_pop_culture
 from collectors.rne          import run as run_rne
 from collectors.fiscalite    import run as run_fiscalite
 from collectors.urbanisme_sitadel import run as run_sitadel
+from collectors.plu           import run as run_plu
+from collectors.equipements   import run as run_equipements
+from collectors.dpe           import run as run_dpe
+from collectors.mobilite      import run as run_mobilite
+from collectors.sante         import run as run_sante
+from collectors.cadastre      import run as run_cadastre
+from collectors.hatvp         import run as run_hatvp
+from collectors.justice       import run as run_justice
 from collectors.elections    import run as run_elections
 from collectors.dirigeants_deports import run as run_dir_deports
 from collectors.dirigeants_web     import run as run_dir_web
@@ -174,6 +182,24 @@ STEPS = {
                  lambda: [import_dvf(i)
                           for i in communes_du_step("dvf", adresse=True)]),
     "insee":    ("Indicateurs INSEE Melodi (périmètre)", run_insee_social),
+    # La base permanente des équipements, avec ses libellés — et la seule
+    # trajectoire que l'INSEE publie sous le département : celle de l'EPCI.
+    "equipements": ("Équipements et services (BPE)",   run_equipements),
+    # Agrégats seulement : le collecteur ne rapatrie aucune ligne de diagnostic,
+    # donc aucune adresse de logement.
+    "dpe":      ("État énergétique du parc (DPE, ADEME)", run_dpe),
+    "mobilite": ("Transport déclaré et dispositifs de l'État", run_mobilite),
+    # Les murs du soin — pharmacies, EHPAD, laboratoires. Les professionnels,
+    # eux, se comptent dans `equipements` (BPE, domaine D).
+    "sante":    ("Établissements de santé (FINESS)",  run_sante),
+    # Après `dvf` : il complète la position des mutations qui n'en avaient pas.
+    "cadastre": ("Parcellaire cadastral (Etalab)",     run_cadastre),
+    # L'obligation de déclarer, et son état. Ne rien trouver est le cas
+    # ordinaire sous 20 000 habitants, et c'est en soi une information.
+    "hatvp":    ("Déclarations d'intérêts (HATVP)",    run_hatvp),
+    # Les incréments récents seulement : le corpus entier (1,19 Go) se reprend
+    # à la main, `python3 -m collectors.justice --amorcer`.
+    "justice":  ("Décisions de justice administrative (JADE)", run_justice),
     "georisques": ("Risques, ICPE, CATNAT (périmètre)", run_georisques),
     # Écoles, collèges, lycées. Avec la mairie, le premier équipement public
     # d'une commune rurale — et il manquait au répertoire, si bien qu'une
@@ -236,6 +262,11 @@ STEPS = {
     # et deux titres qui le disent — c'est le constat JOU-5 de la contre-visite
     # du 30/08, à l'échelle d'une instance.
     "sispea":   ("Prix et performance de l'eau potable",  run_sispea),
+    # Le document d'urbanisme tel que le GPU le connaît — le registre où il se
+    # dépose, et où ce dépôt le rend opposable. À ne pas confondre avec
+    # `urbanisme` juste dessous, qui relit les séances : celui-ci constate,
+    # celui-là cite.
+    "plu":      ("Document d'urbanisme au Géoportail (GPU)", run_plu),
     "urbanisme": ("Statut urbanistique et mentions PLU",  run_urbanisme),
     # Dérivé, comme cm_flux : relit le texte des séances déjà collectées. Les
     # compositions ne sortent d'aucun registre — elles ne sont publiées qu'après

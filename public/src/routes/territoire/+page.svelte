@@ -15,6 +15,10 @@
   // Calculées au build : le nom de commune n'est plus dans `insee` (projection).
   $: voisines = data.voisines || []
   $: anneeFilo = data.anneeFilo || ''
+  $: equipements = data.equipements || {}
+  $: mouvements = equipements.mouvements || {}
+  $: mobilite = data.mobilite || {}
+  $: dispositifs = data.dispositifs || []
 
   // Le collecteur ne renseigne pas tous les libellés : on complète les codes
   // qui portent le propos, plutôt que d'afficher « EMP_1_Y15T64 » au lecteur.
@@ -350,6 +354,72 @@
   {:else}
     <p class="muted">Aucun indicateur disponible.</p>
   {/if}
+
+  {#if equipements.etat?.length}
+    <h2>Ce qu'il y a sur place</h2>
+    <p class="note">Équipements et services recensés dans la commune par la base
+      permanente des équipements de l'INSEE{#if equipements.total} — {equipements.total} au total{/if}.</p>
+    <div class="chart-wrap">
+      <table>
+        <thead><tr><th>Équipement ou service</th><th class="r">Nombre</th></tr></thead>
+        <tbody>
+          {#each equipements.etat as e}
+            <tr><td>{e.libelle || e.code}</td><td class="r">{e.nombre}</td></tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    {#if mouvements.pertes?.length || mouvements.gains?.length}
+      <h3>Ce qui a fermé, ce qui a ouvert</h3>
+      <Niveau type="fait" source="INSEE — base permanente des équipements">
+        🔴 Cette évolution n'est <b>pas communale</b> : l'INSEE ne publie la série
+        qu'à partir de l'intercommunalité. Elle porte sur
+        {equipements.epciNom || "l'intercommunalité"}, entre {mouvements.debut} et {mouvements.fin}.
+      </Niveau>
+      <div class="chart-wrap">
+        <table>
+          <thead><tr><th>Équipement</th><th class="r">{mouvements.debut}</th><th class="r">{mouvements.fin}</th><th class="r">Écart</th></tr></thead>
+          <tbody>
+            {#each [...(mouvements.pertes || []), ...(mouvements.gains || [])] as m}
+              <tr>
+                <td>{m.libelle || m.code}</td>
+                <td class="r">{m.debut}</td><td class="r">{m.fin}</td>
+                <td class="r" class:perte={m.ecart < 0}>{m.ecart > 0 ? '+' : ''}{m.ecart}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  {/if}
+
+  {#if mobilite.aom || dispositifs.length}
+    <h2>Desserte et dispositifs de l'État</h2>
+    {#if mobilite.aom}
+      <Niveau type="fait" source="transport.data.gouv.fr">
+        L'autorité qui organise les transports ici est <b>{mobilite.aom.nom}</b>
+        ({mobilite.aom.forme}, SIREN {mobilite.aom.siren}).
+        {#if mobilite.arrets}Les réseaux déclarent <b>{mobilite.arrets}</b> arrêt(s)
+          dans la commune{#if mobilite.horsCommune} ({mobilite.horsCommune} autres
+          tombent dans le rectangle interrogé mais hors des limites communales,
+          et ne sont pas comptés){/if}.{:else}<b>Aucun arrêt</b> n'est déclaré
+          dans la commune par les fichiers horaires publiés.{/if}
+      </Niveau>
+      {#if mobilite.reseaux?.length}
+        <ul class="liste">
+          {#each mobilite.reseaux as r}<li>{r.reseau} — {r.n} arrêt(s)</li>{/each}
+        </ul>
+      {/if}
+    {/if}
+    {#if dispositifs.length}
+      <p class="note">Programmes nationaux dont la commune bénéficie, d'après la
+        table de croisement de l'Agence nationale de la cohésion des territoires.</p>
+      <ul class="liste">
+        {#each dispositifs as d}<li>{d.libelle || d.code}<span class="muted"> — {d.reference}</span></li>{/each}
+      </ul>
+    {/if}
+  {/if}
 </section>
 
 <style>
@@ -388,6 +458,10 @@
   th { color: var(--gris); font-weight: 500; }
   .r { text-align: right; }
   td .muted { font-size: .78rem; }
+
+  h3 { margin: 1.4rem 0 .3rem; font-size: 1rem; }
+  .liste { margin: .4rem 0 1rem; padding-left: 1.1rem; font-size: .9rem; line-height: 1.7; }
+  .perte { color: var(--brique, #b8341f); font-weight: 600; }
 
   .stack { display: flex; height: 10px; border-radius: 3px; overflow: hidden; min-width: 120px; }
   .stack span { display: block; height: 100%; }

@@ -10,6 +10,15 @@
   export let data
   $: dvf = data.dvf
   $: constat = data.constat
+  $: urba = data.urbanisme || {}
+  $: statutPlu = urba.statut
+  $: documents = urba.documents || []
+  $: zonage = urba.zonage || []
+  const QUOI = {
+    PLU: "plan local d'urbanisme", PLUi: "plan local d'urbanisme intercommunal",
+    CC: 'carte communale', POS: "plan d'occupation des sols",
+    PSMV: 'plan de sauvegarde et de mise en valeur',
+  }
   let mapEl, map, L
   let mapErreur = ''
   let fondAbsent = ''
@@ -111,6 +120,57 @@
 <section>
   <h1>Urbanisme &amp; transactions foncières</h1>
   <p class="sub">Mutations immobilières (DVF, Cerema) recensées sur la commune. Les <a href="/marches">marchés publics</a> ont leur page dédiée.</p>
+
+  {#if statutPlu}
+    <h2>Ce qui règle la construction</h2>
+    {#if statutPlu.rnu}
+      <Niveau type="fait" source="Géoportail de l'urbanisme"
+              href="https://www.geoportail-urbanisme.gouv.fr/">
+        La commune n'a <b>aucun document d'urbanisme local</b> : c'est le règlement
+        national d'urbanisme (RNU) qui s'y applique. Les autorisations se
+        décident au regard des règles nationales, et la constructibilité y est
+        beaucoup plus restreinte qu'avec un plan local.
+      </Niveau>
+    {:else if documents.length}
+      {#each documents as doc}
+        <Niveau type="fait" source="Géoportail de l'urbanisme"
+                href="https://www.geoportail-urbanisme.gouv.fr/">
+          {QUOI[doc.du_type] || doc.du_type}
+          {#if doc.portee === 'intercommunal'}porté par l'intercommunalité
+            {#if doc.titre}(<i>{doc.titre}</i>){/if}{/if},
+          {#if doc.date_appro}approuvé le <b>{new Date(doc.date_appro).toLocaleDateString('fr-FR')}</b>{:else}sans date d'approbation lisible{/if},
+          déposé au Géoportail de l'urbanisme — c'est ce dépôt qui le rend opposable.
+        </Niveau>
+      {/each}
+    {:else}
+      <Niveau type="fait" source="Géoportail de l'urbanisme"
+              href="https://www.geoportail-urbanisme.gouv.fr/">
+        <b>Aucun document d'urbanisme n'est déposé au Géoportail</b>, et la commune
+        n'est pas pour autant au RNU. Depuis 2020, un plan qui n'y est pas publié
+        n'est pas opposable : la question mérite d'être posée à la mairie.
+      </Niveau>
+    {/if}
+
+    {#if zonage.length}
+      <p class="hint">Part du territoire communal couverte par chaque type de zone,
+        mesurée sur {statutPlu.aire_km2?.toLocaleString('fr-FR')} km².</p>
+      <div class="tiles">
+        {#each zonage as z}
+          <div class="tile">
+            <span class="tlabel">{z.famille || z.typezone} ({z.typezone})</span>
+            <span class="tval">{z.part_pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</span>
+            <span class="tsub">{(z.aire_m2 / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} km² · {z.zones} zone(s)</span>
+          </div>
+        {/each}
+      </div>
+    {:else if !statutPlu.rnu && documents.length}
+      <p class="muted">La répartition du territoire par type de zone n'est pas
+        publiée ici : le document déposé ne couvre qu'une partie de la commune
+        {#if urba.couverture != null}({Math.round(urba.couverture * 100)} % du territoire){/if} —
+        le plus souvent parce qu'il est antérieur à une fusion de communes. Une
+        part calculée sur ce seul morceau ne dirait pas ce qu'elle prétend.</p>
+    {/if}
+  {/if}
 
   {#if !dvf.length}<p class="muted">Aucune mutation dans ce jeu de données.</p>{/if}
 

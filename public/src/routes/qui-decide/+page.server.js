@@ -39,7 +39,11 @@ export function load() {
   const elusCommune = listeElus.filter(
     (e) => (e.commune || '').toLowerCase() === COMMUNE.toLowerCase()).length
 
+  const transparence = lire('transparence.json', {})
+
   return {
+    hatvp: transparence.hatvp || [],
+    justice: transparence.justice || [],
     elus: listeElus.length || null,
     elusCommune: elusCommune || null,
     deliberations,

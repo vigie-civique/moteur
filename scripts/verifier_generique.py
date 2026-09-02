@@ -111,6 +111,9 @@ DOMAINES_NATIONAUX = re.compile(
     # La juridiction financière : même site pour toutes les instances, et il
     # n'existe pas d'API — la recherche du site EST la source.
     r"ccomptes\.fr|"
+    # La Haute Autorité pour la transparence de la vie publique : registre
+    # national des déclarations, un seul site pour tout le pays.
+    r"hatvp\.fr|"
     # Portails nationaux de la commande publique, et vocabulaires normalisés
     # cités par le format de publication : ce ne sont pas des sites de commune.
     r"boamp\.fr|marches-publics\.gouv\.fr|popoloproject\.com|w3\.org|"

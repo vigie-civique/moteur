@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
+  import Niveau from '$lib/components/Niveau.svelte'
 
   // Eau, risques naturels et installations classées. 27 652 analyses, 75 risques
   // recensés et 3 ICPE étaient en base depuis des mois sans aucune page publique.
@@ -9,6 +10,7 @@
   export let data
   $: ({ stations, series, couverture, risques, icpe, catnat,
         servicesEau, indicateursEau } = data)
+  $: dpe = data.dpe
   let parametre = 'Nitrates'
 
   // ── L'eau du robinet ───────────────────────────────────────────────────────
@@ -313,16 +315,59 @@
       </table>
     {/if}
 
+    {#if dpe}
+      <h2>L'état énergétique des logements</h2>
+      <Niveau type="calcul" base="les diagnostics de performance énergétique établis depuis juillet 2021">
+        <b>{dpe.partPassoires.toLocaleString('fr-FR')} %</b> des logements diagnostiqués
+        sont des passoires thermiques — étiquette F ou G au sens de la loi Climat
+        et résilience —, soit {dpe.passoires} sur {dpe.total} diagnostics.
+      </Niveau>
+      <div class="dpe">
+        {#each dpe.etiquettes as e}
+          <div class="dpe-col" title="{e.n} diagnostic(s) en {e.lettre}">
+            <span class="dpe-n">{e.n || ''}</span>
+            <span class="dpe-bar" class:passoire={e.lettre === 'F' || e.lettre === 'G'}
+                  style="height:{Math.max(2, 100 * e.n / Math.max(...dpe.etiquettes.map((x) => x.n), 1))}%"></span>
+            <span class="dpe-l">{e.lettre}</span>
+          </div>
+        {/each}
+      </div>
+      <p class="note">
+        Un diagnostic n'est pas un logement : seuls les biens vendus, loués ou
+        rénovés depuis juillet 2021 en ont un, et un même logement peut en avoir
+        plusieurs. Ces parts décrivent donc le parc DIAGNOSTIQUÉ, pas le parc
+        entier.
+        {#if dpe.sansCommune}⚠️ {dpe.sansCommune} diagnostic(s) du code postal
+          {dpe.codePostal} ne sont rattachés à aucune commune par la base adresse
+          nationale : ils ne sont pas comptés ici.{/if}
+        {#if dpe.tertiaire}{dpe.tertiaire} diagnostic(s) portent sur des bâtiments
+          tertiaires et ne sont pas mêlés à ceux des logements.{/if}
+        Les diagnostics d'avant juillet 2021 ne sont pas repris : la réforme a
+        changé la méthode de calcul, et les comparer ferait passer un changement
+        de règle pour une évolution du parc.
+      </p>
+    {/if}
+
     <p class="src">
       Sources : SISPEA (prix et performance de l'eau potable),
       Naïades / Hub'Eau (qualité des cours d'eau), Géorisques (risques,
-      ICPE, arrêtés CatNat). Aucune donnée n'est produite par ce site : tout
+      ICPE, arrêtés CatNat), ADEME (diagnostics de performance énergétique,
+      agrégés à la commune — aucune adresse n'est collectée). Aucune donnée n'est produite par ce site : tout
       provient des réseaux publics de mesure et de recensement.
     </p>
   {/if}
 </section>
 
 <style>
+  .dpe { display: flex; align-items: flex-end; gap: .5rem; height: 150px;
+         margin: .8rem 0 .4rem; max-width: 460px; }
+  .dpe-col { flex: 1; height: 100%; display: flex; flex-direction: column;
+             justify-content: flex-end; align-items: center; gap: .2rem; }
+  .dpe-bar { width: 100%; background: var(--ardoise); border-radius: 3px 3px 0 0; }
+  .dpe-bar.passoire { background: var(--brique, #b8341f); }
+  .dpe-n { font-size: .72rem; color: var(--gris); }
+  .dpe-l { font-size: .8rem; font-weight: 600; }
+
   section { max-width: 950px; margin: 0 auto; padding: 1.5rem; color: var(--encre); }
   h1 { margin: 0 0 .25rem; }
   h2 { margin: 2.2rem 0 .4rem; font-size: 1.25rem; }

@@ -13,7 +13,8 @@ const lire = (nom, defaut = {}) => {
 }
 
 export function load() {
-  const lignes = lire('territoire.json', {}).insee || []
+  const fichier = lire('territoire.json', {})
+  const lignes = fichier.insee || []
 
   // Seuls ces cinq champs sont lus par la page. Embarquer les lignes entières
   // (avec `dims` et `dataset`) faisait un payload d'hydratation de 1 Mo pour
@@ -79,5 +80,55 @@ export function load() {
     .map(({ insee, commune, annee, valeur }) => ({ insee, commune, annee, valeur }))
     .sort((a, b) => b.valeur - a.valeur)
 
-  return { insee, constat, voisines, anneeFilo, commune: COMMUNE_DE }
+  // ── Équipements (BPE) ──────────────────────────────────────────────────
+  // Deux échelles, à ne jamais confondre : l'ÉTAT est communal, la TRAJECTOIRE
+  // ne l'est pas. L'INSEE ne publie l'évolution qu'à partir de
+  // l'intercommunalité — la page doit donc le dire, et le champ `geo_type` est
+  // ce qui l'en empêche de l'oublier.
+  const equipements = fichier.equipements || []
+  const etatCommune = equipements
+    .filter((e) => e.geo_type === 'COM' && e.insee !== null && e.niveau === 'type'
+                   && e.nombre > 0)
+    .sort((a, b) => b.nombre - a.nombre || (a.libelle || '').localeCompare(b.libelle || ''))
+  const totalCommune = equipements.find(
+    (e) => e.geo_type === 'COM' && e.niveau === 'total')?.nombre ?? null
+
+  const evolution = equipements.filter((e) => e.geo_type === 'EPCI' && e.niveau === 'type')
+  const anneesEpci = [...new Set(evolution.map((e) => e.annee))].sort()
+  const epciNom = evolution[0]?.geo_nom || null
+  let mouvements = []
+  if (anneesEpci.length > 1) {
+    const [debut, fin] = [anneesEpci[0], anneesEpci[anneesEpci.length - 1]]
+    const par = new Map()
+    for (const e of evolution) {
+      const clef = e.code
+      const l = par.get(clef) || { code: clef, libelle: e.libelle }
+      if (e.annee === debut) l.debut = e.nombre
+      if (e.annee === fin) l.fin = e.nombre
+      par.set(clef, l)
+    }
+    mouvements = [...par.values()]
+      .filter((l) => l.debut != null && l.fin != null && l.debut !== l.fin)
+      .map((l) => ({ ...l, ecart: l.fin - l.debut }))
+      .sort((a, b) => a.ecart - b.ecart)
+    mouvements = { debut, fin, pertes: mouvements.filter((m) => m.ecart < 0).slice(0, 8),
+                   gains: mouvements.filter((m) => m.ecart > 0).slice(-6).reverse() }
+  }
+
+  // ── Transport et dispositifs de l'État ─────────────────────────────────
+  const aom = (fichier.mobilite_aom || [])[0] || null
+  const arrets = fichier.mobilite_arrets || []
+  const reseaux = [...new Map(
+    arrets.map((a) => [a.reseau, arrets.filter((x) => x.reseau === a.reseau).length])
+  ).entries()].map(([reseau, n]) => ({ reseau, n })).sort((a, b) => b.n - a.n)
+  const dispositifs = fichier.dispositifs_etat || []
+
+  return {
+    insee, constat, voisines, anneeFilo, commune: COMMUNE_DE,
+    equipements: { etat: etatCommune.slice(0, 24), total: totalCommune,
+                   mouvements, epciNom, anneesEpci },
+    mobilite: { aom, arrets: arrets.length, reseaux,
+                horsCommune: fichier.mobilite_arrets_hors_commune ?? 0 },
+    dispositifs,
+  }
 }
