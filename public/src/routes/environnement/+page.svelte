@@ -7,8 +7,49 @@
 
   // Rendu au build par +page.server.js.
   export let data
-  $: ({ stations, series, couverture, risques, icpe, catnat } = data)
+  $: ({ stations, series, couverture, risques, icpe, catnat,
+        servicesEau, indicateursEau } = data)
   let parametre = 'Nitrates'
+
+  // ── L'eau du robinet ───────────────────────────────────────────────────────
+  // Un service par ligne, avec sa série de prix. Deux services peuvent
+  // desservir la même commune à des prix différents : afficher « le prix de
+  // l'eau » serait un chiffre juste sous un cadre faux.
+  const valeurs = (service, code) => indicateursEau
+    .filter(i => i.code_service === service && i.code === code && i.valeur != null)
+    .sort((a, b) => a.annee - b.annee)
+  const derniere = (service, code) => valeurs(service, code).at(-1) || null
+
+  $: eauPotable = servicesEau
+    .filter(s => s.competence === 'AEP')
+    .map(s => {
+      const prix = valeurs(s.code_service, 'D102.0')
+      const premier = prix[0]
+      const dernier = prix.at(-1)
+      return {
+        ...s,
+        prix,
+        dernier,
+        // L'évolution ne se calcule que sur DEUX exercices distincts : sur un
+        // seul, « + 0 % » se lirait comme une stabilité constatée.
+        evolution: premier && dernier && premier.annee !== dernier.annee
+          ? { depuis: premier.annee, jusqu: dernier.annee,
+              pourcent: ((dernier.valeur - premier.valeur) / premier.valeur) * 100 }
+          : null,
+        rendement: derniere(s.code_service, 'P104.3'),
+        renouvellement: derniere(s.code_service, 'P107.2'),
+        conformite: derniere(s.code_service, 'P101.1'),
+        nbCommunes: (s.communes || '').split(',').filter(Boolean).length,
+      }
+    })
+    .sort((a, b) => (b.dernier?.annee ?? 0) - (a.dernier?.annee ?? 0))
+  $: assainissement = servicesEau
+    .filter(s => s.competence === 'AC')
+    .map(s => ({ ...s, dernier: derniere(s.code_service, 'D204.0') }))
+    .filter(s => s.dernier)
+  $: anneesPrix = [...new Set(eauPotable.flatMap(s => s.prix.map(p => p.annee)))].sort()
+  const euros = (v) => v == null ? '—'
+    : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €'
 
   $: parametres = [...new Set(series.map(s => s.parametre))].sort()
   $: serie = series.filter(s => s.parametre === parametre)
@@ -42,19 +83,20 @@
 
 <svelte:head>
   <title>Environnement — {SITE_NOM}</title>
-  <meta name="description" content="Qualité de l'eau, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
+  <meta name="description" content="Prix de l'eau potable, qualité des cours d'eau, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
 <section>
   <h1 class="avec-icone"><Icon name="environnement" size={26} />Environnement</h1>
   <p class="sub">
-    Qualité des cours d'eau, risques naturels recensés et installations classées.
-    Données issues des réseaux de mesure publics (Naïades / Hub'Eau, Géorisques).
+    Prix et performance de l'eau potable, qualité des cours d'eau, risques naturels
+    recensés et installations classées. Données issues des registres publics
+    (SISPEA, Naïades / Hub'Eau, Géorisques).
   </p>
 
 
 
-  {#if stations.length || risques.length || icpe.length}
+  {#if stations.length || risques.length || icpe.length || eauPotable.length}
     <div class="tiles">
       <div class="tile"><span class="tval">{nb(totalAnalyses)}</span><span class="tlabel">analyses d'eau</span></div>
       <div class="tile"><span class="tval">{stations.length}</span><span class="tlabel">stations de mesure</span></div>
@@ -65,8 +107,99 @@
       {/if}
     </div>
 
+    <!-- ── L'eau du robinet ─────────────────────────────────────────── -->
+    {#if eauPotable.length}
+      <h2>L'eau du robinet</h2>
+      <p class="note">
+        Ce que coûte le mètre cube, et l'état du réseau qui l'apporte. Ces chiffres
+        viennent de l'observatoire national des services d'eau (SISPEA), alimenté
+        par les services eux-mêmes. Ils portent sur un EXERCICE : le dernier
+        publié, jamais le prix d'aujourd'hui.
+      </p>
+
+      {#each eauPotable as s}
+        <h3>
+          {s.nom || s.libelle || `Service n° ${s.code_service}`}
+          {#if s.mode_gestion}<span class="muted"> — {s.mode_gestion}</span>{/if}
+        </h3>
+        <p class="note">
+          {#if s.type_collectivite}{s.type_collectivite}{/if}{#if s.nbCommunes > 1}, {s.nbCommunes} communes desservies{/if}{#if s.siren} <span class="muted">· SIREN {s.siren}</span>{/if}
+        </p>
+        <div class="tiles">
+          {#if s.dernier}
+            <div class="tile">
+              <span class="tval">{euros(s.dernier.valeur)}</span>
+              <span class="tlabel">le m³ TTC en {s.dernier.annee} (facture de 120 m³)</span>
+            </div>
+          {/if}
+          {#if s.evolution}
+            <div class="tile">
+              <span class="tval">{s.evolution.pourcent >= 0 ? '+' : ''}{nb(s.evolution.pourcent)} %</span>
+              <span class="tlabel">entre {s.evolution.depuis} et {s.evolution.jusqu}</span>
+            </div>
+          {/if}
+          {#if s.rendement}
+            <div class="tile">
+              <span class="tval">{nb(s.rendement.valeur)} %</span>
+              <span class="tlabel">rendement du réseau ({s.rendement.annee})</span>
+            </div>
+          {/if}
+          {#if s.renouvellement}
+            <div class="tile">
+              <span class="tval">{nb(s.renouvellement.valeur)} %</span>
+              <span class="tlabel">réseau renouvelé dans l'année ({s.renouvellement.annee})</span>
+            </div>
+          {/if}
+          {#if s.conformite}
+            <div class="tile">
+              <span class="tval">{nb(s.conformite.valeur)} %</span>
+              <span class="tlabel">conformité microbiologique ({s.conformite.annee})</span>
+            </div>
+          {/if}
+        </div>
+      {/each}
+
+      {#if anneesPrix.length > 1}
+        <h3>Le prix du mètre cube, exercice par exercice</h3>
+        <table>
+          <thead>
+            <tr><th>Exercice</th>{#each eauPotable as s}<th class="r">{s.nom || s.libelle}</th>{/each}</tr>
+          </thead>
+          <tbody>
+            {#each anneesPrix as a}
+              <tr>
+                <td>{a}</td>
+                {#each eauPotable as s}
+                  <td class="r">{euros(s.prix.find(p => p.annee === a)?.valeur)}</td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <p class="note">
+          Une case vide signifie que le service n'a rien déclaré cette année-là :
+          l'observatoire est déclaratif, et un exercice manquant ne dit rien du prix
+          pratiqué alors.
+        </p>
+      {/if}
+
+      {#if assainissement.length}
+        <h3>Assainissement collectif</h3>
+        <p class="note">
+          La facture d'eau additionne les deux services. Le prix ci-dessus ne porte
+          que sur l'eau potable.
+        </p>
+        <ul class="plain">
+          {#each assainissement as s}
+            <li><strong>{euros(s.dernier.valeur)} le m³</strong> en {s.dernier.annee}
+              <span class="muted">— {s.nom || s.libelle || `service n° ${s.code_service}`}</span></li>
+          {/each}
+        </ul>
+      {/if}
+    {/if}
+
     <!-- ── Qualité de l'eau ─────────────────────────────────────────── -->
-    <h2>Qualité de l'eau</h2>
+    <h2>Qualité des cours d'eau</h2>
     <p class="note">
       Moyenne annuelle par station. Le suivi porte sur près de 800 paramètres ;
       ceux présentés ici sont les indicateurs interprétables sans expertise.
@@ -181,7 +314,8 @@
     {/if}
 
     <p class="src">
-      Sources : Naïades / Hub'Eau (qualité des cours d'eau), Géorisques (risques,
+      Sources : SISPEA (prix et performance de l'eau potable),
+      Naïades / Hub'Eau (qualité des cours d'eau), Géorisques (risques,
       ICPE, arrêtés CatNat). Aucune donnée n'est produite par ce site : tout
       provient des réseaux publics de mesure et de recensement.
     </p>

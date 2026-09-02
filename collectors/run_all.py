@@ -91,6 +91,7 @@ from collectors.approbations   import run as run_approbations
 from collectors.budgets_votes  import run as run_budgets_votes
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
+from collectors.sispea         import run_sispea
 from collectors.urbanisme      import run as run_urbanisme
 from collectors.saisies        import import_saisies
 
@@ -230,6 +231,11 @@ STEPS = {
     "cm_flux":  ("Flux financiers extraits des séances",  lambda: run_cm_flux(commit=True)),
     # `since=None` : reprise incrémentale depuis la dernière analyse connue.
     "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),
+    # L'eau du ROBINET, à ne pas confondre avec la précédente : prix du mètre
+    # cube, rendement du réseau, conformité sanitaire. Deux sujets, deux steps,
+    # et deux titres qui le disent — c'est le constat JOU-5 de la contre-visite
+    # du 30/08, à l'échelle d'une instance.
+    "sispea":   ("Prix et performance de l'eau potable",  run_sispea),
     "urbanisme": ("Statut urbanistique et mentions PLU",  run_urbanisme),
     # Dérivé, comme cm_flux : relit le texte des séances déjà collectées. Les
     # compositions ne sortent d'aucun registre — elles ne sont publiées qu'après

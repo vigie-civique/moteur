@@ -165,6 +165,7 @@ PROFONDEUR_STEP = {
     "patrimoine":  "fond",          # monuments historiques
     "education":   "fond",          # écoles, collèges, lycées
     "eau":         "fond",          # stations et analyses des cours d'eau
+    "sispea":      "fond",          # prix et performance de l'eau potable
     # ── institution : ce qui se décide à plusieurs ───────────────────────────
     # `rne` reste sur tout le périmètre parce que les délégués communautaires
     # sont élus dans les communes membres : les en retirer, c'est perdre la
@@ -355,6 +356,9 @@ STEP_META = {
     "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
     "cm_flux":    (30,  25, "financial_flows",   "source LIKE 'CR CM%'"),
     "eau":        (90,  26, "eau_analyses",      ""),
+    # 365 jours : l'OFB publie UN exercice par an, vers la mi-année. Réclamer
+    # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
+    "sispea":     (365, 26, "sispea_indicateurs", ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
     # Pas une source : une dérivation de ce que les autres ont écrit. Journalisée
     # quand même, parce qu'un classement qui n'a pas tourné bloque la publication

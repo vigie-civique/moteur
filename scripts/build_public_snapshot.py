@@ -2413,6 +2413,23 @@ def build_snapshot(out: Path) -> dict:
              WHERE libelle_qualification IS NOT NULL AND libelle_qualification <> ''
              GROUP BY annee, qualification ORDER BY annee DESC
         """) if table_exists(conn, "eau_analyses") else []
+        # ── L'eau du ROBINET, à ne pas confondre avec la précédente ───────────
+        # Les analyses ci-dessus portent sur les COURS D'EAU. Ce que paie un
+        # habitant et l'état du réseau qui l'alimente sont un autre sujet, une
+        # autre source, et méritent de le dire — c'est le constat JOU-5 de la
+        # contre-visite du 30/08. Tout sort publiable : un prix de l'eau et un
+        # rendement de réseau sont des données de service public, sans la
+        # moindre personne derrière.
+        sispea_services = rows(conn, """
+            SELECT code_service, competence, nom, libelle, type_collectivite,
+                   mode_gestion, siren, communes
+              FROM sispea_services ORDER BY competence, code_service
+        """) if table_exists(conn, "sispea_services") else []
+        sispea_indicateurs = rows(conn, """
+            SELECT code_service, annee, code, libelle, unite, valeur, origine
+              FROM sispea_indicateurs ORDER BY code_service, annee, code
+        """) if table_exists(conn, "sispea_indicateurs") else []
+
         risques = rows(conn, """
             SELECT insee, commune, num_risque, libelle FROM risques_gaspar
             ORDER BY commune, libelle
@@ -2614,6 +2631,8 @@ def build_snapshot(out: Path) -> dict:
                    {"approbations": approbations_data, "total": len(approbations_data)})
         write_json(out / "environnement.json", {
             "eau_stations": eau_stations,
+            "sispea_services": sispea_services,
+            "sispea_indicateurs": sispea_indicateurs,
             "eau_series": eau_series,
             "eau_couverture": eau_couverture,
             "eau_qualification": eau_qualif,
