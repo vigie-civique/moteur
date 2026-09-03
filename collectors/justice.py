@@ -44,10 +44,13 @@ Usage :
   python3 -m collectors.justice --stats
 """
 import argparse
+import contextlib
 import datetime as dt
-import io
+import pathlib
 import re
+import shutil
 import tarfile
+import tempfile
 import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -117,13 +120,22 @@ def _archives_recentes(jours: int) -> list[str]:
     return [nom for nom, jour in noms if jour >= limite]
 
 
-def _decisions(brut: bytes):
-    """Parcourt une archive JADE et rend chaque décision lue.
+def _decisions(chemin: pathlib.Path):
+    """Parcourt une archive JADE, sur DISQUE, et rend chaque décision lue.
 
-    En flux : une archive du corpus complet ne tient pas en mémoire, et le
-    moteur a déjà payé cette leçon sur les consolidés DECP.
+    🔴 Cette docstring a menti. Elle annonçait « en flux » — et le parcours du
+    tar l'était bien —, mais l'archive arrivait par `r.read()` puis
+    `io.BytesIO` : le corpus complet, 1,19 Go, entrait EN ENTIER en mémoire
+    avant qu'on en lise le premier octet. Le flux ne portait que sur la moitié
+    du chemin, et personne ne pouvait le voir en relisant cette fonction seule.
+    C'est la leçon des consolidés DECP, revenue par la porte de derrière —
+    cf. [[feedback-lire-en-flux-ce-qui-est-gros]] et
+    [[feedback-intention-et-capacite]].
+
+    `tarfile` sait ouvrir un CHEMIN et décompresser au fil de la lecture : la
+    mémoire ne porte plus qu'un membre à la fois.
     """
-    with tarfile.open(fileobj=io.BytesIO(brut), mode="r:gz") as tar:
+    with tarfile.open(chemin, mode="r:gz") as tar:
         for membre in tar:
             if not membre.isfile() or not membre.name.endswith(".xml"):
                 continue
@@ -186,9 +198,9 @@ def _retenir(decision: dict) -> str | None:
     return None
 
 
-def _traiter(brut: bytes, releve: dict) -> list[tuple]:
+def _traiter(chemin: pathlib.Path, releve: dict) -> list[tuple]:
     trouves = []
-    for d in _decisions(brut):
+    for d in _decisions(chemin):
         releve["lues"] += 1
         if not d["id"]:
             continue
@@ -211,12 +223,14 @@ def run(jours: int = JOURS_DEFAUT, amorcer: bool = False) -> int:
             print("  [justice] aucune archive globale au catalogue")
             return 0
         print(f"  [justice] ⚠️ reprise du corpus entier : {nom} (1,19 Go)")
-        trouves += _traiter(_telecharger(nom), releve)
+        with _archive_telechargee(nom) as chemin:
+            trouves += _traiter(chemin, releve)
         releve["archives"] += 1
     else:
         for nom in _archives_recentes(jours):
             try:
-                trouves += _traiter(_telecharger(nom), releve)
+                with _archive_telechargee(nom) as chemin:
+                    trouves += _traiter(chemin, releve)
                 releve["archives"] += 1
             except Exception as e:                  # noqa: BLE001
                 # Une archive illisible ne doit pas emporter les autres, mais
@@ -238,10 +252,25 @@ def run(jours: int = JOURS_DEFAUT, amorcer: bool = False) -> int:
     return len(trouves)
 
 
-def _telecharger(nom: str) -> bytes:
+@contextlib.contextmanager
+def _archive_telechargee(nom: str):
+    """Dépose l'archive dans un fichier temporaire, et l'efface après lecture.
+
+    `copyfileobj` copie par blocs : la mémoire ne voit jamais plus d'un tampon,
+    que l'archive fasse 0,2 Mo (un incrément) ou 1,19 Go (le corpus). Le fichier
+    est temporaire À DESSEIN — le corpus JADE n'est pas conservé, seules les
+    décisions qui citent la commune entrent en base. Une reprise ultérieure
+    retélécharge, et c'est le prix assumé de ne rien garder.
+    """
     req = urllib.request.Request(BASE + nom, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=600) as r:
-        return r.read()
+    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as cible:
+        chemin = pathlib.Path(cible.name)
+        with urllib.request.urlopen(req, timeout=600) as r:
+            shutil.copyfileobj(r, cible, 1024 * 1024)
+    try:
+        yield chemin
+    finally:
+        chemin.unlink(missing_ok=True)
 
 
 def _archive_globale() -> str | None:

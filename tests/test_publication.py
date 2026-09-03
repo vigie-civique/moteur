@@ -271,3 +271,36 @@ def test_toute_source_d_evenement_est_publiable():
     assert not absentes, (
         f"collecteurs dont la source n'est pas publiable : {absentes}. "
         "L'événement sera collecté et jamais publié, sans que rien ne le dise.")
+
+
+# ── Les fossiles de la base permanente des équipements ───────────────────────
+
+def test_les_lignes_bpe_fossiles_ne_sont_plus_publiees(bps, tmp_path):
+    """La BPE a déménagé de `insee_social` vers `equipements`, avec sa
+    nomenclature. Cesser de la collecter n'a pas effacé ce qui était déjà en
+    base : 502 lignes sur Lasalle, 97 % sans libellé, publiées à côté des
+    lignes propres. Les mêmes faits deux fois, dont une illisible.
+
+    L'essai porte sur la REQUÊTE de publication, pas sur son texte : il la joue
+    contre une base et compte ce qui sort.
+    """
+    import sqlite3
+
+    base = tmp_path / "essai.db"
+    conn = sqlite3.connect(base)
+    conn.execute("""CREATE TABLE insee_indicateurs (
+        insee TEXT, commune TEXT, dataset TEXT, indicateur TEXT,
+        libelle TEXT, annee TEXT, valeur REAL, dims TEXT)""")
+    conn.executemany(
+        "INSERT INTO insee_indicateurs VALUES (?,?,?,?,?,?,?,?)", [
+            ("30140", "Lasalle", "DS_BPE", "BPE_A104", None, "2025", 3.0, None),
+            ("30140", "Lasalle", "DS_BPE", "BPE_A129", None, "2025", 1.0, None),
+            ("30140", "Lasalle", "DS_RP_POPULATION", "POP", "Population",
+             "2022", 1080.0, None),
+        ])
+    conn.commit()
+    conn.row_factory = sqlite3.Row
+
+    sortis = [dict(r) for r in conn.execute(bps.INSEE_PUBLIABLES)]
+    assert [r["indicateur"] for r in sortis] == ["POP"]
+    assert all(r["dataset"] != "DS_BPE" for r in sortis)

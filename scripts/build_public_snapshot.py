@@ -1850,6 +1850,31 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
             "fiches_retirees": retirees}
 
 
+# Les indicateurs INSEE publiables — TOUS SAUF `DS_BPE`.
+#
+# 🔴 La base permanente des équipements a DÉMÉNAGÉ : `insee_social` la
+# collectait sous des codes nus (`BPE_A129`, sans libellé, que rien ne lisait),
+# et le step `equipements` l'a reprise avec sa nomenclature officielle. Mais
+# cesser de collecter n'efface pas ce qui est déjà en base : le 03/09/2026, les
+# trois instances portaient encore 502, 536 et 627 lignes `DS_BPE` fossiles —
+# 12 à 14 % du jeu, dont 97 % sans libellé — publiées dans `territoire.json` à
+# côté des lignes propres. Les mêmes faits deux fois, dont une illisible, et
+# 146 Ko envoyés au navigateur pour ne rien afficher : la page filtre sur des
+# codes précis et ne les rencontre jamais.
+#
+# Le filtre est posé ICI, au point de PUBLICATION, et non par une suppression
+# en base : la donnée reste, le moteur n'a pas encore de migrations versionnées,
+# et un `DELETE` à la main dans trois bases de production n'est pas un
+# correctif. Le jour où les migrations existent, ce filtre devient inutile —
+# et il ne fera alors que confirmer un jeu déjà propre.
+INSEE_PUBLIABLES = """
+    SELECT insee, commune, dataset, indicateur, libelle, annee, valeur, dims
+      FROM insee_indicateurs
+     WHERE dataset <> 'DS_BPE'
+     ORDER BY dataset, indicateur, annee
+"""
+
+
 def build_snapshot(out: Path) -> dict:
     conn = get_db()
     try:
@@ -2459,10 +2484,8 @@ def build_snapshot(out: Path) -> dict:
         """)
 
         # ── Portrait de territoire (INSEE) ────────────────────────────────────
-        insee_data = rows(conn, """
-            SELECT insee, commune, dataset, indicateur, libelle, annee, valeur, dims
-            FROM insee_indicateurs ORDER BY dataset, indicateur, annee
-        """) if table_exists(conn, "insee_indicateurs") else []
+        insee_data = rows(conn, INSEE_PUBLIABLES) \
+            if table_exists(conn, "insee_indicateurs") else []
 
         # Équipements et services (BPE). `geo_type` distingue le communal de
         # l'intercommunal : l'INSEE ne publie l'ÉVOLUTION qu'à partir de l'EPCI,
