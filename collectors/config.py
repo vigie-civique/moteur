@@ -340,6 +340,11 @@ STEP_META = {
     "banatic":    (30,  5,  "epci_competences",  ""),
     "web":        (7,   6,  "entity_notes",      ""),
     "raa":        (30,  7,  "events",            "type='raa_prefecture'"),
+    # Une observation de chambre régionale est rare — quelques-unes par mandat,
+    # et jamais pour la plupart des communes. 90 jours ne dit donc pas « ça
+    # bouge tous les trois mois », mais « au-delà, le silence cesse d'être une
+    # information sur la commune et devient une question sur le collecteur ».
+    "crc":        (90,  7,  "events",            "type IN ('crc_rapport','crc_rapport_epci')"),
     "profiles":   (30,  8,  "persons",           ""),
     "osm":        (30,  9,  "places",            "osm_category<>'patrimoine'"),
     "sirene":     (30,  10, "businesses",        ""),
@@ -348,6 +353,9 @@ STEP_META = {
     "dvf":        (90,  13, "dvf_transactions",  ""),
     "patrimoine": (180, 14, "places",            "osm_category='patrimoine'"),
     "insee":      (180, 15, "insee_indicateurs", ""),
+    # L'annuaire de l'éducation bouge à la rentrée : une fermeture d'école se
+    # constate en septembre, pas en juillet.
+    "education":  (180, 15, "etablissements_scolaires", ""),
     "rne":        (30,  16, "elus_rne",          ""),
     "fiscalite":  (180, 17, "fiscalite_taux",    ""),
     "sitadel":    (30,  18, "urbanisme_autorisations", ""),

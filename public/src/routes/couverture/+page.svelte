@@ -21,13 +21,16 @@
 
   // Un collecteur qui n'a pas tourné depuis longtemps est une lacune en
   // formation : elle ne se voit pas encore dans les compteurs.
-  const JOURS = 45
+  //
+  // Le seuil est CELUI DE CHAQUE SOURCE (`ttl`, publié par le snapshot depuis
+  // `STEP_META`), et non un nombre unique : un seuil de 45 jours déclarait
+  // frais un site municipal déclaré à 3 jours — la source la plus vive était
+  // la moins couverte. `DEFAUT` ne sert qu'aux collecteurs sans rythme déclaré
+  // et aux snapshots construits avant que le `ttl` n'y figure.
+  const DEFAUT = 45
+  const age = (d) => (Date.now() - new Date(d.replace(' ', 'T')).getTime()) / 864e5
   $: dormants = Object.entries(c?.collecteurs || {})
-    .filter(([, v]) => {
-      if (!v.dernier) return true
-      const j = (Date.now() - new Date(v.dernier.replace(' ', 'T')).getTime()) / 864e5
-      return j > JOURS
-    })
+    .filter(([, v]) => !v.dernier || age(v.dernier) > (v.ttl ?? DEFAUT))
     .sort((a, b) => (a[1].dernier || '').localeCompare(b[1].dernier || ''))
 </script>
 
@@ -118,18 +121,20 @@
     {#if dormants.length}
       <p>
         {dormants.length} collecteur{dormants.length > 1 ? 's n\'ont' : ' n\'a'} pas
-        tourné depuis plus de {JOURS} jours. Les données qu'il{dormants.length > 1 ? 's alimentent' : ' alimente'}
-        peuvent être en retard sur la réalité, sans que rien ne le signale ailleurs sur le site.
+        tourné depuis plus longtemps que son rythme ne le prévoit. Les données
+        qu'il{dormants.length > 1 ? 's alimentent' : ' alimente'} peuvent être en retard sur la réalité,
+        sans que rien ne le signale ailleurs sur le site.
       </p>
       <ul class="dormants">
         {#each dormants as [nom, v]}
           <li><b>{nom}</b> — dernier passage {v.dernier ? fmt(v.dernier) : 'jamais'}
+            {#if v.ttl}<span class="rythme">(attendu tous les {v.ttl} jours)</span>{/if}
             {#if v.statut && v.statut !== 'ok'}<span class="statut">({v.statut})</span>{/if}
           </li>
         {/each}
       </ul>
     {:else}
-      <p>Tous les collecteurs ont tourné dans les {JOURS} derniers jours.</p>
+      <p>Chaque collecteur a tourné dans le délai que son rythme prévoit.</p>
     {/if}
 
     <h2>Ce que nous ne savons pas faire</h2>
@@ -176,6 +181,7 @@
   .dormants li { padding: .25rem 0; }
   .dormants b { color: var(--encre); }
   .statut { color: var(--ambre); font-size: .82rem; }
+  .rythme { color: var(--gris); font-size: .82rem; }
 
   .lacunes { list-style: none; padding: 0; margin: .6rem 0 0; display: grid; gap: .6rem; }
   .lacunes li { border-left: 3px solid var(--trait); padding: .6rem .9rem;

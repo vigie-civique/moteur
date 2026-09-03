@@ -41,6 +41,11 @@ from collectors.config import (  # noqa: E402
     EPCI_SIREN as EPCI_SIREN_C2,
 )
 from collectors.config import DB_PATH   # nommée dans la config
+# Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
+# sans lui, elle jugeait tout le monde au même seuil (45 jours), et la source
+# qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
+# seuil couvrait le moins.
+from collectors.config import STEP_META  # noqa: E402
 from collectors.etat_flux import etat_du_flux  # noqa: E402
 # `VIGIE_RULES` désigne d'autres règles de publication — les tests s'en servent
 # pour tourner sur l'exemple versionné, un dépôt fraîchement cloné n'ayant pas
@@ -1623,7 +1628,14 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
             SELECT collector, status, MAX(started_at) AS dernier
             FROM collector_runs GROUP BY collector
         """):
-            derniers[r["collector"]] = {"statut": r["status"], "dernier": r["dernier"]}
+            derniers[r["collector"]] = {
+                "statut": r["status"],
+                "dernier": r["dernier"],
+                # Le seuil vient de la source unique de vérité, jamais d'un
+                # nombre écrit dans la page : un collecteur dont on change le
+                # rythme change de seuil le jour même.
+                "ttl": STEP_META[r["collector"]][0] if r["collector"] in STEP_META else None,
+            }
 
     doc = stats.get("provenance", {}).get("document", {})
     total_actes = sum(doc.values()) or 1
