@@ -1,0 +1,52 @@
+# Ce que Dependabot surveille ici, et surtout ce qu'il ne touche pas.
+#
+# Les mises à jour de SÉCURITÉ sont un réglage du dépôt, pas de ce fichier :
+# elles arrivent même sans lui. Ce fichier ajoute les mises à jour de VERSION,
+# et c'est là qu'il faut être sélectif — une bibliothèque montée toute seule
+# dans un dispositif qui publie des données publiques, c'est un changement de
+# comportement que personne n'a relu.
+version: 2
+updates:
+
+  # Les actions du workflow. Peu nombreuses, toutes officielles, et c'est le
+  # seul endroit du dépôt où du code TIERS s'exécute avec un jeton.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+
+  # Les dépendances Python des collecteurs et de l'API.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  # ⚠️ Les deux paquets npm : SÉCURITÉ SEULEMENT (`open-pull-requests-limit: 0`
+  # coupe les montées de version, pas les correctifs de faille).
+  #
+  # Les versions de Svelte, SvelteKit, Vite et leurs greffons sont épinglées à
+  # l'exact, et volontairement (cf. README, « npm ci, pas npm install ») : les
+  # plages `^2.5.0` laissaient SvelteKit dériver jusqu'à 2.70, qui attend
+  # Svelte 5 et importe de lui des symboles absents de Svelte 4. Le build
+  # passait en crachant six avertissements que plus personne ne lisait.
+  #
+  # Une PR qui monte UN de ces paquets isolément rétablit exactement cette
+  # situation. Ils se montent ENSEMBLE, à la main, en relançant les deux builds
+  # et en n'épinglant que si la sortie est vierge — ce n'est pas un geste que
+  # l'automate sait faire.
+  - package-ecosystem: npm
+    directory: /public
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0

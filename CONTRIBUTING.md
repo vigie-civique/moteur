@@ -3,6 +3,11 @@
 Ce dépôt est le **moteur** : le code qui collecte, filtre et publie. Il ne
 contient aucune donnée de commune, et ne doit jamais en contenir.
 
+Avant d'ouvrir un ticket : `CODE_OF_CONDUCT.md` — il ne parle pas seulement de
+politesse, il dit ce qu'on ne colle pas dans une issue publique quand on
+travaille sur une base qui nomme des gens. Et une faille du filtre de
+publication ne s'ouvre **jamais** en issue : `SECURITY.md`.
+
 ## La règle qui prime sur toutes les autres
 
 **Une particularité locale ne va pas dans le code.** Ni un code INSEE, ni un
@@ -21,7 +26,7 @@ aussi en intégration continue et sert d'admission à l'archive distribuable.
 
 ```bash
 pip install pytest
-python3 -m pytest                        # 74 tests, ~2 s, sans réseau
+python3 -m pytest                        # 953 essais, ~10 s, sans réseau
 python3 scripts/verifier_generique.py    # généricité
 python3 scripts/build_kit.py             # l'archive se construit-elle ?
 ```

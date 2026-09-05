@@ -1,0 +1,62 @@
+name: Un défaut du moteur
+description: Quelque chose ne fait pas ce qu'il annonce — un collecteur, un contrôle, le snapshot, le site, l'atelier.
+labels: ["défaut"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        ⚠️ **Si le défaut fait sortir une donnée qui ne devait pas sortir**
+        (une personne physique sans rôle public, une entité hors périmètre, une
+        piste `probable` arrivée sur un site), n'écrivez pas ici : passez par le
+        signalement privé (`Security` → `Report a vulnerability`). Le décrire
+        publiquement, c'est le publier une seconde fois.
+
+  - type: textarea
+    id: attendu-constate
+    attributes:
+      label: Ce qui était attendu, et ce qui s'est produit
+      description: Les deux, côte à côte. Le second seul ne dit pas où est le désaccord.
+      placeholder: |
+        Attendu : `--step crc` remonte les rapports de la chambre régionale.
+        Constaté : sortie en 1, « impossible de déterminer le département ».
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduire
+    attributes:
+      label: Comment le reproduire
+      description: >-
+        La commande exacte, et le contexte minimal. Un défaut qui ne se
+        reproduit que sur votre instance reste utile — dites-le, on cherchera
+        ce qui l'y distingue.
+      render: shell
+      placeholder: |
+        python3 -m collectors.run_all --step crc
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version du moteur
+      description: "`git rev-parse --short HEAD`, ou le numéro de la release."
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python et système
+      placeholder: "3.13.2, Debian 12"
+
+  - type: textarea
+    id: controles
+    attributes:
+      label: Sortie des contrôles
+      description: >-
+        `python3 -m pytest` et `python3 scripts/verifier_generique.py`. Un
+        défaut que la suite reproduit est à moitié réglé ; un défaut qu'elle ne
+        voit pas dit qu'il manque un test, et c'est une information à part
+        entière.
+      render: shell

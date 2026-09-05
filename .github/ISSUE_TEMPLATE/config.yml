@@ -1,0 +1,14 @@
+# Les issues restent ouvertes, mais deux choses ne passent pas par elles.
+blank_issues_enabled: true
+contact_links:
+  - name: Une faille, ou une donnée publiée à tort
+    url: https://github.com/vigie-civique/moteur/security/advisories/new
+    about: >-
+      Les défauts les plus graves de ce dispositif sont des fuites du filtre de
+      publication. Ne les ouvrez pas en issue publique et ne les démontrez pas
+      sur un site en ligne : passez par un signalement privé. Voir SECURITY.md.
+  - name: Une donnée qui vous concerne, sur un site en ligne
+    url: mailto:contact@vigie-civique.fr
+    about: >-
+      Droit de réponse et rectification. Cela ne demande pas de compte GitHub,
+      et n'a pas à être public.

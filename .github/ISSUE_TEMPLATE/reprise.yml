@@ -1,0 +1,53 @@
+name: Rejouer sur une autre commune
+description: Vous reprenez le dispositif ailleurs et quelque chose bloque, manque, ou n'est pas générique.
+labels: ["reprise"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Le moteur ne doit nommer aucune commune : c'est la règle qui prime sur
+        les autres (`CONTRIBUTING.md`). Si vous avez dû modifier du code du
+        moteur pour votre commune, ce n'est pas une adaptation — c'est un
+        défaut de généricité, et il nous intéresse.
+
+  - type: dropdown
+    id: nature
+    attributes:
+      label: De quoi s'agit-il
+      options:
+        - Une particularité locale est codée en dur dans le moteur
+        - L'amorçage (init_instance.py) ne donne pas le bon périmètre
+        - Le site de la mairie n'a pas de connecteur qui sache le lire
+        - Un collecteur national ne rend rien sur cette commune
+        - La documentation dit quelque chose de faux, ou passe une étape
+        - Autre
+    validations:
+      required: true
+
+  - type: input
+    id: insee
+    attributes:
+      label: Code INSEE de la commune
+      description: >-
+        Le code seul suffit à reproduire l'amorçage. Ne collez ni
+        `config/instance.json`, ni un extrait de base : ils peuvent nommer des
+        personnes.
+      placeholder: "30140"
+
+  - type: textarea
+    id: blocage
+    attributes:
+      label: Ce qui bloque
+      description: >-
+        À quelle étape du parcours du README, et avec quelle sortie. Si c'est
+        `verifier_generique.py` qui refuse, collez son rapport tel quel.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contourne
+    attributes:
+      label: Ce que vous avez dû faire pour avancer
+      description: >-
+        Même si c'est bricolé. C'est souvent la description la plus utile :
+        elle dit ce que le moteur aurait dû savoir faire tout seul.

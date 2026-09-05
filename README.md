@@ -421,7 +421,22 @@ elle-même n'est pas versionnée.
 
 ## Cadre
 
-Les données publiées sont sous **licence ODbL**, le code sous **licence MIT**.
+Le **code** est sous licence MIT — `LICENSE`, et rien d'autre : le fichier ne
+porte que le texte de la licence, pour que GitHub la reconnaisse au lieu
+d'afficher « Other ». Ce que MIT ne couvre pas se lit ici.
+
+**Les données ne sont pas le code.** La licence porte sur les collecteurs, le
+schéma, le constructeur de snapshot, l'API et les sites Svelte. Elle ne porte ni
+sur les données publiées ni sur le contenu éditorial :
+
+- les **données publiées** (`public/static/data/`,
+  `dashboard/static/public_api/`) sont sous **Open Database License 1.0**
+  (ODbL). Le jeu incorpore des points d'intérêt et des géocodages
+  OpenStreetMap : c'est une base dérivée, le partage à l'identique s'applique.
+  Voir le README généré à côté des données, et `config/publication_rules.json`
+  → `outputs` ;
+- la **base de travail** (`db/`) n'est pas distribuée du tout : elle contient
+  ce que le filtre écarte.
 
 Une licence ouverte ne dispense pas du RGPD. Les personnes physiques ne figurent
 sur le site qu'au titre d'une fonction publique, d'un mandat électif ou d'une
@@ -429,9 +444,11 @@ responsabilité inscrite dans un registre public. Un droit de réponse est ouver
 et toute rectification est appliquée puis signalée comme telle — la donnée
 collectée étant conservée à côté de la rectification, jamais remplacée.
 
-La note de licence de `config/publication_rules.json` décrit le jeu de données
-de l'instance dont l'exemple est tiré : elle doit être relue et réécrite avant
-publication, pas recopiée.
+Reprendre ce code pour une autre commune suppose de **refaire son propre
+travail de conformité** : les règles de `config/publication_rules.json` sont un
+point de départ, pas une garantie transposable. Leur note de licence décrit le
+jeu de données de l'instance dont l'exemple est tiré — elle doit être relue et
+réécrite avant publication, pas recopiée.
 
 Si vous rejouez ce dispositif ailleurs : la partie difficile n'est pas
 technique. C'est de décider ce qu'il est légitime de faire dire aux données, et
