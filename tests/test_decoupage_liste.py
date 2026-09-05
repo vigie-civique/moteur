@@ -177,3 +177,83 @@ def test_un_pdf_pagine_perd_toujours_son_en_tete_repete():
     pdf = "\n".join(["COMMUNE DE LASALLE — PROCES-VERBAL"] * 6 + ["DELIBERATION UNE"])
     assert "PROCES-VERBAL" not in _sans_entetes(pdf, pagine=True)
     assert "PROCES-VERBAL" in _sans_entetes(pdf, pagine=False)
+
+
+# ── La classe « majuscules » n'en était pas une ──────────────────────────────
+#
+# `[A-ZÀ-Ÿ]` est un INTERVALLE de points de code, U+00C0→U+0178, qui traverse
+# tout le bloc des minuscules accentuées. Deux dégâts : le motif reconnaissait
+# « à » comme une majuscule, et surtout il recouvrait la classe des minuscules
+# — d'où deux lectures possibles de chaque « -à », et un retour arrière
+# exponentiel quand la ligne finit par ne pas correspondre. Signalé par CodeQL
+# le 05/09/2026 ; mesuré à 0,7 s sur 67 caractères, ×2,6 toutes les deux
+# répétitions de plus.
+
+def test_les_classes_de_casse_ne_se_recouvrent_pas():
+    """Le recouvrement était la cause ; c'est lui qu'on surveille."""
+    import re
+
+    from collectors.pv_parsers import _MAJUSCULES, _MINUSCULES
+
+    lettres = [chr(i) for i in range(0x20, 0x250)]
+    hautes = {c for c in lettres if re.match(f"[{_MAJUSCULES}]", c)}
+    basses = {c for c in lettres if re.match(f"[{_MINUSCULES}]", c)}
+
+    assert not (hautes & basses), \
+        f"les deux classes se recouvrent sur {''.join(sorted(hautes & basses))!r}"
+    assert all(c.isupper() for c in hautes), \
+        f"« majuscules » accepte {''.join(c for c in sorted(hautes) if not c.isupper())!r}"
+    assert all(c.islower() for c in basses), \
+        f"« minuscules » accepte {''.join(c for c in sorted(basses) if not c.islower())!r}"
+
+
+def test_une_ligne_de_charabia_ne_fige_pas_le_decoupage():
+    """Le texte vient de PDF océrisés : le charabia est un cas NORMAL.
+
+    Avec l'ancien motif, cette ligne de 2 003 caractères ne rendait pas la main
+    avant des heures — sans rien planter, donc sans rien dire.
+    """
+    import time
+
+    from collectors.pv_parsers import _ITEM_PERSONNE
+
+    charabia = "A'" + "-à" * 1000 + "!"
+    depart = time.perf_counter()
+    assert not _ITEM_PERSONNE.match(charabia)
+    assert time.perf_counter() - depart < 1.0, "retour arrière exponentiel"
+
+
+def test_les_noms_restent_reconnus():
+    """La correction resserre la classe : elle ne doit rien perdre en route.
+
+    Les accents, les apostrophes, les prénoms composés et les ligatures passent
+    dans les deux sens — c'est ce qui distingue un resserrement d'une casse.
+    """
+    from collectors.pv_parsers import _ITEM_PERSONNE
+
+    for nom in ["Jean-Claude GUIRAUD", "BOUSQUET Christiane", "Élodie MARTIN",
+                "Jean-François D'ARGENSON", "François ŒUVRARD",
+                "O'CONNOR Patrick", "Brigitte PAILHE-FERNANDEZ",
+                "DUPONT Jean 12,50 €"]:
+        assert _ITEM_PERSONNE.match(nom), nom
+    for intitule in ["Approbation du compte administratif",
+                     "Convention avec le SIAEP",
+                     "Vote du taux des taxes locales"]:
+        assert not _ITEM_PERSONNE.match(intitule), intitule
+
+
+def test_un_nom_de_famille_en_deux_mots_echappe_encore():
+    """Une limite ANCIENNE, que la correction ne touche pas — elle est notée ici
+    pour qu'on ne la découvre pas deux fois.
+
+    Le patronyme est un seul jeton : « LE GALL » et « DE LA TOUR » n'entrent
+    dans aucune des deux branches. Un tableau du conseil rempli de ces noms-là
+    serait donc pris pour un ordre du jour. Les corriger demande d'autoriser
+    plusieurs jetons majuscules d'affilée, ce qui rapproche dangereusement le
+    motif d'un intitulé en capitales (« DELIBERATION N° 2024-045 ») : ça se
+    tranche sur un corpus, pas sur une intuition.
+    """
+    from collectors.pv_parsers import _ITEM_PERSONNE
+
+    assert not _ITEM_PERSONNE.match("Anne-Marie LE GALL")
+    assert not _ITEM_PERSONNE.match("Noëlle DE LA TOUR")

@@ -437,14 +437,39 @@ def _plus_longue_suite(marques: list[tuple]) -> list[tuple]:
     return courante if len(courante) >= len(meilleure) else meilleure
 
 
+# ⚠️ `[A-ZÀ-Ÿ]` n'est PAS « les majuscules ». C'est l'intervalle U+0041→U+005A
+# plus U+00C0→U+0178, et cet intervalle-là traverse tout le bloc des minuscules
+# accentuées : « à » (U+00E0) est entre « À » (U+00C0) et « Ÿ » (U+0178). La
+# classe dite « majuscules » acceptait donc à é è ù ç ö ÿ œ ß ñ.
+#
+# Deux conséquences, et la seconde est la grave. D'abord elle reconnaît ce
+# qu'elle prétend refuser. Ensuite elle RECOUVRE la classe des minuscules, et
+# ce recouvrement rend le motif ci-dessous ambigu : dans « -à », le tiret peut
+# être avalé par `[minuscules…]+` ou servir de séparateur `[- ]` suivi d'une
+# « majuscule » qui accepte « à ». Deux lectures par répétition, et le moteur
+# les essaie TOUTES avant de déclarer l'échec. Mesuré : 32 répétitions (67
+# caractères) = 0,7 s, et ×2,6 toutes les deux répétitions de plus — une ligne
+# de 115 caractères occupe la machine des heures. Ce motif s'applique au texte
+# EXTRAIT DES PDF : une page océrisée en charabia suffit à figer la collecte,
+# sans rien planter et sans rien dire.
+#
+# Les deux classes sont donc énumérées, et disjointes. Le × (U+00D7) et le
+# ÷ (U+00F7) sont exclus des intervalles : ce sont des signes de
+# multiplication, pas des lettres.
+_MAJUSCULES = "A-ZÀ-ÖØ-ÞŒŠŽŸ"
+_MINUSCULES = "a-zß-öø-ÿœšž"
+
 # Une personne, et rien d'autre : « Jean-Claude GUIRAUD », « BOUSQUET Christiane ».
 # Les conseils d'installation numérotent leurs conseillers, et le tableau du
 # conseil est une suite d'ordinaux irréprochable — mais c'est un trombinoscope,
 # pas un ordre du jour. Sur Brassac, une séance rendait ainsi dix-sept « actes »
 # nommés d'après les élus présents.
 _ITEM_PERSONNE = re.compile(
-    r"^(?:[A-ZÀ-Ÿ][a-zà-ÿ'’\-]+(?:[- ][A-ZÀ-Ÿ][a-zà-ÿ'’\-]+)*\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}"
-    r"|[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]{2,}\s+[A-ZÀ-Ÿ][a-zà-ÿ'’\-]+)"
+    rf"^(?:[{_MAJUSCULES}][{_MINUSCULES}'’\-]+"
+    rf"(?:[- ][{_MAJUSCULES}][{_MINUSCULES}'’\-]+)*"
+    rf"\s+[{_MAJUSCULES}][{_MAJUSCULES}'’\-]{{2,}}"
+    rf"|[{_MAJUSCULES}][{_MAJUSCULES}'’\-]{{2,}}"
+    rf"\s+[{_MAJUSCULES}][{_MINUSCULES}'’\-]+)"
     r"(?:\s+\d[\d/.,\s€%]*)?$")
 # Au-delà, deux ordinaux consécutifs ne se touchent plus : du texte les sépare.
 _ECART_SERRE = 2

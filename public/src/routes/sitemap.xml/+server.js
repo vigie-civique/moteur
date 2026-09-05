@@ -17,6 +17,28 @@ const lire = (nom, defaut = {}) => {
   catch { return defaut }
 }
 
+// Une adresse, telle qu'un document XML l'accepte. Les deux étapes sont dans
+// cet ordre et pas dans l'autre : `encodeURI` d'abord, qui laisse `&` intact,
+// puis l'échappement des entités — l'inverse transformerait le `&` de `&amp;`
+// en `%26amp%3B`.
+//
+// Rien ici ne vient d'un visiteur : les fiches sont nommées par un identifiant
+// numérique, et `SITE_URL` est déclaré par l'instance. Mais ce document est
+// assemblé par concaténation de chaînes, et il n'avait AUCUN échappement : le
+// jour où les fiches porteront un libellé plutôt qu'un numéro — le dispositif
+// génère déjà ses formes grammaticales — une esperluette suffira à produire un
+// sitemap invalide. Un crawler ne le signale pas : il cesse simplement de lire
+// le fichier, et les 1 800 fiches redeviennent atteignables de proche en
+// proche seulement. C'est la panne qu'on ne voit pas venir.
+//
+// Les cinq entités sont celles que la spécification sitemaps.org impose.
+const adresseXml = (url) => encodeURI(url)
+  .replace(/&/g, '&amp;')
+  .replace(/'/g, '&apos;')
+  .replace(/"/g, '&quot;')
+  .replace(/>/g, '&gt;')
+  .replace(/</g, '&lt;')
+
 // Routes éditoriales, dans l'ordre d'importance décroissante. Les pages de
 // navigation pure (hub) portent une priorité plus haute que les listes.
 const PAGES = [
@@ -56,7 +78,7 @@ export function GET() {
 
   const body = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map(({ loc, prio }) => `  <url><loc>${SITE_URL}${loc}</loc><lastmod>${maj}</lastmod><priority>${prio}</priority></url>`).join('\n')}
+${urls.map(({ loc, prio }) => `  <url><loc>${adresseXml(SITE_URL + loc)}</loc><lastmod>${maj}</lastmod><priority>${prio}</priority></url>`).join('\n')}
 </urlset>
 `
   return new Response(body, { headers: { 'content-type': 'application/xml' } })
