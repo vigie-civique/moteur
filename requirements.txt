@@ -20,7 +20,7 @@ starlette==0.52.1
 slowapi==0.1.9
 bcrypt==5.0.0
 python-jose==3.5.0
-python-dotenv==1.2.1
+python-dotenv==1.2.3
 cryptography==50.0.0
 # Dépôt de documents dans l'atelier : FastAPI en a besoin pour lire un
 # formulaire multipart. Une saisie manuelle ne s'enregistre pas sans sa source,
