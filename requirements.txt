@@ -32,7 +32,7 @@ python-multipart==0.0.32
 requests==2.32.5
 beautifulsoup4==4.15.0
 numpy==1.26.4
-ddgs==9.14.4          # url_finder : recherche des sites des entités locales
+ddgs==9.16.0          # url_finder : recherche des sites des entités locales
 certifi==2026.7.22    # archive.py : vérification SSL. Arrive avec requests, mais
                       # le code l'importe en propre — donc il se déclare en propre.
 openpyxl==3.1.5       # dgf_notifications.py : les exports .xlsx du portail DGCL.
