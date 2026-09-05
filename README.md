@@ -3,8 +3,9 @@
 Un observatoire citoyen des décisions publiques d'une petite commune, construit
 à partir de données et de documents publics uniquement.
 
-Instance de référence : **[Lasalle (Gard, 30460)](https://vigie-civique-lasalle.pages.dev)**
-— environ 1 800 acteurs, 4 300 actes, les marchés publics, le budget et le foncier.
+Instance de référence : **[Lasalle (Gard, 30460)](https://vigie-civique-lasalle.fr)**
+— 1 421 fiches publiées, 4 025 actes dont 2 425 délibérations, les marchés
+publics, le budget et le foncier (relevé du 03/09/2026).
 
 En dessous de 3 500 habitants, l'obligation légale d'ouvrir ses données ne
 s'applique pas. C'est précisément là que rien n'est publié, et c'est le trou que
@@ -15,9 +16,12 @@ ce dispositif cherche à combler.
 ## Ce que fait le dispositif
 
 Des **collecteurs** interrogent des sources publiques (SIRENE, RNA, BODACC, DVF,
-OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, Hub'Eau,
-sites officiels de la commune et de l'intercommunalité) et alimentent une base
-SQLite. `python3 -m collectors.run_all` en enchaîne 36.
+OFGL/DGFiP, DECP/BOAMP, Sitadel, Géorisques, RNE, BANATIC, HATVP, JADE, INSEE
+Melodi et base permanente des équipements, DPE, FINESS, cadastre Etalab,
+résultats électoraux, Hub'Eau, SISPEA, Géoportail de l'urbanisme, RAA de
+préfecture, chambres régionales des comptes, sites officiels de la commune et de
+l'intercommunalité) et alimentent une base SQLite.
+`python3 -m collectors.run_all` en enchaîne 48.
 
 Un **script de publication** (`scripts/build_public_snapshot.py`) en extrait un
 snapshot JSON filtré, qui alimente un **site statique** SvelteKit sans backend
@@ -39,8 +43,9 @@ institutionnelle peut en revanche toujours être écartée de la publication.
 Le filtrage n'est pas un détail : c'est le cœur du dispositif. Il écarte les
 personnes physiques sans rôle civique public, les pistes de travail non
 établies, les liens de famille, les domiciles et les dates de naissance. Sur
-l'instance de Lasalle, il écarte environ 3 800 personnes et 4 500 relations de
-la base de travail.
+l'instance de Lasalle, la base de travail compte 3 984 personnes dont **49
+seulement sont publiées** — celles qui exercent une fonction publique — et
+292 relations publiées sur 1 497 (relevé du 03/09/2026).
 
 **Une entité non classée n'est pas publiée.** Le classement de périmètre
 (C1 la commune, C2 l'intercommunalité, C3 le supra-communal, `lien` le
@@ -76,8 +81,9 @@ distinction. Un chiffre que le site calcule dit qu'il le calcule et sur quoi.
 
 **Les lacunes sont publiées.** La page `/couverture` expose la période
 réellement couverte par source, la fraîcheur de chaque collecteur et ce que le
-dispositif ne sait pas faire. Sur Lasalle, elle annonce en tête que 4,2 % des
-actes seulement renvoient vers la pièce elle-même.
+dispositif ne sait pas faire. Sur Lasalle, elle annonce en tête la part des
+actes qui renvoient vers la pièce elle-même : 65,6 % au 03/09/2026, soit 2 641
+sur 4 025.
 
 ---
 
@@ -226,7 +232,7 @@ cd public && npm ci && cd ..
 
 ```bash
 pip install pytest
-python3 -m pytest                        # 100 tests, ~2 s, sans réseau ni base
+python3 -m pytest                        # 953 essais, ~10 s, sans réseau ni base
 python3 scripts/verifier_generique.py    # le moteur ne nomme aucune commune
 ```
 
