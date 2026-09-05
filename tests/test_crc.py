@@ -154,10 +154,34 @@ class TestDepartement:
             monkeypatch.setattr(crc, "PREFECTURE_NOM", prefecture)
             assert crc.departement_nom() == attendu
 
+    def test_le_nom_declare_prime_sur_la_prefecture(self, monkeypatch):
+        """`departement_nom` est la voie normale ; la préfecture n'est qu'un
+        rattrapage pour les instances relues à la main avant qu'il existe."""
+        import collectors.crc as crc
+        monkeypatch.setattr(crc, "DEPARTEMENT_NOM", "Gard")
+        monkeypatch.setattr(crc, "PREFECTURE_NOM", "Sous-préfecture de Nulle Part")
+        assert crc.departement_nom() == "Gard"
+
+    def test_la_forme_ecrite_par_l_amorcage_ne_fait_plus_tomber_le_step(self, monkeypatch):
+        """La panne du 05/09/2026, et elle ne se voyait pas ici.
+
+        `init_instance.py` écrit « Préfecture (30) » — aucun article ne la
+        rattrape. Toute instance amorcée automatiquement levait donc SystemExit,
+        `run_all --step crc` sortait en 1, et le portail national comptait `crc`
+        en échec sur CHAQUE dossier livré : trois d'affilée, son veilleur a
+        conclu à une panne chez nous. Il avait raison. Les dossiers d'Uzès
+        perdaient au passage quatre vrais rapports de la CRC.
+        """
+        import collectors.crc as crc
+        monkeypatch.setattr(crc, "PREFECTURE_NOM", "Préfecture (30)")
+        monkeypatch.setattr(crc, "DEPARTEMENT_NOM", "Gard")
+        assert crc.departement_nom() == "Gard"
+
     def test_une_forme_illisible_refuse_au_lieu_de_deviner(self, monkeypatch):
         """Deviner un département relâcherait la seule condition qui empêche
         d'attribuer un rapport à la mauvaise collectivité."""
         import collectors.crc as crc
+        monkeypatch.setattr(crc, "DEPARTEMENT_NOM", "")
         monkeypatch.setattr(crc, "PREFECTURE_NOM", "Sous-préfecture de Nulle Part")
         try:
             crc.departement_nom()

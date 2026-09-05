@@ -68,6 +68,13 @@ COMMUNE_INSEE = _exiger("commune_insee")
 COMMUNE_NAME  = _exiger("commune_nom")
 CODE_POSTAL   = _exiger("code_postal")
 DEPARTEMENT   = _exiger("departement")
+# Le NOM du département, que `crc` compare au titre d'un rapport (« Commune de
+# X (Gard) »). Il ne se déduit pas du code — embarquer une table des cent-un
+# départements serait une donnée de plus à tenir à jour — et il ne se devinait
+# pas non plus de `prefecture_nom` : l'amorçage y écrit « Préfecture (30) », une
+# forme qu'aucune règle d'article ne rattrape. Il est donc DÉCLARÉ, écrit par
+# `init_instance.py` depuis geo.api.gouv.fr, comme le reste du périmètre.
+DEPARTEMENT_NOM = _I.get("departement_nom", "")
 COMMUNE_SIREN = _I.get("commune_siren", "")
 COMMUNE_SIRET = _I.get("commune_siret", "")
 

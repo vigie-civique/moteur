@@ -155,7 +155,13 @@ def construire(insee: str) -> dict:
     cp = commune["codesPostaux"][0]
     dept = insee[:3] if insee.startswith(("97", "98")) else insee[:2]
     epci = commune.get("epci") or {}
-    print(f"  {nom} ({cp}), département {dept}, "
+    # Le NOM du département, pas seulement son code : `crc` compare au titre
+    # d'un rapport (« Commune de X (Gard) »), qui ne porte jamais le code.
+    # Il vient de la même API que le reste du périmètre — pas d'une table des
+    # cent-un départements embarquée, pas d'une déduction sur `prefecture_nom`.
+    dept_nom = ((_get(f"{GEO}/departements/{dept}?fields=nom") or {}).get("nom") or "")
+    print(f"  {nom} ({cp}), département {dept}"
+          f"{f' — {dept_nom}' if dept_nom else ' (nom indisponible)'}, "
           f"{commune.get('population', '?')} habitants")
 
     membres = {}
@@ -214,6 +220,7 @@ def construire(insee: str) -> dict:
         "commune_nom": nom,
         "code_postal": cp,
         "departement": dept,
+        "departement_nom": dept_nom,
         "commune_siren": siren,
         "commune_siret": siret,
         "communes": membres,
@@ -239,6 +246,9 @@ def construire(insee: str) -> dict:
             "vérifier commune_url et renseigner epci_url",
             "choisir le connecteur (cf. collectors/connecteurs/) et ses pages",
             "renseigner prefecture_raa_path (chemin des recueils des actes)",
+            *([] if dept_nom else
+              ["renseigner departement_nom (le nom, pas le code) — sans lui, "
+               "crc ne peut pas rapprocher un rapport de la collectivité"]),
             "confirmer le nom des communes déléguées, s'il y en a",
             "renseigner depot_url si le code est publié quelque part",
         ],

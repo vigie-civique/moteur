@@ -368,12 +368,31 @@ def check_silent_source(c):
             " ORDER BY finished_at DESC LIMIT 3", (name,)
         ).fetchall()
         if len(recents) == 3 and all((r["items_added"] or 0) == 0 for r in recents):
-            findings.append(finding(
-                "stale_source", "warning",
-                f"collecteur « {name} » : 3 runs consécutifs sans aucun apport — "
-                f"vérifier que le jeu source est encore alimenté "
-                f"(cf. decp_augmente figé alors que l'API répondait)",
-                ref={"collector": name}))
+            # ⚠️ « Sans apport » ne veut dire « figé » que si la source a DÉJÀ
+            # livré ici. Sur `crc`, ne rien trouver est le résultat JUSTE et
+            # durable : une commune de moins de 3 500 habitants n'est presque
+            # jamais contrôlée, et son intercommunalité pas davantage. Le
+            # contrôle criait donc à chaque passage sur une réponse correcte —
+            # Lasalle et Brassac, en septembre 2026. Un avertissement qui ne
+            # peut pas s'éteindre apprend à ne plus lire les avertissements.
+            a_deja_livre = c.execute(
+                "SELECT 1 FROM collector_runs"
+                " WHERE collector=? AND items_added > 0 LIMIT 1", (name,)
+            ).fetchone()
+            if a_deja_livre:
+                findings.append(finding(
+                    "stale_source", "warning",
+                    f"collecteur « {name} » : 3 runs consécutifs sans aucun apport "
+                    f"alors qu'il a déjà livré — vérifier que le jeu source est "
+                    f"encore alimenté (cf. decp_augmente figé alors que l'API répondait)",
+                    ref={"collector": name}))
+            else:
+                findings.append(finding(
+                    "stale_source", "info",
+                    f"collecteur « {name} » : aucun apport dans tout l'historique "
+                    f"journalisé — normal quand la collectivité n'est pas concernée "
+                    f"(crc sur une commune jamais contrôlée), à vérifier sinon",
+                    ref={"collector": name}))
     return findings
 
 

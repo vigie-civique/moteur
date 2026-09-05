@@ -56,8 +56,8 @@ import ssl
 import urllib.request
 
 from .archive import HEADERS, archive_fetch
-from .config import (COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT, EPCI_NOM,
-                     PREFECTURE_NOM, REQUEST_DELAY)
+from .config import (COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT,
+                     DEPARTEMENT_NOM, EPCI_NOM, PREFECTURE_NOM, REQUEST_DELAY)
 from .db import get_conn, log_run_end, log_run_start
 
 RECHERCHE = "https://www.ccomptes.fr/fr/recherche"
@@ -84,14 +84,31 @@ def departement_nom() -> str:
     """Le NOM du département, que le titre porte — pas son code.
 
     L'instance déclare `departement` en CODE (« 26 ») et le titre du site écrit
-    le nom (« Drôme »). Plutôt que d'embarquer une table des cent-un
-    départements, on le tire de `prefecture_nom`, que l'instance déclare déjà et
-    qu'un humain a relu : « Préfecture de la X » → « X ».
+    le nom (« Drôme »). Trois lectures, dans cet ordre.
 
-    Si la forme ne s'y prête pas, on REFUSE en nommant le remède. Deviner un
-    département reviendrait à relâcher la seule condition qui empêche
-    d'attribuer un rapport à la mauvaise collectivité.
+    1. `departement_nom`, DÉCLARÉ par l'instance. C'est la voie normale depuis
+       que `init_instance.py` l'écrit — le remède que ce fichier nommait déjà
+       sans que personne l'ait posé.
+    2. À défaut, `prefecture_nom` relu par un humain : « Préfecture de la X »
+       → « X ». Les trois instances communales sont dans ce cas ; la lecture
+       reste, elles n'ont pas à être réamorcées.
+    3. Sinon on REFUSE, en nommant le remède.
+
+    ⚠️ C'est le point 1 qui manquait, et son absence ne se voyait pas ici mais
+    à 700 km : `init_instance.py` écrit « Préfecture (30) » — la forme qu'aucun
+    article ne rattrape. Tout dossier national amorcé automatiquement levait
+    donc `SystemExit`, `run_all --step crc` sortait en 1, et le portail comptait
+    `crc` en échec sur CHAQUE dossier livré. Trois d'affilée, et son veilleur a
+    conclu — à juste titre — que la panne n'était pas chez la Cour des comptes.
+    Le collecteur n'a jamais eu tort de refuser ; il refusait faute d'une donnée
+    que rien ne lui donnait.
+
+    Deviner un département reviendrait à relâcher la seule condition qui
+    empêche d'attribuer un rapport à la mauvaise collectivité : on ne devine
+    pas, on refuse.
     """
+    if (DEPARTEMENT_NOM or "").strip():
+        return DEPARTEMENT_NOM.strip()
     trouve = re.match(
         r"^Préfecture\s+(?:de\s+la\s+|du\s+|de\s+l['’]|des\s+|de\s+)(.+)$",
         (PREFECTURE_NOM or "").strip())
@@ -276,8 +293,14 @@ def run_crc() -> dict:
         # `empty` n'est pas un échec : sous 3 500 habitants, une commune n'est
         # presque jamais contrôlée, et c'est l'intercommunalité qui porte le
         # rapport quand il y en a un.
+        # ⚠️ Ce qui est JOURNALISÉ comme apport, ce sont les rapports NEUFS,
+        # pas les rapports retenus. La première version passait `trouves` et
+        # un `items_before` de 0 : Saillans, qui porte deux rapports depuis
+        # 2018, déclarait « +2 » à CHAQUE passage. Un tel journal ne peut plus
+        # signaler qu'une source s'est figée — c'est exactement la panne que
+        # `stale_source` cherche (cf. decp_augmente), rendue indétectable.
         log_run_end(conn, run_id, "ok" if releve["trouves"] else "empty",
-                    releve["trouves"], 0)
+                    releve["trouves"], releve["trouves"] - releve["neufs"])
     return releve
 
 
