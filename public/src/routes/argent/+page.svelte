@@ -29,7 +29,7 @@
       sub: 'Qui obtient les marchés de la commune : travaux, études, fournitures.',
       valeur: nombre(data.marches), unite: 'marchés publiés' },
     { icone: 'urbanisme', titre: 'Foncier & urbanisme', href: '/urbanisme',
-      sub: 'Transactions foncières (DVF) et la parcelle AD0180.',
+      sub: "Mutations immobilières (DVF) et le document d'urbanisme qui règle la construction.",
       valeur: nombre(data.dvf), unite: data.dvfPeriode ? `transactions · ${data.dvfPeriode}` : 'transactions' },
     { icone: 'comprendre', titre: 'Comprendre le budget', href: '/comprendre/budget',
       sub: "Fonctionnement, investissement, épargne, dette : le mode d'emploi.",
