@@ -232,7 +232,7 @@ cd public && npm ci && cd ..
 
 ```bash
 pip install pytest
-python3 -m pytest                        # 953 essais, ~10 s, sans réseau ni base
+python3 -m pytest                        # la suite entière, ~10 s, sans réseau ni base
 python3 scripts/verifier_generique.py    # le moteur ne nomme aucune commune
 ```
 

@@ -46,6 +46,11 @@ from collectors.config import DB_PATH   # nommée dans la config
 # qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
 # seuil couvrait le moins.
 from collectors.config import STEP_META  # noqa: E402
+# Ce que ce site EST, pour un lecteur qui y arrive sans rien savoir. Publié
+# DANS LES DONNÉES et pas seulement dans le gabarit : une mention qui
+# n'existe que dans la page disparaît de tout ce qui n'est pas la page —
+# un export, une API, un moissonneur, un lecteur de flux.
+from collectors.config import STATUT  # noqa: E402
 from collectors.etat_flux import etat_du_flux  # noqa: E402
 # `VIGIE_RULES` désigne d'autres règles de publication — les tests s'en servent
 # pour tourner sur l'exemple versionné, un dépôt fraîchement cloné n'ayant pas
@@ -2536,8 +2541,20 @@ def build_snapshot(out: Path) -> dict:
               FROM cadastre_parcelles GROUP BY insee
         """) if table_exists(conn, "cadastre_parcelles") else []
 
+        # Un statut déclaré est une promesse ; la date de dernière collecte est
+        # un fait. C'est elle qui permet à un lecteur de vérifier le statut sans
+        # croire personne : au bout de six mois, un portage de démonstration
+        # affiche six mois. On prend la collecte, JAMAIS la publication — une
+        # republication ne recollecte rien et ferait passer un site figé pour
+        # un site vivant.
+        derniere_collecte = None
+        if table_exists(conn, "collector_runs"):
+            _r = rows(conn, "SELECT MAX(started_at) AS d FROM collector_runs")
+            derniere_collecte = (_r[0]["d"] or "")[:10] or None if _r else None
+
         stats = {
             "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "statut": {**STATUT, "derniere_collecte": derniere_collecte},
             "entities_total_private": len(entity_rows),
             "entities_public": len(public_entities),
             # Contrôle de publication : un site communal qui publierait

@@ -242,6 +242,17 @@ def construire(insee: str) -> dict:
         # dont elle est partie. Vide, la page invite à écrire plutôt que de
         # pointer une adresse fausse.
         "depot_url": "",
+        # Ce que ce site EST pour un lecteur qui y arrive sans rien savoir.
+        # Le défaut est le plus modeste, et il est VRAI : une instance qu'on
+        # vient d'amorcer est une démonstration tant que personne ne l'a prise
+        # en charge. Se déclarer tenue est un geste, pas un état automatique —
+        # et le contrôle de publication refuse « tenue » sans dire par qui.
+        "statut": {
+            "_doc": "type : demonstration | constitution | tenue. "
+                    "tenue_par : qui relit avant publication (exigé si tenue).",
+            "type": "demonstration",
+            "tenue_par": "",
+        },
         "_a_faire": [
             "vérifier commune_url et renseigner epci_url",
             "choisir le connecteur (cf. collectors/connecteurs/) et ses pages",
@@ -251,6 +262,9 @@ def construire(insee: str) -> dict:
                "crc ne peut pas rapprocher un rapport de la collectivité"]),
             "confirmer le nom des communes déléguées, s'il y en a",
             "renseigner depot_url si le code est publié quelque part",
+            "déclarer le statut de l'instance (« statut ») dès qu'un "
+            "collectif la tient sur place : le site annonce « portage de "
+            "démonstration » tant que rien n'est déclaré",
         ],
     }
 

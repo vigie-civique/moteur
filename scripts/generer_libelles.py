@@ -57,6 +57,13 @@ CIBLE = CIBLES[0]
 VOYELLES = "aeiouyàâäéèêëîïôöûüÿ"
 
 
+# Le module de statut vit dans le moteur, pas dans les scripts : le snapshot
+# le lit aussi. `sys.path` est posé explicitement — ce script se lance parfois
+# depuis un autre répertoire que la racine.
+sys.path.insert(0, str(ROOT))
+from collectors.statut import normaliser as normaliser_statut  # noqa: E402
+
+
 def _sans_accent(s: str) -> str:
     s = unicodedata.normalize("NFD", s or "")
     return "".join(c for c in s if unicodedata.category(c) != "Mn")
@@ -121,6 +128,11 @@ def construire() -> dict:
     f = formes(nom)
     epci = inst.get("epci_nom", "")
     editeur = inst.get("editeur", {})
+    # Le statut n'est pas un libellé de plus : c'est ce qu'un lecteur doit
+    # savoir AVANT de lire un chiffre. Il vient d'un seul endroit,
+    # collectors/statut.py, que le snapshot lit aussi — deux textes qui se
+    # ressemblent finiraient par diverger.
+    statut = normaliser_statut(inst.get("statut"))
     # `centroid` est un couple [lat, lng]. Défaut : le centre de la France
     # métropolitaine — visiblement faux plutôt que discrètement faux.
     _c = inst.get("centroid") or []
@@ -149,6 +161,11 @@ def construire() -> dict:
                     if projet.get("commune", nom) == nom else f"Vigie Civique {nom}",
         "SITE_URL": inst.get("site_url", ""),
         "SITE_BASELINE": surcharge.get("baseline", f"{nom}, au clair"),
+        "STATUT_TYPE": statut["type"],
+        "STATUT_LIBELLE": statut["libelle"],
+        "STATUT_TEXTE": statut["texte"],
+        "STATUT_TENUE_PAR": statut["tenue_par"] or "",
+        "STATUT_MENTION": statut["mention"],
         "CONTACT_EMAIL": editeur.get("email", ""),
         "EDITEUR_NOM": editeur.get("nom", ""),
         "EDITEUR_STATUT": editeur.get("statut", ""),
@@ -219,8 +236,14 @@ def main() -> int:
     for cible in CIBLES:
         print(f"✓ {cible.relative_to(ROOT)}")
     for cle in ("COMMUNE", "COMMUNE_DE", "COMMUNE_A", "EPCI", "EPCI_COURT",
-                "SITE_NOM", "CONTACT_EMAIL"):
+                "SITE_NOM", "CONTACT_EMAIL", "STATUT_LIBELLE"):
         print(f"    {cle:16} {valeurs[cle] or '— à renseigner dans instance.json'}")
+    if valeurs["STATUT_TYPE"] == "demonstration":
+        print("\n  Statut : PORTAGE DE DÉMONSTRATION — c'est le défaut, et le site\n"
+              "  l'annonce en tête de chaque page. Une instance tenue sur place le\n"
+              "  déclare dans config/instance.json, clé « statut » :\n"
+              '    "statut": {"type": "constitution"}   ou   {"type": "tenue", '
+              '"tenue_par": "…"}')
     manquants = [c for c in ("CONTACT_EMAIL", "EDITEUR_NOM", "HEBERGEUR")
                  if not valeurs[c]]
     if manquants:

@@ -167,7 +167,8 @@ def _first(item: dict, *keys):
 def _cadastre(item: dict) -> tuple[str, str, str]:
     """
     Retourne (cadastre_ref, section, numero) depuis id_parcelle / l_idpar.
-    id_parcelle = INSEE(5) + préfixe(3) + section(2) + numéro(4)  → ex 'AD0180'.
+    id_parcelle = INSEE(5) + préfixe(3) + section(2) + numéro(4) ; on n'en
+    garde que section + numéro, soit la forme 'AB0001'.
     Fallback sur les champs explicites section/numero_plan si présents.
     """
     idpar = _first(item, "id_parcelle", "idpar", "l_idpar", "id_parcelle_1")

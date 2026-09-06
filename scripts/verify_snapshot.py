@@ -345,6 +345,55 @@ def check_perimetre(base, rep):
         rep.warn("part de la commune inférieure aux instances de référence", detail)
 
 
+def check_statut(base, rep):
+    """
+    Un snapshot doit DIRE ce qu'est l'instance qui le produit.
+
+    Sans ce contrôle, la quatrième instance naîtrait sans statut et publierait
+    des pages muettes sur ce qu'elles sont — le défaut du 03/09 sur `origine`,
+    à l'identique : un champ qu'on croit rempli parce qu'il l'est ailleurs.
+
+    ⚠️ La liste des états est RECOPIÉE ici, à dessein. Ce contrôle est écrit
+    comme un adversaire du générateur : s'il importait `collectors.statut`, il
+    accepterait par construction tout ce que le générateur produit, y compris
+    un état ajouté par erreur. Le contrôleur dit ce qu'il accepte ; c'est au
+    moteur de s'y conformer.
+    """
+    ETATS_CONNUS = {"demonstration", "constitution", "tenue"}
+
+    fp = base / "stats.json"
+    if not fp.is_file():
+        return
+    try:
+        stats = json.loads(fp.read_text())
+    except json.JSONDecodeError:
+        return  # déjà signalé par check_file
+
+    s = stats.get("statut")
+    if not isinstance(s, dict) or s.get("type") not in ETATS_CONNUS:
+        rep.error(
+            "le snapshot ne déclare pas le statut de l'instance",
+            f"{fp.name}: statut.type attendu parmi {sorted(ETATS_CONNUS)}, "
+            f"lu : {(s or {}).get('type') if isinstance(s, dict) else s!r}. "
+            "Déclarer « statut » dans config/instance.json.")
+        return
+
+    # « Tenue » est la seule des trois qui promette une relecture humaine. Une
+    # promesse sans titulaire n'engage personne : elle se nomme, ou elle ne se
+    # dit pas.
+    if s["type"] == "tenue" and not (s.get("tenue_par") or "").strip():
+        rep.error(
+            "l'instance se déclare tenue sans dire par qui",
+            f"{fp.name}: statut.tenue_par est vide. Renseigner « tenue_par » "
+            "dans config/instance.json, ou déclarer « constitution ».")
+
+    if not s.get("derniere_collecte"):
+        rep.warn(
+            "statut annoncé sans date de dernière collecte",
+            f"{fp.name}: un statut sans date est une promesse invérifiable — "
+            "la table collector_runs est-elle vide ?")
+
+
 def check_fiches_orphelines(base, rep):
     """Toute fiche servie doit correspondre à une entité publiée.
 
@@ -487,6 +536,7 @@ def check_dir(base, rep):
         if fp.suffix in (".json", ".geojson", ".html", ".js", ".txt", ".md", ".css"):
             check_file(fp, rep, base)
     check_perimetre(base, rep)
+    check_statut(base, rep)
     check_fiches_orphelines(base, rep)
     check_renvois_sortants(base, rep)
 

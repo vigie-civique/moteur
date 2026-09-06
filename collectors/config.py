@@ -290,6 +290,18 @@ RELATIONS_ADHESION = ("adhère_à", "membre_de")
 # 'hors' ni l'un ni l'autre → purgeable.
 PERIMETRES = ("C1", "C2", "C3", "lien", "hors")
 
+# ── Statut de l'instance ─────────────────────────────────────────────────────
+# Ce que ce site EST, du point de vue d'un lecteur qui y arrive sans rien
+# savoir : un portage de démonstration que personne ne tient sur place, ou une
+# instance tenue par des gens du lieu. Les données sont les mêmes registres
+# publics dans les deux cas ; ce qui change, c'est qui relit avant publication.
+#
+# Déclaré dans `config/instance.json`, clé « statut ». Absent ou inconnu, il
+# retombe sur le plus modeste — cf. collectors/statut.py.
+from collectors.statut import normaliser as _normaliser_statut  # noqa: E402
+
+STATUT = _normaliser_statut(_I.get("statut"))
+
 # ── Sites officiels ──────────────────────────────────────────────────────────
 # La partie irréductible du portage : il n'existe pas de format commun aux sites
 # de mairie. Le connecteur qui sait les lire est nommé dans l'instance ; le

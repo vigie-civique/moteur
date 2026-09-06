@@ -3,6 +3,11 @@
   import { page, updated } from '$app/stores'
   import { goto, beforeNavigate } from '$app/navigation'
   import Icon from '$lib/components/Icon.svelte'
+  import EtatInstance from '$lib/components/EtatInstance.svelte'
+
+  // Chargé par +layout.server.js : la date de dernière collecte, qui rend le
+  // statut vérifiable au lieu d'être seulement déclaré.
+  export let data
 
   // Une version plus récente du site a été publiée pendant que cet onglet était
   // ouvert : on quitte la navigation interne pour un vrai chargement. Sans ça,
@@ -129,6 +134,7 @@
   {/if}
 
   <main>
+    <EtatInstance derniereCollecte={data?.derniereCollecte} />
     <slot />
   </main>
 

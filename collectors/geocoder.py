@@ -154,7 +154,8 @@ def geocode_ign(address: str, postcode: str = CODE_POSTAL) -> dict | None:
 def geocode_parcel(cadastre_ref: str, city_code: str = COMMUNE_INSEE) -> dict | None:
     """
     Géocode une parcelle cadastrale via IGN Apicarto.
-    Ex: cadastre_ref='AD0180', city_code='30140'
+    Ex : cadastre_ref='AB0001'. `city_code` vaut par défaut le code INSEE
+    de l'instance ; ne le passer que pour viser une autre commune.
     Retourne le centroïde du polygone parcellaire.
     """
     if not cadastre_ref:
