@@ -18,6 +18,8 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
+
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 MODULES = ("collectors/cm_ocr.py", "collectors/conseils.py")
 
@@ -58,7 +60,15 @@ def test_aucun_appel_ne_reconstruit_ses_propres_options():
 
 
 def test_les_deux_modules_partagent_la_meme_declaration():
-    """`conseils` reprend celle de `cm_ocr`, il n'en tient pas une seconde."""
+    """`conseils` reprend celle de `cm_ocr`, il n'en tient pas une seconde.
+
+    Importer les deux modules exige `pdfplumber`, que le job « tests » n'installe
+    pas — il ne veut dépendre ni des collecteurs ni de l'API. Sauté ici, joué par
+    « tests-deps », qui refuse le moindre test sauté. Même convention que
+    `tests/test_dematdoc.py`.
+    """
+    pytest.importorskip("pdfplumber",
+                        reason="job « tests-deps » : pip install -r requirements.txt")
     from collectors import cm_ocr, conseils
     assert conseils.OPTIONS_OCRMYPDF is cm_ocr.OPTIONS_OCRMYPDF, (
         "les deux modules tiennent deux objets distincts : la déclaration a été "
@@ -78,6 +88,8 @@ def test_la_rasterisation_atteint_la_resolution_du_calque_de_texte():
     La borne est le mécanisme, pas la valeur retenue : monter plus haut reste
     permis, descendre sous 300 fait perdre ce qui a été mesuré.
     """
+    pytest.importorskip("pdfplumber",
+                        reason="job « tests-deps » : pip install -r requirements.txt")
     from collectors.cm_ocr import OPTIONS_OCRMYPDF
     assert "--oversample" in OPTIONS_OCRMYPDF, (
         "aucun sur-échantillonnage : la rastérisation retombe sous la "
