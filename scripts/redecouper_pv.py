@@ -100,16 +100,27 @@ def deja_en_cache(portee: str, connus: set[str]) -> list:
     documents = []
     with transaction() as conn:
         lignes = conn.execute(
-            "SELECT source_url, MIN(date) AS date FROM events "
+            "SELECT source_url, MIN(date) AS date, "
+            "       MIN(source) AS source FROM events "
             "WHERE type = ? AND source_url IS NOT NULL "
             "GROUP BY source_url", (type_de_la_portee,)).fetchall()
-    for url, date in lignes:
+    for url, date, source in lignes:
         if url in connus or not str(url).lower().endswith(".pdf"):
             continue
         cache = _cible_cache(url)
         if cache.exists() and cache.stat().st_size > 0:
-            documents.append(DocumentPublie(date=date or "", url=url,
-                                            libelle=cache.name, source=_domaine(url)))
+            # 🔴 La source vient de la BASE, jamais du domaine de l'URL. Les deux
+            # ne coïncident pas, et c'est voulu : un procès-verbal repêché sur
+            # web.archive.org reste publié PAR LA COMMUNE — le connecteur wayback
+            # écrit `source=lasalle.fr` avec une URL d'archive. La recalculer
+            # depuis l'URL écrasait ce que le collecteur savait, et un `www.` de
+            # trop suffisait à faire sortir l'acte de l'allowlist de publication.
+            # Mesuré le 07/09/2026 : un seul redécoupage a fait passer 53
+            # délibérations de `lasalle.fr` à `www.lasalle.fr`, donc du site à
+            # l'invisibilité, sans que rien ne le signale.
+            documents.append(DocumentPublie(
+                date=date or "", url=url, libelle=cache.name,
+                source=source or _domaine(url)))
     return documents
 
 
