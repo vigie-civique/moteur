@@ -34,6 +34,12 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# `redecouper_pv` importe `collectors.conseils`, donc `pdfplumber`, que le job
+# « tests » n'installe pas — il ne veut dépendre ni des collecteurs ni de l'API.
+# Sauté ici, joué par « tests-deps », qui refuse le moindre test sauté.
+pytest.importorskip("pdfplumber",
+                    reason="job « tests-deps » : pip install -r requirements.txt")
+
 
 @pytest.fixture
 def base_avec_les_deux_portees(base: sqlite3.Connection) -> sqlite3.Connection:
