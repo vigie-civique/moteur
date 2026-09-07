@@ -43,6 +43,7 @@ import pdfplumber
 from .archive import archive_fetch
 from .config import (COMMUNE_NAME, COMMUNE_SIREN, EPCI_NOM, EPCI_SIREN,
                      HEADERS, ROOT)
+from .cm_ocr import OPTIONS_OCRMYPDF
 from .cm_parser import link_persons_to_event
 from .connecteurs import charger
 from .connecteurs.base import date_fr
@@ -288,9 +289,11 @@ def ocr(chemin: Path, langue: str = "fra") -> str:
     print(f"  [ocr] {chemin.name} …", flush=True)
     try:
         subprocess.run(
-            ["ocrmypdf", "-l", langue, "--force-ocr", "--output-type", "pdf",
-             "--optimize", "0", "--jobs", "4", str(chemin), str(cible)],
-            check=True, capture_output=True, timeout=900)
+            ["ocrmypdf", "-l", langue, *OPTIONS_OCRMYPDF, str(chemin), str(cible)],
+            # Le délai a été doublé avec le coût : `--oversample 400` fait passer
+            # la reconnaissance d'environ une demi-seconde à une seconde par
+            # page, et le plus long procès-verbal du corpus en compte 310.
+            check=True, capture_output=True, timeout=1800)
     except (subprocess.SubprocessError, OSError) as e:
         print(f"  [ocr][échec] {chemin.name} → {e}")
         return ""
