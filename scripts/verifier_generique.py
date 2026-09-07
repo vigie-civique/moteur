@@ -53,7 +53,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Le moteur : ce qui doit être générique. La configuration et les exemples en
 # sont exclus — c'est justement là que le particulier a le droit de vivre.
-MOTEUR = ["collectors", "scripts", "api.py", "api_auth.py"]
+MOTEUR = ["collectors", "scripts", "api.py", "api_auth.py", "installateur"]
 # Fichiers non-Python du moteur : le schéma de la base et les sources du site
 # public et de l'atelier. Le schéma a porté `DEFAULT 'Lasalle'` pendant des
 # mois, et le site nommait la commune 125 fois — les exclure du contrôle, c'est
@@ -69,7 +69,11 @@ EXCLUS_FICHIERS = {
     "verifier_generique.py",         # ce fichier : il contient les motifs
     "init_instance.py",              # l'amorçage écrit la configuration
 }
-EXCLUS_DOSSIERS = {"__pycache__", "node_modules", ".git", "data", "db"}
+# `.outils` : ce que l'installateur TÉLÉCHARGE (un Python complet, le cas
+# échéant). Des milliers de fichiers qui ne sont pas ce dépôt, et dont la
+# bibliothèque standard contient évidemment des codes postaux.
+EXCLUS_DOSSIERS = {"__pycache__", "node_modules", ".git", "data", "db",
+                   ".outils"}
 
 # ── Motifs interdits ─────────────────────────────────────────────────────────
 

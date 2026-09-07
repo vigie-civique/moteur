@@ -168,6 +168,56 @@ qu'une heure.
 
 ---
 
+## Installer sans taper une ligne
+
+Trois fichiers à la racine, un par système. On double-clique le sien, et tout le
+reste se passe dans le navigateur : la commune à observer, l'éditeur du site, le
+compte de l'atelier, la première collecte, la publication.
+
+| Système | Fichier à double-cliquer | La première fois |
+|---|---|---|
+| macOS | `Installer sur macOS.command` | clic droit → « Ouvrir » |
+| Windows | `Installer sur Windows.bat` | « Informations complémentaires » → « Exécuter quand même » |
+| Linux | `Installer sur Linux.sh` | clic droit → « Exécuter comme un programme » |
+
+Le détour par le clic droit n'est pas un défaut de l'installateur : c'est le
+contrôle de provenance du système, qui se prononce sur la signature d'un
+éditeur commercial et pas sur le contenu du fichier.
+
+**Rien n'est installé sur la machine.** Pas de mot de passe d'administrateur, pas
+de service qui démarre tout seul, pas de PATH modifié. Ce qui manque est posé
+dans `installateur/.outils/` : Node (depuis nodejs.org, empreinte vérifiée
+contre celle que le projet publie) et, si la machine n'a aucun Python ≥ 3.11, un
+interpréteur téléchargé par `uv`. Supprimer le dossier désinstalle tout.
+
+Ce que l'assistant fait dans l'ordre, chaque étape étant rejouable après une
+coupure : les outils, les dépendances (`venv` + `npm ci`), l'amorçage de
+l'instance depuis les référentiels nationaux, le secret de session et le premier
+compte, la collecte, la publication. Il finit en posant un fichier
+**« Vigie Civique »** à double-cliquer, qui ouvre l'atelier.
+
+Ce lanceur n'ouvre qu'UNE fenêtre et UNE adresse : l'atelier est construit
+(`dashboard/dist`) et servi par l'API elle-même. Plus de serveur de
+développement, plus de proxy — donc plus la panne la plus fréquente du
+dispositif, « Serveur inaccessible » affiché par une interface qui tourne très
+bien mais n'atteint pas son API.
+
+Ce montage se **demande** (`VIGIE_ATELIER_STATIQUE=1`, ce que fait le lanceur) :
+sans lui l'API ne sert rien à la racine, même si un `dist/` traîne d'un ancien
+build. Une instance existante ne change donc pas de comportement, et
+`npm run dev` reste le mode de développement.
+
+Ce que l'assistant ne devine pas — l'adresse du site de la mairie, le connecteur
+qui sait le lire, le chemin des recueils de la préfecture — est affiché en fin
+de parcours, tel que l'amorçage l'a laissé dans `config/instance.json`.
+
+L'assistant est un serveur local : il n'écoute que `127.0.0.1`, exige un jeton
+tiré au sort au démarrage et présent dans l'adresse ouverte, et vérifie l'en-tête
+`Host`. Une page web ouverte par ailleurs dans le même navigateur ne peut donc
+ni lire ce jeton ni s'en servir.
+
+---
+
 ## Installation
 
 Les fichiers nationaux volumineux restent hors de Git. Par défaut, DECP et le

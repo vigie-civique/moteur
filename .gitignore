@@ -103,3 +103,14 @@ logs/
 # si son .git venait à disparaître, ses caches et son .env.local partiraient dans
 # ce dépôt public (la règle .env ci-dessus ne couvre pas .env.local).
 /portail-local/
+
+# ─── Installation sans ligne de commande ─────────────────────────────────────
+# Ce que l'installateur télécharge (Node, et un Python quand la machine n'en a
+# pas), et les fichiers à double-cliquer qu'il pose à la fin. Ce sont des
+# artefacts de MACHINE : ils diffèrent d'un système à l'autre, `.outils/` pèse
+# une centaine de mégaoctets, et le lanceur porte le chemin absolu du dossier.
+installateur/.outils/
+/Vigie Civique.command
+/Vigie Civique.sh
+/Vigie Civique.bat
+/Vigie Civique.desktop

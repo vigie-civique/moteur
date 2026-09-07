@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigie Civique — installation</title>
+<style>
+  :root{
+    --encre:#1a1a1a; --gris:#5c5c5c; --trait:#d8d4cc; --fond:#faf8f5;
+    --papier:#fff; --accent:#2f5d50; --alerte:#8a3324; --ok:#2f6b3f;
+  }
+  *{box-sizing:border-box}
+  /* `label{display:block}` plus bas est une règle d'AUTEUR : elle l'emporte sur
+     le `[hidden]{display:none}` du navigateur, qui n'est qu'une règle par
+     défaut. Sans cette ligne, un champ masqué reste visible — c'est arrivé au
+     champ « tenue par », affiché sous un statut qui ne le demande pas. */
+  [hidden]{display:none!important}
+  body{margin:0;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",
+       Roboto,Helvetica,Arial,sans-serif;color:var(--encre);background:var(--fond)}
+  header{border-bottom:1px solid var(--trait);background:var(--papier);
+         padding:18px 28px}
+  header h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.01em}
+  header p{margin:4px 0 0;color:var(--gris);font-size:14px}
+  main{display:grid;grid-template-columns:250px 1fr;gap:0;min-height:calc(100vh - 78px)}
+  nav{border-right:1px solid var(--trait);padding:22px 16px;background:var(--papier)}
+  nav ol{list-style:none;margin:0;padding:0;counter-reset:pas}
+  nav li{counter-increment:pas;padding:9px 10px 9px 38px;position:relative;
+         color:var(--gris);font-size:14px;border-radius:6px}
+  nav li::before{content:counter(pas);position:absolute;left:8px;top:9px;width:21px;
+    height:21px;border:1px solid var(--trait);border-radius:50%;text-align:center;
+    line-height:20px;font-size:12px;background:var(--fond)}
+  nav li.courant{background:#eef2f0;color:var(--encre);font-weight:600}
+  nav li.faite{color:var(--ok)}
+  nav li.faite::before{content:"✓";border-color:var(--ok);color:var(--ok)}
+  section{padding:28px 34px;max-width:820px}
+  section:not(.actif){display:none}
+  h2{margin:0 0 6px;font-size:22px;font-weight:600}
+  .chapo{color:var(--gris);margin:0 0 22px}
+  p{margin:0 0 14px}
+  .encadre{border:1px solid var(--trait);background:var(--papier);border-radius:8px;
+           padding:16px 18px;margin:0 0 18px}
+  .encadre h3{margin:0 0 8px;font-size:15px;font-weight:600}
+  .encadre p:last-child{margin-bottom:0}
+  .attention{border-left:3px solid var(--alerte);background:#fdf6f4}
+  .note{font-size:14px;color:var(--gris)}
+  label{display:block;margin:0 0 14px;font-size:14px;font-weight:600}
+  label span{display:block;font-weight:400;color:var(--gris);margin-top:2px}
+  input,select{width:100%;padding:9px 11px;border:1px solid var(--trait);
+    border-radius:6px;font:inherit;font-size:15px;background:var(--papier);margin-top:5px}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  button{font:inherit;font-size:15px;padding:9px 18px;border-radius:6px;
+    border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+  button.discret{background:transparent;color:var(--accent)}
+  button[disabled]{opacity:.45;cursor:default}
+  .boutons{display:flex;gap:10px;align-items:center;margin-top:20px;flex-wrap:wrap}
+  .resultats{border:1px solid var(--trait);border-radius:8px;overflow:hidden;
+             margin:0 0 16px;background:var(--papier)}
+  .resultats button{display:block;width:100%;text-align:left;background:none;
+    color:inherit;border:0;border-bottom:1px solid var(--trait);border-radius:0;padding:11px 14px}
+  .resultats button:last-child{border-bottom:0}
+  .resultats button:hover{background:#eef2f0}
+  .resultats b{font-weight:600}
+  .resultats small{color:var(--gris);display:block}
+  .choisie{border:1px solid var(--accent);background:#eef2f0;border-radius:8px;
+           padding:14px 16px;margin:0 0 18px}
+  pre.journal{background:#16201d;color:#d7e3de;border-radius:8px;padding:14px 16px;
+    font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    white-space:pre-wrap;word-break:break-word;max-height:340px;overflow-y:auto;margin:0}
+  .etat{font-size:14px;margin:12px 0 0;font-weight:600}
+  .etat.echec{color:var(--alerte)}
+  .etat.fini{color:var(--ok)}
+  ul.liste{margin:0 0 14px;padding-left:20px}
+  ul.liste li{margin-bottom:6px}
+  code{background:#eee;padding:1px 5px;border-radius:4px;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Vigie Civique — installation</h1>
+  <p>Un observatoire citoyen des décisions publiques de votre commune.</p>
+</header>
+
+<main>
+<nav>
+  <ol id="rail">
+    <li data-pas="0">Ce qui va se passer</li>
+    <li data-pas="1">Outils</li>
+    <li data-pas="2">Installation</li>
+    <li data-pas="3">Votre commune</li>
+    <li data-pas="4">Votre compte</li>
+    <li data-pas="5">Première collecte</li>
+    <li data-pas="6">Le site public</li>
+    <li data-pas="7">C'est prêt</li>
+  </ol>
+</nav>
+
+<div>
+
+<!-- 0 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="0" class="actif">
+  <h2>Ce qui va se passer</h2>
+  <p class="chapo">Sept étapes. Vous n'aurez rien à taper dans un terminal.</p>
+
+  <div class="encadre">
+    <h3>Ce que l'installateur fait</h3>
+    <ul class="liste">
+      <li>il vérifie ce dont le dispositif a besoin, et pose dans <b>ce dossier</b>
+          ce qui manque — jamais sur votre système ;</li>
+      <li>il vous demande <b>quelle commune</b> observer, et interroge les
+          référentiels nationaux pour la décrire ;</li>
+      <li>il crée <b>votre compte</b> et le secret qui protège l'atelier ;</li>
+      <li>il lance la <b>première collecte</b>, puis construit le site public ;</li>
+      <li>il pose enfin un fichier à double-cliquer pour rouvrir l'atelier.</li>
+    </ul>
+  </div>
+
+  <div class="encadre">
+    <h3>Ce qu'il ne fait pas</h3>
+    <p>Rien n'est installé sur votre machine : ni logiciel système, ni service
+    qui démarre tout seul, ni mot de passe d'administrateur demandé. Tout vit
+    dans ce dossier. <b>Le supprimer désinstalle tout.</b></p>
+    <p class="note">Aucune donnée ne part d'ici. Le dispositif télécharge des
+    données publiques ; il n'en envoie aucune.</p>
+  </div>
+
+  <div class="encadre">
+    <h3>Le temps que ça prend</h3>
+    <p>Une vingtaine de minutes d'installation, puis la première collecte —
+    <b>de quelques minutes à quelques heures</b> selon ce que publie votre
+    commune. Elle peut être interrompue et reprise ; rien n'est perdu.</p>
+  </div>
+
+  <div class="boutons"><button onclick="allerA(1)">Commencer</button></div>
+</section>
+
+<!-- 1 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="1">
+  <h2>Outils</h2>
+  <p class="chapo">Deux outils sont nécessaires : Python (déjà là, puisque cette
+  page s'affiche) et Node, qui construit les pages du site.</p>
+  <div id="facultatifs"></div>
+  <div class="boutons">
+    <button onclick="lancer('outils')">Vérifier et compléter</button>
+    <button class="discret" onclick="allerA(2)">Passer</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 2 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="2">
+  <h2>Installation</h2>
+  <p class="chapo">Les bibliothèques dont le moteur et le site ont besoin.
+  Comptez deux à cinq minutes, et environ 700 Mo.</p>
+  <p class="note">Cette étape ne touche qu'au dossier : l'environnement Python
+  est créé dans <code>venv/</code>, les modules du site dans
+  <code>node_modules/</code>.</p>
+  <div class="boutons">
+    <button onclick="lancer('dependances')">Installer</button>
+    <button class="discret" onclick="allerA(3)">Passer</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 3 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="3">
+  <h2>Votre commune</h2>
+  <p class="chapo">Cherchez-la par son nom, son code postal ou son code INSEE.</p>
+
+  <label>Commune
+    <input id="q" placeholder="Saint-Julien…, 30460, 30140" autocomplete="off">
+  </label>
+  <div class="resultats" id="resultats" hidden></div>
+  <div class="choisie" id="choisie" hidden></div>
+
+  <div id="deja" class="encadre attention" hidden>
+    <h3>Une instance est déjà configurée ici</h3>
+    <p id="deja-texte"></p>
+    <label><input type="checkbox" id="ecraser" style="width:auto"> Écraser la
+    configuration existante <span>La base déjà collectée n'est pas effacée ;
+    seule la description de la commune est réécrite.</span></label>
+  </div>
+
+  <h3 style="margin:26px 0 4px;font-size:17px">Qui publie ce site</h3>
+  <p class="note">Les mentions légales l'affichent. Un site qui publie des actes
+  administratifs sans dire qui l'édite met son auteur en faute.</p>
+  <div class="duo">
+    <label>Nom de l'éditeur<span>vous, ou votre association</span>
+      <input id="editeur_nom" autocomplete="off"></label>
+    <label>Statut<span>association, collectif, personne physique…</span>
+      <input id="editeur_statut" autocomplete="off"></label>
+    <label>Courriel de contact<span>affiché publiquement</span>
+      <input id="editeur_email" type="email" autocomplete="off"></label>
+    <label>Hébergeur<span>qui héberge le site (à compléter plus tard si besoin)</span>
+      <input id="editeur_hebergeur" autocomplete="off"></label>
+  </div>
+
+  <h3 style="margin:26px 0 4px;font-size:17px">Ce que ce site est, aujourd'hui</h3>
+  <p class="note">C'est ce qu'un lecteur doit savoir avant de lire un chiffre.
+  Le défaut est le plus modeste, et c'est le plus honnête tant que personne ne
+  relit ce qui est publié.</p>
+  <label>Statut de l'instance
+    <select id="statut_type">
+      <option value="demonstration">Démonstration — personne ne la relit encore</option>
+      <option value="constitution">En constitution — le travail a commencé</option>
+      <option value="tenue">Tenue — quelqu'un relit avant publication</option>
+    </select>
+  </label>
+  <label id="tenue-par-champ" hidden>Tenue par
+    <span>Qui relit. Une instance « tenue » sans nom n'est pas une instance tenue.</span>
+    <input id="statut_tenue_par" autocomplete="off"></label>
+
+  <h3 style="margin:26px 0 4px;font-size:17px">Sites officiels <span
+      class="note" style="font-weight:400">(facultatif)</span></h3>
+  <p class="note">Laissés vides, ils sont devinés puis proposés à la fin. Le
+  connecteur dit comment lire le site de la mairie : la plupart sont sous
+  WordPress.</p>
+  <div class="duo">
+    <label>Site de la mairie<input id="commune_url" placeholder="https://…"></label>
+    <label>Site de l'intercommunalité<input id="epci_url" placeholder="https://…"></label>
+  </div>
+  <label>Connecteur
+    <select id="connecteur">
+      <option value="wordpress_rest">WordPress (le plus courant)</option>
+      <option value="drupal_html">Drupal (lecture du HTML)</option>
+      <option value="dematdoc">DematDOC (portail d'actes)</option>
+    </select>
+  </label>
+
+  <div class="boutons">
+    <button onclick="lancerCommune()">Configurer l'instance</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 4 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="4">
+  <h2>Votre compte</h2>
+  <p class="chapo">L'atelier — la partie privée, où l'on corrige et valide —
+  demande un compte. Il n'existe que sur cette machine.</p>
+  <div class="encadre attention">
+    <p>Ce mot de passe n'est enregistré nulle part ailleurs et ne peut pas être
+    récupéré. <b>Notez-le.</b></p>
+  </div>
+  <div class="duo">
+    <label>Adresse de courriel<span>votre identifiant de connexion</span>
+      <input id="email" type="email" autocomplete="off"></label>
+    <label>Mot de passe<span>12 caractères au minimum</span>
+      <input id="motdepasse" type="password" autocomplete="new-password"></label>
+  </div>
+  <label>Confirmation<input id="motdepasse2" type="password" autocomplete="new-password"></label>
+  <div class="boutons">
+    <button onclick="lancerCompte()">Créer le compte</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 5 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="5">
+  <h2>Première collecte</h2>
+  <p class="chapo">Quarante-huit collecteurs interrogent les référentiels
+  nationaux et les sites officiels de votre commune.</p>
+  <div class="encadre">
+    <p><b>C'est long</b> — de quelques minutes à quelques heures. Vous pouvez
+    l'arrêter et la reprendre plus tard : chaque source déjà interrogée est
+    sautée au lancement suivant.</p>
+    <p class="note">Laissez cette page ouverte pendant la collecte. Si vous la
+    fermez, l'installation continue tant que la fenêtre noire reste ouverte.</p>
+  </div>
+  <div class="boutons">
+    <button onclick="lancer('collecte')">Lancer la collecte</button>
+    <button class="discret" onclick="arreter()">Arrêter</button>
+    <button class="discret" onclick="allerA(6)">Passer pour l'instant</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 6 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="6">
+  <h2>Le site public</h2>
+  <p class="chapo">Trois étapes, et chacune peut refuser : le snapshot filtré,
+  les contrôles d'étanchéité, puis la construction des pages.</p>
+  <div class="encadre">
+    <p>Le contrôle d'étanchéité est écrit comme un adversaire : il attaque ce
+    qui va être publié — personnes physiques, coordonnées, chemins locaux,
+    secrets. <b>Une seule violation interrompt la publication.</b> C'est voulu.</p>
+  </div>
+  <div class="boutons">
+    <button onclick="lancer('publication')">Construire le site</button>
+    <button class="discret" onclick="allerA(7)">Passer</button>
+  </div>
+  <div class="journal-zone"></div>
+</section>
+
+<!-- 7 ──────────────────────────────────────────────────────────────────── -->
+<section data-pas="7">
+  <h2>C'est prêt</h2>
+  <p class="chapo">Dernière étape : construire l'atelier et poser le fichier qui
+  l'ouvrira désormais d'un double-clic.</p>
+  <div class="boutons">
+    <button onclick="lancer('atelier')">Terminer l'installation</button>
+    <button class="discret" onclick="lancer('ouvrir')">Ouvrir l'atelier</button>
+    <button class="discret" onclick="quitter()">Fermer l'installateur</button>
+  </div>
+  <div class="journal-zone"></div>
+  <div id="reste" class="encadre" hidden>
+    <h3>Ce qui reste à renseigner à la main</h3>
+    <p class="note">Aucun référentiel national ne publie ces éléments. Ils
+    s'écrivent dans <code>config/instance.json</code>.</p>
+    <ul class="liste" id="reste-liste"></ul>
+  </div>
+</section>
+
+</div>
+</main>
+
+<script>
+const JETON = "__JETON__";
+let pas = 0, sondage = null, lu = 0, machine = null;
+
+function $(s, r) { return (r || document).querySelector(s); }
+function api(chemin, options) {
+  options = options || {};
+  options.headers = Object.assign({"X-Jeton": JETON,
+    "Content-Type": "application/json"}, options.headers || {});
+  return fetch(chemin, options).then(r => r.json());
+}
+
+function allerA(n) {
+  pas = n;
+  document.querySelectorAll("section").forEach(s =>
+    s.classList.toggle("actif", +s.dataset.pas === n));
+  document.querySelectorAll("#rail li").forEach(l =>
+    l.classList.toggle("courant", +l.dataset.pas === n));
+  window.scrollTo(0, 0);
+}
+function marquerFaite(n) {
+  const li = document.querySelector(`#rail li[data-pas="${n}"]`);
+  if (li) li.classList.add("faite");
+}
+
+// ── Journal de l'étape en cours ───────────────────────────────────────────
+function zone() {
+  const s = document.querySelector(`section[data-pas="${pas}"] .journal-zone`);
+  if (!s) return null;
+  if (!s.querySelector("pre"))
+    s.innerHTML = '<pre class="journal"></pre><p class="etat"></p>';
+  return s;
+}
+function ecrire(lignes) {
+  const pre = $("pre", zone());
+  pre.textContent += lignes.join("\n") + (lignes.length ? "\n" : "");
+  pre.scrollTop = pre.scrollHeight;
+}
+
+function lancer(etape, donnees) {
+  const z = zone();
+  $("pre", z).textContent = "";
+  $(".etat", z).textContent = "En cours…";
+  $(".etat", z).className = "etat";
+  document.querySelectorAll(`section[data-pas="${pas}"] button`)
+          .forEach(b => b.disabled = !b.classList.contains("discret"));
+  lu = 0;
+  api("/api/travail", {method: "POST",
+      body: JSON.stringify(Object.assign({etape: etape}, donnees || {}))})
+    .then(r => {
+      if (r.erreur) { echec(r.erreur); return; }
+      clearInterval(sondage);
+      sondage = setInterval(suivre, 900);
+    });
+}
+function suivre() {
+  api("/api/journal?depuis=" + lu).then(r => {
+    lu = r.total;
+    if (r.lignes.length) ecrire(r.lignes);
+    const e = $(".etat", zone());
+    if (r.etat === "fini") {
+      clearInterval(sondage);
+      e.textContent = "✓ Étape terminée.";
+      e.className = "etat fini";
+      marquerFaite(pas);
+      deverrouiller();
+      if (pas === 7) chargerEtat();
+      else if (pas < 7) setTimeout(() => allerA(pas + 1), 900);
+    } else if (r.etat === "interrompu") {
+      clearInterval(sondage);
+      e.textContent = "■ " + r.message;
+      e.className = "etat";
+      deverrouiller();
+    } else if (r.etat === "echec") {
+      clearInterval(sondage);
+      echec(r.message);
+    }
+  });
+}
+function echec(message) {
+  const e = $(".etat", zone());
+  e.textContent = "✖ " + message;
+  e.className = "etat echec";
+  deverrouiller();
+}
+function deverrouiller() {
+  document.querySelectorAll("button").forEach(b => b.disabled = false);
+}
+function arreter() { api("/api/arreter", {method: "POST"}); }
+function quitter() {
+  api("/api/quitter", {method: "POST"}).then(() => {
+    document.body.innerHTML =
+      '<div style="padding:60px;max-width:640px;margin:0 auto">' +
+      '<h2>Installateur fermé</h2><p>Vous pouvez fermer cet onglet et la ' +
+      'fenêtre noire. Pour rouvrir l\'atelier, double-cliquez désormais le ' +
+      'fichier <b>Vigie Civique</b> à la racine du dossier.</p></div>';
+  });
+}
+
+// ── Étape « commune » ─────────────────────────────────────────────────────
+let commune = null, minuteur = null;
+$("#q").addEventListener("input", e => {
+  clearTimeout(minuteur);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $("#resultats").hidden = true; return; }
+  minuteur = setTimeout(() => {
+    api("/api/communes?q=" + encodeURIComponent(q)).then(r => {
+      const boite = $("#resultats");
+      boite.innerHTML = "";
+      (r.communes || []).forEach(c => {
+        const b = document.createElement("button");
+        b.innerHTML = `<b>${c.nom}</b> (${c.cp}) <small>${c.departement} — ` +
+          `${c.population ? c.population.toLocaleString("fr-FR") + " habitants" : "population inconnue"}` +
+          `${c.epci ? " — " + c.epci : ""} — INSEE ${c.code}</small>`;
+        b.onclick = () => choisir(c);
+        boite.appendChild(b);
+      });
+      boite.hidden = !(r.communes || []).length;
+    });
+  }, 350);
+});
+function choisir(c) {
+  commune = c;
+  $("#resultats").hidden = true;
+  $("#q").value = c.nom;
+  const boite = $("#choisie");
+  boite.hidden = false;
+  boite.innerHTML = `<b>${c.nom}</b> — code INSEE ${c.code}, code postal ${c.cp}` +
+    `${c.epci ? "<br><small>Intercommunalité : " + c.epci + "</small>" : ""}`;
+}
+$("#statut_type").addEventListener("change", e => {
+  $("#tenue-par-champ").hidden = e.target.value !== "tenue";
+});
+function lancerCommune() {
+  if (!commune) { alert("Choisissez d'abord une commune dans la liste."); return; }
+  lancer("instance", {
+    insee: commune.code,
+    ecraser: $("#ecraser") && $("#ecraser").checked,
+    editeur_nom: $("#editeur_nom").value,
+    editeur_statut: $("#editeur_statut").value,
+    editeur_email: $("#editeur_email").value,
+    editeur_hebergeur: $("#editeur_hebergeur").value,
+    statut_type: $("#statut_type").value,
+    statut_tenue_par: $("#statut_tenue_par").value,
+    commune_url: $("#commune_url").value,
+    epci_url: $("#epci_url").value,
+    connecteur: $("#connecteur").value,
+  });
+}
+function lancerCompte() {
+  if ($("#motdepasse").value !== $("#motdepasse2").value) {
+    alert("Les deux mots de passe diffèrent."); return;
+  }
+  lancer("compte", {email: $("#email").value, motdepasse: $("#motdepasse").value});
+}
+
+// ── Reprise : ce qui est déjà fait se lit sur le disque ───────────────────
+function chargerEtat() {
+  api("/api/etat").then(r => {
+    machine = r.machine;
+    const i = r.instance;
+    if (i.venv && i.modules_site) marquerFaite(2);
+    if (i.node) marquerFaite(1);
+    if (i.instance) {
+      marquerFaite(3);
+      $("#deja").hidden = false;
+      $("#deja-texte").textContent =
+        `${i.instance.nom || "?"} (INSEE ${i.instance.insee}). ` +
+        `Configurer une AUTRE commune ici écraserait cette description.`;
+    }
+    if (i.env) marquerFaite(4);
+    if (i.passages_collecte > 0) marquerFaite(5);
+    if (i.site_construit) marquerFaite(6);
+    if (i.atelier_construit) marquerFaite(7);
+
+    const f = (r.facultatifs || []).filter(x => !x.present);
+    $("#facultatifs").innerHTML = f.length === 0 ? "" :
+      '<div class="encadre"><h3>Outils facultatifs absents</h3>' +
+      '<p class="note">Aucun ne bloque l\'installation. Ce qu\'ils apportent :</p>' +
+      '<ul class="liste">' + f.map(x =>
+        `<li><b>${x.nom}</b> — sans lui, ${x.sans_lui}<br>` +
+        `<small class="note">pour l'ajouter : <code>${x.poser}</code></small></li>`
+      ).join("") + "</ul></div>";
+
+    const reste = (i.instance && i.instance.a_faire) || [];
+    if (reste.length && i.atelier_construit) {
+      $("#reste").hidden = false;
+      $("#reste-liste").innerHTML = reste.map(t => `<li>${t}</li>`).join("");
+    }
+  });
+}
+// Le rail n'est pas qu'un décor : on doit pouvoir revenir sur une étape,
+// pour la refaire ou pour relire ce qu'elle a dit.
+document.querySelectorAll("#rail li").forEach(li => {
+  li.style.cursor = "pointer";
+  li.onclick = () => allerA(+li.dataset.pas);
+});
+chargerEtat();
+allerA(0);
+</script>
+</body>
+</html>
