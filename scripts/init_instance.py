@@ -50,6 +50,12 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# La racine du dépôt sur le chemin d'import. `python3 scripts/init_instance.py`
+# met `scripts/` en tête de `sys.path` et JAMAIS la racine : l'import de
+# `collectors.marches_publics`, plus bas, échouait donc sur un dépôt fraîchement
+# cloné — c'est-à-dire dans le seul cas où ce script sert. Il ne marchait que
+# dans un shell qui avait déjà la racine dans son chemin.
+sys.path.insert(0, str(ROOT))
 INSTANCE = ROOT / "config" / "instance.json"
 REGLES = ROOT / "config" / "publication_rules.json"
 REGLES_EXEMPLE = ROOT / "config" / "publication_rules.exemple.json"
@@ -318,7 +324,16 @@ def adapter_regles(inst: dict, dry_run: bool) -> None:
     # tout ce qui ressemble à un domaine — or « DECP data.gouv.fr » en est un,
     # et il a disparu de toutes les instances, laissant leurs marchés DECP
     # collectés et jamais publiés.
-    from collectors.marches_publics import SOURCES as SOURCES_MARCHES
+    try:
+        from collectors.marches_publics import SOURCES as SOURCES_MARCHES
+    except SystemExit:
+        # `collectors.config` s'arrête net s'il n'y a pas encore d'instance.
+        # C'est le cas d'un `--dry-run` sur un dépôt vierge : la simulation
+        # continue, en disant ce qu'elle n'a pas pu faire plutôt qu'en
+        # s'arrêtant sur un message qui parle d'autre chose.
+        SOURCES_MARCHES = []
+        print("  [regles] sources DECP non ajoutées : pas encore d'instance "
+              "(sans effet hors --dry-run)")
 
     sources = [s for s in r.get("events", {}).get("public_sources", [])
                if not s.endswith(".fr") or s in ("data.gouv.fr",)]
@@ -364,17 +379,25 @@ def main() -> int:
         return 1
 
     inst = construire(args.insee)
-    adapter_regles(inst, args.dry_run)
 
     if args.dry_run:
+        adapter_regles(inst, True)
         print("\n" + json.dumps(inst, ensure_ascii=False, indent=2))
         print("\n(dry-run — rien écrit)")
         return 0
 
+    # L'instance s'écrit AVANT que les règles ne s'adaptent, et l'ordre inverse
+    # rendait l'amorçage d'une instance NEUVE impossible : `adapter_regles`
+    # importe `collectors.marches_publics`, donc `collectors.config`, qui refuse
+    # de se charger sans `config/instance.json` — le fichier que ces trois
+    # lignes écrivent. Le défaut ne s'est jamais vu parce que les instances
+    # existantes ont toutes été amorcées sur une configuration déjà là.
     INSTANCE.parent.mkdir(parents=True, exist_ok=True)
     INSTANCE.write_text(json.dumps(inst, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8")
     print(f"\n✓ {INSTANCE.relative_to(ROOT)} écrit")
+
+    adapter_regles(inst, False)
 
     # Les libellés des deux applications SvelteKit sont générés depuis
     # l'instance et ne sont pas versionnés. Sans eux, `npm run build` échoue sur

@@ -3817,3 +3817,64 @@ def push_embeddings(
 # Deux routes qui répondaient 503 et 500 valaient moins que leur absence.
 # L'assistance par modèle reste côté atelier : voir /api/rag/*.
 
+
+# ─── L'atelier, servi par l'API elle-même ────────────────────────────────────
+#
+# Quand `dashboard/dist` existe — c'est-à-dire quand l'atelier a été CONSTRUIT,
+# ce que fait l'installateur sans ligne de commande — l'API le sert directement.
+# Une seule adresse, un seul port, aucun proxy à traverser.
+#
+# Ce n'est pas un confort : c'est la panne la plus fréquente du dispositif qui
+# disparaît. « Serveur inaccessible » affiché par une interface qui tourne très
+# bien, parce que le proxy de Vite vise `localhost` là où uvicorn n'écoute qu'en
+# IPv4 — le diagnostic le plus coûteux qui soit, puisque tout a l'air en ordre.
+#
+# Monté EN DERNIER : un `mount("/")` capte tout ce que les routes déclarées
+# avant lui n'ont pas pris.
+#
+# Il faut le DEMANDER (`VIGIE_ATELIER_STATIQUE=1`, ce que fait le lanceur), et
+# la présence de `dist/` ne suffit pas. La raison est concrète : une instance
+# qui a construit l'atelier une fois, il y a des semaines, garde son `dist/` sur
+# le disque. Sans cet interrupteur, elle se mettrait à servir cette version
+# périmée à la racine au premier redémarrage de son API — sans que personne
+# n'ait rien demandé, et pendant que `npm run dev` sert la version à jour sur un
+# autre port. Deux ateliers différents à deux adresses, c'est le genre d'écart
+# qu'on met une soirée à comprendre.
+_ATELIER_STATIQUE = os.environ.get("VIGIE_ATELIER_STATIQUE", "0").strip().lower() \
+    not in ("0", "false", "no", "")
+_ATELIER_CONSTRUIT = BASE_DIR / "dashboard" / "dist"
+if _ATELIER_STATIQUE and _ATELIER_CONSTRUIT.is_dir():
+    from starlette.exceptions import HTTPException as _HTTPStarlette
+    from starlette.staticfiles import StaticFiles as _StaticFiles
+
+    class _AtelierSPA(_StaticFiles):
+        """Une page de l'atelier est une route du NAVIGATEUR, pas un fichier.
+
+        `/entites/1234` n'existe nulle part sur le disque : adapter-static
+        laisse `index.html` la résoudre côté client. Sans ce repli, l'atelier
+        fonctionnait tant qu'on n'actualisait pas la page — et rendait 404 dès
+        qu'on le faisait, ou qu'on ouvrait un lien dans un nouvel onglet.
+
+        Le repli ne vaut PAS pour `/api/…` : une route d'API inconnue doit
+        répondre 404, pas rendre une page HTML avec un code 200 qu'un client
+        prendrait pour une réponse.
+        """
+
+        async def get_response(self, path, scope):
+            # StaticFiles ne REND pas un 404 : il le LÈVE. Tester le code de la
+            # réponse ne servait donc à rien — le repli n'était jamais atteint
+            # et l'atelier rendait 404 sur ses propres pages. Les deux formes
+            # sont traitées : l'exception d'aujourd'hui, et le code de retour
+            # au cas où une version ultérieure change d'avis.
+            try:
+                reponse = await super().get_response(path, scope)
+            except _HTTPStarlette as e:
+                if e.status_code != 404 or path.startswith("api"):
+                    raise
+                return await super().get_response("index.html", scope)
+            if reponse.status_code == 404 and not path.startswith("api"):
+                return await super().get_response("index.html", scope)
+            return reponse
+
+    app.mount("/", _AtelierSPA(directory=str(_ATELIER_CONSTRUIT), html=True),
+              name="atelier")
