@@ -8,6 +8,11 @@ c'est la MISE EN FORME du document, pas la nature de ce qu'on y cherche.
 Trois régimes ont été rencontrés sur un même corpus de 217 procès-verbaux
 couvrant vingt-deux ans, et un quatrième sur celui de l'intercommunalité :
 
+    actes_teletransmis
+               une LIASSE d'actes, chacun tamponné à chaque page par le cachet
+               @ctes du contrôle de légalité, dont le numéro change d'un acte au
+               suivant. Découpage fiable — c'est la seule preuve qui survive à
+               une océrisation, et elle ne doit rien à la mise en page.
     numerote   « 48/2026 : n° 4713 : Objet de la délibération »
                numéro dans la séance, puis numéro de l'acte transmis au
                contrôle de légalité. Découpage fiable.
@@ -29,9 +34,12 @@ couvrant vingt-deux ans, et un quatrième sur celui de l'intercommunalité :
                Découpage acceptable, mais silencieux sur ses limites : un
                intertitre en capitales devient une délibération de plus.
 
-`deliberations()` essaie les cinq régimes dans l'ordre et rend une liste vide
+`deliberations()` essaie les six régimes dans l'ordre et rend une liste vide
 plutôt qu'un découpage inventé. L'ordre compte : un identifiant d'acte est une
-preuve, une mise en capitales n'est qu'un indice.
+preuve, une mise en capitales n'est qu'un indice. `actes_teletransmis` passe en
+premier parce que sa preuve est la plus forte — un cachet apposé par un tiers,
+le contrôle de légalité — et parce qu'il se refuse de lui-même dès que le
+document n'est pas une liasse.
 
 Le régime `liste` a tenu jusqu'au 21/08/2026 son autorisation d'un EN-TÊTE —
 « Délibérations : » — et non de sa numérotation. La mesure sur 389 procès-verbaux
@@ -179,6 +187,164 @@ def reference_actes(texte: str) -> dict | None:
     }
 
 
+# ── Régime « actes télétransmis » : la liasse que le contrôle de légalité tamponne
+#
+# Une collectivité ne publie pas toujours un procès-verbal rédigé : elle dépose
+# souvent la LIASSE de ses actes, chacun sur deux ou trois pages, à la suite
+# dans un seul PDF. Aucun des cinq autres régimes ne sait la découper — et
+# `_capitales`, qui prend le relais, produit un titre par ligne de mobilier :
+# 1 035 actes sur les 39 liasses scannées de Lasalle, pour 621 réels.
+#
+# Ce régime tient d'une PREUVE INTERNE, comme la doctrine l'exige : le cachet
+# @ctes apposé sur chaque page d'un acte télétransmis, dont le numéro change
+# d'un acte au suivant. `reference_actes` le lit déjà, mais EXACTEMENT — et sur
+# un document océrisé, l'exactitude ne trouve presque rien : sur le PV du
+# 30/06/2026 de Lasalle, 13 pages sur 47 alors que le cachet est visible sur une
+# trentaine. Le lecteur ci-dessous lit la CHARPENTE — trois nombres longs, un
+# numéro, deux lettres — et non les valeurs. Les deux ont leur emploi et ne se
+# remplacent pas : l'exact sert à DATER un acte (il faut alors que les chiffres
+# soient sûrs), le tolérant à RECONNAÎTRE la même page d'un acte à l'autre.
+_SEP_OCERISE = r"[\s.:;_,\u2013\u2014-]{1,3}"
+_REFERENCE_TOLERANTE = re.compile(
+    rf"(\d{{3}}[A-Z]?){_SEP_OCERISE}(\d{{8,10}}){_SEP_OCERISE}(\d{{8}}){_SEP_OCERISE}"
+    rf"([A-Za-z0-9_.\s]{{1,18}}?){_SEP_OCERISE}([A-Z]{{2}})\b")
+
+# L'objet de la délibération, tel que la collectivité l'écrit elle-même en tête
+# d'acte. C'est le seul titre qui ne soit pas deviné.
+_OBJET = re.compile(r"^[^\n]{0,12}?Objet\s*[:;]\s*(.+)$", re.M | re.I)
+
+
+def _suffixe_de_seance(numeros: list[str]) -> str:
+    """Les chiffres que TOUS les numéros d'une même liasse partagent en fin.
+
+    Le numéro d'acte porte deux choses collées : son rang dans la séance et un
+    millésime. Lasalle numérote « 53_2024 », Saillans « 1_070422 » — l'année
+    dans un cas, la date de séance dans l'autre. Seul le rang fait une suite ;
+    le reste est constant et doit s'en aller.
+
+    🔴 Le compte porte sur les numéros DISTINCTS, jamais sur leurs occurrences.
+    Une délibération budgétaire traîne ses annexes sur quatre-vingts pages :
+    comptées une à une, elles imposent leur propre fin de numéro comme suffixe
+    commun (« 72024 », relevé sur la séance du 29/05/2024), et le rang de tous
+    les autres actes devient illisible d'un coup. Le document rendait alors UN
+    acte au lieu de vingt-trois.
+    """
+    from collections import Counter
+    chiffres = sorted({"".join(re.findall(r"\d", n)) for n in numeros})
+    chiffres = [c for c in chiffres if len(c) >= 3]
+    if len(chiffres) < 3:
+        return ""
+    for longueur in range(8, 1, -1):
+        fins = Counter(c[-longueur:] for c in chiffres if len(c) > longueur)
+        if not fins:
+            continue
+        fin, n = fins.most_common(1)[0]
+        if n >= max(3, len(chiffres) // 3):
+            return fin
+    return ""
+
+
+def _rang_dans_la_seance(numero: str, suffixe: str) -> int | None:
+    """Le rang de l'acte, ou None si le numéro n'en laisse rien lire.
+
+    Les chiffres sont RECOLLÉS après retrait du suffixe : l'océrisation sème des
+    séparations qui n'existent pas — « 1_10_2024 » est le n° 110, « 11_1_2024 »
+    le n° 111. Ne garder que le premier groupe en ferait le n° 1, et deux vrais
+    actes se perdraient dans le bruit à chaque séance.
+    """
+    c = "".join(re.findall(r"\d", numero))
+    if suffixe and c.endswith(suffixe) and len(c) > len(suffixe):
+        c = c[:-len(suffixe)]
+    return int(c) if c and len(c) <= 6 else None
+
+
+def _suite_croissante(valeurs: list[int]) -> list[int]:
+    """Les indices de la plus longue sous-suite STRICTEMENT croissante.
+
+    C'est ici que le bruit se sépare de la numérotation, et il n'y avait pas
+    d'autre moyen : une collectivité numérote ses actes dans l'ordre, et
+    l'océrisation, elle, ne respecte aucun ordre. Un « 29 » apparu au milieu des
+    quatre-vingt-dix, un « 47 » glissé entre 42 et 43, une année lue « 2029 » —
+    tous sortent de la suite, et leurs pages reviennent à l'acte qu'elles
+    coupaient. Ce qui reste est ce que la collectivité a réellement numéroté.
+
+    ⚠️ Ce choix SOUS-COMPTE plutôt qu'il ne surcompte : un acte dont le rang est
+    trop abîmé pour tenir dans la suite est absorbé par son voisin, avec son
+    texte. C'est le sens qu'on veut — un acte manquant se voit et se corrige à
+    la saisie, un acte inventé se publie et fait mentir la base.
+    """
+    if not valeurs:
+        return []
+    n = len(valeurs)
+    longueur, precedent = [1] * n, [-1] * n
+    for i in range(n):
+        for j in range(i):
+            if valeurs[j] < valeurs[i] and longueur[j] + 1 > longueur[i]:
+                longueur[i], precedent[i] = longueur[j] + 1, j
+    i = max(range(n), key=lambda k: longueur[k])
+    chemin = []
+    while i >= 0:
+        chemin.append(i)
+        i = precedent[i]
+    return chemin[::-1]
+
+
+def _titre_dacte(corps: str, rang: int) -> str:
+    """L'objet écrit par la collectivité, à défaut la première ligne capitale."""
+    m = _OBJET.search(corps)
+    if m:
+        titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
+        if len(titre) >= 5:
+            return titre[:255]
+    for ligne in corps.splitlines():
+        ligne = ligne.strip()
+        if len(ligne) >= 12 and LIGNE_CAPITALES.match(ligne) and _titre_plausible(ligne):
+            return re.sub(r"\s+", " ", ligne).strip(" :;.-")[:255]
+    return f"Délibération n° {rang}"
+
+
+def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
+    marques = list(_REFERENCE_TOLERANTE.finditer(texte))
+    if len(marques) < 3:
+        return []
+    suffixe = _suffixe_de_seance([m.group(4) for m in marques])
+    lus = [(m, _rang_dans_la_seance(m.group(4), suffixe)) for m in marques]
+    lus = [(m, r) for m, r in lus if r is not None]
+
+    # Les occurrences successives d'un même rang sont les pages d'un seul acte.
+    blocs: list[tuple] = []
+    for m, rang in lus:
+        if not blocs or blocs[-1][1] != rang:
+            blocs.append((m, rang))
+    gardes = _suite_croissante([r for _, r in blocs])
+
+    # 🔴 Un procès-verbal de séance est lui-même télétransmis : il porte UN
+    # cachet, parfois deux, et le prendre pour une liasse le réduirait à une
+    # seule délibération en écartant les régimes qui savent le découper. Ce
+    # régime ne vaut que pour une LIASSE, et trois actes numérotés à la suite
+    # sont le moins qu'on puisse en exiger.
+    if len(gardes) < 3:
+        return []
+
+    sorties = []
+    for i, indice in enumerate(gardes):
+        marque, rang = blocs[indice]
+        debut = texte.rfind("\n", 0, marque.start()) + 1
+        fin = (texte.rfind("\n", 0, blocs[gardes[i + 1]][0].start()) + 1
+               if i + 1 < len(gardes) else len(texte))
+        corps = texte[debut:fin].strip()
+        if not corps:
+            continue
+        sorties.append(_enrichir({
+            "regime": "actes_teletransmis",
+            "numero_seance": None,
+            "numero_acte": str(rang),
+            "titre": _titre_dacte(corps, rang),
+            "texte": corps,
+        }))
+    return sorties
+
+
 def deliberations(texte: str, pagine: bool = True) -> list[dict]:
     """Découpe un procès-verbal, ou rend [] si aucun régime ne s'applique.
 
@@ -186,7 +352,8 @@ def deliberations(texte: str, pagine: bool = True) -> list[dict]:
     pas. Deux régimes s'en servent pour ne pas confondre l'en-tête d'une page
     avec la ligne de colonnes d'un tableau ; cf. `_sans_entetes`.
     """
-    for analyseur in (_numerote, _acte_final, _puces, _liste, _capitales):
+    for analyseur in (_actes_teletransmis, _numerote, _acte_final, _puces,
+                      _liste, _capitales):
         sorties = analyseur(texte, pagine)
         if sorties:
             # Filtré ICI et non dans chaque régime : la règle vaut pour tous, et
