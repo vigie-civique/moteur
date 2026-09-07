@@ -82,3 +82,50 @@ def test_la_portee_commune_ignore_les_pv_de_lintercommunalite(
 
     urls_epci = {d.url for d in redecouper_pv.deja_en_cache("epci", set())}
     assert urls_epci == {"https://www.exemple-epci.fr/pv/cc-2026-01.pdf"}
+
+
+def test_la_source_vient_de_la_base_pas_du_domaine_de_lurl(
+        base_avec_les_deux_portees, monkeypatch, tmp_path):
+    """🔴 Un acte repêché sur web.archive.org reste publié PAR LA COMMUNE.
+
+    La source et le domaine de l'URL ne coïncident pas, et c'est voulu : le
+    connecteur `cm_wayback` écrit `source=lasalle.fr` avec une URL d'archive,
+    parce que c'est bien la commune qui a publié l'acte — l'archive n'est qu'un
+    moyen de le relire. Recalculer la source depuis l'URL écrasait ce que le
+    collecteur savait.
+
+    L'effet n'était pas cosmétique : `events.public_sources` est une liste de
+    sources EXACTES. Un `www.` de trop, et l'acte sort de l'allowlist sans que
+    rien ne le signale. Mesuré sur l'instance de référence le 07/09/2026 — un
+    seul redécoupage a fait passer 53 délibérations de `lasalle.fr` à
+    `www.lasalle.fr`, donc du site à l'invisibilité, et 401 actes repêchés
+    portaient déjà `web.archive.org` pour la même raison.
+    """
+    import redecouper_pv
+
+    base = base_avec_les_deux_portees
+    base.execute(
+        "INSERT INTO events (type, date, title, content, source, source_url,"
+        " metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("deliberation", "2017-06-20", "Acte repêché sur une archive", "corps",
+         "exemple-commune.fr",
+         "https://web.archive.org/web/20170620070227id_/"
+         "https://www.exemple-commune.fr/pv/cm-2017-06.pdf", "{}"))
+    base.commit()
+
+    faux_cache = tmp_path / "pv.pdf"
+    faux_cache.write_bytes(b"%PDF-1.4 ")
+    monkeypatch.setattr("collectors.conseils._cible_cache", lambda url: faux_cache)
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _transaction():
+        yield base
+    monkeypatch.setattr(redecouper_pv, "transaction", _transaction)
+
+    par_url = {d.url: d.source for d in redecouper_pv.deja_en_cache("commune", set())}
+    archive = next(u for u in par_url if "web.archive.org" in u)
+    assert par_url[archive] == "exemple-commune.fr", (
+        "la source a été recalculée depuis l'URL : l'acte devient « publié par "
+        "web.archive.org » et sort de l'allowlist de publication")
