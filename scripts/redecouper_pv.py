@@ -85,12 +85,24 @@ def deja_en_cache(portee: str, connus: set[str]) -> list:
     """
     from collectors.conseils import _cible_cache
 
+    # 🔴 Le filtre porte sur le type de CETTE portée, et c'est tout l'objet du
+    # paramètre — qui était reçu, documenté, et jamais employé. La requête
+    # interrogeait les DEUX types : appelée pour la commune (le seul cas), elle
+    # rendait aussi les procès-verbaux de l'intercommunalité présents en cache,
+    # et `conseils.traiter` les enregistrait alors en portée COMMUNE. Chaque
+    # redécoupage créait ainsi un jumeau de chaque acte communautaire, sous le
+    # type `deliberation` au lieu de `deliberation_cc` et sans le champ
+    # `instance` qui nomme la collectivité. Relevé sur l'instance de référence
+    # le 07/09/2026 : 833 actes en double, créés le 29/08 à 18 h 31, et
+    # PUBLIÉS — le site servait 2 425 délibérations pour 1 593 réelles.
+    type_de_la_portee = conseils.PORTEES[portee]["delib"]
+
     documents = []
     with transaction() as conn:
         lignes = conn.execute(
-            f"SELECT DISTINCT source_url, MIN(date) AS date FROM events "
-            f"WHERE type IN ({','.join('?' * len(TYPES))}) AND source_url IS NOT NULL "
-            f"GROUP BY source_url", TYPES).fetchall()
+            "SELECT source_url, MIN(date) AS date FROM events "
+            "WHERE type = ? AND source_url IS NOT NULL "
+            "GROUP BY source_url", (type_de_la_portee,)).fetchall()
     for url, date in lignes:
         if url in connus or not str(url).lower().endswith(".pdf"):
             continue
