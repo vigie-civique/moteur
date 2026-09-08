@@ -83,6 +83,7 @@ from collectors.ofgl           import run as run_ofgl
 from collectors.budget         import run as run_budget
 from collectors.subventions_etat import run as run_subventions
 from collectors.dotations_investissement import run as run_dotations
+from collectors.subventions_ouvertes import run as run_subv_ouvertes
 # main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
 # les options de run_all. On prend la fonction qu'il enveloppe.
 from collectors.cm_finances    import run_subventions as _run_subv_cm
@@ -296,6 +297,11 @@ STEPS = {
     # demande n'est pas une attribution.
     "dotations": ("Dotations d'investissement accordées (DGCL, Fonds vert)",
                   run_dotations),
+    # Ce que les collectivités publient elles-mêmes, au schéma national des
+    # données essentielles de subvention. Zéro est une RÉPONSE : il dit que
+    # personne ne publie ici, ou que tout le monde en est exempté.
+    "subv_ouvertes": ("Conventions de subvention publiées (schéma SCDL)",
+                      run_subv_ouvertes),
     # Ce que la RÉGION verse aux entités du territoire. Le collecteur est propre
     # à la région, il est nommé dans l'instance — cf. run_collecteurs_regionaux.
     "region":   ("Subventions régionales (collecteurs déclarés)",

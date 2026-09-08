@@ -394,6 +394,9 @@ STEP_META = {
     "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
     # La DGCL dépose un fichier par exercice, une fois l'an et tard : réclamer
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
+    # Chaque collectivité dépose au fil de l'eau, et le décret leur donne trois
+    # mois : mensuel est le rythme le plus fin qui ait un sens.
+    "subv_ouvertes": (30, 24, "financial_flows", "source='SCDL'"),
     "dotations":  (365, 24, "financial_flows",
                    "type IN ('DETR','DSIL','DSID','DPV','Fonds_vert')"),
     # « CR % » et non « CR CM% » : depuis que les délibérations communautaires
