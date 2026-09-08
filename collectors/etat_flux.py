@@ -72,6 +72,13 @@ _SOURCES_ENGAGE = re.compile(
     r"\bDECP\b|\bBOAMP\b|march[ée]s?[ _-]publics?|\bDGCL\b|fonds\s+vert", re.I)
 # Sources qui attestent un vote : comptes rendus et procès-verbaux de conseil.
 _SOURCES_VOTE = re.compile(r"^CR\b|^CM\b|conseil|d[ée]lib|proc[eè]s.verbal|\bPV\b", re.I)
+# TYPES qui attestent un vote quelle que soit leur source. Un registre de
+# subventions régionales publie une référence de DÉLIBÉRATION et un « montant
+# voté » : c'est un vote, même si le nom du collecteur ne contient ni
+# « conseil » ni « délib ». Sans cette règle, 54 subventions de la Région
+# sortaient en « inconnu » sur le site alors que la source dit exactement où
+# elles en sont.
+_TYPES_VOTE = re.compile(r"^subvention_region\b", re.I)
 
 
 def etat_du_flux(type_: str | None, source: str | None,
@@ -92,6 +99,9 @@ def etat_du_flux(type_: str | None, source: str | None,
         return "annule"
     if _DEMANDE.search(type_):
         return "demande"
+
+    if _TYPES_VOTE.search(type_):
+        return "vote"
 
     source = source or ""
     if _SOURCES_PAYE.search(source):

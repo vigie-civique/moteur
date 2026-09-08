@@ -94,3 +94,16 @@ class TestVocabulaire:
         for type_ in ("subvention", "DGF", "marché", "DSIL_demande", "bail", ""):
             for source in ("OFGL", "CR CM 2024", "DECP", "", None):
                 assert etat_du_flux(type_, source) in ETATS
+
+
+def test_une_subvention_regionale_est_votee():
+    """Un registre régional publie une référence de délibération et un
+    « montant voté » : c'est un vote, même si le nom du collecteur ne contient
+    ni « conseil » ni « délib ». 54 subventions de la Région sortaient en
+    « inconnu » sur le site alors que la source dit où elles en sont."""
+    assert etat_du_flux("subvention_region", "occitanie_region", None) == "vote"
+
+
+def test_la_saisie_de_latelier_prime_sur_le_type():
+    """Quelqu'un a lu la pièce : sa lecture bat toute déduction."""
+    assert etat_du_flux("subvention_region", "occitanie_region", "paye") == "paye"
