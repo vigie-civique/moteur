@@ -18,6 +18,10 @@ class TestClassement:
         "bodacc", "BOAMP", "sitadel", "georisques", "banatic", "interieur",
         "OFGL", "DECP v3 data.economie.gouv.fr", "DECP data.gouv.fr",
         "sirene", "insee-melodi", "dgfip",
+        # Les registres de subventions arrivés le 08/09. Sans motif, leurs
+        # lignes restaient NON CLASSÉES : ni protégées contre la saisie, ni
+        # ouvertes à la rectification — 16 flux du Fonds vert dans ce cas.
+        "DGCL", "Fonds vert (MTE)", "SCDL", "occitanie_region",
     ])
     def test_sources_institutionnelles(self, source):
         assert origine_de(source) == INSTITUTIONNEL

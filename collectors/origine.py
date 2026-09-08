@@ -89,6 +89,12 @@ _MOTIFS_INSTITUTIONNELS = (
     r"data\.economie",
     r"api\.",
     r"subventions?[ _-]?etat",
+    # ⚠️ Les motifs sont confrontés à une source NORMALISÉE en minuscules
+    # (cf. `_norm`) et par `re.match`, donc ancrés au DÉBUT. Les écrire en
+    # majuscules ne lève rien : ça ne matche simplement jamais.
+    r"dgcl\b",                    # direction générale des collectivités locales
+    r"fonds\s+vert",              # liste des projets subventionnés (MTE)
+    r"scdl\b",                    # données essentielles des conventions de subvention
     r"occitanie",           # open data régional
     r"elections?\b",
     r"qualite[ _-]?eau",
