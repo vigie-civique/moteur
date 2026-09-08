@@ -6,12 +6,21 @@ Mis à jour mensuellement, ~1.2 GB, streamé ligne par ligne (filtre code postal
 Ce que ça apporte :
   - contacts.website  (champ siteweb du Waldec)
   - rna_id en format W (id → remplace l'ancien id_ex numérique)
-  - siret croisé avec businesses table
+  - le SIREN de l'association, tiré du SIRET Waldec
 
-Matching :
-  - Primary  : rna_id DB (numérique) == id_ex Waldec
-  - Secondary: rna_id DB (W-format)  == id Waldec
-  - Fallback : nom normalisé (approximatif)
+Appariement, et ce qu'on écrit selon lui :
+  - par identifiant : rna_id (W-format) == id, ou rna_id numérique == id_ex
+  - par nom normalisé, en dernier recours — approximatif, donc JAMAIS de SIREN
+
+⚠️ Le RNA ne publie presque pas de SIRET : 8 associations sur 244 dans le code
+postal de Lasalle, soit 3 %. Ce module ne comblera donc pas le manque de SIREN,
+et ce n'est pas un défaut de son code — c'est la source. Or sans SIREN une
+association reste invisible des registres de subventions, qui désignent leurs
+bénéficiaires par leur SIRET. Le rapprochement par le NOM contre les
+établissements SIRENE de la base, éprouvé le 08/09/2026, rendait 15
+appariements dont 2 faux (« Tennis Club lasallois » apparié au tennis de
+TABLE) : hors de question pour un identifiant. Ce qui reste à faire relève de
+l'atelier — des CANDIDATS proposés à un humain, comme `dir_deports`.
 
 Usage :
     python3 -m collectors.rna_enrich              # toutes les assos sans website
@@ -155,9 +164,13 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
 
-    # Charger les associations cibles
+    # Charger les associations cibles. Le filtre ne portait que sur le site
+    # web : une association qui en avait un était sautée, SIREN manquant
+    # compris. Le module rend maintenant deux choses, il en vise donc deux.
     extra = "" if enrich_all else """
-        AND NOT EXISTS (SELECT 1 FROM contacts c WHERE c.entity_id = e.id AND c.type='website')
+        AND (NOT EXISTS (SELECT 1 FROM contacts c
+                         WHERE c.entity_id = e.id AND c.type='website')
+             OR a.siren IS NULL OR a.siren = '')
     """
     db_assos = conn.execute(f"""
         SELECT e.id, e.name, a.rna_id, a.entity_id
@@ -174,10 +187,12 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
     print(f"[rna_enrich] Index Waldec : {len(by_idex)} idex, {len(by_wid)} W-RNA, {len(by_name)} noms")
 
     stats = {
-        "website_added": 0,
-        "rna_updated":   0,
-        "no_match":      0,
-        "total_matched": 0,
+        "website_added":    0,
+        "rna_updated":      0,
+        "no_match":         0,
+        "total_matched":    0,
+        "siren_added":      0,
+        "siren_refuse_nom": 0,
     }
 
     for row in db_assos:
@@ -185,15 +200,17 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
         name   = row["name"] or ""
         rna_id = (row["rna_id"] or "").strip()
 
-        # Trouver l'entrée Waldec correspondante
-        wr = None
+        # Trouver l'entrée Waldec correspondante, et RETENIR par quoi. Un
+        # appariement par identifiant et un appariement par nom ne valent pas la
+        # même chose, et ce qu'on écrit derrière en dépend.
+        wr, appariement = None, None
         if rna_id:
             if rna_id.startswith("W"):
-                wr = by_wid.get(rna_id)
+                wr, appariement = by_wid.get(rna_id), "rna"
             else:
-                wr = by_idex.get(rna_id)
+                wr, appariement = by_idex.get(rna_id), "idex"
         if not wr:
-            wr = by_name.get(_norm(name))
+            wr, appariement = by_name.get(_norm(name)), "nom"
 
         if not wr:
             stats["no_match"] += 1
@@ -205,7 +222,11 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
         new_rna = wr.get("id", "").strip()
         if new_rna and new_rna.startswith("W") and rna_id != new_rna:
             if dry_run:
+                # L'essai à blanc COMPTE ce qu'il annonce. Il imprimait ces
+                # lignes sans incrémenter, et concluait « rna_id → W-format : 0 »
+                # juste en dessous de la liste de celles qu'il allait écrire.
                 print(f"  [DRY] eid={eid} {name[:40]} → rna_id: {rna_id} → {new_rna}")
+                stats["rna_updated"] += 1
             else:
                 conn.execute(
                     "UPDATE associations SET rna_id=? WHERE entity_id=?",
@@ -213,6 +234,36 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
                 )
                 if conn.execute("SELECT changes()").fetchone()[0]:
                     stats["rna_updated"] += 1
+
+        # ── SIREN ─────────────────────────────────────────────────────
+        # La docstring de ce module promettait le SIRET depuis le début ; rien
+        # ne l'écrivait. `associations.siren` était donc renseigné par le SEUL
+        # collecteur SIRENE, qui ne connaît que les associations immatriculées :
+        # 158 des 301 associations de Lasalle n'avaient pas de SIREN, et sans
+        # SIREN une association est invisible des registres de subventions, qui
+        # désignent leurs bénéficiaires par leur SIRET.
+        #
+        # ⚠️ JAMAIS depuis un appariement par NOM. Le SIREN est un IDENTIFIANT :
+        # posé faux, il ne se contente pas d'être faux, il fait basculer sur la
+        # mauvaise association tout ce qu'on ira chercher avec lui — une
+        # subvention régionale, un marché. Éprouvé sur Lasalle : le
+        # rapprochement par nom appariait « Tennis Club lasallois » au tennis de
+        # TABLE, et « Cévenol » à « MOUNTAINBOARD CEVENOL ». Deux faux sur
+        # quinze, c'est deux de trop pour un identifiant.
+        siret = (wr.get("siret") or "").strip()
+        if siret and len(siret) >= 9 and siret.isdigit() and appariement != "nom":
+            siren = siret[:9]
+            if dry_run:
+                print(f"  [DRY] eid={eid} {name[:40]} → siren: {siren} (par {appariement})")
+                stats["siren_added"] += 1
+            else:
+                conn.execute(
+                    "UPDATE associations SET siren=? WHERE entity_id=?"
+                    " AND (siren IS NULL OR siren='')", (siren, eid))
+                if conn.execute("SELECT changes()").fetchone()[0]:
+                    stats["siren_added"] += 1
+        elif siret and appariement == "nom":
+            stats["siren_refuse_nom"] += 1
 
         # ── Website ───────────────────────────────────────────────────
         site = wr.get("siteweb", "").strip()
@@ -234,6 +285,10 @@ def enrich(dry_run: bool = False, enrich_all: bool = False, save_csv: bool = Fal
     print(f"  sans match       : {stats['no_match']}")
     print(f"  websites ajoutés : {stats['website_added']}")
     print(f"  rna_id → W-format: {stats['rna_updated']}")
+    print(f"  SIREN ajoutés    : {stats['siren_added']}")
+    if stats["siren_refuse_nom"]:
+        print(f"  SIREN écartés    : {stats['siren_refuse_nom']} "
+              f"(appariés par le NOM — un identifiant ne se pose pas sur une ressemblance)")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
