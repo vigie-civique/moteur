@@ -13,8 +13,16 @@ from __future__ import annotations
 
 import pytest
 
+# Ces deux collecteurs sortent sur le réseau, donc importent `requests`, que le
+# job « tests » de la CI n'installe pas : il n'installe que pytest, pour
+# démontrer que le cœur du moteur se teste sans réseau ni collecteur. Ce fichier
+# y est donc SAUTÉ, et joué par le job « tests-deps », qui refuse le moindre
+# test sauté. Même convention que `tests/test_dematdoc.py` pour pdfplumber.
+pytest.importorskip("requests",
+                    reason="job « tests-deps » : pip install -r requirements.txt")
+
 from collectors.subventions_ouvertes import (_annee, _cle, _montant, _valeur,
-                                             index_local)
+                                             index_local)  # noqa: E402
 
 
 # ── Lire un en-tête que cinquante organisations écrivent à leur façon ────────
