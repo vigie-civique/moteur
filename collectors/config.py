@@ -392,6 +392,10 @@ STEP_META = {
     "ofgl":       (180, 22, "ofgl_agregats",     ""),
     "budget":     (180, 23, "budget_annuel",     ""),
     "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
+    # La DGCL dépose un fichier par exercice, une fois l'an et tard : réclamer
+    # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
+    "dotations":  (365, 24, "financial_flows",
+                   "type IN ('DETR','DSIL','DSID','DPV','Fonds_vert')"),
     # « CR % » et non « CR CM% » : depuis que les délibérations communautaires
     # sont lues, ce step écrit aussi des sources « CR CC 2019 ». Le compteur ne
     # les voyait pas, et un step qui vient de rapporter 60 subventions serait

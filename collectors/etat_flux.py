@@ -63,8 +63,13 @@ _ANNULE = re.compile(r"annul|abandonn|caduc", re.I)
 # Sources qui attestent un paiement : comptes administratifs et agrégats
 # d'exécution budgétaire. Ce sont des comptes clos, pas des intentions.
 _SOURCES_PAYE = re.compile(r"\bOFGL\b|compte[s]? administratif|balance", re.I)
-# Sources qui attestent un engagement : un marché notifié est signé.
-_SOURCES_ENGAGE = re.compile(r"\bDECP\b|\bBOAMP\b|march[ée]s?[ _-]publics?", re.I)
+# Sources qui attestent un engagement : un marché notifié est signé, une
+# dotation notifiée par la DGCL est accordée. Ni l'un ni l'autre n'est encore
+# payé — c'est précisément ce que « engagé » veut dire, et ces flux sortaient
+# jusqu'ici en « inconnu », ce qui laissait la page muette sur des montants
+# pourtant arrêtés par l'administration.
+_SOURCES_ENGAGE = re.compile(
+    r"\bDECP\b|\bBOAMP\b|march[ée]s?[ _-]publics?|\bDGCL\b|fonds\s+vert", re.I)
 # Sources qui attestent un vote : comptes rendus et procès-verbaux de conseil.
 _SOURCES_VOTE = re.compile(r"^CR\b|^CM\b|conseil|d[ée]lib|proc[eè]s.verbal|\bPV\b", re.I)
 

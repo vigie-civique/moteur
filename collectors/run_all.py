@@ -25,7 +25,10 @@ Ce que run_all ne fait PAS, et qui reste à lancer à la main :
                   step `web` qui ne trouve rien tant que personne n'a validé.
   dgf_notifications  ingère un fichier exporté à la main du portail DGCL.
   pappers         API payante : ne doit pas se déclencher toute seule.
-  occitanie_region  une région et un EPCI nommés : pas encore générique.
+
+Les collecteurs RÉGIONAUX, eux, sont lancés par le step `region` : ils sont
+propres à une région, donc nommés par l'instance dans `config/instance.json`,
+clé `collecteurs_regionaux`. Sans déclaration, le step ne fait rien et le dit.
 """
 import sys
 import time
@@ -79,6 +82,7 @@ from collectors.banatic        import run as run_banatic
 from collectors.ofgl           import run as run_ofgl
 from collectors.budget         import run as run_budget
 from collectors.subventions_etat import run as run_subventions
+from collectors.dotations_investissement import run as run_dotations
 # main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
 # les options de run_all. On prend la fonction qu'il enveloppe.
 from collectors.cm_finances    import run_subventions as _run_subv_cm
@@ -286,6 +290,12 @@ STEPS = {
     "ofgl":     ("Agrégats financiers OFGL",              run_ofgl),
     "budget":   ("Balances comptables DGFiP",             run_budget),
     "subventions": ("Dotations et subventions de l'État", run_subventions),
+    # Ce que l'État a ACCORDÉ, opération par opération (DETR, DSIL, DSID, DPV,
+    # Fonds vert). À ne pas confondre avec `subventions` juste au-dessus, qui
+    # reconnaît dans les délibérations les demandes que la commune DÉPOSE : une
+    # demande n'est pas une attribution.
+    "dotations": ("Dotations d'investissement accordées (DGCL, Fonds vert)",
+                  run_dotations),
     # Ce que la RÉGION verse aux entités du territoire. Le collecteur est propre
     # à la région, il est nommé dans l'instance — cf. run_collecteurs_regionaux.
     "region":   ("Subventions régionales (collecteurs déclarés)",
