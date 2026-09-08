@@ -85,6 +85,38 @@ from collectors.cm_finances    import run_subventions as _run_subv_cm
 from collectors.cm_finances    import run_baux as _run_baux
 
 
+def run_collecteurs_regionaux():
+    """Les collecteurs que l'instance déclare pour SA région.
+
+    Une région publie ses subventions sur son propre portail, avec son propre
+    schéma et sa propre adresse : il n'existe pas de collecteur régional
+    générique, et `occitanie_region` n'a de sens qu'en Occitanie. Il était donc
+    resté hors de `run_all` — et donc jamais lancé, jamais surveillé, jamais
+    dans le journal des collectes. Une instance nomme les siens dans
+    `config/instance.json`, clé `collecteurs_regionaux` ; le moteur ne connaît
+    que l'interface, comme pour les connecteurs de site.
+    """
+    import importlib
+
+    from collectors.config import COLLECTEURS_REGIONAUX
+
+    if not COLLECTEURS_REGIONAUX:
+        print("  Aucun collecteur régional déclaré "
+              "(config/instance.json, clé `collecteurs_regionaux`).")
+        return
+    for nom in COLLECTEURS_REGIONAUX:
+        # Le nom vient de la configuration : il désigne un module du paquet
+        # `collectors` et rien d'autre. Un chemin pointé importerait n'importe
+        # quoi depuis le disque.
+        if not nom.isidentifier():
+            raise ValueError(
+                f"collecteurs_regionaux : « {nom} » n'est pas un nom de module "
+                "du paquet collectors")
+        module = importlib.import_module(f"collectors.{nom}")
+        print(f"\n  → {nom}")
+        module.run()
+
+
 def run_cm_flux(commit: bool = True):
     """Les deux flux que le texte des séances porte : subventions et loyers.
 
@@ -254,6 +286,10 @@ STEPS = {
     "ofgl":     ("Agrégats financiers OFGL",              run_ofgl),
     "budget":   ("Balances comptables DGFiP",             run_budget),
     "subventions": ("Dotations et subventions de l'État", run_subventions),
+    # Ce que la RÉGION verse aux entités du territoire. Le collecteur est propre
+    # à la région, il est nommé dans l'instance — cf. run_collecteurs_regionaux.
+    "region":   ("Subventions régionales (collecteurs déclarés)",
+                 run_collecteurs_regionaux),
     "cm_flux":  ("Flux financiers extraits des séances",  lambda: run_cm_flux(commit=True)),
     # `since=None` : reprise incrémentale depuis la dernière analyse connue.
     "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),
