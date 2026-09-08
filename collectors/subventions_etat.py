@@ -16,10 +16,24 @@ import re
 import sqlite3
 from pathlib import Path
 
-from .config import DB_PATH   # la base est nommée dans la config, pas ici
+from .cm_finances import TYPES_DELIBERES, _EN_TYPES, payeur
+from .config import DB_PATH, EPCI_NOM   # la base est nommée dans la config, pas ici
 from .db import pivot_ids
 
 # Entités structurantes — résolues par leur nom à l'exécution (cf. db.pivot_ids).
+
+# Un acte de la commune qui mentionne l'intercommunalité. Le sigle de l'EPCI
+# n'est pas devinable — « CC CAC », « CCVA », « Grand Figeac » — donc on ne
+# cherche que ce que la configuration nomme et ce que la loi nomme : le nom de
+# l'EPCI, et les formes juridiques d'intercommunalité.
+MENTION_EPCI = re.compile(
+    "|".join(re.escape(m) for m in filter(None, [
+        EPCI_NOM,
+        "communauté de communes", "communaute de communes",
+        "communauté d'agglomération", "communaute d'agglomeration",
+        "communauté urbaine", "communaute urbaine",
+        "métropole", "metropole",
+    ])), re.I)
 
 # Mots-clés pour détection dans les délibérations CM
 KEYWORDS_DETR       = re.compile(r'\bDETR\b', re.I)
@@ -144,12 +158,12 @@ def run(dry_run: bool = False):
     print("\n[2] Extraction demandes subventions État depuis CM…")
 
     cm_events = conn.execute(
-        """SELECT id, title, date, metadata FROM events
-           WHERE type='deliberation'
+        f"""SELECT id, title, date, type, source, metadata FROM events
+           WHERE type IN ({_EN_TYPES})
            AND (title LIKE '%DETR%' OR title LIKE '%DSIL%'
                 OR title LIKE '%Fonds Vert%' OR title LIKE '%fonds vert%'
                 OR title LIKE '%FPIC%' OR title LIKE '%FNADT%' OR title LIKE '%LEADER%')
-           ORDER BY date"""
+           ORDER BY date""", TYPES_DELIBERES
     ).fetchall()
 
     print(f"  {len(cm_events)} délibérations avec mots-clés subvention État")
@@ -185,9 +199,15 @@ def run(dry_run: bool = False):
         if not montant and meta.get("montant_ht"):
             montant = float(meta["montant_ht"])
 
-        # Déterminer bénéficiaire / acheteur
-        to_id = COMMUNE_ID  # par défaut la commune
-        if "cc cac" in title.lower() or "communauté de communes" in title.lower():
+        # Qui sollicite l'État, c'est l'assemblée qui a voté la demande. Le
+        # test précédent lisait le TITRE et cherchait « cc cac » — le sigle
+        # d'un EPCI du Gard, écrit en dur dans un moteur générique : ailleurs
+        # il ne désigne rien, et toute demande de l'intercommunalité était
+        # portée au compte de la commune.
+        to_id = CAC_ID if payeur(ev["type"], ev["source"]) == "epci" else COMMUNE_ID
+        # Une commune peut délibérer sur une demande PORTÉE par son EPCI.
+        # Le titre le dit alors ; il ne peut jouer que dans ce sens-là.
+        if to_id == COMMUNE_ID and MENTION_EPCI.search(title):
             to_id = CAC_ID
 
         # Vérifier doublon (même event_id)

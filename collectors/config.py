@@ -316,6 +316,11 @@ CONNECTEUR  = _I.get("connecteur", "wordpress_rest")
 # l'EPCI d'une instance rendait alors 0 procès-verbal sans qu'on sache dire si
 # c'était une lacune de la source ou un outil qu'on ne savait pas lire.
 CONNECTEUR_EPCI = _I.get("connecteur_epci", "")
+# Les collecteurs propres à la RÉGION de l'instance, nommés par leur module du
+# paquet `collectors`. Il n'existe pas de collecteur régional générique : chaque
+# conseil régional publie ses subventions sur son portail, avec son schéma. Le
+# moteur ne connaît donc que l'interface — un module qui expose `run()`.
+COLLECTEURS_REGIONAUX = _I.get("collecteurs_regionaux", []) or []
 PAGES       = _I.get("pages", {})     # slugs des pages utiles, par connecteur
 # Les portails déclarés dans `pages` (`{"epci": {"portail": "https://…"}}`).
 # Un portail de publicité légale est un site officiel de la collectivité au même
@@ -387,7 +392,21 @@ STEP_META = {
     "ofgl":       (180, 22, "ofgl_agregats",     ""),
     "budget":     (180, 23, "budget_annuel",     ""),
     "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
-    "cm_flux":    (30,  25, "financial_flows",   "source LIKE 'CR CM%'"),
+    # La DGCL dépose un fichier par exercice, une fois l'an et tard : réclamer
+    # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
+    # Chaque collectivité dépose au fil de l'eau, et le décret leur donne trois
+    # mois : mensuel est le rythme le plus fin qui ait un sens.
+    "subv_ouvertes": (30, 24, "financial_flows", "source='SCDL'"),
+    "dotations":  (365, 24, "financial_flows",
+                   "type IN ('DETR','DSIL','DSID','DPV','Fonds_vert')"),
+    # « CR % » et non « CR CM% » : depuis que les délibérations communautaires
+    # sont lues, ce step écrit aussi des sources « CR CC 2019 ». Le compteur ne
+    # les voyait pas, et un step qui vient de rapporter 60 subventions serait
+    # passé pour muet.
+    "cm_flux":    (30,  25, "financial_flows",   "source LIKE 'CR %'"),
+    # Une région délibère toute l'année, mais son portail republie l'export par
+    # lots : trimestriel est le rythme utile.
+    "region":     (90,  25, "financial_flows",   "type='subvention_region'"),
     "eau":        (90,  26, "eau_analyses",      ""),
     # 365 jours : l'OFB publie UN exercice par an, vers la mi-année. Réclamer
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
