@@ -1,5 +1,5 @@
 <script>
-  import { CODE_POSTAL, COMMUNE_DE, CONTACT_EMAIL, EPCI, PREFECTURE, SITE_NOM } from '$lib/instance.js'
+  import { CODE_POSTAL, COMMUNE_DE, CONTACT_EMAIL, EPCI, HEBERGEUR, PREFECTURE, SITE_NOM } from '$lib/instance.js'
 </script>
 
 <svelte:head><title>Mentions légales — {SITE_NOM}</title>
@@ -17,8 +17,29 @@
   </p>
   <p>Contact : <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></p>
 
+  <!--
+    L'hébergeur vient de `config/instance.json` (clé editeur.hebergeur), jamais
+    du code : le moteur est repris par d'autres, qui n'hébergent pas là où nous
+    hébergeons — cf. la liberté du repreneur.
+
+    Il a pourtant été écrit en dur ici, et une instance a déclaré pendant une
+    semaine un hébergeur qu'elle avait quitté, alors que sa propre configuration
+    portait le bon. La constante HEBERGEUR était générée, exportée, vérifiée par
+    generer_libelles.py — et personne ne la lisait. Un fichier déclarait une
+    intention, un autre une capacité, et les deux divergeaient en silence.
+
+    Vide, on le DIT plutôt que de taire une mention qu'impose la LCEN.
+  -->
   <h2>Hébergement</h2>
-  <p>Site public : Cloudflare, Inc., 101 Townsend Street, San Francisco, CA 94107, USA — <a href="https://www.cloudflare.com" rel="noopener">cloudflare.com</a>.</p>
+  {#if HEBERGEUR}
+    <p>Site public : {HEBERGEUR}.</p>
+  {:else}
+    <p>
+      Hébergeur non renseigné. Cette instance doit compléter la clé
+      <code>editeur.hebergeur</code> de son fichier <code>config/instance.json</code> :
+      l'article 6, III-1 de la LCEN impose de le nommer.
+    </p>
+  {/if}
 
   <h2>Finalité</h2>
   <p>
