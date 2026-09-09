@@ -22,6 +22,10 @@ class TestClassement:
         # lignes restaient NON CLASSÉES : ni protégées contre la saisie, ni
         # ouvertes à la rectification — 16 flux du Fonds vert dans ce cas.
         "DGCL", "Fonds vert (MTE)", "SCDL", "occitanie_region",
+        # Arrivées avec les propositions du 01/09 (CRC) et du 03/09 (GPU).
+        # Elles ont tourné six jours sans motif : chaque passe quotidienne
+        # les signalait, personne ne lisait le rapport.
+        "ccomptes", "gpu",
     ])
     def test_sources_institutionnelles(self, source):
         assert origine_de(source) == INSTITUTIONNEL
