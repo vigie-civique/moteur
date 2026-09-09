@@ -99,6 +99,10 @@ _MOTIFS_INSTITUTIONNELS = (
     r"elections?\b",
     r"qualite[ _-]?eau",
     r"fiscalite",
+    # Arrivées avec les propositions du 01/09 et du 03/09, restées six jours
+    # sans motif : leurs lignes se signalaient à chaque passe quotidienne.
+    r"ccomptes",            # juridictions financières — rapports des CRC
+    r"gpu\b",               # géoportail de l'urbanisme (État)
 )
 
 _MOTIFS_VERBATIM = (
