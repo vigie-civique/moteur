@@ -104,6 +104,14 @@ _MOTS_DE_COLONNE = {
     "LIBELLE", "LIBELLÉ", "INTITULE", "INTITULÉ", "FONCTIONNEMENT",
     "INVESTISSEMENT", "REALISE", "RÉALISÉ", "PREVU", "PRÉVU", "SOLDE",
     "CREDIT", "CREDITS", "CRÉDIT", "CRÉDITS",
+    # L'en-tête du tableau des crédits modifiés d'une décision budgétaire,
+    # et celui du tableau des emplois d'une création de poste. Les deux
+    # précèdent la formule de vote et échappaient donc à la borne de
+    # `_titre_dacte` : « EMPLOI GRADE CATEGORIE DURÉE HEBDOMADAIRE ».
+    "ANCIEN", "ANCIENNE", "NOUVEL", "NOUVELLE", "NOUVEAU",
+    "EMPLOI", "EMPLOIS", "GRADE", "GRADES", "CATEGORIE", "CATÉGORIE",
+    "EFFECTIF", "EFFECTIFS", "DUREE", "DURÉE", "HEBDOMADAIRE",
+    "OUVRIR", "REDUIRE", "RÉDUIRE", "COMPTE", "COMPTES",
 }
 # L'appel nominal d'un vote : « M. BENEFICE : Oui ». Chaque conseiller devenait
 # une délibération, avec le reste de la séance pour contenu.
@@ -213,6 +221,43 @@ _REFERENCE_TOLERANTE = re.compile(
 # d'acte. C'est le seul titre qui ne soit pas deviné.
 _OBJET = re.compile(r"^[^\n]{0,12}?Objet\s*[:;]\s*(.+)$", re.M | re.I)
 
+# Ce que l'océrisation dépose en marge d'une ligne, avant le mobilier qu'elle
+# précède : « Æ£ DEPARTEMENT : GARD », « | N°153/2021 », « ER DEPARTEMENT ».
+# Un jeton SÉPARÉ, jamais le début d'un mot — sans l'espace exigé ici,
+# « REPUBLIQUE » perdait son « RE » et échappait au filtre.
+_DEBRIS_DE_MARGE = re.compile(r"^[^\w]{1,4}\s*|^[A-ZÆŒÀ-Ÿ]{1,2}[^\w\s]{0,2}\s+")
+# Où la délibération commence vraiment. `FIN_TITRE` ne convient pas ici : son
+# « Le Conseil » tombe sur « Le conseil municipal de cette commune,
+# régulièrement convoqué… », qui appartient au bandeau et PRÉCÈDE l'objet — la
+# borne coupait alors avant lui et seize actes perdaient un titre qu'ils avaient.
+_FORMULE_DE_VOTE = re.compile(
+    r"apr[èe]s\s+en\s+avoir\s+d[ée]lib[ée]r[ée]|\bD[EÉ]CIDE\b|\bD[EÉ]LIB[EÉ]RE\b", re.I)
+# Le mobilier qu'un acte télétransmis porte en tête de CHAQUE page : le cachet,
+# le timbre de la collectivité, le rappel de séance. Il est en capitales — donc
+# éligible au repli de `_titre_dacte` — et il précède l'objet, si bien que le
+# titre tombait dessus dès que l'objet manquait. Mesuré le 10/09/2026 sur la
+# base servie de Lasalle : 64 des 237 actes du régime, soit 27 %, s'appelaient
+# « ID : 030-213001407-20260630-DEL2606_02-DE » ou
+# « REPUBLIQUE FRANÇAISE EXTRAIT DU RE D: 030 213001407-… ».
+_MOBILIER_DE_CACHET = re.compile(
+    r"^(?:"
+    r"[I1lD]{1,2}\s*[:;]"
+    r"|N[°ºo\u00ba]\s*(?:DEL|DE)?\s*\d"
+    r"|R[EÉ]PUBLIQUE\s+FRAN"
+    r"|EXTRAIT\b"
+    r"|D[EÉ]PARTEMENT\b"
+    r"|ARRONDISSEMENT\b"
+    r"|NOMBRE\s+DE\s+(?:CONSEILLERS|MEMBRES)"
+    r"|S[EÉ]ANCE\s+DU\b"
+    r"|ENVOY[EÉ]\s+EN\s+PR[EÉ]FECTURE"
+    r"|RE[CÇ]U\s+EN\s+PR[EÉ]FECTURE"
+    r"|PUBLI[EÉ]\s+LE\b"
+    r"|PAGE\b"
+    r"|D[EÉ]LIB[EÉ]RATIONS?\s+DU\s+CONSEIL"
+    r"|ACTE\s+RENDU\s+EX[EÉ]CUTOIRE"
+    r"|POUR\s+COPIE\s+CONFORME"
+    r")", re.I)
+
 
 def _suffixe_de_seance(numeros: list[str]) -> str:
     """Les chiffres que TOUS les numéros d'une même liasse partagent en fin.
@@ -290,16 +335,50 @@ def _suite_croissante(valeurs: list[int]) -> list[int]:
 
 
 def _titre_dacte(corps: str, rang: int) -> str:
-    """L'objet écrit par la collectivité, à défaut la première ligne capitale."""
-    m = _OBJET.search(corps)
+    """L'objet écrit par la collectivité, à défaut la première ligne capitale.
+
+    🔴 Le repli ne peut pas prendre la première ligne capitale VENUE : ce régime
+    coupe SUR le cachet, donc la première ligne du corps est le cachet, et les
+    suivantes sont le timbre de la collectivité. Toutes sont en capitales, et
+    toutes passaient. L'acte s'appelait alors du nom de l'ancre qui l'avait
+    découpé — une preuve affichée à la place de l'objet qu'elle ne dit pas.
+
+    Quand rien ne reste, le repli numéroté est la bonne réponse : il avoue que
+    le découpage a trouvé l'acte sans trouver son objet. C'est la règle du
+    régime — un acte tu se corrige à la saisie, un acte inventé se publie.
+    """
+    # 🔴 La recherche s'arrête à la formule de vote. Sans cette borne elle
+    # traversait tout l'acte et rapportait un en-tête de TABLEAU — « EMPLOI
+    # GRADE CATEGORIE DURÉE HEBDOMADAIRE », « CREDIT A OUVRIR COMPTE DEPENSE ».
+    # L'objet, lui, est toujours dans le bandeau de tête : au-delà, il n'y en a
+    # pas, et c'est le repli numéroté qu'il faut, pas le premier tableau venu.
+    coupe = _FORMULE_DE_VOTE.search(corps)
+    tete = corps[:coupe.start()] if coupe else corps
+
+    m = _OBJET.search(tete)
     if m:
         titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
         if len(titre) >= 5:
             return titre[:255]
-    for ligne in corps.splitlines():
+    for ligne in tete.splitlines():
         ligne = ligne.strip()
-        if len(ligne) >= 12 and LIGNE_CAPITALES.match(ligne) and _titre_plausible(ligne):
-            return re.sub(r"\s+", " ", ligne).strip(" :;.-")[:255]
+        if len(ligne) < 12 or not LIGNE_CAPITALES.match(ligne):
+            continue
+        # Le cachet lui-même, quelle que soit la graphie que l'océrisation lui
+        # donne : c'est la charpente que le régime lit déjà pour découper.
+        nu = _DEBRIS_DE_MARGE.sub("", ligne)
+        if (_MOBILIER_DE_CACHET.match(ligne) or _MOBILIER_DE_CACHET.match(nu)
+                or _REFERENCE_TOLERANTE.search(ligne)):
+            continue
+        # Un objet de délibération porte des MOTS. « S€£000109#£0007 »,
+        # « 3 10/1/200/220222 », « 2021 2021 2022 » n'en portent aucun : ce sont
+        # des marges et des tableaux que l'océrisation a laissés en capitales.
+        if not _MOT_PORTEUR.search(ligne):
+            continue
+        if _titre_plausible(ligne):
+            # Seule la ponctuation de marge s'en va : ôter aussi le jeton de
+            # tête amputerait « DE LA COMMUNE… » d'un vrai mot.
+            return re.sub(r"\s+", " ", ligne).strip(" :;.-|")[:255]
     return f"Délibération n° {rang}"
 
 

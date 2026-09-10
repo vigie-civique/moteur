@@ -166,3 +166,54 @@ def test_le_regime_passe_avant_les_autres():
     ])
     actes = deliberations(texte, pagine=True)
     assert [a["regime"] for a in actes] == ["actes_teletransmis"] * 3
+
+
+def test_le_titre_nest_jamais_le_cachet_qui_a_servi_a_decouper():
+    """Le régime coupe SUR le cachet : le repli tombait donc dessus.
+
+    Mesuré le 10/09/2026 sur la base servie de Lasalle : 64 des 237 actes du
+    régime, soit 27 %, s'appelaient du nom de leur propre ancre —
+    « ID : 030-213001407-20260630-DEL2606_02-DE » — ou du timbre qui la suit,
+    « REPUBLIQUE FRANÇAISE EXTRAIT DU RE D: 030 213001407-… ». Toutes ces
+    lignes sont en capitales, toutes précèdent l'objet, et toutes passaient.
+
+    Le comptage, lui, était juste : c'est la leçon de l'indicateur aveugle un
+    étage plus haut — on avait mesuré COMBIEN d'actes, jamais leurs titres.
+    """
+    texte = "".join(_page(f"{n}_2024") for n in (41, 42, 43))
+    actes = _actes_teletransmis(texte)
+
+    assert len(actes) == 3
+    for acte in actes:
+        assert "ID :" not in acte["titre"]
+        assert "DEPARTEMENT" not in acte["titre"]
+        assert "ARRONDISSEMENT" not in acte["titre"]
+    # Sans objet lisible, le repli numéroté est la bonne réponse : il avoue que
+    # le découpage a trouvé l'acte sans trouver son objet.
+    assert [a["titre"] for a in actes] == ["Délibération n° 41",
+                                           "Délibération n° 42",
+                                           "Délibération n° 43"]
+
+
+def test_un_acte_ne_prend_pas_lobjet_de_son_successeur():
+    """La borne à la formule de vote, et pourquoi elle n'est pas facultative.
+
+    Quand le cachet d'une page est trop abîmé pour être lu, cette page reste
+    dans l'acte PRÉCÉDENT — avec son bandeau et son objet. Sans borne, la
+    recherche du titre traversait tout le corps et rapportait l'objet du
+    SUIVANT : sur la liasse du 30/06/2026 de Lasalle, l'acte n° 2 s'appelait
+    « TARIFS LOCAUX PROFESSIONNELS MAISON DE SANTE 2026 », qui est le n° 3.
+    """
+    illisible = ("REPUBLIQUE FRANÇAISE EXTRAIT DU REG 6021205 0D€L126006 037\n"
+                 "DEPARTEMENT : GARD\n"
+                 "Objet : Tarifs des locaux professionnels\n")
+    texte = (_page("41_2024", corps="Le Conseil, après en avoir délibéré, DECIDE\n")
+             + illisible
+             + _page("42_2024") + _page("43_2024"))
+    actes = _actes_teletransmis(texte)
+
+    assert len(actes) == 3
+    assert actes[0]["titre"] == "Délibération n° 41"
+    # L'objet reste dans le TEXTE de l'acte 41 — il n'est pas perdu, seulement
+    # pas promu en titre d'un acte qui n'est pas le sien.
+    assert "Tarifs des locaux professionnels" in actes[0]["texte"]
