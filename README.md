@@ -3,7 +3,7 @@
 Un observatoire citoyen des décisions publiques d'une petite commune, construit
 à partir de données et de documents publics uniquement.
 
-Instance de référence : **[Lasalle (Gard, 30460)](https://vigie-civique-lasalle.fr)**
+Instance de référence : **[Lasalle (Gard, 30460)](https://lasalle.vigie-civique.fr)**
 — 1 421 fiches publiées, 4 025 actes dont 2 425 délibérations, les marchés
 publics, le budget et le foncier (relevé du 03/09/2026).
 

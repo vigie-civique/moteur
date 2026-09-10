@@ -71,7 +71,7 @@ monde. Tout le reste — l'annuaire, la conformité, le label — s'en déduit.
   "instance": {
     "id": "lasalle",
     "nom_public": "Vigie Civique Lasalle",
-    "url": "https://vigie-civique-lasalle.fr",
+    "url": "https://lasalle.vigie-civique.fr",
     "insee": "30139",
     "epci_siren": "200066389",
     "communes": ["30139", "30079", "30187"]
@@ -82,7 +82,7 @@ monde. Tout le reste — l'annuaire, la conformité, le label — s'en déduit.
     "type": "association",
     "directeur_publication": "Prénom Nom",
     "contact": "contact@exemple.fr",
-    "mentions_legales": "https://vigie-civique-lasalle.fr/mentions-legales"
+    "mentions_legales": "https://lasalle.vigie-civique.fr/mentions-legales"
   },
 
   "moteur": {
