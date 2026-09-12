@@ -108,7 +108,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 22 et non 20 : le contrôle du dossier hors-ligne pilote Chrome par
+          # CDP, et `WebSocket` n'est global qu'à partir de Node 22. C'est aussi
+          # la version posée sur le VPS par deploy/bootstrap.sh.
+          node-version: "22"
           cache: npm
           cache-dependency-path: public/package-lock.json
       - uses: actions/setup-python@v5
@@ -194,3 +197,27 @@ jobs:
         run: |
           npm ci
           npm run build
+
+      - name: Le dossier hors-ligne s'ouvre comme un lecteur l'ouvre
+        # Le contrôle qui manquait. Les deux défauts qu'il cherche — des liens
+        # internes qui tombent sur une liste de fichiers, un sélecteur
+        # d'exercice inerte — ne naissent que dans le navigateur du lecteur :
+        # ils ont traversé quatre dossiers livrés entre le 03 et le 11/09/2026
+        # pendant que tous les contrôles de texte restaient verts.
+        #
+        # Le build est REFAIT avec VIGIE_HORS_LIGNE=1 : c'est l'artefact remis
+        # qu'on éprouve, pas le site en ligne, et ils ne s'écrivent pas pareil.
+        # Chrome est préinstallé sur ubuntu-latest.
+        #
+        # La mise en forme d'archive (chemins relatifs, LISEZ-MOI, lanceurs)
+        # vit dans le dépôt du portail, absent d'ici : la condition `file://`
+        # n'est donc pas éprouvée par cette CI, et le contrôle le dit. Elle
+        # l'est sur le portail, après chaque `prepare_offline_export`.
+        working-directory: public
+        env:
+          VIGIE_HORS_LIGNE: "1"
+          VIGIE_BUILD_DIR: build-hors-ligne
+        run: |
+          npx vite build
+          CHROME_PATH="$(command -v google-chrome || command -v chromium)" \
+            node scripts/verifier_hors_ligne.mjs build-hors-ligne

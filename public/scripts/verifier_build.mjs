@@ -41,7 +41,19 @@ if (!existsSync(BUILD)) {
 //                    transversal de 940 Ko, trop lourd pour être embarqué —
 //                    l'embarquer ferait une page à 1 Mo. Le mot « Chargement »
 //                    y désigne cet index, pas le contenu de la page.
-const EXCEPTIONS = new Set(['carte.html', 'recherche.html'])
+//
+// ⚠️ Nommées par leur ROUTE, pas par leur fichier. Le dossier remis se construit
+// avec `VIGIE_HORS_LIGNE=1` depuis le 12/09/2026 : chaque route y devient
+// `carte/index.html` au lieu de `carte.html`. Des exceptions écrites en noms de
+// fichiers ne matchaient plus rien, et le contrôle refusait le dossier entier
+// pour la carte — une page dont l'attendeur est légitime et documenté ici.
+const EXCEPTIONS = new Set(['carte', 'recherche'])
+
+/** La route que sert cette page, quelle que soit la forme du build. */
+const routeDe = (rel) => rel
+  .replace(/\\/g, '/')
+  .replace(/\/index\.html$/, '')
+  .replace(/\.html$/, '')
 
 // Le SYMPTÔME est « Chargement… », pas le mot « chargement ». Le contrôle
 // cherchait /chargement/i n'importe où dans le rendu : il a refusé tout le site
@@ -130,7 +142,7 @@ const problemes = []
 
 for (const p of pages) {
   const rel = p.slice(BUILD.length + 1)
-  if (rel === '404.html' || EXCEPTIONS.has(rel)) continue
+  if (rel === '404.html' || EXCEPTIONS.has(routeDe(rel))) continue
 
   const html = readFileSync(p, 'utf8')
   const rendu = html.replace(/<script[\s\S]*?<\/script>/g, '')

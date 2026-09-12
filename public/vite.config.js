@@ -55,4 +55,16 @@ function donneesBrouillon() {
 
 export default defineConfig({
   plugins: [sveltekit(), donneesBrouillon()],
+
+  // Le build SAIT s'il fabrique le site en ligne ou le dossier remis.
+  //
+  // Une seule chose en dépend — la forme des adresses écrites sur le disque,
+  // cf. src/routes/+layout.js — mais elle ne peut pas se décider à l'exécution :
+  // `trailingSlash` est lu au prérendu, quand les fichiers sont nommés.
+  //
+  // Variable absente, la constante vaut `false` : tout build de production et
+  // toute la CI produisent exactement ce qu'ils produisaient.
+  define: {
+    __VIGIE_HORS_LIGNE__: JSON.stringify(Boolean(process.env.VIGIE_HORS_LIGNE)),
+  },
 })
