@@ -124,3 +124,49 @@ def test_le_controle_regarde_au_dela_du_html(ext_servies, fichier):
 @pytest.mark.parametrize("fichier", ["carte/fond.pmtiles", "data/events.json"])
 def test_les_donnees_ne_sont_pas_relues_pour_rien(ext_servies, fichier):
     assert not ext_servies.search(fichier)
+
+
+# ─── Les exceptions survivent à la forme du build ────────────────────────────
+#
+# Le dossier remis se construit avec `VIGIE_HORS_LIGNE=1` depuis le 12/09/2026 :
+# `carte.html` y devient `carte/index.html`. Des exceptions écrites en noms de
+# FICHIERS ne matchaient plus rien, et le garde-fou refusait tout le dossier
+# pour la carte — dont l'attendeur est légitime et documenté dans le script.
+# Pris au premier build hors-ligne, pas en production : c'est ce test qui tient
+# la porte ensuite.
+
+def _route_de(rel: str) -> str:
+    """La transcription de `routeDe` du script, pour l'éprouver ici."""
+    rel = rel.replace("\\", "/")
+    if rel.endswith("/index.html"):
+        return rel[: -len("/index.html")]
+    return rel[: -len(".html")] if rel.endswith(".html") else rel
+
+
+@pytest.fixture(scope="module")
+def exceptions() -> set[str]:
+    source = GARDE.read_text(encoding="utf-8")
+    motif = re.search(r"^const EXCEPTIONS = new Set\(\[(.+)\]\)$", source, re.M)
+    assert motif, "liste EXCEPTIONS introuvable dans verifier_build.mjs"
+    return {v.strip().strip("'\"") for v in motif.group(1).split(",")}
+
+
+def test_les_exceptions_sont_des_routes_pas_des_fichiers(exceptions):
+    assert exceptions == {"carte", "recherche"}, (
+        "les exceptions doivent nommer une route : un nom de fichier ne survit "
+        "pas au build hors-ligne, qui écrit carte/index.html"
+    )
+
+
+@pytest.mark.parametrize("chemin", ["carte.html", "carte/index.html",
+                                    "recherche.html", "recherche/index.html"])
+def test_la_carte_reste_exceptee_dans_les_deux_formes_de_build(exceptions, chemin):
+    assert _route_de(chemin) in exceptions
+
+
+@pytest.mark.parametrize("chemin", ["budgets.html", "budgets/index.html",
+                                    "entite/42.html", "entite/42/index.html"])
+def test_une_page_ordinaire_reste_controlee(exceptions, chemin):
+    """L'exception ne doit pas s'élargir en chemin : c'est la porte par
+    laquelle le défaut du 12/08/2026 reviendrait."""
+    assert _route_de(chemin) not in exceptions

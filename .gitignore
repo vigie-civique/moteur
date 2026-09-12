@@ -50,6 +50,9 @@ audits/
 # ─── Build ───────────────────────────────────────────────────────────────────
 node_modules/
 public/build/
+# Le même site construit en dossier remis (VIGIE_HORS_LIGNE=1), que la CI
+# éprouve dans un navigateur puis jette.
+public/build-hors-ligne/
 public/.svelte-kit/
 __pycache__/
 *.pyc
