@@ -72,6 +72,57 @@ PORTEES = {
     },
 }
 
+# ── Les pièces d'une séance ──────────────────────────────────────────────────
+# Une séance produit jusqu'à cinq documents, et aucun ne vaut la séance : ce
+# sont ses pièces. Les libellés relevés sur les deux assemblées de Lasalle :
+# « PV du 04.03.2026 tampon », « Deliberations du 4 mars 2026 », « Convocation
+# Conseil communautaire du 4 mars 2026 », « annexe conseil municipal du 05
+# fevrier 2026 », « conseil municipal du 28 mai 2026 ordre du jour ».
+NATURES_DE_PIECE = (
+    (re.compile(r"proc[èe]s.?verbal|\bpv\b", re.I), "proces_verbal"),
+    (re.compile(r"d[ée]lib[ée]ration", re.I), "deliberations"),
+    (re.compile(r"ordre du jour", re.I), "ordre_du_jour"),
+    (re.compile(r"convocation", re.I), "convocation"),
+    (re.compile(r"annexe", re.I), "annexe"),
+)
+# Du plus probant au moins probant. Le procès-verbal rapporte la séance
+# entière ; la convocation ne fait que l'annoncer.
+RANG_DE_PIECE = ("proces_verbal", "deliberations", "annexe", "ordre_du_jour",
+                 "convocation", "piece")
+
+MOIS_FR = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+           "août", "septembre", "octobre", "novembre", "décembre")
+
+
+def nature_de_piece(libelle: str | None) -> str:
+    """Ce qu'une pièce est, lu dans son libellé. « piece » quand rien ne dit."""
+    for motif, nature in NATURES_DE_PIECE:
+        if motif.search(libelle or ""):
+            return nature
+    return "piece"
+
+
+def date_en_francais(iso: str | None) -> str:
+    """« 2026-06-30 » → « 30 juin 2026 ». Une date ISO est une clé, pas une
+    phrase : elle n'a rien à faire dans un titre que des habitants lisent."""
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", (iso or "").strip())
+    if not m:
+        return iso or ""
+    annee, mois, jour = m.groups()
+    return f"{'1er' if jour == '01' else int(jour)} {MOIS_FR[int(mois) - 1]} {annee}"
+
+
+def _avec_piece(pieces: list, piece: dict) -> list:
+    """Les pièces connues, plus celle-ci — l'adresse fait l'identité."""
+    gardees = [p for p in pieces if p.get("url") != piece.get("url")]
+    return sorted(gardees + [piece],
+                  key=lambda p: RANG_DE_PIECE.index(p.get("nature", "piece"))
+                  if p.get("nature") in RANG_DE_PIECE else len(RANG_DE_PIECE))
+
+
+def _url_la_plus_probante(pieces: list, defaut: str | None) -> str | None:
+    return pieces[0].get("url") if pieces else defaut
+
 # Comment le document écrit les noms des présents. Trois conventions observées,
 # et c'est une propriété du DOCUMENT, pas du moteur : elle se déclare dans
 # config/instance.json, clé `format_pv`.
@@ -183,39 +234,60 @@ def lire_document(doc, avec_ocr: bool = False) -> tuple[str, str, bool] | None:
 # ── Écriture ─────────────────────────────────────────────────────────────────
 
 def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> int:
-    """Événement ombrelle d'une séance. Idempotent sur l'URL du document.
+    """Événement ombrelle d'une séance. Idempotent sur (assemblée, DATE).
 
-    L'identité porte sur `source_url` et non sur la date : deux séances peuvent
-    tomber le même jour, et le titre est reconstruit.
+    ⚖️ Une séance est identifiée par sa date et son assemblée, JAMAIS par le
+    document qui la rapporte. La même séance est attestée par plusieurs pièces
+    — convocation, ordre du jour, registre des délibérations, procès-verbal,
+    annexes — et l'identité par `source_url` en faisait autant de séances.
+
+    Relevé sur la base de Lasalle le 15/09/2026 : 46 dates portaient deux à
+    trois fiches, 49 de trop sur 243, et **pas une seule n'était une seconde
+    séance tenue le même jour** — c'étaient les pièces de la même. Le cas que
+    l'identité par l'URL protégeait est resté hypothétique ; celui qu'elle
+    fabriquait se lisait sur la page d'accueil, « Conseil municipal du
+    2026-06-30 » deux fois de suite, l'un pour le registre et l'autre pour le
+    procès-verbal.
+
+    Les pièces s'accumulent donc dans `metadata.pieces`, la fiche renvoie à la
+    plus probante, et les métadonnées FUSIONNENT : le procès-verbal porte les
+    présents et les pouvoirs, le registre le nombre d'actes — remplacer, c'est
+    perdre ce que la pièce précédente avait lu.
     """
     p = PORTEES[portee]
+    piece = {"nature": nature_de_piece(doc.libelle),
+             "libelle": doc.libelle, "url": doc.url}
     meta = {"libelle_source": doc.libelle, **(meta_sup or {})}
     if portee == "epci" and EPCI_SIREN:
         meta["siren_epci"] = EPCI_SIREN
-    # Un portail d'actes dépose les délibérations une par une : quarante pièces
-    # peuvent venir de la même séance, chacune avec sa propre adresse. L'identité
-    # par l'URL en ferait quarante séances. Le repère est alors la DATE — celle
-    # de l'acte, établie à la lecture, pas celle du dépôt.
-    if getattr(doc, "acte", None):
-        row = conn.execute(
-            "SELECT id FROM events WHERE type=? AND date=?",
-            (p["seance"], doc.date)).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT id FROM events WHERE type=? AND source_url=?",
-            (p["seance"], doc.url)).fetchone()
+
+    row = conn.execute(
+        "SELECT id, source_url, metadata FROM events WHERE type=? AND date=?",
+        (p["seance"], doc.date)).fetchone()
     if row:
-        conn.execute("UPDATE events SET date=?, metadata=? WHERE id=?",
-                     (doc.date, json.dumps(meta, ensure_ascii=False), row["id"]))
+        ancien = json.loads(row["metadata"] or "{}")
+        pieces = _avec_piece(ancien.get("pieces") or [], piece)
+        fusion = {**ancien, **meta, "pieces": pieces}
+        # Un portail d'actes publie la séance à son adresse à lui : elle vaut
+        # mieux que n'importe laquelle des quarante pièces déposées.
+        url = (row["source_url"] if ancien.get("depuis_portail_actes")
+               else _url_la_plus_probante(pieces, row["source_url"]))
+        conn.execute(
+            "UPDATE events SET date=?, title=?, source_url=?, metadata=?"
+            " WHERE id=?",
+            (doc.date, p["titre"].format(date=date_en_francais(doc.date)), url,
+             json.dumps(fusion, ensure_ascii=False), row["id"]))
         return row["id"]
     # La séance renvoie vers le portail qui la publie, jamais vers l'un de ses
     # actes : le premier arrivé n'a pas à représenter les trente-neuf autres.
     url_seance = (doc.acte or {}).get("portail") or doc.url if getattr(
         doc, "acte", None) else doc.url
+    meta["pieces"] = [piece]
     cur = conn.execute(
         "INSERT INTO events (type,date,title,source,source_url,metadata)"
         " VALUES (?,?,?,?,?,?)",
-        (p["seance"], doc.date, p["titre"].format(date=doc.date), doc.source,
+        (p["seance"], doc.date,
+         p["titre"].format(date=date_en_francais(doc.date)), doc.source,
          url_seance, json.dumps(meta, ensure_ascii=False)))
     return cur.lastrowid
 
