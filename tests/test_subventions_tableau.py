@@ -226,3 +226,147 @@ def test_une_abreviation_reste_rapprochee(resolveur):
     """« Mt » est trop court pour porter une identité à lui seul."""
     eid, nom = resolveur.resolve("Office de Tourisme Mt Aigoual Causses Cévennes")
     assert nom == "OFFICE DE TOURISME MONT AIGOUAL CAUSSES CEVENNES"
+
+
+# ── Ce que l'en-tête décide (15/09/2026) ─────────────────────────────────────
+
+# La CC écrit « octroyer », et les élus qui se déportent ont leur propre ligne.
+CC_OCTROYER = """Après délibération, le Conseil Communautaire décide pour l'exercice 2022 d'octroyer les
+subventions suivantes :
+MONTANT VOTE DU CONSEIL
+ASSOCIATIONS
+PROPOSE COMMUNAUTAIRE
+AIGOUAL ORIENTATION 900,00 € A l'unanimité
+25 voix pour, Christophe
+BOISSON ne vote pas
+3 500,00 €
+EVEN 900,00 € A l'unanimité
+FOYER DE SKI DE FOND 1 500,00 € A l'unanimité
+"""
+
+# L'annexe d'une commune : deux colonnes qui s'ADDITIONNENT, et un « année 2022 »
+# cité avant le titre d'un tableau de 2023.
+ANNEXE_DEUX_COLONNES = """Le bilan de l'année 2022 a été présenté en commission.
+Tableau annexé à la délibération du Conseil Municipal.
+SUBVENTIONS ALLOUÉES AUX ASSOCIATIONS 2023
+Associations 2023 : subventions
+Nom Fonctionnnement Evènementielle
+Le Goût de L'ici et du La 500 €
+Couleurs et Volumes 500 € 2 000 €
+Si Saillans Sonne
+2 800 €
+Le Forum 1 800 € 0 €
+Total 10 800 € 3 500 €
+"""
+
+# Trois colonnes dont une seule est la décision : accordé l'an passé | demandé | voté.
+CC_TROIS_COLONNES = """Monsieur le Président met au vote les subventions ci-dessous :
+MONTANT
+MONTANT MONTANT
+ASSOCIATIONS ACCORDE EN | DEMANDE VOTE VOTE
+2023
+ADYCT 1 692,00€ | 2 500,00 € 1 700,00 € | 1 2PStention
+24 pour
+Atelier Val-D'Aigoual 3 000,00 € 1 700,00 € | Unanimité
+Fonderie d'art et d'ornement 1 160,00 € - €
+La Truite Salamandre 282,00 € | - 255,00 € | Unanimité
+Christophe BOISSON
+Ski Club Mont Aigoual 2350,00€ | 3 500,00 € 2 125,00 € | sort de la salle
+24 pour
+UNIVERSITE SAUVAGE ET 1 abstention
+POPULAIRE 2 500,00 € 1 275,00 € 24 pour
+"""
+
+
+def test_octroyer_ouvre_le_tableau():
+    lus = lignes(CC_OCTROYER)
+    assert lus["AIGOUAL ORIENTATION"] == 900 and lus["FOYER DE SKI DE FOND"] == 1500
+
+
+def test_lelu_qui_ne_vote_pas_ne_recoit_pas_le_montant_suivant():
+    """« BOISSON ne vote pas » puis « 3 500,00 € » : pris pour un nom en attente,
+    l'élu devenait le bénéficiaire de 3 500 € d'argent public."""
+    assert not any("BOISSON" in nom for nom in lignes(CC_OCTROYER))
+
+
+def test_deux_colonnes_fonctionnement_et_evenement_sadditionnent():
+    lus = lignes(ANNEXE_DEUX_COLONNES)
+    assert lus["Couleurs et Volumes"] == 2500
+    assert lus["Le Forum"] == 1800
+    assert lus["Si Saillans Sonne"] == 2800
+
+
+def test_seule_la_colonne_votee_compte():
+    """Additionner, ce serait publier comme voté ce qui a été demandé."""
+    lus = lignes(CC_TROIS_COLONNES)
+    assert lus["ADYCT"] == 1700
+    assert lus["Atelier Val-D'Aigoual"] == 1700
+    assert lus["La Truite Salamandre"] == 255
+
+
+def test_rien_de_vote_ne_devient_pas_le_montant_de_lan_passe():
+    """« 1 160,00 € - € » : 1 160 € accordés en 2023, rien de voté en 2024."""
+    assert "Fonderie d'art et d'ornement" not in lignes(CC_TROIS_COLONNES)
+
+
+def test_sans_entete_qui_tranche_plusieurs_montants_ne_sont_pas_lus():
+    texte = CC_TROIS_COLONNES.replace("ACCORDE EN | DEMANDE VOTE VOTE", "")
+    assert "ADYCT" not in lignes(texte)
+
+
+def test_lexercice_est_celui_du_titre_du_tableau(base, pose):
+    """Tableau de 2023 rangé en 2022 à cause d'un « année 2022 » cité plus haut."""
+    pose("deliberation", SITE_COMMUNE, "2023-04-06",
+         "Subventions aux associations d'intérêt local", ANNEXE_DEUX_COLONNES)
+    assert {an for an, *_ in extract_subventions_tableau(base)} == {2023}
+
+
+def test_deux_copies_du_meme_vote_ne_comptent_quune_fois(base, pose):
+    """Le PV et le registre portent le même tableau, coupé autrement, et l'OCR du
+    registre en a perdu une ligne : 3 000 € étaient comptés deux fois, sous deux
+    noms, parce que les deux copies n'avaient plus les mêmes montants — l'OCR du
+    registre lit même 150 € pour 1 500 €."""
+    tete = "Le Conseil Communautaire décide pour l'exercice 2022 d'octroyer les subventions suivantes :\n"
+    pv = tete + ("EVEN 900,00 € A l'unanimité\nFOYER DE SKI DE FOND 1 500,00 € A l'unanimité\n"
+                 "VELO CLUB LASALLOIS / MONTPELLIER\n3 000,00 € A l'unanimité\n"
+                 "OLYMPIQUE MONT AIGOUAL 1 000,00 € A l'unanimité\n")
+    registre = tete + ("FOYER DE SKI DE FOND 150,00 € A l'unanimité\n"
+                       "VELO CLUB LASALLOIS / MONTPELLIER\nLANGUEDOC CYCLISME\n3 000,00 € A l'unanimité\n"
+                       "OLYMPIQUE MONT AIGOUAL 1 000,00 € A l'unanimité\n")
+    pose("deliberation_cc", SITE_EPCI, "2022-04-13", "Subventions aux associations", pv)
+    pose("deliberation_cc", SITE_EPCI, "2022-04-13", "Subventions aux associations", registre)
+    montants = [m for _, _, m, _, _ in extract_subventions_tableau(base)]
+    assert sorted(montants) == [900, 1000, 1500, 3000]
+
+
+def test_un_second_tableau_dans_le_meme_acte_est_lu(base, pose):
+    """Le premier « décide d'accorder » d'un long registre n'est pas forcément
+    celui des associations : ne lire que lui laissait le tableau de 2024 hors
+    de toute collecte."""
+    contenu = ("Décide d'accorder une subvention complémentaire à l'association X.\n"
+               "Le conseil passe au point suivant.\nI. Voirie\nII. Budget\nIII. Eau\nIV. Déchets\n"
+               "Subventions aux associations — Année 2024\n" + CC_TROIS_COLONNES)
+    pose("deliberation_cc", SITE_EPCI, "2024-04-03", "Registre des délibérations", contenu)
+    lus = {nom: m for an, nom, m, _, _ in extract_subventions_tableau(base) if an == 2024}
+    assert lus.get("ADYCT") == 1700
+
+
+def test_une_apostrophe_courbe_ne_fait_pas_un_second_beneficiaire(base, pose):
+    tete = "SUBVENTIONS ALLOUÉES AUX ASSOCIATIONS 2022\n"
+    pose("deliberation", SITE_COMMUNE, "2022-04-07", "Subventions",
+         tete + "Au fil d'argent 500 €\nRaid VTT 2 000 €\nLe Forum 1 800 €\n")
+    pose("deliberation", SITE_COMMUNE, "2022-04-07", "Subventions",
+         tete + "Au fil d’argent 500 €\nRaid VTT 2 000 €\nTennis club 1 000 €\nLe Forum 1 800 €\n")
+    assert [m for _, _, m, _, _ in extract_subventions_tableau(base)].count(500) == 1
+
+
+def test_lelu_qui_sort_de_la_salle_nempeche_pas_de_lire_la_ligne():
+    """« sort de la salle » est une issue de vote : sans elle, deux lignes du
+    tableau 2024 manquaient, et le total lu ne rejoignait pas le TOTAL voté."""
+    lus = lignes(CC_TROIS_COLONNES)
+    assert lus["Ski Club Mont Aigoual"] == 2125
+    assert not any("BOISSON" in nom for nom in lus)
+
+
+def test_un_nom_coupe_par_un_mot_de_liaison_est_recolle():
+    assert lignes(CC_TROIS_COLONNES)["UNIVERSITE SAUVAGE ET POPULAIRE"] == 1275

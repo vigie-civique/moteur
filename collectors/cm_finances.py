@@ -361,7 +361,7 @@ _NUM = r"\d{1,3}(?:[\s  ]\d{3})+(?:[.,]\d{1,2})?|\d{2,7}(?:[.,]\d{1,2})?"
 # lire. Un tableau de subventions est aussi une liste de conflits d'intérêts
 # déclarés, et ces noms-là ne sont pas des bénéficiaires.
 _QUEUE = (r"A\s+l['’]unanim\w*|\d+\s*(?:pour|contre|voix|abstention)|"
-          r"unanim\w*|abstention|ne\s+participe")
+          r"unanim\w*|abstention|ne\s+participe|ne\s+(?:vote|prend)\s+pas|sort\w*\s+de\s+la\s+salle")
 
 TAB_NOM_MONTANT  = re.compile(rf"^(?P<nom>\D.{{2,70}}?)\s+(?P<montant>{_NUM})\s*€\s*(?P<queue>.*)$")
 TAB_MONTANT_SEUL = re.compile(rf"^(?P<montant>{_NUM})\s*€\s*(?P<queue>.*)$")
@@ -372,10 +372,18 @@ TAB_QUEUE_VOTE   = re.compile(rf"\s+(?:{_QUEUE}).*$", re.I)
 # financement, dont les lignes nomment des FINANCEURS : les lire ici inverserait
 # le sens de l'argent — « l'intercommunalité a versé 2 500 € à la Région
 # Occitanie ». Ces actes-là relèvent d'`approbations`, qui les lit déjà.
+#
+# « Octroyer » vaut « accorder » (CC, 2022 et 2024) ; « met au vote les
+# subventions ci-dessous » ouvre le tableau de 2024 ; une commune titre son
+# annexe « SUBVENTIONS ALLOUÉES AUX ASSOCIATIONS 2023 » (Saillans). Aucune de ces
+# trois formes n'ouvrait rien : la CC a versé 250 à 470 k€ par an aux
+# associations (DGFiP, compte 6574) et la base n'en portait rien après 2021.
 TAB_OUVERTURE = re.compile(
-    r"d[ée]cide[^.]{0,120}?d['’]accorder[^.]{0,120}?subvention"
+    r"d[ée]cide[^.]{0,120}?d['’](?:accorder|octroyer)[^.]{0,120}?subvention"
     r"|attribu\w+[^.]{0,80}?subventions?[^.]{0,80}?(?:association|organisme)"
+    r"|met\s+au\s+vote\s+les\s+subventions"
     r"|^[ \t]*SUBVENTIONS[ \t]*$"
+    r"|^[ \t]*SUBVENTIONS?[ \t]+(?:ALLOU|ATTRIBU|ACCORD|VERS|OCTROY)\w*[ \t]+AUX[ \t]+ASSOCIATIONS"
     r"|^[ \t]*ASSOCIATIONS?[ \t]+(?:Montant|Subvention)", re.I | re.M)
 TAB_DEMANDE = re.compile(r"demande\s+de\s+subvention|sollicit|plan\s+de\s+financement", re.I)
 
@@ -390,6 +398,14 @@ TAB_PROSE = re.compile(r"\b(est|sont|sera|seront|a\s+[ée]t[ée]|d['’]un|à\s+
 # La liste des élus déportés déborde sur sa propre ligne et se ferme sur la
 # parenthèse ouverte plus haut.
 TAB_RESTE_VOTE = re.compile(r"^[^(]*\)\s*$|^\s*\d+\s*(pour|contre|voix|abstention)", re.I)
+# « BOISSON ne vote pas » : sur sa propre ligne, c'est un ÉLU qui se déporte, pas
+# une association annotée. Nettoyé de son annotation comme l'est « LA FILATURE
+# DU MAZEL A l'unanimité », il devenait un nom en attente — et recevait le
+# montant de la ligne suivante. Se lit sur la ligne BRUTE, avant nettoyage.
+TAB_DEPORT = re.compile(r"\bne\s+(?:vote|participe|prend)\b|\bsort\w*\s+de\s+la\s+salle", re.I)
+# « UNIVERSITE SAUVAGE ET » puis « POPULAIRE 2 500,00 € 1 275,00 € » : un nom que la
+# grille coupe en deux se reconnaît au mot de liaison qui termine son début.
+TAB_LIAISON = re.compile(r"(?:\b(?:et|de|du|des|la|le|les|pour|en|au|aux)|\b[dl]['’]|[/&–-])\s*$", re.I)
 # Un financeur n'est jamais bénéficiaire dans ce régime.
 TAB_FINANCEUR = re.compile(r"\b(r[ée]gion|d[ée]partement|conseil\s+d[ée]partemental|[ée]tat|"
                            r"europe|FEDER|LEADER|autofinancement|AERMC|agence\s+de\s+l['’]eau|"
@@ -399,6 +415,25 @@ TAB_EXERCICE = re.compile(r"(?:exercice|ann[ée]e)\s+(20\d{2})", re.I)
 TAB_MAX_TROU = 3            # lignes illisibles tolérées avant de clore le tableau
 TAB_PLAFOND = 1_000_000
 TAB_MIN_LIGNES = 3          # en dessous, c'est une phrase — le régime de SUBV_RE
+
+# Plusieurs colonnes de montant sur une ligne. Leur SENS change d'un corpus à
+# l'autre, et seul l'en-tête le dit :
+#   Saillans, 2022-2024  « Nom | Fonctionnement | Evènementiel »  → ADDITIONNER
+#   CC, 2024             « accordé en 2023 | demandé | voté »     → le VOTÉ seul
+# Additionner le second publierait comme voté ce qui a été demandé ; prendre le
+# dernier du premier perdrait le fonctionnement. Sans en-tête qui tranche, la
+# ligne n'est pas lue : un montant deviné n'est pas un montant.
+TAB_CASE = re.compile(rf"(?:{_NUM}|\d|-)\s*€")
+_CASES = rf"(?P<cases>(?:(?:{_NUM}|\d|-)\s*€\s*(?:-\s+)?){{2,}})"
+TAB_NOM_CASES = re.compile(rf"^(?P<nom>\D.{{2,70}}?)\s+{_CASES}(?P<queue>.*)$")
+TAB_CASES_SEULES = re.compile(rf"^{_CASES}(?P<queue>.*)$")
+TAB_COL_VOTE = re.compile(r"\bvot[ée]", re.I)
+TAB_COL_AUTRE = re.compile(r"demand|accord[ée]\s+en|pr[ée]c[ée]dent", re.I)
+TAB_COL_FONCTIONNEMENT = re.compile(r"fonction+ement", re.I)   # « Fonctionnnement » existe
+TAB_COL_PONCTUEL = re.compile(r"[ée]v[èée]nement|exceptionnel|ponctuel", re.I)
+# Après trois colonnes, l'issue du vote sort souvent abîmée de l'OCR (« 1 2PStention »).
+TAB_QUEUE_LACHE = re.compile(r"unanim|pour|contre|abst|stention|voix", re.I)
+TAB_ANNEE_TITRE = re.compile(r"[ \t:—–-]*(?:ann[ée]e\s*)?(20\d{2})\b", re.I)
 
 
 def _tab_montant(s: str) -> int:
@@ -423,7 +458,72 @@ def _tab_nettoie(nom: str) -> str:
     return re.sub(r"\s+", " ", nom.strip(" .:–-"))
 
 
+def _tab_nom_complet(en_attente: str | None, nom: str) -> str:
+    if en_attente and TAB_LIAISON.search(en_attente):
+        return f"{en_attente} {nom}"
+    return nom
+
+
+def _cle_nom(nom: str) -> str:
+    """Un nom réduit à ce qui ne varie pas d'une copie à l'autre du même acte :
+    casse, accents, apostrophe droite ou courbe, ponctuation. « Au fil d'argent »
+    et « Au fil d’argent » étaient deux bénéficiaires du même vote."""
+    s = unicodedata.normalize("NFKD", nom)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _tab_colonnes(entete: str) -> str | None:
+    """Le sens des colonnes de montant : « somme », « dernier », ou None."""
+    if TAB_COL_VOTE.search(entete) and TAB_COL_AUTRE.search(entete):
+        return "dernier"
+    if TAB_COL_FONCTIONNEMENT.search(entete) and TAB_COL_PONCTUEL.search(entete):
+        return "somme"
+    return None
+
+
+def _tab_cases(cases: str, colonnes: str | None) -> int:
+    valeurs = [0 if c.lstrip().startswith("-") else _tab_montant(c)
+               for c in TAB_CASE.findall(cases)]
+    if colonnes == "dernier":
+        return valeurs[-1]             # « - € » dans la colonne votée : rien de voté
+    if colonnes == "somme":
+        return sum(valeurs)
+    return 0
+
+
+def _tab_exercice(texte: str, ouverture: re.Match, annee_seance: int | None) -> int | None:
+    """L'exercice du tableau : l'année de son TITRE, sinon la mention « exercice »
+    ou « année » la plus proche de l'ouverture, sinon celle de la séance.
+
+    Le relevé prenait la première « année 20xx » des 2 000 premiers caractères
+    de l'acte. À Saillans, le tableau voté le 6 avril 2023 et titré « … AUX
+    ASSOCIATIONS 2023 » était rangé en 2022, à cause d'un « année 2022 » cité
+    plus haut ; celui du 9 avril 2024 en 2023. Une année à plus d'un an de la
+    séance est écartée : un vote de décembre porte sur l'exercice suivant, pas
+    au-delà.
+    """
+    candidats = []
+    m = TAB_ANNEE_TITRE.match(texte, ouverture.end())
+    if m:
+        candidats.append((0, int(m.group(1))))
+    m = re.search(r"\b(20\d{2})\b", ouverture.group(0))
+    if m:
+        candidats.append((0, int(m.group(1))))
+    for m in TAB_EXERCICE.finditer(texte, max(0, ouverture.start() - 700),
+                                   ouverture.end() + 300):
+        ecart = (ouverture.start() - m.end() if m.end() <= ouverture.start()
+                 else m.start() - ouverture.end())
+        candidats.append((max(ecart, 0) + 1, int(m.group(1))))
+    for _, annee in sorted(candidats):
+        if annee_seance is None or abs(annee - annee_seance) <= 1:
+            return annee
+    return annee_seance
+
+
 def _tab_est_nom(ligne: str) -> bool:
+    if TAB_DEPORT.search(ligne):
+        return False
     ligne = _tab_nettoie(ligne)
     if not (3 <= len(ligne) <= 70):
         return False
@@ -437,13 +537,20 @@ def _tab_est_nom(ligne: str) -> bool:
 
 
 def lire_tableau(texte: str) -> list[tuple[str, int]]:
-    """[(nom, montant)] lus dans le tableau d'attribution, s'il y en a un."""
+    """[(nom, montant)] lus dans le premier tableau d'attribution, s'il y en a un."""
     ouverture = TAB_OUVERTURE.search(texte)
-    if not ouverture:
-        return []
+    return _lire_depuis(texte, ouverture) if ouverture else []
+
+
+def _lire_depuis(texte: str, ouverture: re.Match) -> list[tuple[str, int]]:
+    """Le tableau qui suit cette ouverture."""
+    suite = texte[ouverture.start():]
+    premiere = TAB_CASE.search(suite)
+    colonnes = _tab_colonnes(suite[:premiere.start()][:1500] if premiere else "")
     out, en_attente, trou = [], None, 0
-    for brute in texte[ouverture.start():].splitlines()[1:]:
-        L = brute.strip()
+    for brute in suite.splitlines()[1:]:
+        # Les barres d'une grille océrisée ne séparent rien qu'on lise.
+        L = re.sub(r"\s+", " ", brute.replace("|", " ")).strip()
         if not L:
             continue
         if re.match(r"^\s*TOTAL\b", L, re.I) or TAB_SECTION.match(L):
@@ -457,11 +564,36 @@ def lire_tableau(texte: str) -> list[tuple[str, int]]:
             en_attente = None
             continue
 
+        if len(TAB_CASE.findall(L)) >= 2:
+            m = TAB_NOM_CASES.match(L)
+            nom = m.group("nom") if m and _tab_est_nom(m.group("nom")) else None
+            if nom:
+                nom = _tab_nom_complet(en_attente, nom)
+            elif not m:
+                m = TAB_CASES_SEULES.match(L)
+                nom = en_attente if m else None
+            queue = m.group("queue") if m else ""
+            vote_lu = bool(TAB_QUEUE_OK.match(queue)
+                           or (len(queue) <= 40 and TAB_QUEUE_LACHE.search(queue)))
+            montant = _tab_cases(m.group("cases"), colonnes) if m else 0
+            en_attente = None
+            if nom and vote_lu and 0 < montant <= TAB_PLAFOND:
+                out.append((_tab_nettoie(nom), montant))
+                trou = 0
+            else:
+                trou += 1
+                if trou > TAB_MAX_TROU:
+                    break
+            continue
+        if colonnes == "dernier" and TAB_CASE.search(L):
+            en_attente = None           # un montant seul sous trois colonnes : lequel ?
+            continue
+
         m = TAB_NOM_MONTANT.match(L)
         if m and TAB_QUEUE_OK.match(m.group("queue")) and _tab_est_nom(m.group("nom")):
             montant = _tab_montant(m.group("montant"))
             if 0 < montant <= TAB_PLAFOND:
-                out.append((_tab_nettoie(m.group("nom")), montant))
+                out.append((_tab_nettoie(_tab_nom_complet(en_attente, m.group("nom"))), montant))
                 en_attente, trou = None, 0
                 continue
 
@@ -488,31 +620,61 @@ def lire_tableau(texte: str) -> list[tuple[str, int]]:
 
 
 def extract_subventions_tableau(conn):
-    """Même forme que `extract_subventions` — [(year, benef, amount, eid, payeur)]."""
-    out, seen = [], set()
+    """Même forme que `extract_subventions` — [(year, benef, amount, eid, payeur)].
+
+    Un vote figure souvent DEUX fois en base : dans le procès-verbal de la séance
+    et dans le registre des délibérations, océrisés chacun à sa façon. Le même
+    tableau y coupe ses noms autrement — « VELO CLUB LASALLOIS / MONTPELLIER »
+    d'un côté, « LANGUEDOC CYCLISME » de l'autre — et 3 000 € étaient comptés
+    deux fois. Et l'OCR de l'une perd des lignes que l'autre garde : exiger les
+    MÊMES montants laissait passer la copie incomplète. Deux tableaux de la même
+    séance et de la même assemblée dont les deux tiers des NOMS coïncident sont une
+    seule décision : on garde le plus complet. Les noms, pas les montants : la
+    copie océrisée du registre de 2022 lit « VELO CLUB MONT AIGOUAL 450 € » pour
+    4 500 €.
+
+    Un acte peut aussi porter PLUSIEURS ouvertures : le registre de la CC du
+    3 avril 2024 fait 62 000 caractères, et le premier « décide d'accorder »
+    n'y est pas celui du tableau des associations. Chaque ouverture est lue ; le
+    même tableau relu depuis deux ouvertures est une copie comme une autre.
+    """
+    candidats = []
     for r in conn.execute(
         f"SELECT id,date,type,title,source,content FROM events WHERE type IN ({_EN_TYPES}) "
-        "AND content IS NOT NULL AND (content LIKE '%ubvention%' OR title LIKE '%ubvention%')",
+        "AND content IS NOT NULL AND (content LIKE '%ubvention%' OR title LIKE '%ubvention%') "
+        "ORDER BY id",
         TYPES_DELIBERES
     ):
         if TAB_DEMANDE.search(r["title"] or ""):
             continue
-        lignes = lire_tableau(r["content"])
-        if len(lignes) < TAB_MIN_LIGNES:
-            continue
-        # L'exercice voté prime sur la date de séance : un tableau adopté en
-        # décembre peut porter sur l'année suivante.
-        exercice = TAB_EXERCICE.search(r["content"][:2000])
-        year = int(exercice.group(1)) if exercice else (int((r["date"] or "0")[:4]) or None)
-        if not year:
-            continue
         qui = payeur(r["type"], r["source"])
+        seance = int((r["date"] or "0")[:4]) or None
+        for ouverture in TAB_OUVERTURE.finditer(r["content"]):
+            lignes = _lire_depuis(r["content"], ouverture)
+            if len(lignes) < TAB_MIN_LIGNES:
+                continue
+            # L'exercice voté prime sur la date de séance : un tableau adopté en
+            # décembre peut porter sur l'année suivante.
+            year = _tab_exercice(r["content"], ouverture, seance)
+            if year:
+                candidats.append((r["date"], qui, year, r["id"], lignes))
+
+    gardes = []
+    plus_complet = lambda c: (-len(c[4]), -sum(len(n) for n, _ in c[4]), c[3])
+    for date, qui, year, eid, lignes in sorted(candidats, key=plus_complet):
+        noms = {_cle_nom(n) for n, _ in lignes}
+        if not any(d == date and q == qui and 3 * len(noms & p) >= 2 * len(noms)
+                   for d, q, _, _, _, p in gardes):
+            gardes.append((date, qui, year, eid, lignes, noms))
+
+    out, seen = [], set()
+    for _, qui, year, eid, lignes, _ in sorted(gardes, key=lambda g: g[3]):
         for nom, montant in lignes:
-            key = (year, qui, nom.lower())
+            key = (year, qui, _cle_nom(nom))
             if key in seen:
                 continue
             seen.add(key)
-            out.append((year, nom, montant, r["id"], qui))
+            out.append((year, nom, montant, eid, qui))
     return out
 
 
@@ -538,9 +700,9 @@ def run_subventions(commit: bool):
     # (la phrase dans le corps, le tableau en annexe) ; la phrase nomme mieux le
     # bénéficiaire, elle garde donc la main sur la clé commune.
     phrases = extract_subventions(conn)
-    vus = {(y, q, b.lower()) for y, b, a, e, q in phrases}
+    vus = {(y, q, _cle_nom(b)) for y, b, a, e, q in phrases}
     tableaux = [t for t in extract_subventions_tableau(conn)
-                if (t[0], t[4], t[1].lower()) not in vus]
+                if (t[0], t[4], _cle_nom(t[1])) not in vus]
     subs = phrases + tableaux
     print(f"[subventions] {len(subs)} extraites du contenu CR "
           f"({len(phrases)} en phrase, {len(tableaux)} en tableau)\n")
