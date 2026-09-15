@@ -11,6 +11,8 @@ Le schéma normalise les COLONNES, pas le soin apporté aux fichiers. Les cas
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 # Ces deux collecteurs sortent sur le réseau, donc importent `requests`, que le
@@ -21,8 +23,9 @@ import pytest
 pytest.importorskip("requests",
                     reason="job « tests-deps » : pip install -r requirements.txt")
 
-from collectors.subventions_ouvertes import (_annee, _cle, _montant, _valeur,
-                                             index_local)  # noqa: E402
+from collectors.db import beneficiaire_local, beneficiaires_locaux  # noqa: E402
+from collectors.subventions_ouvertes import (_annee, _cle, _montant,  # noqa: E402
+                                             _valeur)
 
 
 # ── Lire un en-tête que cinquante organisations écrivent à leur façon ────────
@@ -72,23 +75,65 @@ def test_sans_date_lisible_lannee_reste_inconnue():
     assert _annee({"dateconvention": "à définir"}) is None
 
 
-# ── Les deux clés de rapprochement, toutes deux des identifiants ─────────────
+# ── Les clés de rapprochement, toutes des identifiants ───────────────────────
 
-def test_lindex_local_porte_les_siren_et_les_identifiants_rna(base, entite):
+def _entreprise(base, entite, nom, siren, siege, locaux):
+    """Une entreprise telle que SIRENE la rend : son siège, et les
+    établissements appariés dans le périmètre."""
+    eid = entite(nom, "business")
+    brut = {"siren": siren, "siege": {"siret": siege},
+            "matching_etablissements": [{"siret": s} for s in locaux]}
+    base.execute("INSERT INTO businesses (entity_id, siren, siret_siege, raw_data)"
+                 " VALUES (?,?,?,?)", (eid, siren, siege, json.dumps(brut)))
+    base.commit()
+    return eid
+
+
+def test_le_siege_dailleurs_ne_verse_rien_a_son_etablissement_dici(base, entite):
+    """Cas réel, Saillans : une coopérative lyonnaise tient un magasin au
+    village. La Métropole de Lyon subventionne son SIÈGE. Croisé sur le SIREN,
+    l'argent atterrissait au village — 20 flux, 19 publiés."""
+    cooperative = _entreprise(base, entite, "COOPERATIVE DE LYON", "790058572",
+                              siege="79005857200047",
+                              locaux=["79005857200237"])
+    index = beneficiaires_locaux(base)
+    assert beneficiaire_local(index, "79005857200047") is None
+    assert beneficiaire_local(index, "790058572") is None
+    assert beneficiaire_local(index, "79005857200237") == cooperative
+
+
+def test_une_personne_morale_dici_recoit_par_tous_ses_guichets(base, entite):
+    """Siège dans le périmètre : c'est elle qui reçoit, même si la convention
+    vise un autre de ses établissements, ou ne donne que le SIREN."""
+    sarl = _entreprise(base, entite, "SARL DU PONT", "812345678",
+                       siege="81234567800012", locaux=["81234567800012"])
+    index = beneficiaires_locaux(base)
+    assert beneficiaire_local(index, "81234567800012") == sarl
+    assert beneficiaire_local(index, "812 345 678 00099") == sarl
+    assert beneficiaire_local(index, "812345678") == sarl
+
+
+def test_une_entreprise_sans_trace_sirene_ne_rattache_rien(base, entite):
+    """Un SIREN sans établissement apparié ne prouve pas une présence ici."""
+    eid = entite("SANS TRACE", "business")
+    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)",
+                 (eid, "812345678"))
+    base.commit()
+    assert beneficiaire_local(beneficiaires_locaux(base), "812345678") is None
+
+
+def test_une_association_se_rapproche_par_son_siren_ou_son_rna(base, entite):
     """Le RNA compte autant que le SIREN : le registre national ne publie un
     SIRET que pour 3 % des associations, et sans cette seconde clé la moitié
-    du tissu associatif reste introuvable dans un registre qui parle de lui."""
+    du tissu associatif reste introuvable dans un registre qui parle de lui.
+    Son siège est d'ici par construction — le RNA la trouve par son adresse."""
     asso = entite("LES AMIS DU LAVOIR", "association")
-    entreprise = entite("SARL DU PONT", "business")
-    base.execute("INSERT INTO associations (entity_id, rna_id) VALUES (?,?)",
-                 (asso, "W301234567"))
-    base.execute("INSERT INTO businesses (entity_id, siren) VALUES (?,?)",
-                 (entreprise, "812345678"))
+    base.execute("INSERT INTO associations (entity_id, siren, rna_id)"
+                 " VALUES (?,?,?)", (asso, "450499447", "W301234567"))
     base.commit()
-
-    sirens, rnas = index_local(base)
-    assert sirens["812345678"] == entreprise
-    assert rnas["W301234567"] == asso
+    index = beneficiaires_locaux(base)
+    assert beneficiaire_local(index, "45049944700018") == asso
+    assert beneficiaire_local(index, "", rna="w301234567") == asso
 
 
 def test_une_association_sans_identifiant_nentre_pas_dans_lindex(base, entite):
@@ -97,6 +142,5 @@ def test_une_association_sans_identifiant_nentre_pas_dans_lindex(base, entite):
     asso = entite("ASSOCIATION SANS PAPIERS", "association")
     base.execute("INSERT INTO associations (entity_id) VALUES (?)", (asso,))
     base.commit()
-    sirens, rnas = index_local(base)
-    assert asso not in sirens.values()
-    assert asso not in rnas.values()
+    index = beneficiaires_locaux(base)
+    assert asso not in {**index["siret"], **index["siren"], **index["rna"]}.values()

@@ -1,6 +1,8 @@
 """Helpers SQLite — connexion, init, upsert."""
-import sqlite3
 import contextlib
+import json
+import re
+import sqlite3
 from .config import DB_PATH, SCHEMA_PATH
 from .nom_normalise import normaliser, rectifier, reparer_encodage
 
@@ -362,3 +364,64 @@ def pivot_ids(conn) -> dict:
         "prefecture": upsert_entity(conn, type="service", name=PREFECTURE_NOM,
                                     confidence="verified"),
     }
+
+
+def beneficiaires_locaux(conn) -> dict[str, dict[str, int]]:
+    """Les identifiants par lesquels de l'argent se rattache au territoire.
+
+    Un SIREN désigne une personne morale, pas sa présence ici. SIRENE rend les
+    ÉTABLISSEMENTS du périmètre — l'agence locale d'un groupe national, le
+    magasin qu'une coopérative d'une autre région tient au village. Croiser un
+    registre de subventions sur les neuf premiers chiffres leur faisait hériter
+    de tout ce que leur siège reçoit ailleurs : 75 flux à Saillans, dont 54
+    factures de la Ville de Lyon à ENEDIS et une subvention de la Région
+    Centre-Val de Loire à EDF pour un barrage de Haute-Loire. Publiés.
+
+    Trois clés, donc :
+      - `siret` : chaque établissement du périmètre, tel que SIRENE l'a apparié ;
+      - `siren` : la personne morale, SEULEMENT si son siège est lui-même un
+                  établissement du périmètre — c'est alors elle qui reçoit, quel
+                  que soit le guichet. Une association y entre d'office : le RNA
+                  la trouve par l'adresse de son siège ;
+      - `rna`   : l'identifiant d'association.
+
+    Une entreprise sans trace SIRENE (`matching_etablissements`) ne rattache
+    rien : rien ne prouve qu'elle soit d'ici.
+    """
+    index: dict[str, dict[str, int]] = {"siret": {}, "siren": {}, "rna": {}}
+    for row in conn.execute(
+        "SELECT entity_id, siren, siret_siege, raw_data FROM businesses"
+    ):
+        try:
+            brut = json.loads(row["raw_data"] or "{}")
+        except ValueError:
+            brut = {}
+        locaux = {str(e.get("siret") or "")
+                  for e in (brut.get("matching_etablissements") or [])} - {""}
+        for siret in locaux:
+            index["siret"].setdefault(siret, row["entity_id"])
+        siege = (brut.get("siege") or {}).get("siret") or row["siret_siege"]
+        if row["siren"] and len(row["siren"]) == 9 and siege in locaux:
+            index["siren"].setdefault(row["siren"], row["entity_id"])
+    for row in conn.execute("SELECT entity_id, siren, rna_id FROM associations"):
+        if row["siren"] and len(row["siren"]) == 9:
+            index["siren"].setdefault(row["siren"], row["entity_id"])
+        if (row["rna_id"] or "").strip():
+            index["rna"].setdefault(row["rna_id"].strip().upper(), row["entity_id"])
+    return index
+
+
+def beneficiaire_local(index: dict, identifiant: str, rna: str = "") -> int | None:
+    """L'entité du périmètre qui reçoit, ou None.
+
+    Un SIRET se rapproche d'abord de l'établissement, puis de la personne morale
+    si son siège est ici. L'établissement d'ailleurs d'une personne morale
+    d'ailleurs ne rattache rien — même si elle a un guichet dans le périmètre.
+    """
+    chiffres = re.sub(r"\D", "", identifiant or "")
+    to_id = index["siret"].get(chiffres) if len(chiffres) == 14 else None
+    if to_id is None and len(chiffres) in (9, 14):
+        to_id = index["siren"].get(chiffres[:9])
+    if to_id is None and (rna or "").strip():
+        to_id = index["rna"].get(rna.strip().upper())
+    return to_id

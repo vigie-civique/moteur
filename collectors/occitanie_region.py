@@ -4,9 +4,11 @@ occitanie_region.py — Subventions de la Région Occitanie aux entités du terr
 Source : data.laregion.fr — dataset subventions-du-conseil-regional
 
 Le bénéficiaire se reconnaît à son SIRET, jamais à son nom. Le jeu porte une
-colonne `idbeneficiaire` : c'est un SIRET, et le moteur connaît déjà le SIREN de
-chaque entreprise et de chaque association de son périmètre. Les deux se
-rejoignent sur les neuf premiers chiffres, sans ambiguïté.
+colonne `idbeneficiaire` : c'est un SIRET, et le moteur connaît déjà les
+établissements et les associations de son périmètre. Le rapprochement se fait
+sur l'ÉTABLISSEMENT, et sur le SIREN seulement quand le siège est d'ici : neuf
+chiffres désignent une personne morale, pas sa présence sur le territoire
+(cf. `db.beneficiaires_locaux`, et les 75 faux flux SCDL de Saillans).
 
 Ce collecteur cherchait auparavant le seul EPCI, et par son NOM amputé de sa
 forme juridique. Mesuré sur Lasalle : 18 lignes trouvées, un seul bénéficiaire.
@@ -34,7 +36,8 @@ import requests
 
 from .archive import archive_fetch
 from .config import DB_PATH, HEADERS   # la base est nommée dans la config
-from .db import pivot_ids, upsert_entity
+from .db import (beneficiaire_local, beneficiaires_locaux, pivot_ids,
+                 upsert_entity)
 
 API_BASE = "https://data.laregion.fr/api/explore/v2.1/catalog/datasets"
 DATASET = "subventions-du-conseil-regional"
@@ -59,23 +62,6 @@ def _telecharger(session: requests.Session) -> list[dict]:
     return list(csv.DictReader(io.StringIO(texte), delimiter=";"))
 
 
-def sirens_locaux(conn) -> dict[str, int]:
-    """{SIREN → entity_id} pour tout ce que la base connaît d'immatriculé.
-
-    Les associations comptent autant que les entreprises : c'est par là que
-    passent les subventions régionales à la vie associative, et une association
-    sans SIREN reste invisible de ce jeu (cf. `rna_enrich`).
-    """
-    index: dict[str, int] = {}
-    for table in ("businesses", "associations"):
-        for row in conn.execute(
-            f"SELECT entity_id, siren FROM {table} "
-            "WHERE siren IS NOT NULL AND length(siren) = 9"
-        ):
-            index.setdefault(row["siren"], row["entity_id"])
-    return index
-
-
 def _montant(valeur: str) -> int | None:
     try:
         return int(round(float((valeur or "").replace(",", "."))))
@@ -89,7 +75,7 @@ def importer(conn, lignes: list[dict], dry_run: bool = False) -> dict:
     region_id = upsert_entity(conn, type="service",
                               name="Conseil régional Occitanie",
                               confidence="verified")
-    index = sirens_locaux(conn)
+    index = beneficiaires_locaux(conn)
     stats = {"lignes": len(lignes), "retenues": 0, "inserees": 0,
              "deja": 0, "hors_perimetre": 0, "sans_siret": 0}
 
@@ -98,7 +84,7 @@ def importer(conn, lignes: list[dict], dry_run: bool = False) -> dict:
         if len(siret) < 9 or not siret[:9].isdigit():
             stats["sans_siret"] += 1
             continue
-        to_id = index.get(siret[:9])
+        to_id = beneficiaire_local(index, siret)
         if to_id is None:
             stats["hors_perimetre"] += 1
             continue
@@ -156,7 +142,7 @@ def run(dry_run: bool = False):
     conn.execute("PRAGMA foreign_keys = ON")
     pivot_ids(conn)          # garantit l'existence des entités structurantes
 
-    print("\n[2] Croisement par SIREN avec le périmètre…")
+    print("\n[2] Croisement par établissement avec le périmètre…")
     stats = importer(conn, lignes, dry_run=dry_run)
 
     if not dry_run:

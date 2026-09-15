@@ -19,6 +19,12 @@ seconde compte autant que la première : le RNA ne publie un SIRET que pour 3 %
 des associations (cf. `rna_enrich`), et sans elle la moitié du tissu associatif
 resterait introuvable dans un registre qui parle pourtant de lui.
 
+Un identifiant de personne morale ne dit pas OÙ elle reçoit. Croisé sur les neuf
+chiffres du SIREN, ce collecteur a versé à Saillans les factures qu'ENEDIS
+adresse à la Ville de Lyon — l'agence de Crest partage le SIREN du groupe. Le
+rapprochement se fait donc sur l'ÉTABLISSEMENT, et le SIREN seul ne vaut que
+pour un siège du périmètre : cf. `db.beneficiaires_locaux`.
+
 ⚠️ Un zéro est ici une RÉPONSE, pas une panne : il dit qu'aucune collectivité
 versant de l'argent sur ce territoire ne respecte l'obligation de publication —
 ou qu'elles en sont toutes exemptées. Le compte rendu distingue les deux.
@@ -39,7 +45,8 @@ import requests
 
 from .archive import archive_fetch
 from .config import DB_PATH, HEADERS
-from .db import pivot_ids, upsert_entity
+from .db import (beneficiaire_local, beneficiaires_locaux, pivot_ids,
+                 upsert_entity)
 
 CATALOGUE = "https://www.data.gouv.fr/api/1/datasets/"
 SCHEMA = "scdl/subventions"
@@ -101,24 +108,6 @@ def jeux_du_schema(session: requests.Session) -> list[dict]:
     return jeux
 
 
-def index_local(conn) -> tuple[dict[str, int], dict[str, int]]:
-    """({SIREN → entity_id}, {identifiant RNA → entity_id}) du périmètre."""
-    sirens: dict[str, int] = {}
-    rnas: dict[str, int] = {}
-    for table in ("businesses", "associations"):
-        for row in conn.execute(
-            f"SELECT entity_id, siren FROM {table} "
-            "WHERE siren IS NOT NULL AND length(siren) = 9"
-        ):
-            sirens.setdefault(row["siren"], row["entity_id"])
-    for row in conn.execute(
-        "SELECT entity_id, rna_id FROM associations "
-        "WHERE rna_id IS NOT NULL AND rna_id <> ''"
-    ):
-        rnas.setdefault(row["rna_id"].strip().upper(), row["entity_id"])
-    return sirens, rnas
-
-
 def _lignes(session: requests.Session, ressource: dict) -> list[dict]:
     if (ressource.get("filesize") or 0) > TAILLE_MAX:
         return []
@@ -140,7 +129,7 @@ def _lignes(session: requests.Session, ressource: dict) -> list[dict]:
 
 
 def collecter(conn, session: requests.Session, dry_run: bool = False) -> dict:
-    sirens, rnas = index_local(conn)
+    index = beneficiaires_locaux(conn)
     pivot_ids(conn)
     stats = {"jeux": 0, "ressources": 0, "lignes": 0, "retenues": 0,
              "inserees": 0, "deja": 0, "illisibles": 0, "attribuants": set()}
@@ -166,11 +155,9 @@ def collecter(conn, session: requests.Session, dry_run: bool = False) -> dict:
             stats["lignes"] += len(lignes)
 
             for ligne in lignes:
-                siret = re.sub(r"\D", "", _valeur(ligne, "idbeneficiaire"))
-                rna = _valeur(ligne, "rnabeneficiaire").upper()
-                to_id = (sirens.get(siret[:9]) if len(siret) >= 9 else None)
-                if to_id is None and rna:
-                    to_id = rnas.get(rna)
+                to_id = beneficiaire_local(index,
+                                           _valeur(ligne, "idbeneficiaire"),
+                                           _valeur(ligne, "rnabeneficiaire"))
                 if to_id is None:
                     continue
                 stats["retenues"] += 1
