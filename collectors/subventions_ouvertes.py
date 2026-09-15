@@ -204,8 +204,9 @@ def collecter(conn, session: requests.Session, dry_run: bool = False) -> dict:
 
                 if conn.execute(
                     "SELECT 1 FROM financial_flows WHERE source='SCDL'"
-                    " AND to_id=? AND year IS ? AND description=? LIMIT 1",
-                    (to_id, annee, description)
+                    " AND to_id=? AND year IS ? AND description=? AND amount IS ?"
+                    " LIMIT 1",
+                    (to_id, annee, description, montant)
                 ).fetchone():
                     stats["deja"] += 1
                     continue
