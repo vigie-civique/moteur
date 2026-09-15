@@ -13,6 +13,11 @@ dont le bénéficiaire appartient au périmètre de l'instance. C'est ce qui le 
 générique : la même requête sert une commune de la Drôme et une du Tarn, et le
 jour où un département se met à publier, il entre sans qu'on touche au code.
 
+Une exception, nommée : des producteurs appliquent le schéma sans le DÉCLARER
+sur data.gouv, et la découverte par le catalogue ne les voit pas. Relevé le
+15/09/2026 : l'ADEME publie ses aides avec exactement ces colonnes et un SIRET
+à 14 chiffres. Ils sont listés dans `JEUX_NON_DECLARES`, par leur slug.
+
 Deux clés de rapprochement, et deux seulement, toutes deux des IDENTIFIANTS :
 `idBeneficiaire` (un SIRET) et `rnaBeneficiaire` (un identifiant RNA). La
 seconde compte autant que la première : le RNA ne publie un SIRET que pour 3 %
@@ -51,6 +56,11 @@ from .db import (beneficiaire_local, beneficiaires_locaux, pivot_ids,
 CATALOGUE = "https://www.data.gouv.fr/api/1/datasets/"
 SCHEMA = "scdl/subventions"
 
+# Jeux au format SCDL qui ne déclarent pas le schéma sur data.gouv (cf. l'en-tête).
+JEUX_NON_DECLARES = (
+    "les-aides-financieres-de-lademe-1",
+)
+
 # Un fichier de conventions de subvention se compte en dizaines de kilooctets.
 # Au-delà, ce n'est plus ce schéma — et une collecte ne doit pas pouvoir se
 # faire aspirer un gigaoctet par une ressource mal étiquetée.
@@ -63,10 +73,12 @@ def _cle(nom: str) -> str:
     Le schéma est normalisé, son application ne l'est pas : un seul jeu porte
     déjà « Montant » et « Montant » avec une espace finale, « nomBeneficiaire »
     et « nomBeneficiere ». On compare donc en minuscules, sans accents, sans
-    espaces — et on accepte les deux orthographes du bénéficiaire.
+    espaces — et on accepte les deux orthographes du bénéficiaire, comme
+    « Nom de l attribuant », la forme de l'ADEME.
     """
     n = re.sub(r"[^a-z0-9]", "", (nom or "").strip().lower())
-    return {"nombeneficiere": "nombeneficiaire"}.get(n, n)
+    return {"nombeneficiere": "nombeneficiaire",
+            "nomdelattribuant": "nomattribuant"}.get(n, n)
 
 
 def _valeur(ligne: dict, *cles: str) -> str:
@@ -86,7 +98,10 @@ def _montant(valeur: str) -> int | None:
 
 
 def _annee(ligne: dict) -> int | None:
-    for champ in ("dateconvention", "dateperiodeversement"):
+    # Le schéma nomme le champ `datesPeriodeVersement`, au pluriel ; le
+    # singulier reste accepté, des producteurs l'écrivent ainsi.
+    for champ in ("dateconvention", "datesperiodeversement",
+                  "dateperiodeversement"):
         m = re.search(r"(?<!\d)(19|20)\d{2}(?!\d)", _valeur(ligne, champ))
         if m:
             return int(m.group(0))
@@ -94,7 +109,8 @@ def _annee(ligne: dict) -> int | None:
 
 
 def jeux_du_schema(session: requests.Session) -> list[dict]:
-    """Tous les jeux data.gouv qui déclarent le schéma des subventions."""
+    """Tous les jeux data.gouv qui déclarent le schéma des subventions — plus
+    ceux qui l'appliquent sans le déclarer (`JEUX_NON_DECLARES`)."""
     jeux, page = [], 1
     while True:
         r = session.get(CATALOGUE, timeout=60,
@@ -105,6 +121,22 @@ def jeux_du_schema(session: requests.Session) -> list[dict]:
         if not charge.get("next_page"):
             break
         page += 1
+
+    connus = {j.get("id") for j in jeux}
+    for slug in JEUX_NON_DECLARES:
+        try:
+            r = session.get(f"{CATALOGUE}{slug}/", timeout=60)
+            r.raise_for_status()
+            jeu = r.json()
+        except (requests.RequestException, ValueError) as e:
+            # Un jeu nommé qui disparaît n'emporte pas les cinquante autres.
+            print(f"    ⚠ jeu nommé introuvable — {slug} ({type(e).__name__})")
+            continue
+        # Le jour où le producteur déclare enfin le schéma, il n'entre pas
+        # deux fois.
+        if jeu.get("id") not in connus:
+            jeux.append(jeu)
+            connus.add(jeu.get("id"))
     return jeux
 
 

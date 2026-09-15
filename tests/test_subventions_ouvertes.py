@@ -20,12 +20,13 @@ import pytest
 # démontrer que le cœur du moteur se teste sans réseau ni collecteur. Ce fichier
 # y est donc SAUTÉ, et joué par le job « tests-deps », qui refuse le moindre
 # test sauté. Même convention que `tests/test_dematdoc.py` pour pdfplumber.
-pytest.importorskip("requests",
+requests = pytest.importorskip("requests",
                     reason="job « tests-deps » : pip install -r requirements.txt")
 
 from collectors.db import beneficiaire_local, beneficiaires_locaux  # noqa: E402
-from collectors.subventions_ouvertes import (_annee, _cle, _montant,  # noqa: E402
-                                             _valeur)
+from collectors.subventions_ouvertes import (JEUX_NON_DECLARES,  # noqa: E402
+                                             _annee, _cle, _montant, _valeur,
+                                             jeux_du_schema)
 
 
 # ── Lire un en-tête que cinquante organisations écrivent à leur façon ────────
@@ -41,6 +42,12 @@ def test_les_deux_orthographes_du_beneficiaire_sont_la_meme_colonne():
     """« nomBeneficiere » est une faute de frappe du producteur, présente en
     production. La traiter comme une colonne inconnue perdait le nom."""
     assert _cle("nomBeneficiere") == _cle("nomBeneficiaire") == "nombeneficiaire"
+
+
+def test_lattribuant_se_reconnait_sous_sa_forme_ademe():
+    """L'ADEME écrit « Nom de l attribuant ». Sans alias, toutes ses aides
+    seraient parties sous le nom générique « Collectivité »."""
+    assert _cle("Nom de l attribuant") == _cle("nomAttribuant") == "nomattribuant"
 
 
 def test_une_colonne_absente_ne_leve_pas():
@@ -67,6 +74,13 @@ def test_lexercice_vient_de_la_date_de_convention():
 
 def test_lexercice_se_replie_sur_la_periode_de_versement():
     assert _annee({"dateconvention": "", "dateperiodeversement": "01/2023"}) == 2023
+
+
+def test_lexercice_se_lit_dans_le_champ_officiel_de_la_periode():
+    """Le schéma nomme le champ `datesPeriodeVersement`, au pluriel : le
+    collecteur ne cherchait que le singulier, et ce repli ne servait jamais."""
+    assert _annee({"dateconvention": "",
+                   "datesperiodeversement": "2022-01-15"}) == 2022
 
 
 def test_sans_date_lisible_lannee_reste_inconnue():
@@ -144,3 +158,50 @@ def test_une_association_sans_identifiant_nentre_pas_dans_lindex(base, entite):
     base.commit()
     index = beneficiaires_locaux(base)
     assert asso not in {**index["siret"], **index["siren"], **index["rna"]}.values()
+
+
+# ── Découvrir les jeux ───────────────────────────────────────────────────────
+
+class _Reponse:
+    def __init__(self, charge):
+        self._charge = charge
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._charge
+
+
+class _Catalogue:
+    """Le catalogue data.gouv, réduit à ce que le collecteur lui demande."""
+
+    def __init__(self, declares, nommes):
+        self.declares, self.nommes = declares, nommes
+
+    def get(self, url, timeout=None, params=None):
+        if params:
+            return _Reponse({"data": self.declares, "next_page": None})
+        slug = url.rstrip("/").rsplit("/", 1)[-1]
+        if slug not in self.nommes:
+            raise requests.HTTPError("404")
+        return _Reponse(self.nommes[slug])
+
+
+def test_un_jeu_qui_applique_le_schema_sans_le_declarer_est_lu():
+    slug = JEUX_NON_DECLARES[0]
+    jeux = jeux_du_schema(_Catalogue([{"id": "declare"}], {slug: {"id": "nomme"}}))
+    assert [j["id"] for j in jeux] == ["declare", "nomme"]
+
+
+def test_un_jeu_nomme_et_declare_nentre_quune_fois():
+    """Le jour où le producteur déclare enfin le schéma, ses aides ne doivent
+    pas entrer deux fois."""
+    slug = JEUX_NON_DECLARES[0]
+    jeux = jeux_du_schema(_Catalogue([{"id": "x"}], {slug: {"id": "x"}}))
+    assert [j["id"] for j in jeux] == ["x"]
+
+
+def test_un_jeu_nomme_disparu_nemporte_pas_les_autres():
+    jeux = jeux_du_schema(_Catalogue([{"id": "declare"}], {}))
+    assert [j["id"] for j in jeux] == ["declare"]
