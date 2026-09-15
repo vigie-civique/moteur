@@ -22,6 +22,26 @@
   // Les titres BODACC finissent par la date de l'annonce, déjà affichée dans sa
   // propre colonne : « … — la commune (2026-08-09) » devient « … — la commune ».
   const titre = (t) => (t || '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')
+
+  // ── Les séances ─────────────────────────────────────────────────────────
+  // « Conseil municipal du 10 septembre 2026 » perd sa date : la colonne de
+  // gauche la porte déjà.
+  const assemblee = (t) => (t || '').replace(/\s+du\s+\d.*$/i, '')
+  const PIECES = {
+    proces_verbal: 'procès-verbal',
+    compte_rendu: 'compte rendu',
+    deliberations: 'registre des délibérations',
+    convocation: 'convocation',
+    ordre_du_jour: 'ordre du jour',
+    annexe: 'annexe',
+    piece: 'pièce',
+  }
+  // ⚖️ Un zéro s'affiche avec sa raison, jamais nu. « 0 délibération » ferait
+  // croire à une séance sans décision, alors qu'il dit que le découpage n'a
+  // rien su lire dans les pièces — ce n'est pas la même information.
+  const compte = (n) =>
+    n > 0 ? `${n} délibération${n > 1 ? 's' : ''}`
+          : 'aucune délibération lue dans les pièces'
   const millions = (n) =>
     n == null ? '—'
     : n >= 1e6 ? `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M€`
@@ -182,7 +202,18 @@
           <!-- `id` désigne l'événement, pas un acteur : pas de lien vers une
                fiche. La seule cible utile est la source d'origine. -->
           <span class="titre">
-            {#if item.url}
+            {#if item.nb_actes != null}
+              <!-- Une séance renvoie vers /deliberations, où ses actes se lisent
+                   un par un ; ses PIÈCES renvoient vers l'archive d'origine. -->
+              <a href="/deliberations">{assemblee(item.titre)}</a>
+              <span class="compte">— {compte(item.nb_actes)}</span>
+              {#if item.pieces?.length}
+                <span class="pieces">
+                  {#each item.pieces as p, i}{#if i}<span class="sep"> · </span>{/if}<a
+                    href={p.url} target="_blank" rel="noopener">{PIECES[p.nature] || 'pièce'}</a>{/each}
+                </span>
+              {/if}
+            {:else if item.url}
               <a href={item.url} target="_blank" rel="noopener">{titre(item.titre)}</a>
             {:else}{titre(item.titre)}{/if}
           </span>
@@ -339,6 +370,11 @@
   .flux time { font-family: var(--data); font-size: .74rem; color: var(--gris-clair);
                font-variant-numeric: tabular-nums; }
   .flux .titre { font-size: .9rem; }
+  /* Le compte d'actes et les pièces sont la MENTION d'une séance, pas son nom :
+     ils suivent le titre sans lui disputer la ligne. */
+  .flux .compte { color: var(--gris); }
+  .flux .pieces { display: block; font-size: .78rem; margin-top: .15rem; }
+  .flux .pieces .sep { color: var(--gris-clair); }
   .genre {
     font-family: var(--data); font-size: .64rem; letter-spacing: .05em; text-transform: uppercase;
     padding: .12rem .42rem; border-radius: 3px; white-space: nowrap; color: var(--gris);

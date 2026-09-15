@@ -47,7 +47,31 @@ export function load() {
   // portée — snapshot d'avant ce champ — reste affiché : mieux vaut une page
   // de garde trop large qu'une page vide après un déploiement décalé.
   const communal = (i) => !i.portee || i.portee === 'commune'
-  const recents = passes.filter((i) => GOUVERNANCE.has(i.genre)).filter(communal).slice(0, 6)
+
+  // ── Une séance n'est pas un acte de plus ────────────────────────────────
+  // Elle est ce qui les rassemble. Trié par date seule, un conseil qui délibère
+  // neuf fois le même jour prenait les SIX places de la page de garde et
+  // pointait neuf fois vers le même PDF. Relevé le 15/09/2026 sur la séance du
+  // 10 septembre : trois lignes « Délibération n° … » faute d'objet lu, une
+  // ligne de tableau prise pour un titre — « COÛT TOTAL PRÉVISIONNEL (HT)
+  // 401 906.00 € » — et la fiche de séance elle-même. Six liens, un document.
+  //
+  // La page de garde annonce donc la SÉANCE, son compte d'actes et les pièces
+  // qui l'attestent. Le détail reste entier sur /deliberations et /nouveautes,
+  // où il se lit acte par acte — c'est le bon endroit pour un titre qu'il faut
+  // encore vérifier, pas la première ligne du site.
+  //
+  // ⚖️ Et une séance dont AUCUN acte n'a pu être lu ne tient pas cette place :
+  // la section s'appelle « ce que la commune vient de décider », or cette
+  // ligne-là ne le dit pas. Elle reste entière sur /deliberations et
+  // /nouveautes — elle n'est pas effacée, elle n'est pas mise en avant.
+  const ACTES_DE_SEANCE = new Set(['deliberation', 'deliberation_cc'])
+  const recents = passes
+    .filter((i) => GOUVERNANCE.has(i.genre))
+    .filter(communal)
+    .filter((i) => !ACTES_DE_SEANCE.has(i.type))
+    .filter((i) => i.nb_actes == null || i.nb_actes > 0)
+    .slice(0, 6)
   const agenda = passes.filter((i) => i.genre === 'vie').filter(communal).slice(0, 4)
   const ailleurs = passes.filter(
     (i) => GOUVERNANCE.has(i.genre) && i.portee === 'intercommunalite').length

@@ -80,6 +80,11 @@ PORTEES = {
 # fevrier 2026 », « conseil municipal du 28 mai 2026 ordre du jour ».
 NATURES_DE_PIECE = (
     (re.compile(r"proc[èe]s.?verbal|\bpv\b", re.I), "proces_verbal"),
+    # Le « compte rendu » est l'ancien nom du procès-verbal — la commune l'écrit
+    # encore, et il rapporte la même chose : la séance. Sans lui, « compte rendu
+    # du conseil du 27 avril 2026 » retombait sur « pièce », et la page de garde
+    # proposait au lecteur d'ouvrir « une pièce ».
+    (re.compile(r"compte.?rendu", re.I), "compte_rendu"),
     (re.compile(r"d[ée]lib[ée]ration", re.I), "deliberations"),
     (re.compile(r"ordre du jour", re.I), "ordre_du_jour"),
     (re.compile(r"convocation", re.I), "convocation"),
@@ -87,8 +92,8 @@ NATURES_DE_PIECE = (
 )
 # Du plus probant au moins probant. Le procès-verbal rapporte la séance
 # entière ; la convocation ne fait que l'annoncer.
-RANG_DE_PIECE = ("proces_verbal", "deliberations", "annexe", "ordre_du_jour",
-                 "convocation", "piece")
+RANG_DE_PIECE = ("proces_verbal", "compte_rendu", "deliberations", "annexe",
+                 "ordre_du_jour", "convocation", "piece")
 
 MOIS_FR = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
            "août", "septembre", "octobre", "novembre", "décembre")

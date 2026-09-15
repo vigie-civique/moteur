@@ -128,3 +128,31 @@ def test_le_titre_de_la_seance_ne_porte_plus_d_iso(base):
     titre = base.execute("SELECT title FROM events WHERE id=?",
                          (seance,)).fetchone()["title"]
     assert titre == "Conseil municipal du 30 juin 2026"
+
+
+def test_un_compte_rendu_est_nomme_pour_ce_quil_est(base):
+    """« compte rendu » est l'ancien nom du procès-verbal, et la commune l'écrit
+    encore. Sans lui, la page de garde proposait d'ouvrir « une pièce »."""
+    seance = conseils.enregistrer_seance(
+        base, _doc("https://x.fr/cr.pdf",
+                   "compte rendu du conseil du 27 avril 2026"), "commune")
+    pieces = json.loads(base.execute("SELECT metadata FROM events WHERE id=?",
+                                     (seance,)).fetchone()["metadata"])["pieces"]
+    assert pieces[0]["nature"] == "compte_rendu"
+
+
+def test_une_piece_que_son_libelle_ne_nomme_pas_reste_une_piece(base):
+    """« conseil municipal 13 avril 2026 » ne dit pas ce qu'est le document.
+    Le deviner serait pire que l'avouer."""
+    assert conseils.nature_de_piece("conseil municipal 13 avril 2026") == "piece"
+
+
+def test_le_proces_verbal_passe_devant_le_compte_rendu(base):
+    for url, libelle in (("https://x.fr/cr.pdf", "compte rendu du conseil"),
+                         ("https://x.fr/pv.pdf", "PV du 30.06.2026")):
+        seance = conseils.enregistrer_seance(base, _doc(url, libelle), "commune")
+    row = base.execute("SELECT source_url, metadata FROM events WHERE id=?",
+                       (seance,)).fetchone()
+    pieces = json.loads(row["metadata"])["pieces"]
+    assert [p["nature"] for p in pieces] == ["proces_verbal", "compte_rendu"]
+    assert row["source_url"] == "https://x.fr/pv.pdf"

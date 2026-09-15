@@ -295,6 +295,10 @@ TYPES_REVUS = {
 # séances (`conseil_municipal`, `conseil_communautaire`) sont des contenants,
 # pas des décisions : les compter doublerait les actes qu'elles portent.
 TYPES_DELIBERES = ("deliberation", "deliberation_cc")
+# L'événement ombrelle d'une séance. Il n'est pas un acte : il ne décide rien,
+# il rassemble ce qui a été décidé ce jour-là, et porte les pièces qui
+# l'attestent — convocation, registre, procès-verbal.
+TYPES_SEANCE = ("conseil_municipal", "conseil_communautaire")
 
 
 # ── Portée d'un acte : la commune, ou l'intercommunalité qui décide pour elle ─
@@ -2132,6 +2136,16 @@ def build_snapshot(out: Path) -> dict:
                 "source": source,
                 "source_url": safe_url(event["source_url"]),
                 "page_url": safe_url(metadata.get("page_url")),
+                # Les pièces d'une séance — registre, procès-verbal, convocation.
+                # Elles n'existent que sur l'ombrelle, et c'est par elles que le
+                # lecteur atteint l'archive : la fiche de séance ne peut pas
+                # renvoyer à un seul document quand la séance en a produit trois.
+                "pieces": [
+                    {"nature": p.get("nature"), "libelle": p.get("libelle"),
+                     "url": safe_url(p.get("url"))}
+                    for p in (metadata.get("pieces") or [])
+                    if safe_url(p.get("url"))
+                ] or None,
                 "pdf_url": safe_url(metadata.get("pdf_url")) or (
                     safe_url(event["source_url"])
                     if ".pdf" in (event["source_url"] or "").lower() else None
@@ -3160,6 +3174,13 @@ def build_snapshot(out: Path) -> dict:
                 "portee": m.get("portee"),
             })
 
+        # Combien d'actes chaque séance rassemble — (date, portée), parce que le
+        # conseil municipal et le conseil communautaire peuvent siéger le même
+        # jour et que leurs actes ne s'additionnent pas.
+        actes_par_seance: Counter = Counter(
+            (e["date"], e.get("portee")) for e in public_events
+            if e["type"] in TYPES_DELIBERES and e.get("date"))
+
         for e in public_events:
             if not e.get("date"):
                 continue
@@ -3181,6 +3202,15 @@ def build_snapshot(out: Path) -> dict:
                 "categorie": e.get("categorie"), "id": e["id"],
                 "portee": e.get("portee"),
                 "corrige": e.get("corrige"), "note_revue": e.get("note_revue"),
+                # Ce qu'une séance rassemble, et par quoi on l'atteint. Compté
+                # ici parce que c'est le seul endroit qui voie tous les actes
+                # publiés à la fois : un décompte pris en base compterait aussi
+                # ceux que la publication écarte, et la page de garde
+                # annoncerait plus d'actes qu'elle n'en donne à lire.
+                **({"nb_actes": actes_par_seance.get(
+                        (e["date"], e.get("portee")), 0),
+                    "pieces": e.get("pieces")}
+                   if e.get("type") in TYPES_SEANCE else {}),
             })
 
         for f in public_flows:
