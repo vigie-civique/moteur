@@ -23,8 +23,14 @@ import json
 
 import pytest
 
-from collectors import conseils
-from collectors.connecteurs.base import DocumentPublie
+# `collectors.conseils` importe pdfplumber, que le job « tests » de la CI
+# n'installe pas. Ce fichier y est donc SAUTÉ, et joué par « tests-deps », qui
+# refuse le moindre test sauté. Même convention que `tests/test_dematdoc.py`.
+pytest.importorskip("pdfplumber",
+                    reason="job « tests-deps » : pip install -r requirements.txt")
+
+from collectors import conseils  # noqa: E402
+from collectors.connecteurs.base import DocumentPublie  # noqa: E402
 
 
 def _doc(url: str, libelle: str, date: str = "2026-06-30") -> DocumentPublie:
