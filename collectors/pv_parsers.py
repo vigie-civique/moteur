@@ -50,6 +50,7 @@ un découpage est une preuve interne au document, jamais une formule d'annonce.
 """
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 
@@ -289,7 +290,43 @@ def _suffixe_de_seance(numeros: list[str]) -> str:
     return ""
 
 
-def _rang_dans_la_seance(numero: str, suffixe: str) -> int | None:
+# Au-delà, ce n'est plus un rang : c'est un millésime resté collé. La séance la
+# plus chargée du corpus de Lasalle en porte 52 — le seuil garde un facteur dix.
+RANG_MAX_PLAUSIBLE = 500
+
+
+def _prefixe_de_seance(numeros: list[str]) -> str:
+    """Les chiffres que TOUS les numéros partagent en TÊTE — l'autre place où
+    une collectivité colle sa marque de séance.
+
+    Lasalle écrit « DEL2606_02 » : l'année 26 et le mois 06 sont en PRÉFIXE, le
+    rang les suit. `_suffixe_de_seance` n'y voit rien à retirer — les fins
+    varient, 02, 03, 06 — si bien que le repli titrait « Délibération
+    n° 260602 » le deuxième acte d'une séance qui en porte quinze.
+
+    🔴 Deux garde-fous, pour ne rien casser là où le numéro se lit déjà. Le
+    préfixe doit être commun à TOUS les numéros, jamais à une majorité : à un
+    tiers près, « 26060 » l'emporterait sur « 2606 », et les actes 12 à 20 de
+    la même séance garderaient leur millésime pendant que les autres le
+    perdraient. Et son retrait doit rendre TOUS les rangs plausibles, sinon il
+    n'est pas retenu : « 53_2024 », dont le millésime est en suffixe, n'est
+    ainsi jamais touché.
+    """
+    chiffres = sorted({"".join(re.findall(r"\d", n)) for n in numeros})
+    chiffres = [c for c in chiffres if len(c) >= 3]
+    if len(chiffres) < 3:
+        return ""
+    if max(int(c) for c in chiffres) <= RANG_MAX_PLAUSIBLE:
+        return ""  # les rangs se lisent déjà : rien à retirer
+    commun = os.path.commonprefix(chiffres)
+    for longueur in range(len(commun), 0, -1):
+        restes = [c[longueur:] for c in chiffres]
+        if all(r and int(r) <= RANG_MAX_PLAUSIBLE for r in restes):
+            return commun[:longueur]
+    return ""
+
+
+def _rang_dans_la_seance(numero: str, suffixe: str, prefixe: str = "") -> int | None:
     """Le rang de l'acte, ou None si le numéro n'en laisse rien lire.
 
     Les chiffres sont RECOLLÉS après retrait du suffixe : l'océrisation sème des
@@ -298,6 +335,8 @@ def _rang_dans_la_seance(numero: str, suffixe: str) -> int | None:
     actes se perdraient dans le bruit à chaque séance.
     """
     c = "".join(re.findall(r"\d", numero))
+    if prefixe and c.startswith(prefixe) and len(c) > len(prefixe):
+        c = c[len(prefixe):]
     if suffixe and c.endswith(suffixe) and len(c) > len(suffixe):
         c = c[:-len(suffixe)]
     return int(c) if c and len(c) <= 6 else None
@@ -386,16 +425,28 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
     marques = list(_REFERENCE_TOLERANTE.finditer(texte))
     if len(marques) < 3:
         return []
-    suffixe = _suffixe_de_seance([m.group(4) for m in marques])
-    lus = [(m, _rang_dans_la_seance(m.group(4), suffixe)) for m in marques]
-    lus = [(m, r) for m, r in lus if r is not None]
+    numeros = [m.group(4) for m in marques]
+    suffixe = _suffixe_de_seance(numeros)
+    # Cherché SEULEMENT quand aucun suffixe ne s'est trouvé : là où le millésime
+    # est en fin, le rang se lit déjà et n'a pas à être retouché.
+    prefixe = _prefixe_de_seance(numeros) if not suffixe else ""
+    # ⚖️ Deux nombres, et il ne faut pas les confondre. `rang` est l'IDENTITÉ de
+    # l'acte — `enregistrer_deliberation` retrouve une délibération par lui, et
+    # par lui seul, sans la date. Le retirer du préfixe ferait de « 260602 » un
+    # n° 2 qui entrerait en collision avec le n° 2 de toutes les autres séances
+    # de l'année : l'acte suivant écraserait le précédent, en silence. `lisible`
+    # est le rang POUR L'ŒIL, celui que le repli affiche quand l'objet manque.
+    lus = [(m, _rang_dans_la_seance(m.group(4), suffixe),
+            _rang_dans_la_seance(m.group(4), suffixe, prefixe))
+           for m in marques]
+    lus = [(m, r, lisible) for m, r, lisible in lus if r is not None]
 
     # Les occurrences successives d'un même rang sont les pages d'un seul acte.
     blocs: list[tuple] = []
-    for m, rang in lus:
+    for m, rang, lisible in lus:
         if not blocs or blocs[-1][1] != rang:
-            blocs.append((m, rang))
-    gardes = _suite_croissante([r for _, r in blocs])
+            blocs.append((m, rang, lisible))
+    gardes = _suite_croissante([r for _, r, _ in blocs])
 
     # 🔴 Un procès-verbal de séance est lui-même télétransmis : il porte UN
     # cachet, parfois deux, et le prendre pour une liasse le réduirait à une
@@ -407,7 +458,7 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
 
     sorties = []
     for i, indice in enumerate(gardes):
-        marque, rang = blocs[indice]
+        marque, rang, lisible = blocs[indice]
         debut = texte.rfind("\n", 0, marque.start()) + 1
         fin = (texte.rfind("\n", 0, blocs[gardes[i + 1]][0].start()) + 1
                if i + 1 < len(gardes) else len(texte))
@@ -418,7 +469,7 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
             "regime": "actes_teletransmis",
             "numero_seance": None,
             "numero_acte": str(rang),
-            "titre": _titre_dacte(corps, rang),
+            "titre": _titre_dacte(corps, lisible if lisible is not None else rang),
             "texte": corps,
         }))
     return sorties

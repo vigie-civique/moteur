@@ -38,8 +38,9 @@ Les extraits gardent la forme et les défauts des documents d'origine.
 """
 from __future__ import annotations
 
-from collectors.pv_parsers import (_actes_teletransmis, _rang_dans_la_seance,
-                                   _suffixe_de_seance, deliberations)
+from collectors.pv_parsers import (_actes_teletransmis, _prefixe_de_seance,
+                                   _rang_dans_la_seance, _suffixe_de_seance,
+                                   deliberations)
 
 # Le cachet tel que l'océrisation le rend sur les liasses de la Communauté de
 # communes Causses Aigoual Cévennes, relevé sur les documents servis.
@@ -217,3 +218,93 @@ def test_un_acte_ne_prend_pas_lobjet_de_son_successeur():
     # L'objet reste dans le TEXTE de l'acte 41 — il n'est pas perdu, seulement
     # pas promu en titre d'un acte qui n'est pas le sien.
     assert "Tarifs des locaux professionnels" in actes[0]["texte"]
+
+
+# ── La marque de séance en PRÉFIXE ───────────────────────────────────────────
+# Lasalle numérote « DEL2606_02 » : l'année et le mois précèdent le rang, au
+# lieu de le suivre. `_suffixe_de_seance` n'y voyait rien à retirer — les fins
+# varient — et le repli titrait « Délibération n° 260602 » le deuxième acte
+# d'une séance qui en porte quinze. Relevé sur la page d'accueil de Lasalle le
+# 15/09/2026, servi tel quel.
+BANDEAU_PREFIXE = ("REPUBLIQUE FRANÇAISE\n"
+                   "DEPARTEMENT : GARD\n"
+                   "ID : 030-213001407-20260630-{numero}-DE\n"
+                   "EXTRAIT DU REGISTRE DES DELIBERATIONS\n")
+
+
+def _page_prefixee(numero: str, objet: str = "") -> str:
+    page = BANDEAU_PREFIXE.format(numero=numero)
+    if objet:
+        page += f"Objet : {objet}\n"
+    return page + "Le Conseil Municipal, après en avoir délibéré, DECIDE :\n"
+
+
+def _liasse_prefixee() -> str:
+    return "\n".join(_page_prefixee(f"DEL2606_{n:02d}")
+                      for n in (2, 3, 6, 7, 9, 12, 16))
+
+
+def test_le_repli_numerote_ne_recopie_plus_la_marque_de_seance():
+    """« Délibération n° 260602 » devient « Délibération n° 2 »."""
+    actes = _actes_teletransmis(_liasse_prefixee())
+    assert [a["titre"] for a in actes] == [
+        "Délibération n° 2", "Délibération n° 3", "Délibération n° 6",
+        "Délibération n° 7", "Délibération n° 9", "Délibération n° 12",
+        "Délibération n° 16"]
+
+
+def test_lidentite_de_lacte_garde_le_numero_entier_du_document():
+    """🔴 Ce que le rang lisible ne doit PAS emporter avec lui.
+
+    `enregistrer_deliberation` retrouve une délibération par `numero_acte`, et
+    par lui seul — sans la date. Réduire « 260602 » à « 2 » ferait entrer cet
+    acte en collision avec le n° 2 de toutes les autres séances de l'année, et
+    le suivant écraserait le précédent sans que rien ne le signale. L'identité
+    reste le numéro que le document porte ; seul l'affichage se lit.
+    """
+    actes = _actes_teletransmis(_liasse_prefixee())
+    assert [a["numero_acte"] for a in actes] == [
+        "260602", "260603", "260606", "260607", "260609", "260612", "260616"]
+
+
+def test_un_objet_declare_lemporte_toujours_sur_le_rang():
+    texte = "\n".join([
+        _page_prefixee("DEL2606_02", "Décision modificative budgétaire"),
+        _page_prefixee("DEL2606_03"),
+        _page_prefixee("DEL2606_06", "Délégations du conseil municipal au maire"),
+    ])
+    actes = _actes_teletransmis(texte)
+    assert [a["titre"] for a in actes] == [
+        "Décision modificative budgétaire", "Délibération n° 3",
+        "Délégations du conseil municipal au maire"]
+
+
+def test_le_prefixe_ne_touche_pas_un_numero_deja_lisible():
+    """Un millésime en SUFFIXE laisse le rang en tête : rien à retirer.
+
+    « 107_2024 » se lit déjà n° 107. Chercher un préfixe commun y trouverait
+    « 1 » et rendrait un n° 07 — c'est pourquoi il n'est cherché QUE si aucun
+    suffixe ne s'est trouvé, et seulement si le rang brut est invraisemblable.
+    """
+    assert _prefixe_de_seance(["107_2024", "108_2024", "109_2024"]) == ""
+    actes = _actes_teletransmis("\n".join([
+        _page("107_2024"), _page("108_2024"), _page("109_2024")]))
+    assert [a["titre"] for a in actes] == [
+        "Délibération n° 107", "Délibération n° 108", "Délibération n° 109"]
+
+
+def test_le_prefixe_se_tait_sur_des_rangs_deja_petits():
+    """Trois actes numérotés 1, 2, 3 n'ont aucun millésime collé."""
+    assert _prefixe_de_seance(["001", "002", "003"]) == ""
+
+
+def test_le_prefixe_doit_etre_commun_a_TOUS_les_numeros():
+    """🔴 Le piège du compte à la majorité.
+
+    Sur « 260602 … 260620 », un préfixe retenu à un tiers des numéros aurait
+    donné « 26060 » — juste pour les actes 2 à 9, faux pour les actes 12 à 20,
+    qui auraient gardé leur millésime pendant que les autres le perdaient.
+    """
+    numeros = [f"DEL2606_{n:02d}" for n in (2, 3, 6, 9, 12, 16, 20)]
+    assert _prefixe_de_seance(numeros) == "2606"
+    assert _rang_dans_la_seance("DEL2606_20", "", "2606") == 20
