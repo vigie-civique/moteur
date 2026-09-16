@@ -197,6 +197,36 @@ def test_publier_retire_ce_qui_ne_doit_plus_sortir(publication, emplacements):
         assert restantes == ["1.json"]
 
 
+def test_un_rebut_seme_par_le_finder_pendant_la_publication_ne_suit_pas_la_copie(
+        publication, emplacements):
+    """16/09/2026 : deux promotions de Lasalle refusées de suite. Le Finder
+    écrivait un `.DS_Store` dans le brouillon, puis dans `public_api` tout juste
+    promu, APRÈS leur contrôle — la copie l'emportait dans la version neuve, et
+    le contrôle de celle-ci la refusait. Le contrôle a raison de refuser ; c'est
+    la copie qui n'a pas à les emporter."""
+    rebuts = (".DS_Store", "._stats.json", "Thumbs.db")
+    snapshot(emplacements["publie"], [1], marque="en ligne")
+    publication.generer_apercu(builder=builder([1, 2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+
+    def controleur_strict_puis_finder(cible):
+        cible = Path(cible)
+        propre = not any(f.name in rebuts for f in cible.rglob("*"))
+        # Le Finder passe juste après le contrôle, dans ce qui sera recopié.
+        for dossier in (cible, cible / "entite"):
+            for nom in rebuts:
+                (dossier / nom).write_bytes(b"\0")
+        return controle(propre)
+
+    publie = publication.publier(auteur="admin@exemple", role="admin",
+                                 controleur=controleur_strict_puis_finder)
+
+    assert publie["stats"]["marque"] == "brouillon"
+    for servi in ("publie", "site"):
+        stats = json.loads((emplacements[servi] / "stats.json").read_text())
+        assert stats["entities_public"] == 2
+
+
 def test_publier_sans_apercu_refuse(publication, emplacements):
     with pytest.raises(publication.PublicationRefusee) as refus:
         publication.publier(auteur="admin@exemple", role="admin")

@@ -34,6 +34,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -91,6 +92,15 @@ VERSIONS = ROOT / "audits" / "versions"
 # C'est la pièce qui distingue « publié » de « en ligne » : sans elle, l'atelier
 # ne peut qu'affirmer avoir publié, jamais constater que c'est arrivé.
 VERSION_SERVIE = "version.json"
+
+# Les rebuts du poste — Finder, AppleDouble, Windows. `verify_snapshot.py` les
+# refuse dans un répertoire publié, et il a raison. Mais le Finder en écrit
+# PENDANT la publication dès qu'une fenêtre montre le dossier de l'instance :
+# le 16/09/2026, deux promotions de Lasalle ont été refusées de suite pour un
+# `.DS_Store` apparu dans la source APRÈS son contrôle, puis emporté par la
+# copie. Le nettoyage de `publier-site.sh` passe avant, pas pendant. Une copie
+# ne les emporte donc jamais ; le contrôle, lui, reste strict.
+REBUT_DU_POSTE = re.compile(r"^(\.DS_Store|\._.*|Thumbs\.db)$", re.I)
 
 # Combien de temps on attend la réponse du site public. Court : cette
 # vérification est un confort d'atelier, pas une raison de bloquer une page.
@@ -605,7 +615,7 @@ def miroir(src: Path, dest: Path) -> dict:
     copies, retires = [], []
     attendus = set()
     for fichier in sorted(src.rglob("*")):
-        if not fichier.is_file():
+        if not fichier.is_file() or REBUT_DU_POSTE.match(fichier.name):
             continue
         rel = fichier.relative_to(src)
         attendus.add(rel)
