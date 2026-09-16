@@ -3,6 +3,7 @@
   import { euros } from '$lib/data.js'
   import { INSTITUTIONAL, instanceDe, libelleAnnee } from '$lib/actes.js'
   import { axesDe } from '$lib/provenance.js'
+  import { onMount } from 'svelte'
 
   // Rendu au build par +page.server.js : les actes du millésime sont déjà
   // dans le HTML.
@@ -10,6 +11,31 @@
   $: ({ annee, items, nCM, nCC, precedente, suivante, annees } = data)
 
   let q = '', instance = 'all'
+
+  // Le texte d'un acte n'est PAS dans le HTML du millésime — plusieurs
+  // centaines de Ko par année, pour un lecteur qui en ouvre un. Il se
+  // télécharge quand on le déplie (`/data/extrait/<id>.json`), une fois.
+  let extraits = {}
+  async function deplier(ev, id) {
+    const etat = extraits[id]?.etat
+    if (!ev.currentTarget.open || etat === 'pret' || etat === 'charge') return
+    extraits = { ...extraits, [id]: { etat: 'charge' } }
+    try {
+      const r = await fetch(`/data/extrait/${id}.json`)
+      if (!r.ok) throw new Error(String(r.status))
+      extraits = { ...extraits, [id]: { etat: 'pret', texte: (await r.json()).texte } }
+    } catch {
+      extraits = { ...extraits, [id]: { etat: 'erreur' } }
+    }
+  }
+
+  // Arriver par le lien d'un acte — « Les décisions qui ont fait débat », la
+  // recherche — l'ouvre d'emblée : c'est lui qu'on venait lire.
+  onMount(() => {
+    const cible = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)))
+    const volet = cible?.querySelector('details.extrait')
+    if (volet) volet.open = true
+  })
 
   const inst = (e) => instanceDe(e)
   $: filtered = items
@@ -93,6 +119,27 @@
             <span class="axe {a.axe} {a.cle}" title={a.long}>{a.court}</span>
           {/each}
         </span>
+
+        {#if e.extrait}
+          <details class="extrait" on:toggle={(ev) => deplier(ev, e.id)}>
+            <summary>Lire la délibération</summary>
+            {#if extraits[e.id]?.etat === 'pret'}
+              <pre>{extraits[e.id].texte}</pre>
+              <p class="lecture">
+                Texte extrait automatiquement du document publié par la collectivité :
+                il peut comporter des erreurs de lecture. La pièce qui fait foi est le
+                document d'origine{#if e.pdf_url || e.source_url}&nbsp;— <a href={e.pdf_url || e.source_url} target="_blank" rel="noopener">l'ouvrir ↗</a>{/if}.
+              </p>
+            {:else if extraits[e.id]?.etat === 'erreur'}
+              <p class="lecture">
+                Le texte n'a pas pu être chargé.
+                {#if e.pdf_url || e.source_url}<a href={e.pdf_url || e.source_url} target="_blank" rel="noopener">Ouvrir le document ↗</a>{/if}
+              </p>
+            {:else}
+              <p class="lecture">Chargement…</p>
+            {/if}
+          </details>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -143,6 +190,19 @@
   .axe.extraction { border-color: #eadfc6; color: var(--ambre); }
   .axe.rectifie   { border-color: var(--ardoise-pale); color: var(--ardoise); }
   @media (max-width: 680px) { .axes { grid-column: 1; } }
+
+  .extrait { grid-column: 3 / -1; margin-top: .3rem; }
+  .extrait summary { font-size: .78rem; color: var(--ardoise); cursor: pointer; width: fit-content; }
+  .extrait pre {
+    white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit;
+    font-size: .8rem; line-height: 1.45; color: var(--encre);
+    max-height: 26rem; overflow-y: auto; margin: .4rem 0 .3rem;
+    padding: .7rem .8rem; background: var(--blanc);
+    border: 1px solid var(--trait); border-radius: 6px;
+  }
+  .extrait .lecture { font-size: .72rem; color: var(--gris); margin: 0; }
+  .extrait .lecture a { color: var(--ardoise); }
+  @media (max-width: 680px) { .extrait { grid-column: 1; } }
   .list li:target { background: var(--ambre-pale); border-radius: 6px; }
   .date { color: var(--gris); font-variant-numeric: tabular-nums; font-size: .82rem; white-space: nowrap; }
   .badge { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; padding: .12rem .5rem; border-radius: 99px; white-space: nowrap; align-self: start; }

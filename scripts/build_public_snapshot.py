@@ -439,6 +439,26 @@ MENTION_PARTICULIER = "un particulier"
 # du mot). Une civilité abrégée s'écrit avec son point.
 _CIVILITES = r"(?:M\.|Mme|Mlle|Melle|Monsieur|Madame|Mademoiselle)"
 
+# Siéger, c'est exercer un mandat. La collecte pose ces rôles sur les séances et
+# sur les actes qu'elles votent, à partir des listes de présents.
+_ROLES_DE_SEANCE = ("présent", "absent")
+_TYPES_DE_SEANCE = ("conseil_municipal", "conseil_communautaire",
+                    "deliberation", "deliberation_cc")
+
+
+def _formes_du_nom(p: dict) -> tuple[list[str], str]:
+    """Les formes complètes d'un nom de personne, et son patronyme nu."""
+    nom_complet = " ".join((p["name"] or "").split())
+    prenom = " ".join((p["firstname"] or "").split())
+    # Le patronyme peut porter un nom d'usage : « AEMMER (HAUSLER) ».
+    patronyme = " ".join((p["lastname"] or "").split())
+    if not patronyme and nom_complet:
+        morceaux = nom_complet.split(" ", 1)
+        patronyme = morceaux[1] if len(morceaux) > 1 else ""
+    formes = [f for f in (nom_complet, f"{prenom} {patronyme}".strip(),
+                          f"{patronyme} {prenom}".strip()) if len(f.split()) >= 2]
+    return formes, patronyme.split("(")[0].strip()
+
 
 def compilateur_redaction(conn, ids_publics: set[int]):
     """Masque les personnes physiques non publiables citées DANS LES TEXTES.
@@ -451,46 +471,88 @@ def compilateur_redaction(conn, ids_publics: set[int]):
     On ne masque que des formes non ambiguës — nom complet, ou civilité + nom
     de famille. Un patronyme seul est trop souvent aussi un toponyme ou un nom
     de société d'ici pour être remplacé sans arbitrage.
-    """
-    prives = [
-        r for r in rows(conn, """
-            SELECT e.id, e.name, p.firstname, p.lastname
-            FROM entities e LEFT JOIN persons p ON p.entity_id = e.id
-            WHERE e.type = 'person'
-        """) if r["id"] not in ids_publics
-    ]
-    motifs: set[str] = set()
-    for p in prives:
-        nom_complet = " ".join((p["name"] or "").split())
-        prenom = " ".join((p["firstname"] or "").split())
-        # Le patronyme peut porter un nom d'usage : « AEMMER (HAUSLER) ».
-        patronyme = " ".join((p["lastname"] or "").split())
-        if not patronyme and nom_complet:
-            morceaux = nom_complet.split(" ", 1)
-            patronyme = morceaux[1] if len(morceaux) > 1 else ""
-        for forme in (nom_complet, f"{prenom} {patronyme}".strip(),
-                      f"{patronyme} {prenom}".strip()):
-            if len(forme.split()) >= 2:
-                motifs.add(re.escape(forme))
-        # Un patronyme précédé d'une civilité ne peut pas être autre chose.
-        premier = patronyme.split("(")[0].strip()
-        if len(premier) >= 3:
-            motifs.add(rf"{_CIVILITES}\s+{re.escape(premier)}")
 
-    if not motifs:
-        return (lambda t: t), Counter()
+    ⚖️ Qui a SIÉGÉ ou tenu un mandat n'est pas un particulier. `ids_publics` ne
+    connaît que les mandats que les règles publient : un titre court n'en
+    souffrait pas, le texte entier d'une délibération si. Relevé sur les
+    extraits de la première commune portée, avant correction — 8 548 « un
+    particulier », dont les conseillers des mandats précédents à chaque prise de
+    parole, un ancien maire « Sous la présidence de Monsieur un particulier », et
+    le maire en exercice dans chaque liste de présents : « Secrétaire de séance :
+    un particulier » partait en ligne.
+
+    ⚖️ `formes_courtes=False` pour un TEXTE long. La forme « civilité +
+    patronyme » a été écrite pour des titres ; dans une liste de présents, au
+    village, un patronyme désigne une famille, pas une personne — « M.
+    PRADEILLES » y est le conseiller, et la base ne connaît que son homonyme
+    dirigeant d'entreprise. Seuls les noms complets y sont masqués.
+    """
+    mandats = sorted(set(POPOLO_ROLES) | set(RULES["people"]["publish_only_with_relation_types"]))
+    siegeants = {r["entity_id"] for r in rows(conn, f"""
+        SELECT ee.entity_id
+        FROM event_entities ee JOIN events ev ON ev.id = ee.event_id
+        WHERE ee.role IN ({",".join("?" * len(_ROLES_DE_SEANCE))})
+          AND ev.type IN ({",".join("?" * len(_TYPES_DE_SEANCE))})
+        UNION
+        SELECT from_id FROM relations
+        WHERE relation_type IN ({",".join("?" * len(mandats))})
+    """, [*_ROLES_DE_SEANCE, *_TYPES_DE_SEANCE, *mandats])}
+    nommables = ids_publics | siegeants
+    personnes = rows(conn, """
+        SELECT e.id, e.name, p.firstname, p.lastname
+        FROM entities e LEFT JOIN persons p ON p.entity_id = e.id
+        WHERE e.type = 'person'
+    """)
+
+    # Ce qu'une forme désigne n'est pas écrit dans la forme : « M. MARCHAL »,
+    # ou « Thierry MARCHAL » quand la base porte deux fiches du même homme, peut
+    # être l'élu autant que son homonyme privé. Une forme partagée avec une
+    # personne nommable est ambiguë, et une personne publique ne se masque pas
+    # sur un doute.
+    formes_nommables, patronymes_nommables = set(), set()
+    for p in personnes:
+        if p["id"] in nommables:
+            formes, premier = _formes_du_nom(p)
+            formes_nommables.update(f.upper() for f in formes)
+            patronymes_nommables.add(premier.upper())
+
+    complets: set[str] = set()
+    courts: set[str] = set()
+    for p in personnes:
+        if p["id"] in nommables:
+            continue
+        formes, premier = _formes_du_nom(p)
+        for forme in formes:
+            if forme.upper() not in formes_nommables:
+                complets.add(re.escape(forme))
+        # Un patronyme précédé d'une civilité désigne une personne — pas
+        # forcément celle-ci, s'il est aussi celui d'un élu. Et pas si un NOM en
+        # capitales le suit : c'est alors un prénom. « M. Thierry SCHWEDA »
+        # devenait « un particulier SCHWEDA » parce qu'un particulier de la
+        # base s'appelle THIERRY — la comparaison ignore la casse, d'où le
+        # `(?-i:…)` qui la rétablit pour ce seul contrôle.
+        if len(premier) >= 3 and premier.upper() not in patronymes_nommables:
+            courts.add(rf"{_CIVILITES}\s+{re.escape(premier)}"
+                       r"(?-i:(?!\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]+\b))")
+
+    if not complets and not courts:
+        return (lambda texte, formes_courtes=True: texte), Counter()
 
     # Les formes longues d'abord : sinon « Prénom NOM » consomme le texte
     # avant que « Prénom NOM (veuve NOM) » ait sa chance.
     # `(?<!\w)` / `(?!\w)` plutôt que `\b` : certains noms d'usage finissent par
     # une parenthèse — « AEMMER (HAUSLER) » — devant laquelle `\b` ne matche pas.
-    motif = re.compile(
-        r"(?<!\w)(?:" + "|".join(sorted(motifs, key=len, reverse=True)) + r")(?!\w)",
-        re.IGNORECASE)
+    def compiler(formes: set[str]):
+        return re.compile(
+            r"(?<!\w)(?:" + "|".join(sorted(formes, key=len, reverse=True)) + r")(?!\w)",
+            re.IGNORECASE) if formes else None
+
+    tous, seuls_complets = compiler(complets | courts), compiler(complets)
     compteur = Counter()
 
-    def redige(texte: str | None) -> str | None:
-        if not texte:
+    def redige(texte: str | None, formes_courtes: bool = True) -> str | None:
+        motif = tous if formes_courtes else seuls_complets
+        if not texte or motif is None:
             return texte
         sortie, n = motif.subn(MENTION_PARTICULIER, texte)
         if n:
@@ -1083,6 +1145,48 @@ def public_entity(
         })
 
     return public, reasons
+
+
+def write_act_extracts(conn, out: Path, public_events, redige) -> int:
+    """Un fichier par délibération publiée : `extrait/<id>.json`, son texte.
+
+    La page d'un millésime ne montrait d'un acte que son titre, et renvoyait au
+    PDF de la séance entière — une liasse de quarante pages où retrouver la
+    sienne. Le texte de chaque délibération est pourtant en base depuis la
+    collecte : le lecteur le déplie désormais sous le titre.
+
+    Un fichier par acte plutôt que le texte dans `events.json` : chaque page de
+    millésime embarque ses actes dans son HTML, et les 578 Ko de texte d'une
+    seule année y seraient partis pour un lecteur qui n'en ouvre qu'un. Même
+    motif que `entite/<id>.json`.
+
+    Le texte passe par `redige()`, comme tout texte publié. Il garde la forme et
+    les fautes de l'extraction : c'est une LECTURE du document, et la page le
+    dit — la pièce qui fait foi reste celle de la collectivité.
+    """
+    ids = [e["id"] for e in public_events if e.get("extrait")]
+    dest = out / "extrait"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # PURGE AVANT ÉCRITURE, pour la raison écrite dans `write_entity_bundles` :
+    # un acte retiré de la publication garderait sinon son texte en ligne.
+    attendus = {f"{i}.json" for i in ids}
+    for f in dest.glob("*.json"):
+        if f.name not in attendus:
+            f.unlink()
+
+    ecrits = 0
+    for lot in range(0, len(ids), 500):
+        morceau = ids[lot:lot + 500]
+        for r in rows(conn, "SELECT id, content FROM events WHERE id IN "
+                            f"({','.join('?' * len(morceau))})", morceau):
+            # Noms complets seulement : cf. `compilateur_redaction`, une forme
+            # courte y désigne une famille autant qu'une personne.
+            write_json_compact(dest / f"{r['id']}.json",
+                               {"id": r["id"],
+                                "texte": redige(r["content"].strip(), formes_courtes=False)})
+            ecrits += 1
+    return ecrits
 
 
 def write_entity_bundles(out: Path, public_entities, public_relations,
@@ -1922,8 +2026,9 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
     README, produisait un snapshot, et se retrouvait avec un site vide sans
     qu'aucune étape n'ait échoué.
 
-    `entite/` est mis en MIROIR, pas seulement copié : une entité retirée de la
-    publication doit voir sa page disparaître, sinon elle reste en ligne.
+    `entite/` et `extrait/` sont mis en MIROIR, pas seulement copiés : une
+    entité ou un acte retiré de la publication doit disparaître du site, sinon
+    il reste en ligne.
     """
     import shutil
 
@@ -1946,17 +2051,21 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
         shutil.copy2(f, dest / "layers" / f.name)
         copied.append(f"layers/{f.name}")
 
-    fiches = {f.name for f in (src / "entite").glob("*.json")}
-    for f in sorted((src / "entite").glob("*.json")):
-        shutil.copy2(f, dest / "entite" / f.name)
-        copied.append(f"entite/{f.name}")
-    retirees = []
-    for f in sorted((dest / "entite").glob("*.json")):
-        if f.name not in fiches:
-            f.unlink()
-            retirees.append(f.name)
+    retirees: dict[str, list[str]] = {}
+    for dossier in ("entite", "extrait"):
+        (dest / dossier).mkdir(parents=True, exist_ok=True)
+        attendus = {f.name for f in (src / dossier).glob("*.json")}
+        for f in sorted((src / dossier).glob("*.json")):
+            shutil.copy2(f, dest / dossier / f.name)
+            copied.append(f"{dossier}/{f.name}")
+        retirees[dossier] = []
+        for f in sorted((dest / dossier).glob("*.json")):
+            if f.name not in attendus:
+                f.unlink()
+                retirees[dossier].append(f.name)
     return {"dest": str(dest), "files": copied, "count": len(copied),
-            "fiches_retirees": retirees}
+            "fiches_retirees": retirees["entite"],
+            "extraits_retires": retirees["extrait"]}
 
 
 # Les indicateurs INSEE publiables — TOUS SAUF `DS_BPE`.
@@ -2182,7 +2291,8 @@ def build_snapshot(out: Path) -> dict:
                                AND mp.confidence NOT IN ('verified','confirmed'))
         """ if "confidence" in colonnes_mp else "")
         event_rows = rows(conn, f"""
-            SELECT id, type, date, title, source, source_url, metadata
+            SELECT id, type, date, title, source, source_url, metadata,
+                   LENGTH(TRIM(COALESCE(content, ''))) AS longueur_texte
             FROM events
             WHERE 1=1 {filtre_actes_marches}
             ORDER BY date DESC, id DESC
@@ -2231,6 +2341,12 @@ def build_snapshot(out: Path) -> dict:
                 "source": source,
                 "source_url": safe_url(event["source_url"]),
                 "page_url": safe_url(metadata.get("page_url")),
+                # Le texte de la délibération se déplie sous son titre ; il est
+                # écrit à part, cf. `write_act_extracts`. Le drapeau dit à la
+                # page qu'il y a quelque chose à déplier.
+                **({"extrait": True}
+                   if event_type in TYPES_DELIBERES and event.get("longueur_texte")
+                   else {}),
                 # Les pièces d'une séance — registre, procès-verbal, convocation.
                 # Elles n'existent que sur l'ombrelle, et c'est par elles que le
                 # lecteur atteint l'archive : la fiche de séance ne peut pas
@@ -3427,6 +3543,7 @@ def build_snapshot(out: Path) -> dict:
         bundles = write_entity_bundles(out, public_entities, public_relations,
                                        public_events, public_links, public_flows,
                                        marches_data)
+        stats["extraits_actes"] = write_act_extracts(conn, out, public_events, redige)
         communes = {r["id"]: r.get("commune") for r in entity_rows}
         liens_count = Counter(l["entity_id"] for l in public_links)
         indexed = write_search_index(out, public_entities, communes, liens_count)
@@ -3562,6 +3679,8 @@ def build_snapshot(out: Path) -> dict:
             "| `stats.json` | Compteurs et paramètres de publication | racine |",
             "| `layers/*.geojson` | Couches cartographiques | FeatureCollection |",
             "| `entite/<id>.json` | Fiche complète d'un acteur | racine |",
+            "| `extrait/<id>.json` | Texte d'une délibération, lu dans le "
+            "document | `texte` |",
             "",
             "Chaque fichier à liste porte aussi un `total`.",
             "",

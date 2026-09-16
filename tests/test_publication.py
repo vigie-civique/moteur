@@ -368,3 +368,100 @@ def test_les_lignes_bpe_fossiles_ne_sont_plus_publiees(bps, tmp_path):
     sortis = [dict(r) for r in conn.execute(bps.INSEE_PUBLIABLES)]
     assert [r["indicateur"] for r in sortis] == ["POP"]
     assert all(r["dataset"] != "DS_BPE" for r in sortis)
+
+
+# ── Le caviardage des textes ──────────────────────────────────────────────────
+# Les extraits publient le TEXTE d'une délibération, pas seulement son titre :
+# le caviardage y rencontre les listes de présents, les prises de parole et les
+# votes — des élus, en exercice ou non.
+
+def _personne(base, entite, prenom: str, nom: str, fiche: str | None = None) -> int:
+    pid = entite(fiche or f"{prenom} {nom}", type_="person")
+    base.execute("INSERT INTO persons (entity_id, firstname, lastname) VALUES (?,?,?)",
+                 (pid, prenom, nom))
+    base.commit()
+    return pid
+
+
+def test_qui_a_siege_nest_pas_caviarde_dans_les_actes(bps, base, entite):
+    """🔴 Un mandat clos reste un mandat.
+
+    `ids_publics` ne connaît que les élus en exercice. Dans les extraits, les
+    conseillers des mandats précédents devenaient « un particulier » à chaque
+    prise de parole — l'un d'eux 1 370 fois sur une seule instance.
+    """
+    ancien = _personne(base, entite, "Patrick", "DURANDAL")
+    seance = base.execute(
+        "INSERT INTO events (type, date, title) VALUES "
+        "('conseil_municipal', '2019-04-10', 'Conseil municipal du 10 avril 2019')").lastrowid
+    base.execute("INSERT INTO event_entities (event_id, entity_id, role) "
+                 "VALUES (?, ?, 'présent')", (seance, ancien))
+    _personne(base, entite, "Jeanne", "VERDIER")
+    base.commit()
+
+    redige, _ = bps.compilateur_redaction(base, set())
+    assert (redige("M. DURANDAL : je propose la subvention à Jeanne VERDIER.")
+            == "M. DURANDAL : je propose la subvention à un particulier.")
+
+
+def test_le_nom_dun_elu_partage_avec_un_particulier_ne_masque_pas_lelu(bps, base, entite):
+    """« Secrétaire de séance : un particulier » partait en ligne.
+
+    Le maire en exercice a des homonymes privés dans la base, et la forme
+    « civilité + patronyme » de l'un d'eux le remplaçait dans chaque liste de
+    présents. Une forme partagée avec un élu est ambiguë : elle n'est pas
+    masquée. Le nom complet du particulier, lui, l'est toujours.
+    """
+    maire = _personne(base, entite, "Thierry", "MARCHAL")
+    _personne(base, entite, "Kevin", "MARCHAL")
+    _personne(base, entite, "Thierry", "MARCHAL", fiche="MARCHAL Thierry")  # seconde fiche
+
+    redige, _ = bps.compilateur_redaction(base, {maire})
+    assert redige("Secrétaire de séance : M. MARCHAL") == "Secrétaire de séance : M. MARCHAL"
+    assert redige("Présents : Thierry MARCHAL, maire") == "Présents : Thierry MARCHAL, maire"
+    assert redige("Gérant : Kevin MARCHAL") == "Gérant : un particulier"
+
+
+def test_un_mandat_tenu_rend_nommable_sans_presence_liee(bps, base, entite):
+    """Un ancien maire présidait la séance : « Sous la présidence de Monsieur un
+    particulier, Maire ». Sa présence n'était liée à aucune séance, mais la base
+    portait son mandat intercommunal."""
+    ancien = _personne(base, entite, "Henri", "DELORME")
+    epci = entite("Communauté de communes de Test", type_="service")
+    base.execute("INSERT INTO relations (from_id, to_id, relation_type) "
+                 "VALUES (?, ?, 'vice_président_cc')", (ancien, epci))
+    base.commit()
+
+    redige, _ = bps.compilateur_redaction(base, set())
+    texte = "Sous la présidence de Monsieur Henri DELORME, Maire"
+    assert redige(texte) == texte
+    assert redige(texte, formes_courtes=False) == texte
+
+
+def test_un_texte_long_ne_masque_que_les_noms_complets(bps, base, entite):
+    """🔴 Au village, un patronyme désigne une famille.
+
+    « Mme PANTEL, M. PRADEILLES » est une liste de conseillers ; la base ne
+    connaît que des homonymes dirigeants d'entreprise. Un extrait n'y masque
+    rien — le nom complet d'un particulier, lui, l'est toujours.
+    """
+    _personne(base, entite, "Eric", "PRADEILLES")
+    _personne(base, entite, "Colette", "PANTEL")
+
+    redige, _ = bps.compilateur_redaction(base, set())
+    presents = "Présents : Mme PANTEL, M. PRADEILLES."
+    assert redige(presents, formes_courtes=False) == presents
+    assert redige("Bail consenti à Eric PRADEILLES.", formes_courtes=False) == \
+        "Bail consenti à un particulier."
+    # Les titres gardent la forme courte : c'est pour eux qu'elle a été écrite.
+    assert redige("Aide façade — M. PRADEILLES") == "Aide façade — un particulier"
+
+
+def test_un_prenom_nest_pas_un_patronyme(bps, base, entite):
+    """« M. Thierry SCHWEDA » devenait « un particulier SCHWEDA » : un particulier
+    de la base s'appelle THIERRY, et la comparaison ignore la casse."""
+    _personne(base, entite, "Yves", "THIERRY")
+
+    redige, _ = bps.compilateur_redaction(base, set())
+    assert redige("DONNE pouvoir à M. Thierry MARCHAL") == "DONNE pouvoir à M. Thierry MARCHAL"
+    assert redige("Aide à M. THIERRY.") == "Aide à un particulier."
