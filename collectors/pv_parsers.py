@@ -220,7 +220,18 @@ _REFERENCE_TOLERANTE = re.compile(
 
 # L'objet de la délibération, tel que la collectivité l'écrit elle-même en tête
 # d'acte. C'est le seul titre qui ne soit pas deviné.
-_OBJET = re.compile(r"^[^\n]{0,12}?Objet\s*[:;]\s*(.+)$", re.M | re.I)
+# « Obiet : » : l'océrisation lit le j comme un i — relevé sur les liasses
+# intercommunales de Lasalle, où l'objet de vingt actes restait sans titre.
+_OBJET = re.compile(r"^[^\n]{0,12}?Ob[jil1í]et\s*[:;]\s*(.+)$", re.M | re.I)
+# La graphie exacte d'abord : l'océrisation double parfois la ligne, en
+# charabia puis lisible — « Obiet : Dénomination desb iné éentanti fPs1e… »,
+# puis « Objet: Dénomination des binomes représentant la COMMUNAUTE… ».
+_OBJET_EXACT = re.compile(r"^[^\n]{0,12}?Objet\s*[:;]\s*(.+)$", re.M | re.I)
+# Un fragment de cachet que l'océrisation a collé dans la ligne de l'objet.
+_CACHET_DANS_UN_TITRE = re.compile(r"(?:\s\d[\d .]*)?\s\S*\d{8}[-_]\S*?-?DE\b")
+# Du charabia : une lettre prise entre deux chiffres, ou l'inverse (« 0i5 »).
+_BANDEAU_SUIVANT = re.compile(r"^[^\w\n]{0,3}\w{0,2}N[°ºoº]\s*\d{1,4}\s*/\s*(?:19|20)\d\d\b", re.M)
+_CHARABIA = re.compile(r"[^\W\d_]\d[^\W\d_]|\d[^\W\d_]\d")
 
 # Ce que l'océrisation dépose en marge d'une ligne, avant le mobilier qu'elle
 # précède : « Æ£ DEPARTEMENT : GARD », « | N°153/2021 », « ER DEPARTEMENT ».
@@ -282,7 +293,7 @@ _MOBILIER_DE_CACHET = re.compile(
 # du bandeau — « N° DEL 2606 09 M. …, M. …, Mme … » (la liste des présents) — et
 # l'exiger seul perdait six objets justes de la séance du 30/06/2026.
 _NUMERO_DE_REGISTRE = re.compile(
-    r"^[^\w\n]{0,3}N[°ºoº][ \t]*(?:DEL|DE)?[ \t]*\d[\d \t._/-]{2,}", re.I | re.M)
+    r"^[^\w\n]{0,3}\w{0,2}N[°ºoº][ \t]*(?:DEL|DE)?[ \t]*\d[\d \t._/-]{2,}", re.I | re.M)
 # Jusqu'où remonter pour le trouver, et pourquoi une borne. Le bandeau tient
 # sur la page qui PRÉCÈDE la décision ; au-delà, le bandeau rencontré est celui
 # d'un acte antérieur, et le titre serait celui du voisin. Mesuré sur les
@@ -456,16 +467,125 @@ def _ligne_dobjet(ligne: str) -> str | None:
     return re.sub(r"\s+", " ", ligne).strip(" :;.-|")[:255]
 
 
-def _objet_declare(texte: str) -> str | None:
-    """La ligne « Objet : … » que la collectivité écrit elle-même."""
+def _objet_declare(texte: str, rang: int | None = None) -> str | None:
+    """La ligne « Objet : … » que la collectivité écrit elle-même.
+
+    Un objet long déborde sur la ligne suivante : « …de la station ⏎
+    touristique de Prat-Peyrot — Plan Avenir Montagnes ». Une ligne qui
+    commence par une minuscule le continue ; « Vu… », « Le Conseil… », non.
+    """
     m = _OBJET.search(texte)
     if not m:
         return None
-    titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
+    # Une variante OCR juste avant la graphie exacte : c'est la même ligne, lue
+    # deux fois. On ne va pas chercher plus loin — la graphie exacte d'un autre
+    # acte, plus bas, n'a rien à dire de celui-ci.
+    if not _OBJET_EXACT.match(texte, m.start()):
+        m = _OBJET_EXACT.search(texte, m.start() + 1, min(len(texte), m.end() + 300)) or m
+    # 🔴 Le numéro prouve l'appartenance : sous un bandeau « N°xx/aaaa » d'un
+    # autre acte, cet objet n'est pas le nôtre — relevé le 16/09/2026, l'acte
+    # n° 59 prenait l'objet écrit sous le bandeau N°58.
+    if rang is not None:
+        bandeaux = list(_BANDEAU_SUIVANT.finditer(texte, 0, m.start()))
+        if bandeaux and int(re.search(r"(\d{1,4})\s*/", bandeaux[-1].group()).group(1)) != rang:
+            return None
+    titre = m.group(1)
+    suite = texte[m.end():].lstrip("\n").split("\n", 1)[0]
+    if (suite[:1].islower() and not titre.rstrip().endswith(".")
+            and _MOT_PORTEUR.search(suite) and not _CHARABIA.search(suite)):
+        titre = f"{titre} {suite}"
+    titre = re.sub(r"\s+", " ", _CACHET_DANS_UN_TITRE.sub(" ", titre)).strip(" :;.-")
     return titre[:255] if len(titre) >= 5 else None
 
 
-def _objet_du_bandeau(amont: str, capitales: bool = True) -> str | None:
+# ── Le dernier recours avant le repli : ce que l'acte DÉCIDE ──────────────────
+# La clause suit la formule de vote dans le bloc même de l'acte — elle lui
+# appartient — et nomme ce qui a été voté : « DECIDE : — de créer un poste
+# permanent d'Agent de crèche ». Seules comptent les clauses qui portent l'objet :
+# « transmettre la présente délibération », « acter le plan ci-dessus » ne disent
+# rien de ce qui a été voté. Le titre est rendu à l'infinitif, et son origine,
+# `clause_decisive`, dit qu'il est LU dans la décision et non écrit en objet.
+# Relevé le 16/09/2026 sur les liasses intercommunales de Lasalle : 53 actes
+# restaient « Délibération n° … ».
+_VERBES_DE_DECISION = {
+    "approuver": ("approuve",), "adopter": ("adopte",), "créer": ("crée", "cree"),
+    "supprimer": ("supprime",), "modifier": ("modifie",), "fixer": ("fixe",),
+    "attribuer": ("attribue",), "octroyer": ("octroie",), "accorder": ("accorde",),
+    "allouer": ("alloue",), "verser": ("verse",), "contracter": ("contracte",),
+    "instituer": ("institue",), "vendre": ("vend",), "céder": ("cède", "cede"),
+    "acquérir": ("acquiert",), "solliciter": ("sollicite",), "demander": ("demande",),
+    "lever": ("lève", "leve"), "voter": ("vote",), "désigner": ("désigne", "designe"),
+    "élire": ("élit", "elit"), "renouveler": ("renouvelle",), "valider": ("valide",),
+    "abroger": ("abroge",), "annuler": ("annule",), "recruter": ("recrute",),
+    "transformer": ("transforme",), "prolonger": ("prolonge",), "reconduire": ("reconduit",),
+    "emprunter": ("emprunte",), "confier": ("confie",), "mettre": ("met",),
+    "dénommer": ("dénomme",), "déclasser": ("déclasse",), "adhérer": ("adhère",),
+}
+_INFINITIF = {forme: inf for inf, formes in _VERBES_DE_DECISION.items()
+              for forme in (inf, inf.replace("é", "e").replace("è", "e"), *formes)}
+_FORMULES_DE_TETE = re.compile(
+    r"^(?:(?:et\s+)?(?:à|a)\s+l['’]unanimit[ée]|avec\s+\d+\s+voix[^,]*|par\s+\d+\s+voix[^,]*"
+    r"|[eo](?=\s)|d[ée]cide|d[ée]lib[èe]re|\d{3}-\d+-\d{8}\S*)[\s,:]*", re.I)
+_FIN_DE_CLAUSE = re.compile(
+    r",\s*(?:[eo]\s+(?=[A-ZÉ])|à\s+l['’]exception|sauf\b)|\s+de\s+la\s+(?:façon|manière)\s*$", re.I)
+_REMPLISSAGE = re.compile(r"\s(?:ci-dessus|ci-après|comme\s+suit|suivant(?:e)?s?)\b", re.I)
+
+
+def _titre_de_la_decision(corps: str, rang: int | None = None) -> str | None:
+    m = _FORMULE_DE_VOTE.search(corps)
+    if not m:
+        return None
+    # 🔴 Ce qui PRÉCÈDE la formule dit à quel acte elle appartient. Une ligne
+    # « Objet : » que la tête n'a pas retenue, ou un bandeau d'un autre numéro,
+    # signent la décision de l'acte suivant — « Ainsi fait et délibéré » ne se lit
+    # pas comme un vote, et le premier « DECIDE » venu était celui du voisin.
+    avant = corps[:m.start()]
+    bandeaux = list(_BANDEAU_SUIVANT.finditer(avant))
+    if _OBJET.search(avant) or (bandeaux and rang is not None and int(
+            re.search(r"(\d{1,4})\s*/", bandeaux[-1].group()).group(1)) != rang):
+        return None
+    zone = corps[m.end():m.end() + 1500]
+    # Jamais au-delà du bandeau de l'acte suivant : sa décision n'est pas la nôtre.
+    borne = min((x.start() for x in (_BANDEAU_SUIVANT.search(zone), _OBJET.search(zone),
+                                     _NUMERO_DE_REGISTRE.search(zone)) if x), default=len(zone))
+    for morceau in re.split(r";|\n\s*[\-—–•◦>‒·]\s*|(?<!\bM)\.\s+|:\s*\n", zone[:borne]):
+        clause = re.sub(r"\s+", " ", morceau).strip(" ,:;-—.")
+        for _ in range(4):
+            clause = _FORMULES_DE_TETE.sub("", clause).strip(" ,:;-—.")
+        clause = re.sub(r"^(?:de\s+|d['’]\s*)", "", clause, flags=re.I)
+        premier, _, reste = clause.partition(" ")
+        infinitif = _INFINITIF.get(premier.lower().strip(",:"))
+        if not infinitif or len(reste.split()) < 2:
+            continue
+        reste = _REMPLISSAGE.sub("", f" {reste}").split(":")[0]
+        # Ce qui suit est une autre clause, ou l'annonce d'un tableau.
+        reste = _FIN_DE_CLAUSE.split(reste, 1)[0].strip(" ,")
+        titre = f"{infinitif[:1].upper()}{infinitif[1:]} {reste}"
+        if len(titre) > 140:
+            titre = titre[:140].rsplit(" ", 1)[0] + "…"
+        if len(titre.split()) >= 3 and not _CHARABIA.search(titre) and _titre_plausible(titre):
+            return titre
+    return None
+
+# Le bandeau des liasses intercommunales porte le numéro de l'acte en clair,
+# « N°137/2021 ». Quand ni la tête du bloc ni l'amont n'ont rendu d'objet —
+# cachet de tête illisible, vote entre le bandeau et la coupure —, ce numéro,
+# identique au rang et à l'année de l'acte, prouve l'appartenance mieux que
+# toute position : une citation prouve la présence, un numéro l'identité.
+_BANDEAU_NUMEROTE = r"^[^\w\n]{{0,3}}\w{{0,2}}N[°ºoº]\s*{rang}\s*/\s*{annee}\b"
+
+
+def _objet_par_numero(texte: str, rang: int, annee: str) -> str | None:
+    """L'objet écrit sous le bandeau qui porte le numéro de CET acte."""
+    for m in re.finditer(_BANDEAU_NUMEROTE.format(rang=rang, annee=annee), texte, re.M):
+        suivant = _BANDEAU_SUIVANT.search(texte, m.end())
+        objet = _objet_declare(texte[m.end():suivant.start() if suivant else m.end() + 6000])
+        if objet:
+            return objet
+    return None
+
+
+def _objet_du_bandeau(amont: str, capitales: bool = True, rang: int | None = None) -> str | None:
     """L'objet de l'acte, resté dans le bloc PRÉCÉDENT.
 
     Le régime coupe sur le cachet de télétransmission, et ce cachet est imprimé
@@ -496,6 +616,10 @@ def _objet_du_bandeau(amont: str, capitales: bool = True) -> str | None:
     # déjà tamponné, un vote un acte déjà DÉCIDÉ — le bandeau est alors celui
     # d'un acte d'avant, dont le titre serait cité fidèlement, et faux. Sans ce
     # garde, un acte sans bandeau héritait de l'objet de son prédécesseur.
+    # L'ancre elle-même peut porter le numéro d'un AUTRE acte (« N°58/2024 »).
+    numero = re.search(r"(\d{1,4})\s*/\s*(?:19|20)\d\d\b", dernier.group())
+    if rang is not None and numero and int(numero.group(1)) != rang:
+        return None
     suite = fenetre[dernier.end():]
     if _REFERENCE_TOLERANTE.search(suite) or _FORMULE_DE_VOTE.search(suite):
         return None
@@ -503,7 +627,7 @@ def _objet_du_bandeau(amont: str, capitales: bool = True) -> str | None:
     # liste des présents — « Objet : Pôle nature 4 saisons… », vingt lignes
     # sous le numéro et en minuscules : la ligne capitale ne le voyait pas, et
     # le n° 35 du 03/03/2021 portait le titre d'un autre acte.
-    objet = _objet_declare(suite)
+    objet = _objet_declare(suite, rang)
     if objet or not capitales:
         return objet
     for ligne in suite.splitlines()[:LIGNES_APRES_LE_NUMERO]:
@@ -540,7 +664,7 @@ def _titre_dacte(corps: str, rang: int, amont: str = "",
     coupe = _FORMULE_DE_VOTE.search(corps)
     tete = corps[:coupe.start()] if coupe else corps
 
-    objet = _objet_declare(tete)
+    objet = _objet_declare(tete, rang)
     if objet:
         return objet, "objet_declare"
 
@@ -549,7 +673,7 @@ def _titre_dacte(corps: str, rang: int, amont: str = "",
     # leur plan de financement, « COÛT TOTAL PRÉVISIONNEL (HT) 401 906.00 € ».
     # Un acte qui porte son bandeau dans son propre corps n'en trouve pas en
     # amont : le vote de l'acte précédent l'en sépare.
-    objet = _objet_du_bandeau(amont, capitales)
+    objet = _objet_du_bandeau(amont, capitales, rang)
     if objet:
         return objet, "objet_registre"
 
@@ -612,6 +736,13 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
         # lui pour le porter.
         titre, origine = _titre_dacte(
             corps, lisible if lisible is not None else rang, texte[:debut], capitales)
+        if origine == "repli_numerote":
+            objet = _objet_par_numero(texte, lisible if lisible is not None else rang,
+                                      marque.group(3)[:4])
+            if objet:
+                titre, origine = objet, "objet_registre"
+            elif (decision := _titre_de_la_decision(corps, lisible if lisible is not None else rang)):
+                titre, origine = decision, "clause_decisive"
         sorties.append(_enrichir({
             "regime": "actes_teletransmis",
             "numero_seance": None,

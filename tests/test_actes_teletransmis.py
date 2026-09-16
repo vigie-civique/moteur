@@ -492,3 +492,56 @@ def test_une_liasse_qui_ecrit_objet_ne_prend_pas_une_ligne_capitale_pour_titre()
                                                               "Le Conseil, après en avoir délibéré,\n")
                                        for n in (41, 42, 43)))
     assert sans[1]["titre"] == "TARIFS DE LA CANTINE 42"
+
+
+def test_le_numero_du_bandeau_prouve_lappartenance():
+    """« IN°42/2024 » puis « Obiet : … » sur deux lignes, et le vote entre le
+    bandeau et la coupure : la position ne prouve rien, le numéro si."""
+    bandeau = ("IN°42/2024\n"
+               "DEPARTEMENT : GARD\n"
+               "Obiet : Demande de subventions pour la remise aux normes de la station\n"
+               "touristique de Prat-Peyrot\n"
+               "Vu le plan Avenir montagnes,\n"
+               "Le Conseil communautaire, après en avoir délibéré, DECIDE\n")
+    texte = (_page("41_2024", "Tarifs de la déchèterie") + bandeau
+             + _page("42_2024", corps="Le Président,\n") + _page("43_2024", "Rapport annuel"))
+    actes = _actes_teletransmis(texte)
+    assert actes[1]["titre"] == ("Demande de subventions pour la remise aux normes de la station "
+                                 "touristique de Prat-Peyrot")
+    assert actes[1]["titre_origine"] == "objet_registre"
+    assert actes[0]["titre"] == "Tarifs de la déchèterie"
+
+
+def test_sans_objet_lisible_le_titre_se_lit_dans_la_decision():
+    """« Délibération n° 96 » devient « Créer un poste permanent d'Agent de crèche » :
+    la clause suit le vote dans le bloc même de l'acte. Une clause de procédure
+    ne nomme rien, et la décision de l'acte suivant n'est jamais lue."""
+    from collectors.pv_parsers import _titre_de_la_decision
+    assert (_titre_de_la_decision(
+        "Le Conseil communautaire, après en avoir délibéré et à l’unanimité, DECIDE :\n"
+        "- de créer un poste permanent d’Agent de crèche,\n- à compter du 22 juin 2021,")
+        == "Créer un poste permanent d’Agent de crèche")
+    assert (_titre_de_la_decision("après en avoir délibéré, à l'unanimité, APPROUVE le procès-verbal "
+                                  "du Conseil communautaire du 25 octobre 2023.")
+            == "Approuver le procès-verbal du Conseil communautaire du 25 octobre 2023")
+    assert (_titre_de_la_decision("DECIDE d'octroyer les subventions ci-dessus pour l'exercice 2025")
+            == "Octroyer les subventions pour l'exercice 2025")
+    # De la procédure seulement : rien.
+    assert _titre_de_la_decision("après en avoir délibéré, DECIDE de transmettre la présente "
+                                 "délibération aux services préfectoraux ; d'acter le plan ci-dessus") is None
+    # La décision du voisin, derrière son bandeau : jamais.
+    assert _titre_de_la_decision("Ainsi fait et délibéré.\nN°44/2024\nObjet : Tarifs\n"
+                                 "DECIDE de fixer les tarifs") is None
+
+
+def test_la_clause_de_decision_perd_ses_scories():
+    from collectors.pv_parsers import _titre_de_la_decision
+    assert (_titre_de_la_decision("après en avoir délibéré, e DÉCIDE d'adopter la proposition de "
+                                  "convention, e AUTORISE le Président à signer")
+            == "Adopter la proposition de convention")
+    assert (_titre_de_la_decision("DECIDE de fixer comme suit les durées d'amortissement des "
+                                  "immobilisations, à l'exception : des frais d'études")
+            == "Fixer les durées d'amortissement des immobilisations")
+    assert (_titre_de_la_decision("DECIDE de modifier le budget 2023 « Budget Principal » de la façon "
+                                  "suivante :\nChapitre 011")
+            == "Modifier le budget 2023 « Budget Principal »")
