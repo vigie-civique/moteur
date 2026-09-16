@@ -493,8 +493,12 @@ def _voisins(dest: Path) -> tuple[Path, Path]:
     """La version en construction et la version d'avant d'un emplacement servi.
 
     Dans `VERSIONS`, jamais à côté de `dest` : cf. la définition de `VERSIONS`.
+    Le nom porte une empreinte du chemin : deux emplacements servis qui
+    s'appelleraient pareil (`outputs.public_snapshot_dir` est réglable)
+    s'écraseraient sinon leur retour arrière.
     """
-    return VERSIONS / f"{dest.name}.neuf", VERSIONS / f"{dest.name}.precedent"
+    cle = f"{dest.name}-{hashlib.sha256(str(Path(dest).resolve()).encode()).hexdigest()[:8]}"
+    return VERSIONS / f"{cle}.neuf", VERSIONS / f"{cle}.precedent"
 
 
 def basculer(src: Path, dest: Path, controleur) -> dict:
@@ -546,6 +550,9 @@ def basculer(src: Path, dest: Path, controleur) -> dict:
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     _vider(precedent)
+    # Sur une instance neuve, le parent du répertoire servi n'existe pas
+    # encore : la version neuve, construite à côté, le créait par accident.
+    dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
         dest.rename(precedent)
     try:
@@ -575,7 +582,7 @@ def revenir_a_la_version_precedente(dest: Path) -> dict:
         raise PublicationRefusee(
             f"Aucune version précédente conservée pour {dest.name} — "
             "rien à remettre en service.")
-    courant = VERSIONS / f"{dest.name}.repris"
+    courant = precedent.with_suffix(".repris")
     _vider(courant)
     if dest.exists():
         dest.rename(courant)

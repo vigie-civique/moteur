@@ -58,8 +58,10 @@ if [ "$DEPLOYER" -eq 1 ]; then
     echo "  se téléverse tel quel chez n'importe quel hébergeur statique." >&2
     exit 1
   }
-  eval "$declaration"
+  # Le libellé AVANT l'`eval` : après, les variables exportées font dire à la
+  # déclaration qu'elle vient de l'environnement.
   echo "→ destination : $("$PY" "$PUBLICATION" destination)"
+  eval "$declaration"
 fi
 
 if [ "$DEPLOYER" -eq 1 ] && [ "$VIGIE_CIBLE" = "cloudflare" ]; then

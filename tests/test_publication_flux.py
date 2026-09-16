@@ -594,6 +594,21 @@ def test_aucune_version_de_travail_ne_vit_la_ou_le_build_recopie(
         "le retour arrière doit toujours exister — ailleurs"
 
 
+def test_une_premiere_publication_cree_ce_qui_manque(publication, emplacements,
+                                                   tmp_path, monkeypatch):
+    """Une instance neuve n'a ni `dashboard/static/` ni `public/static/` : la
+    version neuve, construite à côté, créait le parent par accident. Construite
+    ailleurs, elle ne le crée plus — trouvé au premier essai réel, le 16/09."""
+    for nom in ("PUBLIE", "SITE"):
+        vierge = tmp_path / "instance-neuve" / nom.lower() / "servi"
+        monkeypatch.setattr(publication, nom, vierge)
+    publication.generer_apercu(builder=builder([1]),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+    assert (publication.SITE / "version.json").is_file()
+
+
 def test_la_version_precedente_est_conservee_et_peut_reprendre_du_service(
         publication, emplacements):
     """Un contrôle vert ne dit pas qu'une version est BONNE : il dit qu'elle est
