@@ -460,6 +460,36 @@ def _formes_du_nom(p: dict) -> tuple[list[str], str]:
     return formes, patronyme.split("(")[0].strip()
 
 
+def _ids_nommables(conn, ids_publics: set[int]) -> set[int]:
+    """Les personnes publiques : publiées en fiche, ou qui ont SIÉGÉ ou tenu un
+    mandat — un mandat clos reste un mandat."""
+    mandats = sorted(set(POPOLO_ROLES) | set(RULES["people"]["publish_only_with_relation_types"]))
+    return ids_publics | {r["entity_id"] for r in rows(conn, f"""
+        SELECT ee.entity_id
+        FROM event_entities ee JOIN events ev ON ev.id = ee.event_id
+        WHERE ee.role IN ({",".join("?" * len(_ROLES_DE_SEANCE))})
+          AND ev.type IN ({",".join("?" * len(_TYPES_DE_SEANCE))})
+        UNION
+        SELECT from_id FROM relations
+        WHERE relation_type IN ({",".join("?" * len(mandats))})
+    """, [*_ROLES_DE_SEANCE, *_TYPES_DE_SEANCE, *mandats])}
+
+
+def _personnes(conn) -> list[dict]:
+    return rows(conn, """
+        SELECT e.id, e.name, p.firstname, p.lastname
+        FROM entities e LEFT JOIN persons p ON p.entity_id = e.id
+        WHERE e.type = 'person'
+    """)
+
+
+def noms_des_personnes_publiques(conn, ids_publics: set[int]) -> set[str]:
+    """Les formes complètes, en capitales, du nom de chaque personne publique."""
+    nommables = _ids_nommables(conn, ids_publics)
+    return {f.upper() for p in _personnes(conn) if p["id"] in nommables
+            for f in _formes_du_nom(p)[0]}
+
+
 def compilateur_redaction(conn, ids_publics: set[int]):
     """Masque les personnes physiques non publiables citées DANS LES TEXTES.
 
@@ -481,28 +511,12 @@ def compilateur_redaction(conn, ids_publics: set[int]):
     le maire en exercice dans chaque liste de présents : « Secrétaire de séance :
     un particulier » partait en ligne.
 
-    ⚖️ `formes_courtes=False` pour un TEXTE long. La forme « civilité +
-    patronyme » a été écrite pour des titres ; dans une liste de présents, au
-    village, un patronyme désigne une famille, pas une personne — « M.
-    PRADEILLES » y est le conseiller, et la base ne connaît que son homonyme
-    dirigeant d'entreprise. Seuls les noms complets y sont masqués.
+    ⚖️ Les DÉLIBÉRATIONS ne passent plus par ici (arbitré par Julien le 16/09) :
+    un particulier cité dans un acte officiel est cité. Cf. `texte_publiable`,
+    qui en masque le domicile et la naissance, jamais le nom.
     """
-    mandats = sorted(set(POPOLO_ROLES) | set(RULES["people"]["publish_only_with_relation_types"]))
-    siegeants = {r["entity_id"] for r in rows(conn, f"""
-        SELECT ee.entity_id
-        FROM event_entities ee JOIN events ev ON ev.id = ee.event_id
-        WHERE ee.role IN ({",".join("?" * len(_ROLES_DE_SEANCE))})
-          AND ev.type IN ({",".join("?" * len(_TYPES_DE_SEANCE))})
-        UNION
-        SELECT from_id FROM relations
-        WHERE relation_type IN ({",".join("?" * len(mandats))})
-    """, [*_ROLES_DE_SEANCE, *_TYPES_DE_SEANCE, *mandats])}
-    nommables = ids_publics | siegeants
-    personnes = rows(conn, """
-        SELECT e.id, e.name, p.firstname, p.lastname
-        FROM entities e LEFT JOIN persons p ON p.entity_id = e.id
-        WHERE e.type = 'person'
-    """)
+    nommables = _ids_nommables(conn, ids_publics)
+    personnes = _personnes(conn)
 
     # Ce qu'une forme désigne n'est pas écrit dans la forme : « M. MARCHAL »,
     # ou « Thierry MARCHAL » quand la base porte deux fiches du même homme, peut
@@ -536,23 +550,19 @@ def compilateur_redaction(conn, ids_publics: set[int]):
                        r"(?-i:(?!\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’\-]+\b))")
 
     if not complets and not courts:
-        return (lambda texte, formes_courtes=True: texte), Counter()
+        return (lambda texte: texte), Counter()
 
     # Les formes longues d'abord : sinon « Prénom NOM » consomme le texte
     # avant que « Prénom NOM (veuve NOM) » ait sa chance.
     # `(?<!\w)` / `(?!\w)` plutôt que `\b` : certains noms d'usage finissent par
     # une parenthèse — « AEMMER (HAUSLER) » — devant laquelle `\b` ne matche pas.
-    def compiler(formes: set[str]):
-        return re.compile(
-            r"(?<!\w)(?:" + "|".join(sorted(formes, key=len, reverse=True)) + r")(?!\w)",
-            re.IGNORECASE) if formes else None
-
-    tous, seuls_complets = compiler(complets | courts), compiler(complets)
+    motif = re.compile(
+        r"(?<!\w)(?:" + "|".join(sorted(complets | courts, key=len, reverse=True)) + r")(?!\w)",
+        re.IGNORECASE)
     compteur = Counter()
 
-    def redige(texte: str | None, formes_courtes: bool = True) -> str | None:
-        motif = tous if formes_courtes else seuls_complets
-        if not texte or motif is None:
+    def redige(texte: str | None) -> str | None:
+        if not texte:
             return texte
         sortie, n = motif.subn(MENTION_PARTICULIER, texte)
         if n:
@@ -1147,49 +1157,166 @@ def public_entity(
     return public, reasons
 
 
-# Ce qu'un extrait de délibération ne publie PAS, même caviardé. Nommer dans un
-# acte est légitime (arbitré le 15/09) ; une date de naissance, un domicile, un
-# courriel nominatif ne le sont pas — c'est la liste « jamais publié » du
-# dictionnaire de données. Relevé le 16/09 sur les extraits des trois
-# instances, avant ce filtre : des tableaux de conseillers « Date de naissance
-# Adresse CP Ville », « né le jj/mm/aaaa » d'un délégué avec son courriel,
-# « demeurant au 4 Grande Rue », « domiciliée 3, rue du Moulin ».
+# ⚖️ Ce qu'une délibération publie, arbitré par Julien le 16/09/2026 : un
+# particulier cité dans un acte officiel est CITÉ — titres et textes des
+# délibérations ne passent plus par `redige()`. Ce qui ne sort pas, c'est ce qui
+# situe ou date une personne : son domicile, sa date et son lieu de naissance.
+# L'âge d'une personne publique n'est pas interdit et a du sens : la date de
+# naissance d'un élu devient son âge à la date de l'acte.
 #
-# Le remède est de ne pas publier l'EXTRAIT : l'acte, son titre et le lien vers
-# la pièce restent. Masquer ligne à ligne dans un tableau océrisé promettrait
-# une précision que ces textes n'ont pas.
+# Ces données sont MASQUÉES dans le texte, qui reste publié. Formes relevées le
+# 16/09 sur les trois instances : « Philippe BERNA né le 05/03/1961 ; » (un
+# délégué), « née le 12 octobre 1985 est nommée », « né le 01/10/1970 à
+# Castres », « demeurant au 52 Grande Rue à Saillans », « domiciliée 6, rue ⏎ du
+# Moulin », « domicilié 5, ⏎ chemin de Combessege à Brassac », « résidant à
+# l'adresse « … – 8 Impasse … » à Bruges (33 520) », « M. et Mme X domiciliés à
+# Croix de Castres », et le tableau du conseil « Date de naissance Adresse CP
+# Ville » que l'océrisation mêle sur plusieurs lignes. Un courriel nominatif
+# (prénom.nom@) est masqué au titre des coordonnées des personnes.
 #
-# Élargi après un second relevé, les trois cas attrapés sans un refus de trop :
-# « née le 12 octobre 1985 » (mois en lettres) ; un tableau du conseil dont
-# l'OCR a perdu les dates mais gardé le lieu de naissance et le DOMICILE de
-# chaque élu, reconnu à l'en-tête suivi d'un code postal ; « M. et Mme X
-# domiciliés à <lieu-dit> » — sans civilité, « l'association domiciliée à
-# Viane » reste publiable. Un portable n'est PAS un motif : sur Lasalle il est
-# celui d'un tiers-lieu, dans quatre actes sur cinq.
-_MOIS = r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)"
-_DONNEE_PERSONNELLE_DANS_UN_ACTE = re.compile(
-    r"\bn[ée]e?\s+le\s+\d{1,2}\s*[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{2,4}"
-    rf"|\bn[ée]e?\s+le\s+\d{{1,2}}(?:er)?\s+{_MOIS}\s+\d{{4}}"
-    r"|date\s+de\s+naissance[\s\S]{0,400}?"
-    r"(?:\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}|(?<!\d)\d{5}(?!\d))"
-    r"|\b(?:domicili[ée]e?s?|demeurant)\s*(?:au|à|:)?\s*\d{1,4}\b"
-    r"|(?:\bM\.|\bMM\.|\bMmes?\b|\bMonsieur\b|\bMadame\b)[^\n]{0,60}?"
-    r"\b(?:domicili[ée]e?s?|demeurant)\s+(?:à|au|aux|en)\s+(?-i:[A-ZÀ-Ÿ])"
-    # Un courriel NOMINATIF, prénom.nom@ ; « contact@ », « mairie@ » passent.
-    r"|\b[a-z]{2,}[.\-_][a-z]{2,}@[a-z0-9\-]+(?:\.[a-z0-9\-]+)+\b",
-    re.I)
+# 🔴 Le filet : ce que ces règles n'ont pas su masquer est cherché une seconde
+# fois, et l'EXTRAIT n'est alors pas publié — l'acte, son titre et le lien vers
+# la pièce restent.
+_MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
+         "aout", "septembre", "octobre", "novembre", "decembre")
+_MOIS_RE = r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)"
+_DATE_COMPLETE = (r"(?:\d{1,2}\s*[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{4}"
+                  rf"|\d{{1,2}}(?:er)?\s+{_MOIS_RE}\s+\d{{4}})")
+# Une commune, un lieu-dit : des mots à majuscule reliés par les petits mots d'un
+# toponyme. `(?-i:…)` : sous IGNORECASE, « à la maison de retraite » serait un lieu.
+_MAJ, _MIN = "A-ZÀ-ÖØ-ÞŒŠŽŸ", "a-zß-öø-ÿœšž"
+# Suite d'un toponyme : en casse de titre seulement — « à Castres PRÉCISE » ne
+# doit pas emporter le verbe qui suit, écrit en capitales.
+_LIEU = (rf"(?-i:[{_MAJ}])[\w'’\-]+"
+         rf"(?:[ \-](?:sur|sous|en|de|du|des|la|le|les|lès|(?-i:[{_MAJ}][{_MIN}'’\-]+)))*"
+         r"(?:\s*\(\s*\d[\d\s]*\))?")
+_NAISSANCE = re.compile(
+    rf"\b(?P<est>est\s+)?n(?P<genre>[ée]e?)\s+le\s+(?P<date>{_DATE_COMPLETE})"
+    rf"(?P<lieu>\s+à\s+{_LIEU})?", re.I)
+_VOIE = (r"(?:grande\s+rue|rue|chemin|all[ée]e|impasse|route|rte|avenue|place|"
+         r"boulevard|quai|lotissement|mont[ée]e|traverse|passage|hameau|"
+         r"quartier|domaine|r[ée]sidence)")
+_ADRESSE_NUMEROTEE = (r"\s*(?:au|à|:)?\s*\d{1,4}\s*(?:bis|ter)?\s*,?[^\d,.;]{0,25}?"
+                      rf"\b{_VOIE}\b")
+_DOMICILE = re.compile(
+    r"\b(?P<verbe>domicili[ée]e?s?|demeurant|r[ée]sidant)(?:"
+    rf"\s+à\s+l['’]adresse\s*«[^»]{{0,160}}»(?:\s+à\s+{_LIEU})?"
+    rf"|{_ADRESSE_NUMEROTEE}\s*[^,.;\n]{{0,80}}?(?=\s+à\s|\s*[,.;]|\s*\n|\s*$)"
+    rf"(?:\s+à\s+{_LIEU})?"
+    rf"|(?P<lieudit>\s+(?:à|au|aux|en)\s+{_LIEU})"
+    r")", re.I)
+# Un domicile sans numéro n'en est un que pour une PERSONNE : « M. et Mme X
+# domiciliés à Croix de Castres » — mais « l'association domiciliée à Viane ».
+_CIVILITE_AVANT = re.compile(r"(?:\bM\.|\bMM\.|\bMmes?\b|\bMonsieur\b|\bMadame\b)[^\n]{0,60}$")
+_COURRIEL_NOMINATIF = re.compile(r"\b[a-z]{2,}\.[a-z]{2,}@[\w\-]+(?:\.[\w\-]+)+", re.I)
+# Le téléphone qui accompagne un courriel nominatif est la même coordonnée : sur
+# la même ligne, il est masqué. Seul, il est le plus souvent celui d'un lieu —
+# un tiers-lieu, une mairie — et reste.
+_TELEPHONE = re.compile(r"(?<![\d.])0[1-9](?:[ .\-]?\d{2}){4}(?![\d.])")
+_TABLEAU_DES_ELUS = re.compile(
+    r"^[^\n]*date\s+de\s+naissance\s+adresse[\s\S]{0,3000}?"
+    r"(?=apr[èe]s\s+en\s+avoir\s+d[ée]lib[ée]r|\bD[ÉE]CIDE\b|^\s*Le\s+(?:maire|conseil)\b|\Z)",
+    re.I | re.M)
+_NOM_AVEC_CIVILITE = re.compile(
+    rf"(?:Monsieur|Madame|M\.|Mme)\s+(?:[{_MAJ}][{_MIN}'’\-]+\s+){{0,2}}[{_MAJ}][{_MAJ}'’\-]+"
+    rf"(?:\s+[{_MAJ}][{_MIN}'’\-]+)?")
+_FONCTION_D_ELU = re.compile(
+    r"\bMaire\b|\b\d+\s*(?:er|ère|e|ème|nd|nde)\s+adjointe?\b"
+    r"|\bConseill(?:er|ère)\s+municipal(?:e)?\b", re.I)
+_RESIDU = re.compile(
+    rf"\bn[ée]e?\s+le\s+{_DATE_COMPLETE}|date\s+de\s+naissance\s+adresse"
+    rf"|\b(?:domicili[ée]e?s?|demeurant|r[ée]sidant){_ADRESSE_NUMEROTEE}", re.I)
 
 
-def extrait_publiable(event_type: str, texte: str | None) -> tuple[bool, str | None]:
-    """L'extrait d'un acte peut-il sortir — et sinon, le motif à compter."""
-    if event_type not in TYPES_DELIBERES or not (texte or "").strip():
-        return False, None
-    if _DONNEE_PERSONNELLE_DANS_UN_ACTE.search(texte):
-        return False, "donnee_personnelle"
-    return True, None
+def _age(naissance: str, jour: str | None) -> int | None:
+    """L'âge à la date de l'acte, ou rien si l'une des deux dates ne se lit pas."""
+    from datetime import date
+    m = re.match(r"(\d{1,2})\s*[/.\-]\s*(\d{1,2})\s*[/.\-]\s*(\d{4})", naissance)
+    if m:
+        j, mois, annee = (int(x) for x in m.groups())
+    else:
+        m = re.match(rf"(\d{{1,2}})(?:er)?\s+({_MOIS_RE})\s+(\d{{4}})", naissance, re.I)
+        if not m:
+            return None
+        cle = unicodedata.normalize("NFKD", m.group(2).lower()).encode("ascii", "ignore").decode()
+        j, mois, annee = int(m.group(1)), _MOIS.index(cle) + 1, int(m.group(3))
+    try:
+        ne, acte = date(annee, mois, j), date.fromisoformat((jour or "")[:10])
+    except ValueError:
+        return None
+    age = acte.year - ne.year - ((acte.month, acte.day) < (ne.month, ne.day))
+    return age if 0 <= age < 120 else None
 
 
-def write_act_extracts(conn, out: Path, public_events, redige) -> int:
+def _nomme_une_personne_publique(avant: str, noms_publics: set[str]) -> bool:
+    """Le nom écrit juste avant « né le » est-il celui d'une personne publique ?"""
+    mots = re.findall(r"[\w'’\-]+", avant[-100:].upper())[-6:]
+    return any(" ".join(mots[i:j]) in noms_publics
+               for i in range(len(mots)) for j in range(i + 2, len(mots) + 1))
+
+
+def masquer_donnees_personnelles(texte: str, jour: str | None,
+                                 noms_publics: set[str], compteur: Counter) -> str:
+    """Masque domicile, date et lieu de naissance ; garde les noms."""
+    def tableau(m):
+        # L'océrisation mêle les colonnes sur plusieurs lignes : on ne garde de
+        # chaque ligne que le nom de l'élu et sa fonction.
+        compteur["tableau_des_elus"] += 1
+        lignes = []
+        for ligne in m.group(0).splitlines():
+            noms = _NOM_AVEC_CIVILITE.findall(ligne)
+            if noms:
+                lignes.append(" ".join([*noms, *_FONCTION_D_ELU.findall(ligne)]))
+            elif re.search(r"liste\s+des|\bélus\b|date\s+de\s+naissance", ligne, re.I):
+                lignes.append(re.sub(
+                    r"date\s+de\s+naissance\s+adresse(?:\s+CP)?(?:\s+Ville)?(?:\s+Titre)?",
+                    "(dates de naissance et adresses masquées)", ligne, flags=re.I))
+        return "\n".join(lignes) + "\n"
+
+    def naissance(m):
+        feminin = "e" if m.group("genre").lower().endswith("e") else ""
+        est = m.group("est") or ""
+        if _nomme_une_personne_publique(courant[:m.start()], noms_publics):
+            age = _age(m.group("date"), jour)
+            if age is not None:
+                compteur["naissance_en_age"] += 1
+                return f"{est}âgé{feminin} de {age} ans"
+        compteur["naissance"] += 1
+        masque = "[date et lieu masqués]" if m.group("lieu") else "[date masquée]"
+        return f"{est}né{feminin} le {masque}"
+
+    def domicile(m):
+        if m.group("lieudit") is not None and not _CIVILITE_AVANT.search(courant[:m.start()]):
+            return m.group(0)
+        compteur["domicile"] += 1
+        return f"{m.group('verbe')} [domicile masqué]"
+
+    courant = _TABLEAU_DES_ELUS.sub(tableau, texte)
+    courant = _NAISSANCE.sub(naissance, courant)
+    courant = _DOMICILE.sub(domicile, courant)
+    courant, n = _COURRIEL_NOMINATIF.subn("[courriel masqué]", courant)
+    compteur["courriel"] += n
+    if n:
+        lignes = []
+        for ligne in courant.split("\n"):
+            if "[courriel masqué]" in ligne:
+                ligne, k = _TELEPHONE.subn("[téléphone masqué]", ligne)
+                compteur["telephone"] += k
+            lignes.append(ligne)
+        courant = "\n".join(lignes)
+    return courant
+
+
+def texte_publiable(texte: str, jour: str | None, noms_publics: set[str],
+                    compteur: Counter) -> tuple[str | None, str | None]:
+    """Le texte d'une délibération tel qu'il sort — ou le motif de son refus."""
+    masque = masquer_donnees_personnelles(texte.strip(), jour, noms_publics, compteur)
+    if _RESIDU.search(masque):
+        return None, "donnee_personnelle_non_masquee"
+    return masque, None
+
+
+def write_act_extracts(out: Path, textes: dict[int, str]) -> int:
     """Un fichier par délibération publiée : `extrait/<id>.json`, son texte.
 
     La page d'un millésime ne montrait d'un acte que son titre, et renvoyait au
@@ -1202,33 +1329,24 @@ def write_act_extracts(conn, out: Path, public_events, redige) -> int:
     seule année y seraient partis pour un lecteur qui n'en ouvre qu'un. Même
     motif que `entite/<id>.json`.
 
-    Le texte passe par `redige()`, comme tout texte publié. Il garde la forme et
-    les fautes de l'extraction : c'est une LECTURE du document, et la page le
-    dit — la pièce qui fait foi reste celle de la collectivité.
+    Le texte est celui que `texte_publiable` rend : les noms y sont, domicile et
+    naissance y sont masqués. Il garde la forme et les fautes de l'extraction :
+    c'est une LECTURE du document, et la page le dit — la pièce qui fait foi
+    reste celle de la collectivité.
     """
-    ids = [e["id"] for e in public_events if e.get("extrait")]
     dest = out / "extrait"
     dest.mkdir(parents=True, exist_ok=True)
 
     # PURGE AVANT ÉCRITURE, pour la raison écrite dans `write_entity_bundles` :
     # un acte retiré de la publication garderait sinon son texte en ligne.
-    attendus = {f"{i}.json" for i in ids}
+    attendus = {f"{i}.json" for i in textes}
     for f in dest.glob("*.json"):
         if f.name not in attendus:
             f.unlink()
 
-    ecrits = 0
-    for lot in range(0, len(ids), 500):
-        morceau = ids[lot:lot + 500]
-        for r in rows(conn, "SELECT id, content FROM events WHERE id IN "
-                            f"({','.join('?' * len(morceau))})", morceau):
-            # Noms complets seulement : cf. `compilateur_redaction`, une forme
-            # courte y désigne une famille autant qu'une personne.
-            write_json_compact(dest / f"{r['id']}.json",
-                               {"id": r["id"],
-                                "texte": redige(r["content"].strip(), formes_courtes=False)})
-            ecrits += 1
-    return ecrits
+    for i, texte in textes.items():
+        write_json_compact(dest / f"{i}.json", {"id": i, "texte": texte})
+    return len(textes)
 
 
 def write_entity_bundles(out: Path, public_entities, public_relations,
@@ -2227,6 +2345,7 @@ def build_snapshot(out: Path) -> dict:
 
         public_person_ids = civic_person_ids | pertinent_person_ids
         redige, redactions = compilateur_redaction(conn, public_person_ids)
+        noms_publics = noms_des_personnes_publiques(conn, public_person_ids)
         counters["persons_civic"] = len(civic_person_ids)
         counters["persons_par_pertinence"] = len(pertinent_person_ids - civic_person_ids)
         counters["beneficiaires_argent_public"] = len(beneficiaires)
@@ -2342,6 +2461,8 @@ def build_snapshot(out: Path) -> dict:
         """)
         public_events: list[dict] = []
         event_exclusions: list[dict] = []
+        textes_extraits: dict[int, str] = {}
+        masquages = Counter()
         revue_delib = revue.get("deliberation", {})
         for event in event_rows:
             # Verdict de l'atelier : ne s'applique qu'aux types qu'il présente
@@ -2375,23 +2496,34 @@ def build_snapshot(out: Path) -> dict:
                 })
                 continue
 
-            extrait, refus_extrait = extrait_publiable(event_type, event.get("texte_acte"))
-            if refus_extrait:
-                exclusions["extraits"][refus_extrait] += 1
+            delibere = event_type in TYPES_DELIBERES
+            if delibere and (event.get("texte_acte") or "").strip():
+                texte, refus_extrait = texte_publiable(
+                    event["texte_acte"], event["date"], noms_publics, masquages)
+                if refus_extrait:
+                    exclusions["extraits"][refus_extrait] += 1
+                else:
+                    textes_extraits[event["id"]] = texte
 
             public_events.append({
                 "id": event["id"],
                 "type": event_type,
                 "date": event["date"],
                 "date_end": metadata.get("date_end"),
-                "title": redige(nettoyer_titre_evenement(event["title"])),
+                # Un acte officiel cite ses particuliers (arbitré le 16/09) : le
+                # titre d'une délibération n'est pas caviardé, seuls un domicile
+                # ou une naissance y sont masqués.
+                "title": (masquer_donnees_personnelles(
+                              nettoyer_titre_evenement(event["title"]), event["date"],
+                              noms_publics, masquages)
+                          if delibere else redige(nettoyer_titre_evenement(event["title"]))),
                 "source": source,
                 "source_url": safe_url(event["source_url"]),
                 "page_url": safe_url(metadata.get("page_url")),
                 # Le texte de la délibération se déplie sous son titre ; il est
                 # écrit à part, cf. `write_act_extracts`. Le drapeau dit à la
                 # page qu'il y a quelque chose à déplier.
-                **({"extrait": True} if extrait else {}),
+                **({"extrait": True} if event["id"] in textes_extraits else {}),
                 # Les pièces d'une séance — registre, procès-verbal, convocation.
                 # Elles n'existent que sur l'ombrelle, et c'est par elles que le
                 # lecteur atteint l'archive : la fiche de séance ne peut pas
@@ -3588,7 +3720,8 @@ def build_snapshot(out: Path) -> dict:
         bundles = write_entity_bundles(out, public_entities, public_relations,
                                        public_events, public_links, public_flows,
                                        marches_data)
-        stats["extraits_actes"] = write_act_extracts(conn, out, public_events, redige)
+        stats["extraits_actes"] = write_act_extracts(out, textes_extraits)
+        stats["extraits_masquages"] = dict(masquages)
         communes = {r["id"]: r.get("commune") for r in entity_rows}
         liens_count = Counter(l["entity_id"] for l in public_links)
         indexed = write_search_index(out, public_entities, communes, liens_count)
@@ -3738,6 +3871,10 @@ def build_snapshot(out: Path) -> dict:
             "- les coordonnées des personnes, et les adresses des demandeurs "
             "particuliers en urbanisme ;",
             "- la date de naissance des élus (le RNE la diffuse, pas nous) ;",
+            "- dans le texte des délibérations, le domicile, la date et le lieu "
+            "de naissance d'une personne — masqués ; pour une personne publique, "
+            "la date de naissance devient son âge à la date de l'acte. Les noms, "
+            "eux, sont cités : un acte officiel cite ses particuliers ;",
             "- les conseils municipaux des communes hors intercommunalité.",
             "",
             "## Compteurs",

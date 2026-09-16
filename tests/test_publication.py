@@ -435,26 +435,7 @@ def test_un_mandat_tenu_rend_nommable_sans_presence_liee(bps, base, entite):
     redige, _ = bps.compilateur_redaction(base, set())
     texte = "Sous la présidence de Monsieur Henri DELORME, Maire"
     assert redige(texte) == texte
-    assert redige(texte, formes_courtes=False) == texte
 
-
-def test_un_texte_long_ne_masque_que_les_noms_complets(bps, base, entite):
-    """🔴 Au village, un patronyme désigne une famille.
-
-    « Mme PANTEL, M. PRADEILLES » est une liste de conseillers ; la base ne
-    connaît que des homonymes dirigeants d'entreprise. Un extrait n'y masque
-    rien — le nom complet d'un particulier, lui, l'est toujours.
-    """
-    _personne(base, entite, "Eric", "PRADEILLES")
-    _personne(base, entite, "Colette", "PANTEL")
-
-    redige, _ = bps.compilateur_redaction(base, set())
-    presents = "Présents : Mme PANTEL, M. PRADEILLES."
-    assert redige(presents, formes_courtes=False) == presents
-    assert redige("Bail consenti à Eric PRADEILLES.", formes_courtes=False) == \
-        "Bail consenti à un particulier."
-    # Les titres gardent la forme courte : c'est pour eux qu'elle a été écrite.
-    assert redige("Aide façade — M. PRADEILLES") == "Aide façade — un particulier"
 
 
 def test_un_prenom_nest_pas_un_patronyme(bps, base, entite):
@@ -467,26 +448,67 @@ def test_un_prenom_nest_pas_un_patronyme(bps, base, entite):
     assert redige("Aide à M. THIERRY.") == "Aide à un particulier."
 
 
-def test_un_extrait_ne_publie_ni_naissance_ni_domicile_ni_courriel_nominatif(bps):
-    """Nommer dans un acte est légitime ; dater une naissance ou situer un
-    domicile, non. Relevé le 16/09 dans les extraits de deux instances, avant ce
-    filtre — l'acte reste publié, seul son texte ne l'est pas."""
-    refuse = lambda t: bps.extrait_publiable("deliberation", t) == (False, "donnee_personnelle")
-    assert refuse("Délégué au syndicat : Paul DURAND né le 12/03/1961 ;")
-    assert refuse("Liste des conseillers municipaux élus : Date de naissance Adresse\n"
-                  "DURAND Paul 12/03/1961 4 rue Haute")
-    assert refuse("à la demande de Monsieur DURAND, demeurant au 12 Grande Rue")
-    assert refuse("Mme DURAND Françoise domiciliée 3, rue du Moulin")
-    assert refuse("Référent : paul.durand@mairie-test.fr")
-    assert refuse("Madame DURAND Claire née le 12 octobre 1985 est nommée agent")
-    assert refuse("élus : Date de naissance Adresse CP Ville Titre\n"
-                  "Monsieur Paul DURAND à Crest 12, Allée du Moulin 26340 TESTVILLE Maire")
-    assert refuse("la proposition de M. et Mme DURAND Paul domiciliés à Croix Haute")
+def test_un_acte_cite_ses_particuliers_mais_masque_naissance_et_domicile(bps):
+    """⚖️ Arbitré le 16/09/2026 : un particulier cité dans un acte officiel est
+    cité. Ce qui situe ou date une personne ne sort pas — domicile, date et lieu
+    de naissance —, et l'âge d'une personne publique reste : il a du sens."""
+    from collections import Counter
+    publics = {"PAUL DURAND"}
+    masque = lambda t, jour="2021-05-20": bps.masquer_donnees_personnelles(t, jour, publics, Counter())
 
-    publie = lambda t: bps.extrait_publiable("deliberation", t) == (True, None)
-    assert publie("les familles domiciliées sur la commune depuis six mois")
-    assert publie("Présidente (contact@cc-test.fr / 0467000000)")
-    assert publie("Subvention de 300 € à l'association présidée par Paul DURAND")
-    assert publie("L'association Test Enduro domiciliée à Viane souhaite organiser")
-    assert publie("il me faut la date de naissance des personnes proposées")
-    assert bps.extrait_publiable("marche", "texte") == (False, None)
+    # Une personne publique : la naissance devient l'âge à la date de l'acte.
+    assert masque("Délégué : Paul DURAND né le 05/03/1961 ;") == "Délégué : Paul DURAND âgé de 60 ans ;"
+    # Un particulier, un agent : cité, mais sa naissance est masquée.
+    assert (masque("Madame Claire DUPONT née le 12 octobre 1985 est nommée agent")
+            == "Madame Claire DUPONT née le [date masquée] est nommée agent")
+    assert (masque("à Monsieur Luc MARTIN et né le 01/10/1970 à Castres PRÉCISE que")
+            == "à Monsieur Luc MARTIN et né le [date et lieu masqués] PRÉCISE que")
+    # Le domicile, sous les formes relevées dans les actes.
+    assert (masque("courrier de Monsieur BARRE, demeurant au 52 Grande Rue à Testville, dans lequel")
+            == "courrier de Monsieur BARRE, demeurant [domicile masqué], dans lequel")
+    assert (masque("Mme DUPONT Françoise domiciliée 6, rue\ndu Moulin. Mme DUPONT souhaite")
+            == "Mme DUPONT Françoise domiciliée [domicile masqué]. Mme DUPONT souhaite")
+    assert (masque("M. Luc MARTIN, résidant à l'adresse « Domaine des Pins – 8 Impasse des Merles » "
+                   "à Bruges (33 520) et")
+            == "M. Luc MARTIN, résidant [domicile masqué] et")
+    assert (masque("de M. et Mme DUPONT Paul domiciliés à Croix Haute\ncommune de Test")
+            == "de M. et Mme DUPONT Paul domiciliés [domicile masqué]\ncommune de Test")
+    assert masque("Référent : paul.durand@mairie-test.fr ;") == "Référent : [courriel masqué] ;"
+    assert (masque("Adjoint : Paul DUPONT — paul.dupont@test.fr — 06 09 85 09 20")
+            == "Adjoint : Paul DUPONT — [courriel masqué] — [téléphone masqué]")
+    assert (masque("M. Luc MARTIN, résidant à l'adresse « 8 Impasse des Merles » à Bruges (33\n520) et")
+            == "M. Luc MARTIN, résidant [domicile masqué] et")
+    # Ce qui n'est pas une donnée personnelle ne bouge pas — et le nom reste.
+    for intact in ("L'association Test Enduro domiciliée à Viane souhaite organiser",
+                   "les familles domiciliées sur la commune depuis six mois",
+                   "Présidente (contact@cc-test.fr / 0467000000)",
+                   "Tiers-lieu, 12 rue Haute\nContact 04 67 00 00 00 - 06 11 22 33 44",
+                   "Aide façade — M. Luc MARTIN, 300 €",
+                   "il me faut la date de naissance des personnes proposées"):
+        assert masque(intact) == intact
+
+
+def test_le_tableau_des_elus_garde_les_noms_et_les_fonctions(bps):
+    """L'océrisation mêle les colonnes « Date de naissance Adresse CP Ville » sur
+    plusieurs lignes : on ne garde de chaque ligne que l'élu et sa fonction."""
+    from collections import Counter
+    texte = ("Liste des conseillers municipaux\n"
+             "élus : Date de naissance Adresse CP Ville Titre\n"
+             "12/03/1961 12 Chemin de Saint\n"
+             "Monsieur Paul DURAND à Meulan (78) Jean 26340 TESTVILLE Maire\n"
+             "Madame Anne PETIT à Crest (26) 4, Allée du Moulin 26340 TESTVILLE 1ère adjointe\n"
+             "Le Conseil Municipal, après en avoir délibéré, APPROUVE")
+    sortie = bps.masquer_donnees_personnelles(texte, "2019-02-01", set(), Counter())
+    assert "Monsieur Paul DURAND Maire" in sortie
+    assert "Madame Anne PETIT 1ère adjointe" in sortie
+    for fuite in ("Meulan", "Crest", "Chemin", "Allée", "26340", "12/03/1961"):
+        assert fuite not in sortie, fuite
+    assert sortie.endswith("Le Conseil Municipal, après en avoir délibéré, APPROUVE")
+
+
+def test_ce_qui_na_pas_pu_etre_masque_ne_sort_pas(bps):
+    """Le filet : un tableau dont la fin ne se trouve pas n'est pas masqué, et
+    l'extrait est refusé plutôt que publié tel quel."""
+    from collections import Counter
+    texte = "élus : Date de naissance Adresse CP Ville\n" + "Madame Anne PETIT 4, Allée du Moulin\n" * 120
+    assert bps.texte_publiable(texte, "2019-02-01", set(), Counter()) == (None, "donnee_personnelle_non_masquee")
