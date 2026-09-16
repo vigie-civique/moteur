@@ -444,3 +444,51 @@ def test_le_titre_dit_dou_il_vient():
     ]))
     assert [a["titre_origine"] for a in actes] == [
         "objet_declare", "objet_registre", "repli_numerote"]
+
+
+# ── Les liasses intercommunales, relues le 16/09/2026 ────────────────────────
+
+def test_le_bandeau_intercommunal_ecrit_lobjet_en_toutes_lettres():
+    """« Objet : Pôle nature 4 saisons… », vingt lignes sous « N°35/2021 ».
+
+    Le cachet de tête du n° 35 est illisible, le bloc commence donc plus bas et
+    l'objet reste au-dessus de la coupure — en minuscules, que la ligne capitale
+    ne voyait pas. L'acte portait le titre d'un autre.
+    """
+    bandeau = ("N°35/2021\n"
+               "DEPARTEMENT : GARD\n"
+               "du registre des Délibérations du Conseil\n"
+               "Présents : DUPONT Paul - PETIT Anne - LEROY Paul\n"
+               "Objet : Pôle nature 4 saisons : Manifeste « le Massif Central bouge »\n"
+               "Monsieur le Président rappelle le projet.\n")
+    actes = _actes_teletransmis(_page("34_2021") + bandeau + _page("35_2021") + _page("36_2021"))
+    assert actes[1]["titre"] == "Pôle nature 4 saisons : Manifeste « le Massif Central bouge »"
+    assert actes[1]["titre_origine"] == "objet_registre"
+    assert actes[0]["titre"] == "Délibération n° 34"
+
+
+def test_le_bruit_docerisation_nest_pas_un_objet():
+    for bruit in ("SNOILOGS LIT 7 6 T 6 8", "(O'TTAVLANO)",
+                  "DIAGNOSTIC ET STRATÉGIE à) SIGNATURE » MISE EN ŒUVRE",
+                  "COMMUNAUTE DE COMMUNES CAUSSES AIGOUAL CEVENNES — TERRES SOLIDAIRES"):
+        assert _ligne_dobjet(bruit) is None, bruit
+    assert (_ligne_dobjet("STATUTS DE LA REGIE D'EXPLOITATION DES SERVICES « EAU POTABLE » ET")
+            == "STATUTS DE LA REGIE D'EXPLOITATION DES SERVICES « EAU POTABLE » ET")
+
+
+def test_une_liasse_qui_ecrit_objet_ne_prend_pas_une_ligne_capitale_pour_titre():
+    """Là où la collectivité écrit « Objet : », ses lignes capitales sont des
+    tableaux et des logos : « VALLERAUGUE », « BASES PRODUIT 2023 TAUX PROPOSE ».
+    Sans objet lu, c'est le repli qui avoue — pas le premier tableau venu."""
+    texte = (_page("41_2024", "Tarifs de la déchèterie intercommunale")
+             + _page("42_2024", corps="BASES PRODUIT 2023 TAUX PROPOSE EN 2023\n"
+                                      "Le Conseil communautaire, après en avoir délibéré,\n")
+             + _page("43_2024", "Convention avec le Département")
+             + _page("44_2024", "Rapport annuel du service"))
+    actes = _actes_teletransmis(texte)
+    assert actes[1]["titre"] == "Délibération n° 42"
+    # Sans « Objet : » dans la liasse, la ligne capitale reste le repli juste.
+    sans = _actes_teletransmis("".join(_page(f"{n}_2024", corps=f"TARIFS DE LA CANTINE {n}\n"
+                                                              "Le Conseil, après en avoir délibéré,\n")
+                                       for n in (41, 42, 43)))
+    assert sans[1]["titre"] == "TARIFS DE LA CANTINE 42"

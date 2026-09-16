@@ -261,6 +261,10 @@ _MOBILIER_DE_CACHET = re.compile(
     r"|D[EÉ]LIB[EÉ]RATIONS?\s+DU\s+CONSEIL"
     r"|ACTE\s+RENDU\s+EX[EÉ]CUTOIRE"
     r"|POUR\s+COPIE\s+CONFORME"
+    # L'en-tête de la collectivité elle-même : « COMMUNAUTE DE COMMUNES CAUSSES
+    # AIGOUAL CEVENNES — TERRES SOLIDAIRES » est devenu le titre d'un acte
+    # intercommunal le 16/09/2026, en rejouant le découpage.
+    r"|COMMUNAUT[EÉ]\s+DE\s+COMMUNES\b"
     r")", re.I)
 
 # Le numéro d'acte tel que le BANDEAU DU REGISTRE l'écrit, juste au-dessus de
@@ -288,6 +292,14 @@ AMONT_DU_BANDEAU = 4000
 # L'objet suit le numéro de très près ; ce qui s'intercale est du débris de
 # marge. Au-delà, on est entré dans le corps de la délibération.
 LIGNES_APRES_LE_NUMERO = 6
+# Une liasse qui déclare ses objets « Objet : … » ne les écrit pas en capitales :
+# ses lignes capitales sont des tableaux, des logos, des annexes. Mesuré le
+# 16/09/2026 sur Lasalle — les liasses de la commune portent 0 « Objet : » et
+# leurs lignes capitales sont justes ; celles de l'intercommunalité en portent
+# 13 à 26, et 14 de leurs 17 titres pris en capitales étaient faux
+# (« VALLERAUGUE », « BASES PRODUIT 2023 TAUX PROPOSE EN 2023 », « 2421114
+# NOHDVA »). Trois, et pas un : une citation isolée ne fait pas une convention.
+OBJETS_DECLARES_MINIMUM = 3
 
 
 def _suffixe_de_seance(numeros: list[str]) -> str:
@@ -425,6 +437,18 @@ def _ligne_dobjet(ligne: str) -> str | None:
     # des marges et des tableaux que l'océrisation a laissés en capitales.
     if not _MOT_PORTEUR.search(ligne):
         return None
+    # Du bruit d'océrisation qui porte des mots. Un tableau lu à l'envers laisse
+    # des jetons d'un caractère (« SNOILOGS LIT 7 6 T 6 8 ») ; un nom de la liste
+    # des présents reste seul entre parenthèses (« (O'TTAVLANO) ») ; un schéma
+    # laisse des signes orphelins (« DIAGNOSTIC ET STRATÉGIE à) SIGNATURE » MISE
+    # EN ŒUVRE »). Relevés le 16/09/2026 en rejouant le découpage des liasses
+    # intercommunales de Lasalle : tous auraient été publiés comme titres.
+    if sum(1 for jeton in ligne.split() if len(jeton) == 1 and jeton.isalnum()) >= 3:
+        return None
+    if re.fullmatch(r"\(.*\)", ligne.strip(" :;.-|")):
+        return None
+    if ligne.count("(") != ligne.count(")") or ligne.count("«") != ligne.count("»"):
+        return None
     if not _titre_plausible(ligne):
         return None
     # Seule la ponctuation de marge s'en va : ôter aussi le jeton de tête
@@ -432,7 +456,16 @@ def _ligne_dobjet(ligne: str) -> str | None:
     return re.sub(r"\s+", " ", ligne).strip(" :;.-|")[:255]
 
 
-def _objet_du_bandeau(amont: str) -> str | None:
+def _objet_declare(texte: str) -> str | None:
+    """La ligne « Objet : … » que la collectivité écrit elle-même."""
+    m = _OBJET.search(texte)
+    if not m:
+        return None
+    titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
+    return titre[:255] if len(titre) >= 5 else None
+
+
+def _objet_du_bandeau(amont: str, capitales: bool = True) -> str | None:
     """L'objet de l'acte, resté dans le bloc PRÉCÉDENT.
 
     Le régime coupe sur le cachet de télétransmission, et ce cachet est imprimé
@@ -466,6 +499,13 @@ def _objet_du_bandeau(amont: str) -> str | None:
     suite = fenetre[dernier.end():]
     if _REFERENCE_TOLERANTE.search(suite) or _FORMULE_DE_VOTE.search(suite):
         return None
+    # Les liasses intercommunales écrivent l'objet en toutes lettres sous la
+    # liste des présents — « Objet : Pôle nature 4 saisons… », vingt lignes
+    # sous le numéro et en minuscules : la ligne capitale ne le voyait pas, et
+    # le n° 35 du 03/03/2021 portait le titre d'un autre acte.
+    objet = _objet_declare(suite)
+    if objet or not capitales:
+        return objet
     for ligne in suite.splitlines()[:LIGNES_APRES_LE_NUMERO]:
         objet = _ligne_dobjet(ligne)
         if objet:
@@ -473,7 +513,8 @@ def _objet_du_bandeau(amont: str) -> str | None:
     return None
 
 
-def _titre_dacte(corps: str, rang: int, amont: str = "") -> tuple[str, str]:
+def _titre_dacte(corps: str, rang: int, amont: str = "",
+                 capitales: bool = True) -> tuple[str, str]:
     """L'objet de l'acte, et D'OÙ il vient — les deux, jamais l'un sans l'autre.
 
     🔴 Le repli ne peut pas prendre la première ligne capitale VENUE : ce régime
@@ -499,22 +540,22 @@ def _titre_dacte(corps: str, rang: int, amont: str = "") -> tuple[str, str]:
     coupe = _FORMULE_DE_VOTE.search(corps)
     tete = corps[:coupe.start()] if coupe else corps
 
-    m = _OBJET.search(tete)
-    if m:
-        titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
-        if len(titre) >= 5:
-            return titre[:255], "objet_declare"
+    objet = _objet_declare(tete)
+    if objet:
+        return objet, "objet_declare"
 
     # Avant la ligne capitale du corps, et non après : sur la liasse du
     # 10/09/2026, la première ligne capitale de deux actes était l'en-tête de
     # leur plan de financement, « COÛT TOTAL PRÉVISIONNEL (HT) 401 906.00 € ».
     # Un acte qui porte son bandeau dans son propre corps n'en trouve pas en
     # amont : le vote de l'acte précédent l'en sépare.
-    objet = _objet_du_bandeau(amont)
+    objet = _objet_du_bandeau(amont, capitales)
     if objet:
         return objet, "objet_registre"
 
-    for ligne in tete.splitlines():
+    # Cf. `OBJETS_DECLARES_MINIMUM` : là où la collectivité écrit « Objet : »,
+    # une ligne capitale n'est pas son objet.
+    for ligne in (tete.splitlines() if capitales else ()):
         objet = _ligne_dobjet(ligne)
         if objet:
             return objet, "ligne_capitale"
@@ -556,6 +597,7 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
     if len(gardes) < 3:
         return []
 
+    capitales = len(_OBJET.findall(texte)) < OBJETS_DECLARES_MINIMUM
     sorties = []
     for i, indice in enumerate(gardes):
         marque, rang, lisible = blocs[indice]
@@ -569,7 +611,7 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
         # a lui aussi son bandeau au-dessus de son cachet, et aucun bloc avant
         # lui pour le porter.
         titre, origine = _titre_dacte(
-            corps, lisible if lisible is not None else rang, texte[:debut])
+            corps, lisible if lisible is not None else rang, texte[:debut], capitales)
         sorties.append(_enrichir({
             "regime": "actes_teletransmis",
             "numero_seance": None,
