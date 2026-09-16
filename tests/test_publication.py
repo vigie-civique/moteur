@@ -142,6 +142,41 @@ def test_un_flux_entre_deux_fiches_publiees_garde_ses_liens(bps):
     assert bps.statut_extremites({"from_id": 1, "to_id": 2}, {1, 2}, set()) == "garde"
 
 
+def test_deux_beneficiaires_delies_de_meme_montant_restent_deux(bps):
+    """RASED et Prévention routière, 100 € chacune la même année : sans fiche,
+    plus d'identifiant pour les distinguer — c'est leur NOM qui le fait."""
+    flux = [{"year": 2023, "amount": 100, "type": "subvention", "from_id": 1,
+             "to_id": None, "to_name": "RASED"},
+            {"year": 2023, "amount": 100, "type": "subvention", "from_id": 1,
+             "to_id": None, "to_name": "Prévention routière"}]
+    assert len(bps.dedupliquer_flux(flux)) == 2
+
+
+def test_un_flux_delie_nest_pas_une_ligne_anonyme(bps):
+    """La règle des jumeaux vise ce qu'un collecteur n'a pas su rattacher. Un
+    flux délié porte un nom : il n'est pas de ceux-là. Sans cette distinction,
+    9 des 15 subventions rendues au public repartaient aussitôt."""
+    flux = [{"year": 2022, "amount": 2000, "type": "subvention", "from_id": 1,
+             "to_id": 7, "to_name": "Faubourg 26"},
+            {"year": 2022, "amount": 2000, "type": "subvention", "from_id": 1,
+             "to_id": None, "to_name": "Raid VTT"}]
+    assert len(bps.dedupliquer_flux(flux)) == 2
+
+
+def test_un_jumeau_sans_nom_disparait_toujours(bps):
+    flux = [{"year": 2022, "amount": 500, "type": "subvention", "from_id": 1,
+             "to_id": 7, "to_name": "Le Forum"},
+            {"year": 2022, "amount": 500, "type": "subvention", "from_id": 1,
+             "to_id": None, "to_name": ""}]
+    assert [f["to_name"] for f in bps.dedupliquer_flux(flux)] == ["Le Forum"]
+
+
+def test_un_doublon_exact_reste_un_doublon(bps):
+    ligne = {"year": 2022, "amount": 500, "type": "subvention", "from_id": 1,
+             "to_id": 7, "to_name": "Le Forum"}
+    assert len(bps.dedupliquer_flux([ligne, dict(ligne)])) == 1
+
+
 def test_flux_sans_beneficiaire_identifie_reste(bps):
     """Une extrémité vide ne prétend renvoyer nulle part : le flux se publie,
     sans lien. L'écarter effacerait de l'argent public au motif que le

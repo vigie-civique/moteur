@@ -1556,6 +1556,51 @@ def delier_extremites(flow: dict, public_ids: set[int]) -> None:
             flow[cle] = None
 
 
+def _cle_beneficiaire(flow: dict):
+    """L'identité du bénéficiaire, pour dédoublonner : sa fiche, ou son NOM.
+
+    Un flux délié (bénéficiaire hors périmètre, cf. `statut_extremites`) n'a plus
+    d'identifiant mais garde son nom. Dédoublonner sur le seul identifiant faisait
+    alors disparaître une association derrière une autre : RASED et Prévention
+    routière, 100 € chacune en 2023, ne laissaient qu'une ligne.
+    """
+    if flow.get("to_id"):
+        return ("id", flow["to_id"])
+    return ("nom", " ".join(str(flow.get("to_name") or "").split()).lower())
+
+
+def beneficiaire_inconnu(flow: dict) -> bool:
+    """Le flux ne nomme personne — ce que les collecteurs laissent quand ils n'ont
+    pas su rattacher une ligne.
+
+    L'absence de FICHE n'est pas l'absence de NOM. Les confondre écartait les flux
+    déliés comme s'ils ne désignaient personne : sur la première instance, 9 des
+    15 subventions rendues au public repartaient aussitôt.
+    """
+    return str(flow.get("to_name") or "").strip() in ("", "?", "∅")
+
+
+def dedupliquer_flux(flows: list[dict]) -> list[dict]:
+    """Les doublons exacts, puis les « jumeaux » sans bénéficiaire nommé.
+
+    Deux passes distinctes : la même décision écrite deux fois par deux
+    collecteurs, et la ligne anonyme qu'un collecteur laisse à côté d'une ligne
+    nommée du même montant.
+    """
+    vus, dedup = set(), []
+    for f in flows:
+        cle = (f.get("year"), f.get("amount"), f.get("type"), f.get("from_id"),
+               _cle_beneficiaire(f))
+        if cle in vus:
+            continue
+        vus.add(cle)
+        dedup.append(f)
+    jumeau = lambda f: (f.get("year"), f.get("amount"), f.get("type"), f.get("from_id"))
+    nommes = {jumeau(f) for f in dedup if not beneficiaire_inconnu(f)}
+    return [f for f in dedup
+            if not beneficiaire_inconnu(f) or jumeau(f) not in nommes]
+
+
 def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
     """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
 
@@ -2347,21 +2392,7 @@ def build_snapshot(out: Path) -> dict:
         # et « jumeaux » non résolus (montant identique, bénéficiaire vide) laissés par
         # les collecteurs. On garde les bénéficiaires DISTINCTS de même montant.
         before = len(public_flows)
-        _seen, _deduped = set(), []
-        for f in public_flows:
-            key = (f.get("year"), f.get("amount"), f.get("type"), f.get("from_id"), f.get("to_id"))
-            if key in _seen:
-                continue
-            _seen.add(key)
-            _deduped.append(f)
-        def _unknown_benef(f) -> bool:
-            return (str(f.get("to_name") or "").strip() in ("", "?", "∅")) or not f.get("to_id")
-        _twin_key = lambda f: (f.get("year"), f.get("amount"), f.get("type"), f.get("from_id"))
-        _named = {_twin_key(f) for f in _deduped if not _unknown_benef(f)}
-        public_flows = [
-            f for f in _deduped
-            if not _unknown_benef(f) or _twin_key(f) not in _named
-        ]
+        public_flows = dedupliquer_flux(public_flows)
         exclusions["flows"]["duplicates"] = before - len(public_flows)
 
         # `sens` : la DGF encaissée par la commune (489 690 €) et la subvention
