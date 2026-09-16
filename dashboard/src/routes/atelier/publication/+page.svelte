@@ -162,6 +162,12 @@
     generating = true
     controleDeplie = false
     await appeler(api.publicationApercu, () => (generating = false))
+    // Un aperçu doit se REGARDER. Le 17/09/2026, ce bouton rendait les chiffres
+    // du brouillon et rien à ouvrir : le site restait à construire par un
+    // second bouton, plus bas — ou, s'il tournait déjà, montrait l'ancien.
+    if (!error && etat?.brouillon?.existe && etat?.apercu?.installe) {
+      await serveurApercu('demarrer')
+    }
   }
 
   async function publier() {
@@ -388,8 +394,9 @@
           <span class="tag neutre">aucun aperçu</span>
         {/if}
         {#if peutAgir}
-          <button class="primary" on:click={genererApercu} disabled={generating || publishing}>
-            {generating ? 'Génération…' : 'Générer un aperçu'}
+          <button class="primary" on:click={genererApercu}
+                  disabled={generating || serveurEnCours || publishing}>
+            {generating ? 'Génération…' : serveurEnCours ? 'Construction du site…' : 'Générer un aperçu'}
           </button>
         {/if}
       </div>
@@ -448,7 +455,9 @@
       <div class="apercu">
         <div class="apercu-barre">
           <strong>Prévisualisation</strong>
-          {#if apercu.actif}
+          {#if apercu.actif && apercu.build?.perime}
+            <span class="tag ko">en marche · build plus ancien que le brouillon</span>
+          {:else if apercu.actif}
             <span class="tag ok">en marche · {apercu.url}</span>
           {:else if !apercu.installe}
             <span class="tag ko">dépendances du site absentes</span>
@@ -457,6 +466,12 @@
           {/if}
           {#if peutAgir}
             {#if apercu.actif}
+              {#if apercu.build?.perime}
+                <!-- Un brouillon régénéré hors de ce bouton, en ligne de commande. -->
+                <button class="secondary" on:click={() => serveurApercu('demarrer')} disabled={serveurEnCours}>
+                  {serveurEnCours ? 'Construction…' : 'Reconstruire l’aperçu'}
+                </button>
+              {/if}
               <button class="secondary" on:click={() => serveurApercu('arreter')} disabled={serveurEnCours}>
                 Arrêter
               </button>

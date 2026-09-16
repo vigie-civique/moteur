@@ -1034,8 +1034,21 @@ def etat_serveur_apercu() -> dict:
                              if index.is_file() else None),
             "pages": sum(1 for _ in APERCU_BUILD.rglob("*.html"))
                      if index.is_file() else 0,
+            "perime": _apercu_perime(BROUILLON),
         },
     }
+
+
+def _apercu_perime(cible: Path) -> bool:
+    """Le build d'aperçu est-il plus vieux que le brouillon qu'il doit montrer ?
+
+    Par les dates des fichiers, pas par l'état : un brouillon régénéré en ligne
+    de commande (`publier-site.sh`) ne passe pas par l'atelier.
+    """
+    index, stats = APERCU_BUILD / "index.html", Path(cible) / "stats.json"
+    if not index.is_file():
+        return True
+    return stats.is_file() and index.stat().st_mtime < stats.stat().st_mtime
 
 
 def demarrer_serveur_apercu(cible: Path | None = None,
@@ -1061,6 +1074,18 @@ def demarrer_serveur_apercu(cible: Path | None = None,
     if not (cible / "stats.json").is_file():
         raise PublicationRefusee("Aucun aperçu à montrer — générer un aperçu d'abord.")
     if _serveur is not None and _serveur.poll() is None:
+        # Déjà en marche, il sert le build qu'il a sur le disque. Le 17/09/2026,
+        # un aperçu régénéré ne s'y voyait donc pas : « Générer un aperçu »
+        # rendait ses chiffres, le site ouvert montrait l'ancien, et la page
+        # n'offrait qu'« Arrêter ». Le serveur relit le disque à chaque requête :
+        # reconstruire suffit. Un build rouge arrête l'aperçu — servir le
+        # précédent ferait croire qu'on regarde ses corrections.
+        if _apercu_perime(cible):
+            try:
+                construire_apercu(cible)
+            except PublicationRefusee:
+                arreter_serveur_apercu()
+                raise
         return etat_serveur_apercu()
     if not _vite().exists():
         raise PublicationRefusee(

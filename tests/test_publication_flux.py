@@ -378,6 +378,55 @@ def test_un_build_dapercu_qui_echoue_ne_se_montre_pas(publication, emplacements,
     assert "build" in str(refus.value).lower()
 
 
+def _vieillir_le_build(build):
+    import os
+    ancien = (build / "index.html").stat().st_mtime - 60
+    os.utime(build / "index.html", (ancien, ancien))
+
+
+def test_un_apercu_en_marche_montre_le_brouillon_regenere(
+        publication, emplacements, build_dapercu, monkeypatch):
+    """17/09/2026 : « Générer un aperçu » rendait ses chiffres, mais le serveur
+    déjà en marche servait le build d'avant — et la page n'offrait
+    qu'« Arrêter ». Le brouillon régénéré ne se voyait nulle part."""
+    snapshot(emplacements["brouillon"], [1])
+    _vieillir_le_build(build_dapercu)
+    monkeypatch.setattr(publication, "_serveur", FauxVite())
+    monkeypatch.setattr(publication.subprocess, "Popen",
+                        lambda *a, **kw: pytest.fail("le serveur en marche suffit"))
+    construit = []
+    monkeypatch.setattr(publication, "construire_apercu",
+                        lambda cible=None: construit.append(cible))
+
+    assert publication.etat_serveur_apercu()["build"]["perime"] is True
+    etat = publication.demarrer_serveur_apercu()
+    assert construit == [emplacements["brouillon"]]
+    assert etat["actif"] is True
+
+    # À jour : rien à reconstruire, on ne fait pas attendre une minute pour rien.
+    (build_dapercu / "index.html").touch()
+    publication.demarrer_serveur_apercu()
+    assert len(construit) == 1
+
+
+def test_un_apercu_en_marche_dont_la_reconstruction_echoue_s_arrete(
+        publication, emplacements, build_dapercu, monkeypatch):
+    """Servir le build précédent après un build rouge ferait croire qu'on
+    regarde ses corrections."""
+    snapshot(emplacements["brouillon"], [1])
+    _vieillir_le_build(build_dapercu)
+    monkeypatch.setattr(publication, "_serveur", FauxVite())
+
+    def build_rouge(cible=None):
+        raise publication.PublicationRefusee("Le build de l'aperçu a échoué")
+
+    monkeypatch.setattr(publication, "construire_apercu", build_rouge)
+
+    with pytest.raises(publication.PublicationRefusee):
+        publication.demarrer_serveur_apercu()
+    assert publication.etat_serveur_apercu()["actif"] is False
+
+
 def test_un_apercu_qui_ne_demarre_pas_se_dit(publication, emplacements, port_libre,
                                              build_dapercu, monkeypatch):
     """Le serveur peut sortir en une seconde. Rendre la main sur « c'est parti »
