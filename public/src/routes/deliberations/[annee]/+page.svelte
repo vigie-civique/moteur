@@ -209,7 +209,9 @@
   @media (max-width: 680px) { .extrait { grid-column: 1; } }
   .list li:target { background: var(--ambre-pale); border-radius: 6px; }
   .date { color: var(--gris); font-variant-numeric: tabular-nums; font-size: .82rem; white-space: nowrap; }
-  .badge { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; padding: .12rem .5rem; border-radius: 99px; white-space: nowrap; align-self: start; }
+  /* Pas de `nowrap` : la colonne fait 130px, et « Délibération intercommunale »
+     en capitales en demande 202 — le libellé recouvrait le titre de l'acte. */
+  .badge { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; line-height: 1.3; padding: .12rem .5rem; border-radius: .5rem; align-self: start; justify-self: start; }
   .badge.CM { background: var(--ardoise-pale); color: var(--ardoise-fonce); }
   .badge.CC { background: #e7f0ea; color: var(--recette); }
   .title { color: var(--encre); font-size: .9rem; }

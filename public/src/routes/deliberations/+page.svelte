@@ -186,8 +186,11 @@
            padding: .5rem; text-decoration: none; }
   .res a:hover { background: var(--papier); }
   .date { color: var(--gris); font-variant-numeric: tabular-nums; font-size: .82rem; white-space: nowrap; }
+  /* Pas de `nowrap` : cf. deliberations/[annee] — le libellé intercommunal
+     déborde de ses 130px sur le titre. */
   .badge { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .02em;
-           padding: .12rem .5rem; border-radius: 99px; white-space: nowrap; align-self: start; }
+           line-height: 1.3; padding: .12rem .5rem; border-radius: .5rem;
+           align-self: start; justify-self: start; }
   .badge.CM { background: var(--ardoise-pale); color: var(--ardoise-fonce); }
   .badge.CC { background: #e7f0ea; color: var(--recette); }
   .titre { color: var(--encre); font-size: .9rem; }
