@@ -33,7 +33,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .db import transaction, upsert_entity, upsert_relation
+from .db import pivot_ids, transaction, upsert_entity, upsert_relation
 from .origine import ATELIER
 
 SAISIES = Path(__file__).resolve().parent.parent / "config" / "saisies.json"
@@ -68,6 +68,11 @@ CHAMPS_SAISIE = {
         "statut":       ("choix:vote,engage,paye,demande,annule",
                          "Ce que la pièce atteste : voté, engagé, payé, "
                          "seulement demandé, ou annulé"),
+        # Une saisie ne pouvait porter que la commune : la subvention d'une
+        # convention intercommunale y devenait une dépense communale.
+        "assemblee":    ("choix:commune,epci",
+                         "L'assemblée qui a voté : la commune (par défaut) "
+                         "ou l'intercommunalité"),
     },
     "acte": {
         "_libelle": "Délibération / acte",
@@ -204,6 +209,7 @@ def _inserer_flux(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
         return False
     v = s["valeurs"]
     tiers_id = _entite_du_tiers(conn, v["tiers"])
+    cote_id = pivot_ids(conn)["epci"] if v.get("assemblee") == "epci" else commune_id
     verse = v.get("sens", "verse") == "verse"
     conn.execute(
         "INSERT INTO financial_flows"
@@ -211,15 +217,15 @@ def _inserer_flux(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
         "  origine,raw_document_id,saisi_par,saisi_le)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (v["type"], v["year"], v["amount"],
-         commune_id if verse else tiers_id,
-         tiers_id if verse else commune_id,
+         cote_id if verse else tiers_id,
+         tiers_id if verse else cote_id,
          v["description"], source, s.get("confidence", "confirmed"),
          v.get("statut", "realise"),
          ATELIER, doc_id, s.get("saisi_par"), s.get("saisi_le")))
     upsert_relation(
         conn,
-        from_id=commune_id if verse else tiers_id,
-        to_id=tiers_id if verse else commune_id,
+        from_id=cote_id if verse else tiers_id,
+        to_id=tiers_id if verse else cote_id,
         rel_type="subventionné" if v["type"].startswith("subvention") else v["type"],
         source="atelier",
         confidence="confirmed",

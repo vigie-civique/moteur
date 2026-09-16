@@ -107,6 +107,38 @@ class TestEcriture:
         assert recue["from_id"] == versee["to_id"]   # le tiers, des deux côtés
         assert recue["to_id"] == versee["from_id"]   # la commune, des deux côtés
 
+    def test_lassemblee_decide_qui_paie(self, atelier):
+        """Une convention votée par l'intercommunalité n'est pas une dépense de
+        la commune. Sans ce champ, toute saisie de flux la lui attribuait."""
+        from collectors.db import pivot_ids
+        from collectors.saisies import import_saisies
+
+        atelier["ecrire"](saisie_flux(valeurs={**saisie_flux()["valeurs"],
+                                               "assemblee": "epci"}))
+        import_saisies()
+
+        import sqlite3
+        conn = sqlite3.connect(atelier["db"])
+        conn.row_factory = sqlite3.Row
+        pivots = pivot_ids(conn)
+        conn.commit()
+        ligne = atelier["lire"]("SELECT from_id, to_id FROM financial_flows")[0]
+        assert ligne["from_id"] == pivots["epci"]
+        assert ligne["to_id"] != pivots["commune"]
+
+    def test_sans_assemblee_la_commune_paie(self, atelier):
+        from collectors.db import pivot_ids
+        from collectors.saisies import import_saisies
+
+        atelier["ecrire"](saisie_flux())
+        import_saisies()
+
+        import sqlite3
+        conn = sqlite3.connect(atelier["db"])
+        conn.row_factory = sqlite3.Row
+        assert atelier["lire"]("SELECT from_id FROM financial_flows")[0]["from_id"] \
+            == pivot_ids(conn)["commune"]
+
     def test_le_rejeu_ne_double_pas(self, atelier):
         """Le piège déjà payé deux fois : `financial_flows` n'a aucune contrainte
         UNIQUE, donc un INSERT OR IGNORE n'y ignore rien."""
