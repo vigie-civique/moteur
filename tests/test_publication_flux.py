@@ -52,6 +52,7 @@ def emplacements(publication, tmp_path, monkeypatch):
     monkeypatch.setattr(publication, "PUBLIE", publie)
     monkeypatch.setattr(publication, "SITE", site)
     monkeypatch.setattr(publication, "ETAT", tmp_path / "etat.json")
+    monkeypatch.setattr(publication, "VERSIONS", tmp_path / "versions")
     return {"brouillon": brouillon, "publie": publie, "site": site}
 
 
@@ -562,8 +563,35 @@ def test_rien_ne_traine_a_cote_du_repertoire_servi(publication, emplacements):
             controleur=lambda cible: controle(
                 Path(cible).resolve() == emplacements["brouillon"].resolve()))
 
-    publie = emplacements["publie"]
-    assert not (publie.parent / f".{publie.name}.neuf").exists()
+    neuf, _ = publication._voisins(emplacements["publie"])
+    assert not neuf.exists()
+
+
+def test_aucune_version_de_travail_ne_vit_la_ou_le_build_recopie(
+        publication, emplacements):
+    """Le retour arrière du site vivait à côté du répertoire servi, donc dans
+    `public/static/` — que SvelteKit recopie en entier dans `build/`. Le
+    16/09/2026, lasalle.vigie-civique.fr servait `/.data.precedent/` : la
+    version du 23/08, contrôlée selon les règles du 23/08.
+
+    Une instance publiée avant la correction garde l'ancien emplacement : la
+    publication suivante doit le retirer, sans quoi chaque build le remet en
+    ligne."""
+    site = emplacements["site"]
+    snapshot(site, [1], marque="en ligne")
+    heritage = site.parent / f".{site.name}.precedent"
+    snapshot(heritage, [1], marque="23/08")
+
+    publication.generer_apercu(builder=builder([2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+
+    caches = [p.name for p in site.parent.iterdir() if p.name.startswith(".")]
+    assert caches == [], f"à côté du répertoire servi, un build recopierait {caches}"
+    _, precedent = publication._voisins(site)
+    assert json.loads((precedent / "stats.json").read_text())["marque"] == "en ligne", \
+        "le retour arrière doit toujours exister — ailleurs"
 
 
 def test_la_version_precedente_est_conservee_et_peut_reprendre_du_service(
@@ -700,16 +728,19 @@ def test_le_cli_ne_sert_pas_un_brouillon(publication):
 # Le seul geste de l'atelier qui sorte de la machine. Promouvoir écrit dans deux
 # répertoires locaux ; mettre en ligne change ce que le public voit.
 #
-# Ce qu'il ne fait PAS, et c'est le point : rejouer `deploy/publier-site.sh` en
-# entier. Ce script commence par reconstruire le snapshot depuis la base — or ce
-# qui a été promu a été CONTRÔLÉ. Le reconstruire déploierait une version que
-# personne n'a validée, différente dès qu'un collecteur a tourné entre-temps.
+# Il passe par `deploy/publier-site.sh --deja-promu` : le build et le
+# téléversement ne sont écrits qu'une fois. Et il saute l'aperçu et la
+# promotion — ce qui a été promu a été CONTRÔLÉ ; le reconstruire depuis la base
+# déploierait une version que personne n'a validée, différente dès qu'un
+# collecteur a tourné entre-temps.
 
 
 @pytest.fixture
 def pret_a_deployer(publication, emplacements, monkeypatch):
-    """Un snapshot promu, et un projet d'hébergement déclaré."""
-    monkeypatch.setattr(publication, "projet_hebergeur", lambda: "vigie-essai")
+    """Un snapshot promu, et une destination déclarée."""
+    monkeypatch.setattr(publication, "destination", lambda: {
+        "cible": "rsync", "hote": "essai", "chemin": "/srv/essai",
+        "source": "essai", "libelle": "essai:/srv/essai"})
     monkeypatch.setattr(publication, "DEPLOIEMENT_LOG",
                         emplacements["brouillon"].parent / "mise-en-ligne.log")
     monkeypatch.setattr(publication, "DEPLOIEMENT_ETAT",
@@ -732,35 +763,37 @@ def test_sans_rien_de_promu_la_mise_en_ligne_refuse(publication, emplacements,
                                                     monkeypatch):
     """Mettre en ligne ne construit pas de snapshot : il déploie celui qui a été
     contrôlé. S'il n'y en a pas, il n'y a rien à déployer."""
-    monkeypatch.setattr(publication, "projet_hebergeur", lambda: "vigie-essai")
+    monkeypatch.setattr(publication, "destination", lambda: {
+        "cible": "rsync", "hote": "essai", "chemin": "/srv/essai",
+        "source": "essai", "libelle": "essai:/srv/essai"})
     monkeypatch.setattr(publication, "_deploiement", None)
     with pytest.raises(publication.PublicationRefusee) as refus:
         publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
     assert "promu" in str(refus.value).lower()
 
 
-def test_sans_projet_declare_la_mise_en_ligne_refuse(publication, pret_a_deployer,
-                                                     monkeypatch):
-    """Un déploiement sans nom de projet irait au hasard — ou, pire, chez le
+def test_sans_destination_declaree_la_mise_en_ligne_refuse(
+        publication, pret_a_deployer, monkeypatch):
+    """Un déploiement sans destination irait au hasard — ou, pire, chez le
     voisin : une machine porte souvent plusieurs instances."""
-    monkeypatch.setattr(publication, "projet_hebergeur", lambda: None)
+    monkeypatch.setattr(publication, "destination", lambda: None)
     with pytest.raises(publication.PublicationRefusee) as refus:
         publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
-    assert "projet" in str(refus.value).lower()
+    assert "destination" in str(refus.value).lower()
 
 
 def test_la_mise_en_ligne_part_de_ce_qui_est_servi(publication, pret_a_deployer,
                                                    emplacements, monkeypatch):
-    """Le build est lancé dans `public/`, qui lit le répertoire servi — pas une
-    reconstruction depuis la base."""
+    """Le script de publication, en sautant l'aperçu et la promotion : ce qui
+    part est ce qui a été contrôlé, pas une reconstruction depuis la base."""
     lance = {}
 
     class FauxDeploiement:
         returncode = None
         def poll(self): return None
 
-    def faux_popen(cmd, cwd=None, **kw):
-        lance.update(cmd=cmd, cwd=cwd)
+    def faux_popen(cmd, cwd=None, env=None, **kw):
+        lance.update(cmd=cmd, cwd=cwd, env=env or {})
         return FauxDeploiement()
 
     monkeypatch.setattr(publication.subprocess, "Popen", faux_popen)
@@ -770,20 +803,17 @@ def test_la_mise_en_ligne_part_de_ce_qui_est_servi(publication, pret_a_deployer,
 
     etat = publication.mettre_en_ligne(auteur="admin@exemple", role="admin")
 
-    assert lance["cwd"].endswith("public")
     commande = " ".join(lance["cmd"])
-    assert "npm run build" in commande
-    assert "wrangler pages deploy build" in commande
-    # L'environnement Production, explicitement : sans `--branch=main`, wrangler
-    # lit la branche git courante et déploie en Preview — la production reste
-    # inchangée sans que rien n'échoue.
-    assert "--branch=main" in commande
-    assert "--project-name=vigie-essai" in commande
-    # Aucune reconstruction de snapshot : ce qui a été contrôlé part tel quel.
+    assert commande.endswith("deploy/publier-site.sh --deployer --deja-promu")
+    # Aucun téléversement écrit à part : c'était `wrangler` en dur, qui visait
+    # encore Cloudflare Pages quinze jours après que le site en était parti.
+    assert "wrangler" not in commande
     assert "build_public_snapshot" not in commande
-    assert "publier-site.sh" not in commande
+    # L'interpréteur de l'atelier, qui a les dépendances du moteur.
+    assert lance["env"]["PY"] == publication.sys.executable
     assert etat["actif"] is True
     assert etat["empreinte_visee"] == pret_a_deployer["empreinte"]
+    assert etat["destination_visee"] == "essai:/srv/essai"
 
 
 def test_letat_dit_quand_un_deploiement_a_echoue(publication, pret_a_deployer,
@@ -799,3 +829,175 @@ def test_letat_dit_quand_un_deploiement_a_echoue(publication, pret_a_deployer,
     assert etat["actif"] is False
     assert etat["ok"] is False
     assert etat["code_retour"] == 1
+
+
+# ── Où part le site : déclaré une fois ───────────────────────────────────────
+#
+# La destination vivait à trois endroits — `cf_project` pour le bouton de
+# l'atelier, un `case` recopié dans deux scripts pour la ligne de commande — et
+# les trois avaient divergé : le 16/09/2026, le bouton visait encore Cloudflare
+# Pages, quitté le 01/09.
+
+VARIABLES_DE_DESTINATION = ("VIGIE_CIBLE", "VIGIE_CIBLE_HOTE", "VIGIE_CIBLE_CHEMIN",
+                            "VIGIE_CIBLE_RSYNC_PATH", "CF_PROJECT")
+
+
+@pytest.fixture
+def instance(tmp_path, monkeypatch):
+    """Écrit une `config/instance.json` jetable, sans variable de destination."""
+    for variable in VARIABLES_DE_DESTINATION:
+        monkeypatch.delenv(variable, raising=False)
+    chemin = tmp_path / "instance.json"
+    monkeypatch.setenv("VIGIE_INSTANCE", str(chemin))
+
+    def ecrire(**cles):
+        chemin.write_text(json.dumps({"commune_insee": "00000", **cles}),
+                          encoding="utf-8")
+    return ecrire
+
+
+def test_la_destination_se_lit_dans_linstance(publication, instance):
+    instance(publication={"_doc": "où part le site", "cible": "rsync",
+                          "hote": "vps", "chemin": "/srv/sites/essai",
+                          "rsync_path": "sudo -u web rsync"})
+    declaree = publication.destination()
+    assert declaree["cible"] == "rsync"
+    assert declaree["libelle"] == "vps:/srv/sites/essai"
+    assert "_doc" not in declaree
+
+
+def test_lenvironnement_reste_prioritaire(publication, instance, monkeypatch):
+    """Pour qui publie déjà ainsi, ou ponctuellement ailleurs."""
+    instance(publication={"cible": "rsync", "hote": "vps", "chemin": "/srv/a"})
+    monkeypatch.setenv("CF_PROJECT", "vigie-ailleurs")
+    declaree = publication.destination()
+    assert (declaree["cible"], declaree["projet"]) == ("cloudflare", "vigie-ailleurs")
+    assert declaree["source"] == "environnement"
+
+
+def test_lancienne_cle_cf_project_vaut_encore_cloudflare(publication, instance):
+    instance(cf_project="vigie-historique")
+    assert publication.destination()["projet"] == "vigie-historique"
+
+
+def test_le_bloc_publication_lemporte_sur_lancienne_cle(publication, instance):
+    """C'est le cas de Lasalle au 16/09/2026 : `cf_project` était resté, et
+    c'est lui que lisait le bouton."""
+    instance(cf_project="vigie-abandonne",
+             publication={"cible": "rsync", "hote": "vps", "chemin": "/srv/l"})
+    assert publication.destination()["cible"] == "rsync"
+
+
+def test_rien_de_declare_rend_none(publication, instance):
+    instance()
+    assert publication.destination() is None
+
+
+@pytest.mark.parametrize("bloc, motif", [
+    ({"cible": "rsync", "hote": "vps"}, "chemin"),
+    ({"cible": "cloudflare"}, "projet"),
+    ({"cible": "ftp", "hote": "x"}, "inconnu"),
+    ({"cible": "rsync", "hote": "-e sh", "chemin": "/srv"}, "tiret"),
+])
+def test_une_declaration_incomplete_est_refusee_pas_ignoree(
+        publication, instance, bloc, motif):
+    """La traiter comme une absence ferait publier ailleurs, ou nulle part,
+    sans qu'une ligne le dise."""
+    instance(publication=bloc)
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.destination()
+    assert motif in str(refus.value).lower()
+
+
+def test_la_destination_passe_au_shell_sans_etre_reinterpretee(publication, tmp_path):
+    """Le script évalue ce que rend `destination --shell` : une valeur piégée
+    doit arriver telle quelle, pas s'exécuter."""
+    import subprocess
+
+    temoin = tmp_path / "execute"
+    declaree = {"cible": "rsync", "hote": "vps",
+                "chemin": f"/srv/a b'; touch {temoin}; '",
+                "rsync_path": "sudo -u web rsync"}
+    sortie = subprocess.run(
+        ["bash", "-c", publication.destination_pour_le_shell(declaree)
+         + '\nprintf "%s|%s" "$VIGIE_CIBLE_CHEMIN" "$VIGIE_CIBLE_RSYNC_PATH"'],
+        capture_output=True, text=True, check=True).stdout
+    assert sortie == f"{declaree['chemin']}|sudo -u web rsync"
+    assert not temoin.exists()
+
+
+def test_letat_dit_une_destination_refusee(publication, instance, monkeypatch):
+    """La page Publication doit montrer POURQUOI le bouton refusera, avant le clic."""
+    monkeypatch.setattr(publication, "_deploiement", None)
+    instance(publication={"cible": "rsync", "hote": "vps"})
+    etat = publication.etat_mise_en_ligne()
+    assert etat["destination"] is None
+    assert "chemin" in etat["destination_erreur"]
+
+
+# ── La ligne de commande passe par le même flux ──────────────────────────────
+
+def test_la_ligne_de_commande_ne_publie_pas_sans_apercu(publication, emplacements,
+                                                       capsys):
+    assert publication.main(["publier"]) == 1
+    assert "aperçu" in capsys.readouterr().err.lower()
+
+
+def test_la_ligne_de_commande_publie_comme_latelier(publication, emplacements,
+                                                   monkeypatch):
+    """Même état, même `version.json` : c'est ce qui manquait pour que l'atelier
+    voie ce que la ligne de commande avait publié."""
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    monkeypatch.setattr(publication, "controler", lambda cible: controle(True))
+    assert publication.main(["publier"]) == 0
+    etat = publication.lire_etat()
+    assert etat["publie"]["publie_par"].endswith("(ligne de commande)")
+    declare = json.loads((emplacements["site"] / "version.json").read_text())
+    assert declare["empreinte"] == etat["publie"]["empreinte"]
+
+
+def test_la_ligne_de_commande_dit_labsence_de_destination(publication, instance,
+                                                         capsys):
+    instance()
+    assert publication.main(["destination", "--shell"]) == 1
+    assert "publication" in capsys.readouterr().err
+
+
+# ── Le script de publication ne contourne plus le flux ───────────────────────
+# Lecture du script plutôt qu'exécution : le lancer demande une base, un build
+# et un hébergeur, et ce qui est en jeu ici est une DÉCISION.
+
+SCRIPT = (ROOT / "deploy" / "publier-site.sh").read_text(encoding="utf-8")
+
+
+def test_le_script_ne_construit_plus_le_snapshot_dans_les_repertoires_servis():
+    """C'est le contournement du 16/09/2026 : `build_public_snapshot.py`
+    écrivait directement dans les deux répertoires servis, et l'atelier n'en
+    savait rien."""
+    assert "build_public_snapshot" not in SCRIPT
+    assert '"$PUBLICATION" apercu' in SCRIPT
+    assert '"$PUBLICATION" publier' in SCRIPT
+    assert SCRIPT.index('"$PUBLICATION" apercu') < SCRIPT.index('"$PUBLICATION" publier') \
+        < SCRIPT.index("npm run build")
+
+
+def test_le_script_lit_la_destination_par_le_flux_et_nen_devine_aucune():
+    assert '"$PUBLICATION" destination --shell' in SCRIPT
+    assert "indecis" not in SCRIPT
+
+
+def test_le_script_constate_ce_qui_est_servi_apres_le_televersement():
+    assert SCRIPT.rindex('"$PUBLICATION" verifier') > SCRIPT.index("rsync -az")
+
+
+def test_le_script_refuse_un_build_qui_porte_des_fichiers_caches():
+    bloc = SCRIPT[SCRIPT.index('caches="$(find'):SCRIPT.index('if [ "$DEPLOYER" -eq 0 ]')]
+    assert "exit 1" in bloc
+    assert "| head" not in bloc.split("\n", 1)[0], \
+        "sous pipefail, `| head` ferait échouer l'affectation"
+
+
+def test_le_script_est_du_bash_valide():
+    import subprocess
+    subprocess.run(["bash", "-n", str(ROOT / "deploy" / "publier-site.sh")], check=True)

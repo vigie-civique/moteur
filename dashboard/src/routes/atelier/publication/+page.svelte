@@ -672,6 +672,16 @@
       {/if}
     </div>
     <div class="ligne">
+      <span class="etiq">Destination</span>
+      {#if deploiement.destination}
+        <code>{deploiement.destination}</code>
+      {:else if deploiement.destination_erreur}
+        <span class="alerte">{deploiement.destination_erreur}</span>
+      {:else}
+        <em class="muted">aucune déclarée (bloc <code>publication</code> dans <code>config/instance.json</code>)</em>
+      {/if}
+    </div>
+    <div class="ligne">
       <span class="etiq">Empreinte promue</span>
       <code>{publie.empreinte || '—'}</code>
     </div>
@@ -693,7 +703,7 @@
 
     {#if deploiement.actif}
       <p class="ligne"><span class="tag attente">déploiement en cours</span>
-        Vers <code>{deploiement.projet}</code>, empreinte
+        Vers <code>{deploiement.destination_visee || deploiement.destination}</code>, empreinte
         <code>{deploiement.empreinte_visee}</code>. Construction des pages puis
         téléversement — plusieurs minutes. Journal :
         <code>{deploiement.journal}</code>

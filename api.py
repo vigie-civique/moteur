@@ -1524,7 +1524,7 @@ def publication_mettre_en_ligne(x_admin_key: Optional[str] = Header(default=None
                              {"motif": e.message, "role": role})
         raise HTTPException(409, {"message": e.message, **e.detail})
     _journal_publication(user, "mise-en-ligne", {
-        "projet": lance.get("projet"),
+        "destination": lance.get("destination"),
         "empreinte_visee": lance.get("empreinte_visee"),
     })
     return _etat_complet(x_admin_key, user)

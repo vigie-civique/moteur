@@ -414,9 +414,11 @@ qui résout d'abord en IPv6 là où le service n'écoute qu'en IPv4.
    côté client.
 
 Le résultat est un site statique ordinaire dans `public/build/`, à téléverser où
-vous voulez. Le script sait pousser vers Cloudflare Pages
-(`CF_PROJECT=… ./deploy/publier-site.sh --deployer`) ; pour tout autre
-hébergeur, rien à changer avant la dernière étape.
+vous voulez. Le script sait le faire par `rsync` ou vers Cloudflare Pages, une
+fois la destination déclarée dans le bloc `publication` de
+`config/instance.json` (`./deploy/publier-site.sh --deployer`, cf.
+`deploy/README.md`) ; pour tout autre hébergeur, rien à changer avant la
+dernière étape.
 
 ### Depuis l'atelier : regarder avant de publier
 

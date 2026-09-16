@@ -27,11 +27,14 @@ jetables.
 """
 from __future__ import annotations
 
+import argparse
 import atexit
 import fcntl
+import getpass
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -74,6 +77,15 @@ VERROU = ROOT / "audits" / "publication.lock"
 # en arrière ; en garder davantage occuperait le disque de l'atelier sans que
 # personne n'y revienne jamais.
 VERSIONS_GARDEES = 1
+
+# Où vivent la version en construction (`.neuf`) et la version d'avant
+# (`.precedent`) de chaque emplacement servi : HORS de tout répertoire qu'un
+# build recopie. Elles vivaient à côté du répertoire servi, et pour le site
+# c'était `public/static/` — que SvelteKit recopie en entier dans `build/`.
+# Le 16/09/2026, lasalle.vigie-civique.fr servait ainsi `/.data.precedent/` :
+# le snapshot du 23/08 au complet, contrôlé selon les règles du 23/08, trois
+# semaines après que ces règles avaient été resserrées.
+VERSIONS = ROOT / "audits" / "versions"
 
 # Écrit dans chaque répertoire mis en service, et emporté par le déploiement.
 # C'est la pièce qui distingue « publié » de « en ligne » : sans elle, l'atelier
@@ -477,6 +489,14 @@ def _vider(dossier: Path) -> None:
         dossier.unlink()
 
 
+def _voisins(dest: Path) -> tuple[Path, Path]:
+    """La version en construction et la version d'avant d'un emplacement servi.
+
+    Dans `VERSIONS`, jamais à côté de `dest` : cf. la définition de `VERSIONS`.
+    """
+    return VERSIONS / f"{dest.name}.neuf", VERSIONS / f"{dest.name}.precedent"
+
+
 def basculer(src: Path, dest: Path, controleur) -> dict:
     """Construit la version à côté, la contrôle, PUIS la met en service.
 
@@ -497,8 +517,13 @@ def basculer(src: Path, dest: Path, controleur) -> dict:
     soit la nouvelle, jamais un mélange des deux.
     """
     dest = Path(dest)
-    neuf = dest.parent / f".{dest.name}.neuf"
-    precedent = dest.parent / f".{dest.name}.precedent"
+    neuf, precedent = _voisins(dest)
+    # L'ancien emplacement, à côté du répertoire servi : une instance publiée
+    # avant le 16/09/2026 y garde une version que chaque build remet en ligne.
+    # Il est remplacé par la version courante ci-dessous, donc rien ne s'y perd.
+    for ancien in (dest.parent / f".{dest.name}.neuf",
+                   dest.parent / f".{dest.name}.precedent"):
+        _vider(ancien)
 
     _vider(neuf)
     neuf.mkdir(parents=True)
@@ -545,12 +570,12 @@ def revenir_a_la_version_precedente(dest: Path) -> dict:
     sans reconstruire.
     """
     dest = Path(dest)
-    precedent = dest.parent / f".{dest.name}.precedent"
+    _, precedent = _voisins(dest)
     if not precedent.is_dir():
         raise PublicationRefusee(
             f"Aucune version précédente conservée pour {dest.name} — "
             "rien à remettre en service.")
-    courant = dest.parent / f".{dest.name}.repris"
+    courant = VERSIONS / f"{dest.name}.repris"
     _vider(courant)
     if dest.exists():
         dest.rename(courant)
@@ -714,32 +739,114 @@ def _publier_sous_verrou(auteur, source, controleur) -> dict:
 _deploiement = None
 
 
-def projet_hebergeur() -> str | None:
-    """Le nom du projet chez l'hébergeur, déclaré par l'instance.
+# Les variables que lit `deploy/publier-site.sh`, par hébergeur, et ce qu'elles
+# deviennent dans le bloc `publication` de `config/instance.json`.
+CIBLES = {
+    "rsync": {"hote": "VIGIE_CIBLE_HOTE", "chemin": "VIGIE_CIBLE_CHEMIN",
+              "rsync_path": "VIGIE_CIBLE_RSYNC_PATH"},
+    "cloudflare": {"projet": "CF_PROJECT"},
+}
+CHAMPS_EXIGES = {"rsync": ("hote", "chemin"), "cloudflare": ("projet",)}
 
-    `CF_PROJECT` en variable d'environnement reste prioritaire : c'est ce que
-    `deploy/publier-site.sh` utilise, et deux façons de nommer la même chose
-    qui divergeraient enverraient le site au mauvais endroit.
+
+def destination() -> dict | None:
+    """Où part le site public : déclaré UNE fois, lu par toutes les façons de publier.
+
+    La destination vivait à trois endroits : `cf_project` dans l'instance pour
+    le bouton de l'atelier, et un `case` recopié dans deux scripts personnels
+    pour la ligne de commande. Les trois ont divergé — le 16/09/2026, le bouton
+    visait encore Cloudflare Pages, abandonné depuis le 01/09, pendant que les
+    scripts publiaient sur le VPS. Un clic aurait remis en ligne l'adresse
+    qu'on avait fait mourir.
+
+    Par ordre de priorité :
+      1. l'environnement (`VIGIE_CIBLE`, `CF_PROJECT`…), pour qui l'utilise
+         déjà ou publie ponctuellement ailleurs ;
+      2. le bloc `publication` de `config/instance.json` :
+             {"cible": "rsync", "hote": "…", "chemin": "…", "rsync_path": "…"}
+             {"cible": "cloudflare", "projet": "…"}
+      3. l'ancienne clé `cf_project`, lue comme une cible Cloudflare.
+
+    Rien de déclaré rend `None`. Une déclaration INCOMPLÈTE est refusée : la
+    traiter comme une absence ferait publier ailleurs, ou nulle part, sans
+    qu'une ligne le dise.
     """
-    if os.environ.get("CF_PROJECT"):
-        return os.environ["CF_PROJECT"]
+    env = os.environ
+    if env.get("VIGIE_CIBLE") or env.get("CF_PROJECT"):
+        cible = env.get("VIGIE_CIBLE") or "cloudflare"
+        declaree = {"cible": cible, "source": "environnement"}
+        for champ, variable in CIBLES.get(cible, {}).items():
+            if env.get(variable):
+                declaree[champ] = env[variable]
+    else:
+        instance = _lire_instance()
+        bloc = instance.get("publication")
+        if isinstance(bloc, dict) and bloc.get("cible"):
+            declaree = {k: v for k, v in bloc.items() if not k.startswith("_")}
+            declaree["source"] = "config/instance.json"
+        elif instance.get("cf_project"):
+            declaree = {"cible": "cloudflare", "projet": instance["cf_project"],
+                        "source": "config/instance.json (cf_project)"}
+        else:
+            return None
+
+    cible = declaree["cible"]
+    if cible not in CIBLES:
+        raise PublicationRefusee(
+            f"Hébergeur inconnu : « {cible} ». Les cibles connues sont "
+            f"{', '.join(sorted(CIBLES))}.")
+    manquants = [c for c in CHAMPS_EXIGES[cible] if not declaree.get(c)]
+    if manquants:
+        raise PublicationRefusee(
+            f"Destination « {cible} » incomplète ({declaree['source']}) : "
+            f"il manque {', '.join(manquants)}.")
+    # Chaque valeur finit en argument de `rsync` ou de `wrangler` : un tiret de
+    # tête y serait lu comme une option.
+    for champ in CIBLES[cible]:
+        if str(declaree.get(champ, "")).startswith("-"):
+            raise PublicationRefusee(
+                f"Destination refusée : « {champ} » commence par un tiret.")
+
+    declaree["libelle"] = (
+        f"{declaree['hote']}:{declaree['chemin']}" if cible == "rsync"
+        else f"Cloudflare Pages « {declaree['projet']} »")
+    return declaree
+
+
+def _lire_instance() -> dict:
     chemin = Path(os.environ.get("VIGIE_INSTANCE") or ROOT / "config" / "instance.json")
-    if not chemin.is_file():
-        return None
     try:
-        return (json.loads(chemin.read_text(encoding="utf-8"))
-                .get("cf_project") or None)
-    except (json.JSONDecodeError, OSError):
-        return None
+        return json.loads(chemin.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def destination_pour_le_shell(declaree: dict) -> str:
+    """La destination sous la forme que `deploy/publier-site.sh` évalue.
+
+    Le script ne relit pas `instance.json` lui-même : deux lecteurs du même
+    fichier, c'est deux ordres de priorité qui finissent par différer.
+    """
+    lignes = [f"export VIGIE_CIBLE={shlex.quote(declaree['cible'])}"]
+    for champ, variable in CIBLES[declaree["cible"]].items():
+        if declaree.get(champ):
+            lignes.append(f"export {variable}={shlex.quote(str(declaree[champ]))}")
+    return "\n".join(lignes)
 
 
 def etat_mise_en_ligne() -> dict:
     """Où en est le déploiement — en cours, fini, ou jamais lancé."""
     actif = _deploiement is not None and _deploiement.poll() is None
     fini = _deploiement is not None and _deploiement.poll() is not None
+    try:
+        declaree = destination()
+        vers, erreur = (declaree or {}).get("libelle"), None
+    except PublicationRefusee as e:
+        vers, erreur = None, e.message
     etat = {
         "actif": actif,
-        "projet": projet_hebergeur(),
+        "destination": vers,
+        "destination_erreur": erreur,
         "journal": str(DEPLOIEMENT_LOG) if DEPLOIEMENT_LOG.is_file() else None,
     }
     if DEPLOIEMENT_ETAT.is_file():
@@ -758,12 +865,15 @@ def etat_mise_en_ligne() -> dict:
 def mettre_en_ligne(auteur: str | None = None, role: str | None = None) -> dict:
     """Construit le site depuis la version PROMUE, et le téléverse.
 
-    Ne rejoue pas `deploy/publier-site.sh` en entier, et c'est délibéré : ce
-    script commence par reconstruire le snapshot depuis la base. Or ce qui a été
-    promu a été contrôlé ; le reconstruire déploierait une version que personne
-    n'a validée, différente dès qu'un collecteur a tourné entre-temps. On repart
-    donc de `public/static/data` tel qu'il est servi — étapes 3 et 4 du script,
-    pas 1 à 4.
+    Par `deploy/publier-site.sh --deja-promu`, qui saute l'aperçu et la
+    promotion : ce qui a été promu a été contrôlé, et le reconstruire depuis la
+    base déploierait une version que personne n'a validée, différente dès qu'un
+    collecteur a tourné entre-temps. On repart donc de `public/static/data` tel
+    qu'il est servi.
+
+    Le build et le téléversement ne sont écrits qu'une fois, dans le script.
+    L'atelier avait les siens — `wrangler` en dur — et ils ont continué de viser
+    Cloudflare Pages quinze jours après que le site en était parti.
     """
     if not peut_publier(role):
         raise PublicationRefusee(
@@ -783,12 +893,14 @@ def mettre_en_ligne(auteur: str | None = None, role: str | None = None) -> dict:
         raise PublicationRefusee(
             f"{SITE} est vide : le site n'a rien à construire.")
 
-    projet = projet_hebergeur()
-    if not projet:
+    declaree = destination()
+    if not declaree:
         raise PublicationRefusee(
-            "Aucun projet d'hébergement déclaré. Ajouter `cf_project` à "
-            "config/instance.json, ou exporter CF_PROJECT avant de démarrer "
-            "l'API. Sans lui, le déploiement irait au hasard.")
+            "Aucune destination déclarée pour le site public. Ajouter à "
+            "config/instance.json un bloc `publication` — "
+            '{"cible": "rsync", "hote": "…", "chemin": "…"} ou '
+            '{"cible": "cloudflare", "projet": "…"}. Sans lui, le déploiement '
+            "irait au hasard.")
     if not (ROOT / "public" / "node_modules").is_dir():
         raise PublicationRefusee(
             "Le site public n'a pas ses dépendances : `cd public && npm ci`.")
@@ -796,22 +908,20 @@ def mettre_en_ligne(auteur: str | None = None, role: str | None = None) -> dict:
     DEPLOIEMENT_LOG.parent.mkdir(parents=True, exist_ok=True)
     DEPLOIEMENT_ETAT.write_text(json.dumps({
         "demarre_le": maintenant(), "demarre_par": auteur,
-        "projet": projet, "empreinte_visee": empreinte_promue,
+        "destination_visee": declaree["libelle"],
+        "empreinte_visee": empreinte_promue,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     journal = DEPLOIEMENT_LOG.open("w", encoding="utf-8")
-    journal.write(f"$ mise en ligne de {SITE} vers « {projet} »\n"
+    journal.write(f"$ mise en ligne de {SITE} vers {declaree['libelle']}\n"
                   f"  empreinte promue : {empreinte_promue}\n\n")
     journal.flush()
-    # `--branch=main` force l'environnement Production : sans lui, wrangler lit
-    # la branche git courante et déploie en Preview — la production reste alors
-    # inchangée, sans que rien n'échoue.
+    # `PY` : l'interpréteur de l'atelier, qui a les dépendances du moteur. Sans
+    # lui, le script retombe sur le `python3` du système.
     _deploiement = subprocess.Popen(
-        ["bash", "-c",
-         "npm run build && "
-         f"npx wrangler pages deploy build --project-name={projet} "
-         "--branch=main --commit-dirty=true"],
-        cwd=str(ROOT / "public"),
+        ["bash", str(ROOT / "deploy" / "publier-site.sh"),
+         "--deployer", "--deja-promu"],
+        cwd=str(ROOT), env={**os.environ, "PY": sys.executable},
         stdout=journal, stderr=subprocess.STDOUT,
     )
     return etat_mise_en_ligne()
@@ -1023,3 +1133,95 @@ def arreter_serveur_apercu() -> dict:
 # sache l'arrêter — et la fois suivante, le démarrage échoue sans raison
 # visible.
 atexit.register(arreter_serveur_apercu)
+
+
+# ── Ligne de commande ────────────────────────────────────────────────────────
+# Le même flux que la page Publication, pour `deploy/publier-site.sh` et les
+# passes automatiques.
+#
+# Jusqu'au 16/09/2026, la ligne de commande avait son propre chemin :
+# `build_public_snapshot.py` écrivait directement dans les deux répertoires
+# servis. Le site était bien publié, mais sans brouillon, sans `version.json`
+# à jour et sans rien dans l'état. L'atelier montrait un aperçu du 26/08 et une
+# promotion du 23/08 devant un site du 16/09, et sa vérification en ligne
+# comparait deux empreintes figées depuis trois semaines : « à jour », toujours.
+
+DELAI_ENTRE_ESSAIS = 5
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Flux de publication : aperçu, promotion, constat en ligne.")
+    gestes = parser.add_subparsers(dest="geste", required=True)
+    gestes.add_parser("apercu", help="construire le snapshot dans le brouillon, "
+                                     "et le contrôler")
+    gestes.add_parser("publier", help="promouvoir le brouillon contrôlé vers les "
+                                      "deux emplacements servis")
+    verifier = gestes.add_parser("verifier", help="constater que le site en ligne "
+                                                  "sert la version promue")
+    verifier.add_argument("--essais", type=int, default=1,
+                          help=f"tentatives, à {DELAI_ENTRE_ESSAIS} s d'écart")
+    dest = gestes.add_parser("destination", help="dire où part le site public")
+    dest.add_argument("--shell", action="store_true",
+                      help="sous forme de variables que le script de publication évalue")
+    args = parser.parse_args(argv)
+
+    # Qui tape une commande sur la machine qui porte la base a déjà tous les
+    # droits sur elle : le rôle ne départage quelqu'un que derrière l'API.
+    auteur = f"{getpass.getuser()} (ligne de commande)"
+    try:
+        if args.geste == "apercu":
+            from scripts.build_public_snapshot import PerimetreNonClasse
+            try:
+                resume = generer_apercu(auteur=auteur)
+            except PerimetreNonClasse as e:
+                print(f"✖ snapshot refusé — {e}", file=sys.stderr)
+                return 2
+            controle = resume.get("controle") or {}
+            print(f"   brouillon : {resume['repertoire']} — "
+                  f"{(resume.get('stats') or {}).get('entities_public')} entités publiques")
+            print((controle.get("rapport") or "").strip())
+            return 0 if controle.get("ok") else 1
+
+        if args.geste == "publier":
+            publie = publier(auteur=auteur, role="admin")
+            print(f"   promu : empreinte {publie['empreinte']} → {PUBLIE}, {SITE}")
+            if publie.get("differences"):
+                print(f"   ⚠ écarts entre l'aperçu et la copie : {publie['differences']}")
+            return 0
+
+        if args.geste == "verifier":
+            for essai in range(max(1, args.essais)):
+                if essai:
+                    time.sleep(DELAI_ENTRE_ESSAIS)
+                verdict = verifier_en_ligne()
+                if verdict["ok"] or not verdict.get("url") \
+                        or not verdict.get("empreinte_attendue"):
+                    break
+            if not verdict.get("url"):
+                # Une instance sans site n'a rien à constater : ce n'est pas un échec.
+                print(f"   ⚠ {verdict['motif']}")
+                return 0
+            print(f"   {'✓' if verdict['ok'] else '✖'} {verdict['motif']} "
+                  f"(servie : {verdict.get('empreinte')}, promue : "
+                  f"{verdict.get('empreinte_attendue')})")
+            return 0 if verdict["ok"] else 1
+
+        declaree = destination()
+        if not declaree:
+            print("✖ Aucune destination déclarée : ajouter un bloc `publication` "
+                  "à config/instance.json.", file=sys.stderr)
+            return 1
+        print(destination_pour_le_shell(declaree) if args.shell
+              else f"{declaree['libelle']} ({declaree['source']})")
+        return 0
+    except PublicationRefusee as e:
+        print(f"✖ {e.message}", file=sys.stderr)
+        rapport = (e.detail.get("controle") or {}).get("rapport")
+        if rapport:
+            print(rapport, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

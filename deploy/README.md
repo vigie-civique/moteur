@@ -26,30 +26,56 @@ une requête qu'on n'avait pas prévue — il n'y a pas de requête.
 ./deploy/publier-site.sh
 ```
 
-Trois étapes, dans cet ordre, et chacune peut refuser :
+C'est le flux de la page **Publication** de l'atelier, joué en ligne de
+commande (`scripts/publication.py`). Il n'y en a pas d'autre : ce que publie le
+script, l'atelier le voit, et inversement. Dans cet ordre, et chaque étape peut
+refuser :
 
-1. **le snapshot** — s'arrête si `entities.perimetre` n'a jamais été renseignée.
-   Sans ce classement, le site publierait l'intercommunalité entière à la place
-   de la commune. Le message dit quoi lancer ;
-2. **les invariants** (`scripts/verify_snapshot.py`) — un contrôle écrit comme
-   un adversaire, qui n'importe pas le builder et attaque le répertoire publié :
-   confidences privées, relations hors liste, coordonnées de personnes, secrets,
-   chemins locaux, et part de la commune dans ce qui est publié. **Une violation
+1. **l'aperçu** — le snapshot est construit dans un brouillon
+   (`audits/public_snapshot_preview`), jamais dans ce qui est servi. Il
+   s'arrête si `entities.perimetre` n'a jamais été renseignée : sans ce
+   classement, le site publierait l'intercommunalité entière à la place de la
+   commune. Puis **les invariants** (`scripts/verify_snapshot.py`) — un contrôle
+   écrit comme un adversaire, qui n'importe pas le builder : confidences
+   privées, relations hors liste, coordonnées de personnes, secrets, chemins
+   locaux, et part de la commune dans ce qui est publié. **Une violation
    interrompt la publication** ;
+2. **la promotion** — le brouillon contrôlé est recopié à côté de chaque
+   répertoire servi, recontrôlé à l'arrivée, puis mis en service par renommage.
+   Chaque version porte un `version.json` (son empreinte), et la précédente est
+   gardée dans `audits/versions/` pour revenir en arrière ;
 3. **le build** — `npm run build` échoue si une page est livrée sans son
-   contenu (`public/scripts/verifier_build.mjs`).
+   contenu (`public/scripts/verifier_build.mjs`). Un build qui porte un fichier
+   caché est refusé : tout `public/static/` part en ligne.
 
 Le résultat est dans `public/build/` : un site statique ordinaire, à téléverser
-où vous voulez. Le script sait pousser vers Cloudflare Pages, qui a l'avantage
-d'un palier gratuit et d'un déploiement par téléversement direct :
+où vous voulez. Pour que le script le fasse, déclarez **une fois** la
+destination dans `config/instance.json` :
 
-```bash
-npx wrangler login                                    # une fois
-CF_PROJECT=vigie-civique-macommune ./deploy/publier-site.sh --deployer
+```json
+"publication": {"cible": "rsync", "hote": "monserveur", "chemin": "/srv/www/macommune",
+                "rsync_path": "sudo -u www-data rsync"}
 ```
 
-Pour Netlify, GitHub Pages, ou un `rsync` vers un hébergeur classique : rien à
-changer avant la dernière étape, le dossier `build/` se dépose tel quel.
+ou, pour Cloudflare Pages (palier gratuit, téléversement direct) :
+
+```json
+"publication": {"cible": "cloudflare", "projet": "vigie-civique-macommune"}
+```
+
+```bash
+npx wrangler login                        # une fois, pour Cloudflare
+./deploy/publier-site.sh --deployer
+```
+
+Le script, la passe automatique et le bouton « Mettre en ligne » de l'atelier
+lisent la même déclaration. Les variables `VIGIE_CIBLE`, `VIGIE_CIBLE_HOTE`,
+`VIGIE_CIBLE_CHEMIN`, `VIGIE_CIBLE_RSYNC_PATH` et `CF_PROJECT` restent
+prioritaires, pour une publication ponctuelle ailleurs.
+
+Après le téléversement, **le script constate** : il relit `version.json` sur le
+site en ligne (`site_url`) et le compare à l'empreinte promue. Un envoi réussi
+dit que des fichiers sont partis, pas que le site les sert.
 
 > **Pourquoi pas l'intégration git de l'hébergeur ?** Parce que `static/data/`
 > n'est pas versionné — et ne doit pas l'être. L'hébergeur ne verrait qu'un site
