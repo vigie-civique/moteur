@@ -227,6 +227,84 @@ def test_un_rebut_seme_par_le_finder_pendant_la_publication_ne_suit_pas_la_copie
         assert stats["entities_public"] == 2
 
 
+def test_un_rebut_seme_dans_le_brouillon_avant_son_controle_ne_le_refuse_pas(
+        publication, emplacements):
+    """17/09/2026, Saillans : aperçu refusé pour un `.DS_Store` écrit dans le
+    brouillon entre sa construction et son contrôle — puis, au moment de
+    publier, rien n'empêchait qu'il y en ait un de nouveau."""
+    def controleur_strict(cible):
+        return controle(not any(f.name == ".DS_Store" for f in Path(cible).rglob("*")))
+
+    def builder_et_finder(out):
+        stats = snapshot(out, [1, 2], marque="brouillon")
+        (out / ".DS_Store").write_bytes(b"\0")
+        return stats
+
+    resume = publication.generer_apercu(builder=builder_et_finder,
+                                        controleur=controleur_strict)
+    assert resume["controle"]["ok"] is True
+
+    (emplacements["brouillon"] / "entite" / ".DS_Store").write_bytes(b"\0")
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=controleur_strict)
+
+
+def test_un_rebut_seme_apres_le_controle_ne_change_pas_lempreinte_servie(
+        publication, emplacements):
+    """17/09/2026, Saillans : le Finder a écrit dans la version neuve du SITE
+    seulement, entre son contrôle et le calcul de son empreinte. Le site en
+    ligne déclarait `5445a602…`, l'état attendait `35590bc5…`, et le constat
+    concluait à un déploiement manqué qui avait bien eu lieu."""
+    publication.generer_apercu(builder=builder([1, 2], marque="brouillon"),
+                               controleur=lambda cible: controle(True))
+
+    def controleur_puis_finder_cote_site(cible):
+        if Path(cible).name.startswith("data-"):
+            (Path(cible) / ".DS_Store").write_bytes(b"\0")
+        return controle(True)
+
+    publie = publication.publier(auteur="admin@exemple", role="admin",
+                                 controleur=controleur_puis_finder_cote_site)
+
+    declaree = {servi: json.loads(
+        (emplacements[servi] / publication.VERSION_SERVIE).read_text())["empreinte"]
+        for servi in ("publie", "site")}
+    assert declaree["site"] == declaree["publie"] == publie["empreinte"]
+
+
+def test_rsync_n_envoie_jamais_les_rebuts_et_retire_ceux_du_serveur(tmp_path):
+    """17/09/2026 : `/.DS_Store` servi en 200 à Saillans et à Brassac. Le
+    contrôle des fichiers cachés passait avant l'envoi, le Finder écrivait entre
+    les deux. Les options sont relues dans `publier-site.sh` et jouées pour de
+    bon : une option mal orthographiée passerait un test de texte."""
+    import shlex
+    import shutil
+    import subprocess
+
+    script = (ROOT / "deploy" / "publier-site.sh").read_text(encoding="utf-8")
+    appel = re.search(r"^\s*rsync (-az.*?)\"\$ROOT/public/build/\"", script, re.S | re.M)
+    assert appel, "appel rsync introuvable dans publier-site.sh"
+    options = [o for o in shlex.split(appel.group(1).replace("\\\n", " "))
+               if not o.startswith("${")]
+    assert "--delete-excluded" in options
+
+    if not shutil.which("rsync"):
+        pytest.skip("rsync absent")
+    src, dest = tmp_path / "build", tmp_path / "servi"
+    (src / "data").mkdir(parents=True)
+    (src / "index.html").write_text("ok")
+    for rebut in (".DS_Store", "data/.DS_Store", "data/._a.json", "Thumbs.db"):
+        (src / rebut).write_bytes(b"\0")
+    (dest / "data").mkdir(parents=True)
+    (dest / ".DS_Store").write_bytes(b"vieux")
+    (dest / "data" / ".DS_Store").write_bytes(b"vieux")
+
+    subprocess.run(["rsync", *options, f"{src}/", f"{dest}/"], check=True)
+
+    assert sorted(str(f.relative_to(dest)) for f in dest.rglob("*") if f.is_file()) \
+        == ["index.html"]
+
+
 def test_publier_sans_apercu_refuse(publication, emplacements):
     with pytest.raises(publication.PublicationRefusee) as refus:
         publication.publier(auteur="admin@exemple", role="admin")

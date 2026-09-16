@@ -100,7 +100,21 @@ VERSION_SERVIE = "version.json"
 # `.DS_Store` apparu dans la source APRÈS son contrôle, puis emporté par la
 # copie. Le nettoyage de `publier-site.sh` passe avant, pas pendant. Une copie
 # ne les emporte donc jamais ; le contrôle, lui, reste strict.
+#
+# Le 17/09/2026, la course a continué ailleurs : un `.DS_Store` écrit dans le
+# brouillon entre sa construction et son contrôle (aperçu refusé à Saillans),
+# un autre dans la version neuve du site entre son contrôle et son empreinte
+# (`version.json` en ligne ≠ empreinte promue), et deux téléversés par rsync
+# entre le dernier nettoyage et l'envoi — servis en 200 à Saillans et Brassac.
+# D'où, en plus : chaque répertoire de travail en est vidé juste avant son
+# contrôle, l'empreinte les ignore, et rsync ne les envoie jamais.
 REBUT_DU_POSTE = re.compile(r"^(\.DS_Store|\._.*|Thumbs\.db)$", re.I)
+
+
+def retirer_rebuts(dossier: Path) -> None:
+    for fichier in Path(dossier).rglob("*"):
+        if REBUT_DU_POSTE.match(fichier.name) and fichier.is_file():
+            fichier.unlink(missing_ok=True)
 
 # Combien de temps on attend la réponse du site public. Court : cette
 # vérification est un confort d'atelier, pas une raison de bloquer une page.
@@ -428,6 +442,7 @@ def generer_apercu(auteur: str | None = None, cible: Path | None = None,
     with verrou_de_publication():
         cible.mkdir(parents=True, exist_ok=True)
         stats = builder(cible)
+        retirer_rebuts(cible)
         controle = controleur(cible)
 
         resume = {
@@ -481,10 +496,12 @@ def empreinte(dossier: Path) -> str:
     Chemins ET contenus : deux versions qui ne diffèrent que par un fichier
     supprimé doivent avoir deux empreintes. Sert à dire QUELLE version est
     servie, et à vérifier après coup que c'est bien celle-là qui est en ligne.
+    Les rebuts du poste n'en font pas partie : rsync ne les envoie pas.
     """
     h = hashlib.sha256()
     for fichier in sorted(dossier.rglob("*")):
-        if not fichier.is_file() or fichier.name == VERSION_SERVIE:
+        if (not fichier.is_file() or fichier.name == VERSION_SERVIE
+                or REBUT_DU_POSTE.match(fichier.name)):
             continue
         h.update(str(fichier.relative_to(dossier)).encode("utf-8"))
         h.update(b"\0")
@@ -545,6 +562,7 @@ def basculer(src: Path, dest: Path, controleur) -> dict:
 
     # Le contrôle porte sur le répertoire NEUF, avant qu'il ne serve. Un refus
     # ici ne coûte qu'un répertoire temporaire.
+    retirer_rebuts(neuf)
     controle = controleur(neuf)
     if not controle.get("ok"):
         _vider(neuf)
@@ -686,6 +704,7 @@ def _publier_sous_verrou(auteur, source, controleur) -> dict:
 
     # 1. Le brouillon, à l'instant de publier. Un contrôle vert d'il y a une
     #    heure ne dit rien du répertoire d'aujourd'hui.
+    retirer_rebuts(source)
     controle_apercu = controleur(source)
     if not controle_apercu.get("ok"):
         raise PublicationRefusee(

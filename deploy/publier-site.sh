@@ -173,10 +173,17 @@ case "$VIGIE_CIBLE" in
     # l'ignore. Ses règles doivent être traduites dans la configuration du
     # serveur ; le laisser ferait croire qu'elles agissent encore.
     #
+    # Les rebuts du poste ne partent JAMAIS, et `--delete-excluded` retire ceux
+    # qu'une publication précédente aurait laissés. Le contrôle des fichiers
+    # cachés, plus haut, passe AVANT l'envoi : le 17/09/2026, le Finder a écrit
+    # dans `public/build/` entre les deux, et `/.DS_Store` était servi en 200 à
+    # Saillans et à Brassac. Éprouvé avec openrsync (macOS) vers rsync 3.2.7.
+    #
     # `VIGIE_CIBLE_RSYNC_PATH` sert quand le compte qui se connecte n'est pas
     # celui qui possède les fichiers — sinon le serveur finit par servir des
     # fichiers que la publication suivante ne peut plus remplacer.
-    rsync -az --delete --exclude='_redirects' \
+    rsync -az --delete --delete-excluded --exclude='_redirects' \
+      --exclude='.DS_Store' --exclude='._*' --exclude='Thumbs.db' \
       ${VIGIE_CIBLE_RSYNC_PATH:+--rsync-path="$VIGIE_CIBLE_RSYNC_PATH"} \
       "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/"
     ;;
