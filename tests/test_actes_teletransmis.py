@@ -38,9 +38,9 @@ Les extraits gardent la forme et les défauts des documents d'origine.
 """
 from __future__ import annotations
 
-from collectors.pv_parsers import (_actes_teletransmis, _prefixe_de_seance,
-                                   _rang_dans_la_seance, _suffixe_de_seance,
-                                   deliberations)
+from collectors.pv_parsers import (_actes_teletransmis, _ligne_dobjet,
+                                   _prefixe_de_seance, _rang_dans_la_seance,
+                                   _suffixe_de_seance, deliberations)
 
 # Le cachet tel que l'océrisation le rend sur les liasses de la Communauté de
 # communes Causses Aigoual Cévennes, relevé sur les documents servis.
@@ -308,3 +308,139 @@ def test_le_prefixe_doit_etre_commun_a_TOUS_les_numeros():
     numeros = [f"DEL2606_{n:02d}" for n in (2, 3, 6, 9, 12, 16, 20)]
     assert _prefixe_de_seance(numeros) == "2606"
     assert _rang_dans_la_seance("DEL2606_20", "", "2606") == 20
+
+
+# ── L'objet est écrit une page AVANT la décision ─────────────────────────────
+# Le cachet @ctes est imprimé en tête de la page qui porte la DÉCISION ; la
+# collectivité, elle, écrit l'objet dans le bandeau du registre, sur la page
+# d'avant. Le régime coupant sur le cachet, cet objet tombe à la FIN du bloc
+# précédent : l'acte s'appelait « Délibération n° 10 » alors que « TARIFS
+# MAISON DE SANTE » était écrit quatre lignes plus haut, dans le même document.
+BANDEAU_REGISTRE = ("REPUBLIQUE FRANÇAISE EXTRAIT DU REGISTRE\n"
+                    "DEPARTEMENT DES DELIBERATIONS DU CONSEIL\n"
+                    "Séance du 10 septembre 2026\n"
+                    "Secrétaire de séance : Mme DUPONT\n"
+                    "N° DEL{registre}\n"
+                    "{objet}\n")
+
+
+def _acte_en_deux_pages(numero: str, registre: str, objet: str) -> str:
+    """Un acte tel qu'une liasse le porte : le bandeau, puis la page tamponnée."""
+    return (BANDEAU_REGISTRE.format(registre=registre, objet=objet)
+            + "Monsieur le maire rappelle à l'assemblée les tarifs en vigueur.\n"
+            + _page(numero))
+
+
+def test_le_titre_va_chercher_lobjet_dans_le_bandeau_du_bloc_precedent():
+    texte = "".join(
+        _acte_en_deux_pages(f"{n}_2024", f"2606{n}", objet)
+        for n, objet in ((41, "TARIFS MAISON DE SANTE"),
+                         (42, "INDEMNITES DE FONCTION"),
+                         (43, "DELEGATION DE SIGNATURE CONVENTION PMI")))
+    actes = _actes_teletransmis(texte)
+
+    # Le premier acte aussi : son bandeau est en tête de document, et il n'a
+    # aucun bloc avant lui pour le porter.
+    assert [a["titre"] for a in actes] == ["TARIFS MAISON DE SANTE",
+                                           "INDEMNITES DE FONCTION",
+                                           "DELEGATION DE SIGNATURE CONVENTION PMI"]
+    assert [a["titre_origine"] for a in actes] == ["objet_registre"] * 3
+
+
+def test_un_acte_qui_porte_son_propre_bandeau_ne_prend_pas_celui_du_voisin():
+    """🔴 Une citation prouve la présence, pas l'appartenance.
+
+    Quand le bandeau et le cachet tombent sur la même page, l'objet est DANS le
+    bloc. Aller le chercher en amont rapporterait l'objet du PRÉCÉDENT — écrit
+    noir sur blanc dans le document, et faux.
+    """
+    sur_une_page = ("ID : 030-200034601-20240529-42_2024-DE\n"
+                    "N° DEL260642\n"
+                    "INDEMNITES DE FONCTION\n"
+                    "Le Conseil communautaire, après en avoir délibéré,\n")
+    texte = (_acte_en_deux_pages("41_2024", "260641", "TARIFS MAISON DE SANTE")
+             + sur_une_page
+             + _acte_en_deux_pages("43_2024", "260643", "SUBVENTION AUX ASSOCIATIONS"))
+    actes = _actes_teletransmis(texte)
+
+    assert [a["titre"] for a in actes] == ["TARIFS MAISON DE SANTE",
+                                           "INDEMNITES DE FONCTION",
+                                           "SUBVENTION AUX ASSOCIATIONS"]
+    assert actes[1]["titre_origine"] == "ligne_capitale"
+
+
+def test_le_bandeau_dun_acte_deja_vote_nest_pas_celui_du_suivant():
+    """🔴 Entre le bandeau d'un acte et sa coupure, il n'y a que son préambule.
+
+    Quand le bandeau tombe APRÈS le cachet — sur la page même de la décision —
+    rien ne sépare l'objet d'un acte du cachet du suivant, sinon la décision
+    elle-même. Un vote intercalé signe un acte déjà pris : l'acte qui suit reste
+    sans titre plutôt que de prendre celui du voisin.
+    """
+    vote_apres_bandeau = ("ID : 030-200034601-20240529-41_2024-DE\n"
+                          "N° DEL260641\n"
+                          "TARIFS MAISON DE SANTE\n"
+                          "Le Conseil communautaire, après en avoir délibéré, DECIDE\n")
+    actes = _actes_teletransmis(vote_apres_bandeau + _page("42_2024") + _page("43_2024"))
+    assert actes[0]["titre"] == "TARIFS MAISON DE SANTE"
+    assert actes[1]["titre"] == "Délibération n° 42"
+
+
+def test_un_numero_cite_dans_un_preambule_nest_pas_un_bandeau():
+    """🔴 Relevé sur les liasses intercommunales de 2023 et 2025.
+
+    « Vu la délibération N°111 du 2 octobre 2019 » cite un AUTRE acte. Pris pour
+    un bandeau, il faisait de l'en-tête du tableau suivant l'objet de l'acte :
+    « Délibération n° 43 » devenait « CATEGORIES TARIFS PROPOSES 2025 ». Le
+    repli avouait ne pas savoir ; le titre, lui, mentait.
+    """
+    preambule = ("Vu la délibération N°111 du 2 octobre 2019 concernant la redevance\n"
+                 "Considérant les propositions de la commission Déchets :\n"
+                 "CATEGORIES TARIFS PROPOSES 2025\n"
+                 "Camping 20 €/emplacement\n")
+    actes = _actes_teletransmis(_page("41_2024", "Approbation du procès-verbal")
+                                + preambule + _page("42_2024") + _page("43_2024"))
+    assert actes[1]["titre"] == "Délibération n° 42"
+    assert actes[1]["titre_origine"] == "repli_numerote"
+
+
+def test_le_numero_du_registre_peut_porter_la_colonne_voisine():
+    """L'océrisation colle au numéro la colonne d'à côté du bandeau.
+
+    Relevé sur la séance du 30/06/2026 : « N° DEL 2606 09 M. …, M. … ». Exiger
+    le numéro seul sur sa ligne — pour écarter les citations — perdait six
+    objets justes. C'est la TÊTE de ligne qui distingue un bandeau d'une
+    citation, pas la fin.
+    """
+    bandeau = ("N° DEL 2606 {n} M. Pierre DURAND, Mme Anne PETIT, M.\n"
+               "Paul LEROY, Mme Claire BERNARD\n"
+               "Secrétaire de séance : Mme PETIT\n"
+               "{objet}\n"
+               "Le Maire rappelle à l'assemblée les dispositions en vigueur.\n")
+    objets = ("CREATION EMPLOI ADJOINT D'ANIMATION", "AIDE FINANCIERE SEJOUR ENFANTS",
+              "AGENT D'ANIMATION PRINCIPAL")
+    texte = "".join(bandeau.format(n=n, objet=o) + _page(f"{n}_2024")
+                    for n, o in zip((41, 42, 43), objets))
+    assert [a["titre"] for a in _actes_teletransmis(texte)] == list(objets)
+
+
+def test_un_chiffre_en_marge_ne_deguise_pas_le_mobilier():
+    """« 1 DEPARTEMENT : GARD » est le timbre de la collectivité, pas un objet."""
+    assert _ligne_dobjet("1 DEPARTEMENT : GARD") is None
+    assert _ligne_dobjet("2 BUDGET PRIMITIF DE LA COMMUNE") == "2 BUDGET PRIMITIF DE LA COMMUNE"
+
+
+def test_le_titre_dit_dou_il_vient():
+    """Un titre deviné et un objet lu ne valent pas la même chose.
+
+    Rien ne les distingue une fois écrits en base — et le nommage par modèle de
+    langue, qui viendra après, serait alors indiscernable d'un objet écrit par
+    la collectivité elle-même.
+    """
+    actes = _actes_teletransmis("".join([
+        _page("41_2024", "Approbation du procès-verbal"),
+        _acte_en_deux_pages("42_2024", "260642", "INDEMNITES DE FONCTION"),
+        _page("43_2024"),
+    ]))
+    assert [a["titre_origine"] for a in actes] == [
+        "objet_declare", "objet_registre", "repli_numerote"]

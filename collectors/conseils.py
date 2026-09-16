@@ -308,6 +308,12 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     p = PORTEES[portee]
     meta = {k: delib[k] for k in ("categorie", "tags", "vote", "montants",
                                   "numero_seance", "numero_acte", "regime")}
+    # D'OÙ vient le titre : un objet écrit par la collectivité, ou un repli qui
+    # avoue ne pas l'avoir trouvé. Sans ce champ, un titre deviné devient
+    # indiscernable d'un objet lu, et l'instance perd ce qui la rend défendable.
+    # Seuls les régimes qui savent le dire le posent.
+    if delib.get("titre_origine"):
+        meta["titre_origine"] = delib["titre_origine"]
     if portee == "epci":
         meta["instance"] = EPCI_NOM
 

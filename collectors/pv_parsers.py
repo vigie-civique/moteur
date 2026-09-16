@@ -225,8 +225,12 @@ _OBJET = re.compile(r"^[^\n]{0,12}?Objet\s*[:;]\s*(.+)$", re.M | re.I)
 # Ce que l'océrisation dépose en marge d'une ligne, avant le mobilier qu'elle
 # précède : « Æ£ DEPARTEMENT : GARD », « | N°153/2021 », « ER DEPARTEMENT ».
 # Un jeton SÉPARÉ, jamais le début d'un mot — sans l'espace exigé ici,
-# « REPUBLIQUE » perdait son « RE » et échappait au filtre.
-_DEBRIS_DE_MARGE = re.compile(r"^[^\w]{1,4}\s*|^[A-ZÆŒÀ-Ÿ]{1,2}[^\w\s]{0,2}\s+")
+# « REPUBLIQUE » perdait son « RE » et échappait au filtre. Un chiffre isolé en
+# est un aussi : « 1 DEPARTEMENT : GARD » passait pour un objet sur la liasse
+# intercommunale du 15/03/2023. Le débris n'est retiré que pour RECONNAÎTRE le
+# mobilier — un titre qui commence par un chiffre le garde.
+_DEBRIS_DE_MARGE = re.compile(
+    r"^[^\w]{1,4}\s*|^[A-ZÆŒÀ-Ÿ]{1,2}[^\w\s]{0,2}\s+|^\d{1,2}[^\w\s]{0,2}\s+")
 # Où la délibération commence vraiment. `FIN_TITRE` ne convient pas ici : son
 # « Le Conseil » tombe sur « Le conseil municipal de cette commune,
 # régulièrement convoqué… », qui appartient au bandeau et PRÉCÈDE l'objet — la
@@ -258,6 +262,32 @@ _MOBILIER_DE_CACHET = re.compile(
     r"|ACTE\s+RENDU\s+EX[EÉ]CUTOIRE"
     r"|POUR\s+COPIE\s+CONFORME"
     r")", re.I)
+
+# Le numéro d'acte tel que le BANDEAU DU REGISTRE l'écrit, juste au-dessus de
+# l'objet : « N° DEL260190 », « N°73/2022 ». Il ne découpe rien — c'est le
+# cachet de télétransmission qui le fait — mais il ANNONCE l'objet, et c'est la
+# seule marque qui le précède toujours. `_MOBILIER_DE_CACHET` le refuse déjà
+# comme titre ; ici il sert de point de repère.
+#
+# 🔴 En TÊTE de ligne. Un préambule CITE d'autres actes — « Vu la délibération
+# N°111 du 2 octobre 2019 » — et la première version, ancrée nulle part, prenait
+# cette citation pour un bandeau puis l'en-tête du tableau qui suivait pour un
+# objet : deux « Délibération n° … » honnêtes devenaient « CATEGORIES TARIFS
+# PROPOSES 2025 ». Un titre faux vaut moins qu'un repli qui avoue.
+# Mais pas SEUL sur sa ligne : l'océrisation colle au numéro la colonne voisine
+# du bandeau — « N° DEL 2606 09 M. …, M. …, Mme … » (la liste des présents) — et
+# l'exiger seul perdait six objets justes de la séance du 30/06/2026.
+_NUMERO_DE_REGISTRE = re.compile(
+    r"^[^\w\n]{0,3}N[°ºoº][ \t]*(?:DEL|DE)?[ \t]*\d[\d \t._/-]{2,}", re.I | re.M)
+# Jusqu'où remonter pour le trouver, et pourquoi une borne. Le bandeau tient
+# sur la page qui PRÉCÈDE la décision ; au-delà, le bandeau rencontré est celui
+# d'un acte antérieur, et le titre serait celui du voisin. Mesuré sur les
+# liasses de la première commune portée : la dernière ancre tombe entre 827 et
+# 3 959 caractères de la coupure.
+AMONT_DU_BANDEAU = 4000
+# L'objet suit le numéro de très près ; ce qui s'intercale est du débris de
+# marge. Au-delà, on est entré dans le corps de la délibération.
+LIGNES_APRES_LE_NUMERO = 6
 
 
 def _suffixe_de_seance(numeros: list[str]) -> str:
@@ -373,8 +403,78 @@ def _suite_croissante(valeurs: list[int]) -> list[int]:
     return chemin[::-1]
 
 
-def _titre_dacte(corps: str, rang: int) -> str:
-    """L'objet écrit par la collectivité, à défaut la première ligne capitale.
+def _ligne_dobjet(ligne: str) -> str | None:
+    """La ligne porte-t-elle un objet de délibération ?
+
+    Cette suite de refus n'était écrite qu'une fois, dans `_titre_dacte`. Le
+    bandeau du registre la redemande sur un texte qui n'est PAS le corps de
+    l'acte : en faire une fonction évite deux copies, qui divergeraient au
+    premier ajout.
+    """
+    ligne = ligne.strip()
+    if len(ligne) < 12 or not LIGNE_CAPITALES.match(ligne):
+        return None
+    # Le cachet lui-même, quelle que soit la graphie que l'océrisation lui
+    # donne : c'est la charpente que le régime lit déjà pour découper.
+    nu = _DEBRIS_DE_MARGE.sub("", ligne)
+    if (_MOBILIER_DE_CACHET.match(ligne) or _MOBILIER_DE_CACHET.match(nu)
+            or _REFERENCE_TOLERANTE.search(ligne)):
+        return None
+    # Un objet de délibération porte des MOTS. « S€£000109#£0007 »,
+    # « 3 10/1/200/220222 », « 2021 2021 2022 » n'en portent aucun : ce sont
+    # des marges et des tableaux que l'océrisation a laissés en capitales.
+    if not _MOT_PORTEUR.search(ligne):
+        return None
+    if not _titre_plausible(ligne):
+        return None
+    # Seule la ponctuation de marge s'en va : ôter aussi le jeton de tête
+    # amputerait « DE LA COMMUNE… » d'un vrai mot.
+    return re.sub(r"\s+", " ", ligne).strip(" :;.-|")[:255]
+
+
+def _objet_du_bandeau(amont: str) -> str | None:
+    """L'objet de l'acte, resté dans le bloc PRÉCÉDENT.
+
+    Le régime coupe sur le cachet de télétransmission, et ce cachet est imprimé
+    en tête de la page qui porte la DÉCISION. Or la collectivité écrit l'objet
+    dans le bandeau du registre, une page plus haut : il tombe donc à la fin du
+    bloc d'avant, et l'acte se retrouvait sans titre alors que son objet était
+    écrit noir sur blanc, quelques lignes au-dessus de la coupure.
+
+    Mesuré sur les liasses de la première commune portée : 17 titres sur 246,
+    dont les 13 « Délibération n° … » de 2026, deux en-têtes de tableau pris
+    pour des titres (« COÛT TOTAL PRÉVISIONNEL (HT) 401 906.00 € ») et un
+    charabia d'océrisation (« EMPLO BA DE CAATTEE SORIE EFFECTIF »).
+
+    ⚠️ C'est l'ancre la PLUS PROCHE de la coupure qui vaut, et elle seule : plus
+    haut, le bandeau rencontré est celui d'un acte antérieur. Le titre serait
+    alors une phrase bien présente dans le texte, mais qui n'appartient pas à
+    l'acte qu'elle nommerait — une citation prouve la présence, pas
+    l'appartenance.
+    """
+    fenetre = amont[-AMONT_DU_BANDEAU:]
+    dernier = None
+    for dernier in _NUMERO_DE_REGISTRE.finditer(fenetre):
+        pass
+    if dernier is None:
+        return None
+    # 🔴 Le bandeau doit être celui de CET acte : entre le bandeau d'un acte et
+    # la coupure, il n'y a que son préambule. Un cachet intercalé signe un acte
+    # déjà tamponné, un vote un acte déjà DÉCIDÉ — le bandeau est alors celui
+    # d'un acte d'avant, dont le titre serait cité fidèlement, et faux. Sans ce
+    # garde, un acte sans bandeau héritait de l'objet de son prédécesseur.
+    suite = fenetre[dernier.end():]
+    if _REFERENCE_TOLERANTE.search(suite) or _FORMULE_DE_VOTE.search(suite):
+        return None
+    for ligne in suite.splitlines()[:LIGNES_APRES_LE_NUMERO]:
+        objet = _ligne_dobjet(ligne)
+        if objet:
+            return objet
+    return None
+
+
+def _titre_dacte(corps: str, rang: int, amont: str = "") -> tuple[str, str]:
+    """L'objet de l'acte, et D'OÙ il vient — les deux, jamais l'un sans l'autre.
 
     🔴 Le repli ne peut pas prendre la première ligne capitale VENUE : ce régime
     coupe SUR le cachet, donc la première ligne du corps est le cachet, et les
@@ -385,6 +485,11 @@ def _titre_dacte(corps: str, rang: int) -> str:
     Quand rien ne reste, le repli numéroté est la bonne réponse : il avoue que
     le découpage a trouvé l'acte sans trouver son objet. C'est la règle du
     régime — un acte tu se corrige à la saisie, un acte inventé se publie.
+
+    ⚖️ L'origine est rendue avec le titre parce qu'un titre deviné et un objet
+    lu ne valent pas la même chose, et que rien ne les distingue une fois écrits
+    en base. `objet_declare` et `objet_registre` sont écrits par la
+    collectivité ; `ligne_capitale` est une lecture ; `repli_numerote` avoue.
     """
     # 🔴 La recherche s'arrête à la formule de vote. Sans cette borne elle
     # traversait tout l'acte et rapportait un en-tête de TABLEAU — « EMPLOI
@@ -398,27 +503,22 @@ def _titre_dacte(corps: str, rang: int) -> str:
     if m:
         titre = re.sub(r"\s+", " ", m.group(1)).strip(" :;.-")
         if len(titre) >= 5:
-            return titre[:255]
+            return titre[:255], "objet_declare"
+
+    # Avant la ligne capitale du corps, et non après : sur la liasse du
+    # 10/09/2026, la première ligne capitale de deux actes était l'en-tête de
+    # leur plan de financement, « COÛT TOTAL PRÉVISIONNEL (HT) 401 906.00 € ».
+    # Un acte qui porte son bandeau dans son propre corps n'en trouve pas en
+    # amont : le vote de l'acte précédent l'en sépare.
+    objet = _objet_du_bandeau(amont)
+    if objet:
+        return objet, "objet_registre"
+
     for ligne in tete.splitlines():
-        ligne = ligne.strip()
-        if len(ligne) < 12 or not LIGNE_CAPITALES.match(ligne):
-            continue
-        # Le cachet lui-même, quelle que soit la graphie que l'océrisation lui
-        # donne : c'est la charpente que le régime lit déjà pour découper.
-        nu = _DEBRIS_DE_MARGE.sub("", ligne)
-        if (_MOBILIER_DE_CACHET.match(ligne) or _MOBILIER_DE_CACHET.match(nu)
-                or _REFERENCE_TOLERANTE.search(ligne)):
-            continue
-        # Un objet de délibération porte des MOTS. « S€£000109#£0007 »,
-        # « 3 10/1/200/220222 », « 2021 2021 2022 » n'en portent aucun : ce sont
-        # des marges et des tableaux que l'océrisation a laissés en capitales.
-        if not _MOT_PORTEUR.search(ligne):
-            continue
-        if _titre_plausible(ligne):
-            # Seule la ponctuation de marge s'en va : ôter aussi le jeton de
-            # tête amputerait « DE LA COMMUNE… » d'un vrai mot.
-            return re.sub(r"\s+", " ", ligne).strip(" :;.-|")[:255]
-    return f"Délibération n° {rang}"
+        objet = _ligne_dobjet(ligne)
+        if objet:
+            return objet, "ligne_capitale"
+    return f"Délibération n° {rang}", "repli_numerote"
 
 
 def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
@@ -465,11 +565,17 @@ def _actes_teletransmis(texte: str, pagine: bool = True) -> list[dict]:
         corps = texte[debut:fin].strip()
         if not corps:
             continue
+        # Tout l'amont, et non le bloc précédent : le PREMIER acte d'une liasse
+        # a lui aussi son bandeau au-dessus de son cachet, et aucun bloc avant
+        # lui pour le porter.
+        titre, origine = _titre_dacte(
+            corps, lisible if lisible is not None else rang, texte[:debut])
         sorties.append(_enrichir({
             "regime": "actes_teletransmis",
             "numero_seance": None,
             "numero_acte": str(rang),
-            "titre": _titre_dacte(corps, lisible if lisible is not None else rang),
+            "titre": titre,
+            "titre_origine": origine,
             "texte": corps,
         }))
     return sorties
