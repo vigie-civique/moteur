@@ -1158,10 +1158,23 @@ def public_entity(
 # Le remède est de ne pas publier l'EXTRAIT : l'acte, son titre et le lien vers
 # la pièce restent. Masquer ligne à ligne dans un tableau océrisé promettrait
 # une précision que ces textes n'ont pas.
+#
+# Élargi après un second relevé, les trois cas attrapés sans un refus de trop :
+# « née le 12 octobre 1985 » (mois en lettres) ; un tableau du conseil dont
+# l'OCR a perdu les dates mais gardé le lieu de naissance et le DOMICILE de
+# chaque élu, reconnu à l'en-tête suivi d'un code postal ; « M. et Mme X
+# domiciliés à <lieu-dit> » — sans civilité, « l'association domiciliée à
+# Viane » reste publiable. Un portable n'est PAS un motif : sur Lasalle il est
+# celui d'un tiers-lieu, dans quatre actes sur cinq.
+_MOIS = r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)"
 _DONNEE_PERSONNELLE_DANS_UN_ACTE = re.compile(
     r"\bn[ée]e?\s+le\s+\d{1,2}\s*[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{2,4}"
-    r"|date\s+de\s+naissance[\s\S]{0,400}?\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}"
+    rf"|\bn[ée]e?\s+le\s+\d{{1,2}}(?:er)?\s+{_MOIS}\s+\d{{4}}"
+    r"|date\s+de\s+naissance[\s\S]{0,400}?"
+    r"(?:\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}|(?<!\d)\d{5}(?!\d))"
     r"|\b(?:domicili[ée]e?s?|demeurant)\s*(?:au|à|:)?\s*\d{1,4}\b"
+    r"|(?:\bM\.|\bMM\.|\bMmes?\b|\bMonsieur\b|\bMadame\b)[^\n]{0,60}?"
+    r"\b(?:domicili[ée]e?s?|demeurant)\s+(?:à|au|aux|en)\s+(?-i:[A-ZÀ-Ÿ])"
     # Un courriel NOMINATIF, prénom.nom@ ; « contact@ », « mairie@ » passent.
     r"|\b[a-z]{2,}[.\-_][a-z]{2,}@[a-z0-9\-]+(?:\.[a-z0-9\-]+)+\b",
     re.I)

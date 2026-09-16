@@ -478,9 +478,15 @@ def test_un_extrait_ne_publie_ni_naissance_ni_domicile_ni_courriel_nominatif(bps
     assert refuse("à la demande de Monsieur DURAND, demeurant au 12 Grande Rue")
     assert refuse("Mme DURAND Françoise domiciliée 3, rue du Moulin")
     assert refuse("Référent : paul.durand@mairie-test.fr")
+    assert refuse("Madame DURAND Claire née le 12 octobre 1985 est nommée agent")
+    assert refuse("élus : Date de naissance Adresse CP Ville Titre\n"
+                  "Monsieur Paul DURAND à Crest 12, Allée du Moulin 26340 TESTVILLE Maire")
+    assert refuse("la proposition de M. et Mme DURAND Paul domiciliés à Croix Haute")
 
     publie = lambda t: bps.extrait_publiable("deliberation", t) == (True, None)
     assert publie("les familles domiciliées sur la commune depuis six mois")
     assert publie("Présidente (contact@cc-test.fr / 0467000000)")
     assert publie("Subvention de 300 € à l'association présidée par Paul DURAND")
+    assert publie("L'association Test Enduro domiciliée à Viane souhaite organiser")
+    assert publie("il me faut la date de naissance des personnes proposées")
     assert bps.extrait_publiable("marche", "texte") == (False, None)
