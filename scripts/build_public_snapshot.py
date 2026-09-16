@@ -1147,6 +1147,35 @@ def public_entity(
     return public, reasons
 
 
+# Ce qu'un extrait de délibération ne publie PAS, même caviardé. Nommer dans un
+# acte est légitime (arbitré le 15/09) ; une date de naissance, un domicile, un
+# courriel nominatif ne le sont pas — c'est la liste « jamais publié » du
+# dictionnaire de données. Relevé le 16/09 sur les extraits des trois
+# instances, avant ce filtre : des tableaux de conseillers « Date de naissance
+# Adresse CP Ville », « né le jj/mm/aaaa » d'un délégué avec son courriel,
+# « demeurant au 4 Grande Rue », « domiciliée 3, rue du Moulin ».
+#
+# Le remède est de ne pas publier l'EXTRAIT : l'acte, son titre et le lien vers
+# la pièce restent. Masquer ligne à ligne dans un tableau océrisé promettrait
+# une précision que ces textes n'ont pas.
+_DONNEE_PERSONNELLE_DANS_UN_ACTE = re.compile(
+    r"\bn[ée]e?\s+le\s+\d{1,2}\s*[/.\-]\s*\d{1,2}\s*[/.\-]\s*\d{2,4}"
+    r"|date\s+de\s+naissance[\s\S]{0,400}?\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}"
+    r"|\b(?:domicili[ée]e?s?|demeurant)\s*(?:au|à|:)?\s*\d{1,4}\b"
+    # Un courriel NOMINATIF, prénom.nom@ ; « contact@ », « mairie@ » passent.
+    r"|\b[a-z]{2,}[.\-_][a-z]{2,}@[a-z0-9\-]+(?:\.[a-z0-9\-]+)+\b",
+    re.I)
+
+
+def extrait_publiable(event_type: str, texte: str | None) -> tuple[bool, str | None]:
+    """L'extrait d'un acte peut-il sortir — et sinon, le motif à compter."""
+    if event_type not in TYPES_DELIBERES or not (texte or "").strip():
+        return False, None
+    if _DONNEE_PERSONNELLE_DANS_UN_ACTE.search(texte):
+        return False, "donnee_personnelle"
+    return True, None
+
+
 def write_act_extracts(conn, out: Path, public_events, redige) -> int:
     """Un fichier par délibération publiée : `extrait/<id>.json`, son texte.
 
@@ -2292,7 +2321,8 @@ def build_snapshot(out: Path) -> dict:
         """ if "confidence" in colonnes_mp else "")
         event_rows = rows(conn, f"""
             SELECT id, type, date, title, source, source_url, metadata,
-                   LENGTH(TRIM(COALESCE(content, ''))) AS longueur_texte
+                   CASE WHEN type IN ({", ".join(f"'{t}'" for t in TYPES_DELIBERES)})
+                        THEN content END AS texte_acte
             FROM events
             WHERE 1=1 {filtre_actes_marches}
             ORDER BY date DESC, id DESC
@@ -2332,6 +2362,10 @@ def build_snapshot(out: Path) -> dict:
                 })
                 continue
 
+            extrait, refus_extrait = extrait_publiable(event_type, event.get("texte_acte"))
+            if refus_extrait:
+                exclusions["extraits"][refus_extrait] += 1
+
             public_events.append({
                 "id": event["id"],
                 "type": event_type,
@@ -2344,9 +2378,7 @@ def build_snapshot(out: Path) -> dict:
                 # Le texte de la délibération se déplie sous son titre ; il est
                 # écrit à part, cf. `write_act_extracts`. Le drapeau dit à la
                 # page qu'il y a quelque chose à déplier.
-                **({"extrait": True}
-                   if event_type in TYPES_DELIBERES and event.get("longueur_texte")
-                   else {}),
+                **({"extrait": True} if extrait else {}),
                 # Les pièces d'une séance — registre, procès-verbal, convocation.
                 # Elles n'existent que sur l'ombrelle, et c'est par elles que le
                 # lecteur atteint l'archive : la fiche de séance ne peut pas

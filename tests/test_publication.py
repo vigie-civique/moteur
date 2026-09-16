@@ -465,3 +465,22 @@ def test_un_prenom_nest_pas_un_patronyme(bps, base, entite):
     redige, _ = bps.compilateur_redaction(base, set())
     assert redige("DONNE pouvoir à M. Thierry MARCHAL") == "DONNE pouvoir à M. Thierry MARCHAL"
     assert redige("Aide à M. THIERRY.") == "Aide à un particulier."
+
+
+def test_un_extrait_ne_publie_ni_naissance_ni_domicile_ni_courriel_nominatif(bps):
+    """Nommer dans un acte est légitime ; dater une naissance ou situer un
+    domicile, non. Relevé le 16/09 dans les extraits de deux instances, avant ce
+    filtre — l'acte reste publié, seul son texte ne l'est pas."""
+    refuse = lambda t: bps.extrait_publiable("deliberation", t) == (False, "donnee_personnelle")
+    assert refuse("Délégué au syndicat : Paul DURAND né le 12/03/1961 ;")
+    assert refuse("Liste des conseillers municipaux élus : Date de naissance Adresse\n"
+                  "DURAND Paul 12/03/1961 4 rue Haute")
+    assert refuse("à la demande de Monsieur DURAND, demeurant au 12 Grande Rue")
+    assert refuse("Mme DURAND Françoise domiciliée 3, rue du Moulin")
+    assert refuse("Référent : paul.durand@mairie-test.fr")
+
+    publie = lambda t: bps.extrait_publiable("deliberation", t) == (True, None)
+    assert publie("les familles domiciliées sur la commune depuis six mois")
+    assert publie("Présidente (contact@cc-test.fr / 0467000000)")
+    assert publie("Subvention de 300 € à l'association présidée par Paul DURAND")
+    assert bps.extrait_publiable("marche", "texte") == (False, None)

@@ -135,7 +135,11 @@
                 Le texte n'a pas pu être chargé.
                 {#if e.pdf_url || e.source_url}<a href={e.pdf_url || e.source_url} target="_blank" rel="noopener">Ouvrir le document ↗</a>{/if}
               </p>
-            {:else}
+            <!-- Rien avant l'ouverture : le HTML prérendu ne porte aucun texte
+                 d'attente. `verifier_build.mjs` refuse « Chargement… » dans une
+                 page, symptôme d'un contenu qui n'arrive qu'au navigateur ; ici
+                 la page est entière, seul le texte déplié se télécharge. -->
+            {:else if extraits[e.id]?.etat === 'charge'}
               <p class="lecture">Chargement…</p>
             {/if}
           </details>
