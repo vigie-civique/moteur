@@ -132,11 +132,23 @@ def _import_subventions(conn, commune_id: int, seed: dict):
             # n'a pas de contrainte UNIQUE, donc OR IGNORE n'ignore rien et
             # chaque exécution rejouait les 57 versements — les totaux publiés
             # doublaient d'autant.
-            if not conn.execute(
-                "SELECT 1 FROM financial_flows WHERE type='subvention'"
-                " AND year=? AND to_id=? AND source=?",
-                (year, asso_id, f"CM vote subventions {year}")
-            ).fetchone():
+            # Deux gardes, et non plus une. La première rend le rejeu
+            # idempotent (même source). La seconde évite le DOUBLON avec le
+            # collecteur : depuis que `cm_finances` lit les tableaux de
+            # subventions, la saisie recopie ce que la machine sait lire — 29
+            # flux en double sur l'instance d'origine, exercices 2025 et 2026,
+            # que seul le dédoublonnage du snapshot empêchait de s'afficher
+            # deux fois. La saisie s'efface devant l'extraction, qui porte
+            # l'acte d'où elle vient.
+            deja = conn.execute(
+                "SELECT source FROM financial_flows WHERE type='subvention'"
+                " AND year=? AND to_id=? AND (source=? OR amount=?)",
+                (year, asso_id, f"CM vote subventions {year}", amount)
+            ).fetchone()
+            if deja and not str(deja[0]).startswith("CM vote subventions"):
+                print(f"  [cm] {year} · {amount} € · {nom_retenu or asso_name} : "
+                      f"déjà lu par « {deja[0]} », saisie non redoublée")
+            if not deja:
                 conn.execute(
                     "INSERT INTO financial_flows"
                     " (type,year,amount,from_id,to_id,description,source)"

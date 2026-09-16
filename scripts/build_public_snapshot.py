@@ -1513,6 +1513,49 @@ def flux_extremites_publiees(flow: dict, public_ids: set[int]) -> bool:
     return True
 
 
+def statut_extremites(flow: dict, public_ids: set[int],
+                      ecartees_du_perimetre: set[int]) -> str:
+    """« garde », « delie » ou « ecarte » — le sort d'un flux dont une extrémité
+    n'a pas de fiche.
+
+    Une subvention votée par la commune à une association dont le siège est dans
+    une commune voisine est un fait COMMUNAL : c'est le budget d'ici qui la
+    paie. Elle était pourtant écartée avec tout le reste, parce que le
+    bénéficiaire est classé C2 et n'a donc pas de fiche
+    (`publiable_dans_perimetre`). Mesuré le 16/09/2026 : 15 lignes sur 44 à
+    Saillans, 21 à Lasalle — l'argent public le plus proche du lecteur, absent
+    du site qui parle de son argent.
+
+    Le flux est donc DÉLIÉ plutôt qu'écarté, comme l'est déjà un marché dont le
+    titulaire n'a pas de fiche : le nom reste, le lien tombe, et aucune fiche
+    n'est créée pour autant — la règle du périmètre n'est pas entamée.
+
+    Deux bornes, et elles font tout le sens de cette exception :
+      - l'extrémité sans fiche doit être écartée POUR LE SEUL PÉRIMÈTRE. Une
+        personne physique sans rôle civique, une entité en `probable` sont
+        écartées pour ce qu'elles sont : rien n'en sort, pas même un nom ;
+      - l'autre extrémité doit, elle, être publiée. Un flux entre deux entités
+        sans fiche ne dit rien de la commune.
+    """
+    if flux_extremites_publiees(flow, public_ids):
+        return "garde"
+    for cle in ("from_id", "to_id"):
+        eid = flow.get(cle)
+        if eid and eid not in public_ids and eid not in ecartees_du_perimetre:
+            return "ecarte"
+    publiee = any(flow.get(cle) in public_ids for cle in ("from_id", "to_id"))
+    return "delie" if publiee else "ecarte"
+
+
+def delier_extremites(flow: dict, public_ids: set[int]) -> None:
+    """Coupe le renvoi vers une fiche que le snapshot n'écrit pas, en gardant le
+    nom : `/finances` affiche déjà le nom nu quand l'identifiant manque."""
+    for cle in ("from_id", "to_id"):
+        eid = flow.get(cle)
+        if eid and eid not in public_ids:
+            flow[cle] = None
+
+
 def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
     """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
 
@@ -2004,6 +2047,9 @@ def build_snapshot(out: Path) -> dict:
 
         public_entities: list[dict] = []
         entity_exclusions: list[dict] = []
+        # Les entités MORALES écartées pour le seul périmètre : leurs flux
+        # d'argent public se publient déliés (cf. `statut_extremites`).
+        ecartees_du_perimetre: set[int] = set()
         location_quality = Counter()
         for entity in entity_rows:
             item, reasons = public_entity(
@@ -2015,6 +2061,10 @@ def build_snapshot(out: Path) -> dict:
             if item is None:
                 for reason in reasons:
                     exclusions["entities"][reason] += 1
+                if (entity["type"] != "person"
+                        and all(r.startswith("hors_fiche_perimetre_")
+                                for r in reasons)):
+                    ecartees_du_perimetre.add(entity["id"])
                 entity_exclusions.append({
                     "id": entity["id"],
                     "type": entity["type"],
@@ -2280,9 +2330,18 @@ def build_snapshot(out: Path) -> dict:
         # l'extrémité est une entité morale non publiée — cf.
         # `flux_extremites_publiees`, qui porte la règle et son histoire.
         before = len(public_flows)
-        public_flows = [f for f in public_flows
-                        if flux_extremites_publiees(f, public_ids)]
+        gardes, delies = [], 0
+        for f in public_flows:
+            etat = statut_extremites(f, public_ids, ecartees_du_perimetre)
+            if etat == "ecarte":
+                continue
+            if etat == "delie":
+                delier_extremites(f, public_ids)
+                delies += 1
+            gardes.append(f)
+        public_flows = gardes
         exclusions["flows"]["endpoint_not_public"] = before - len(public_flows)
+        counters["flux_delies_hors_perimetre"] = delies
 
         # Déduplication : doublons exacts (même année/montant/type/émetteur/destinataire)
         # et « jumeaux » non résolus (montant identique, bénéficiaire vide) laissés par

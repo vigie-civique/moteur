@@ -113,6 +113,35 @@ def test_flux_depuis_une_entite_non_publiee_ecarte(bps):
     assert not bps.flux_extremites_publiees({"from_id": 8405, "to_id": 1}, {1})
 
 
+def test_une_subvention_a_une_association_voisine_est_deliee(bps):
+    """Le budget d'ICI paie une association dont le siège est à côté : c'est un
+    fait communal. L'écarter parce que le bénéficiaire n'a pas de fiche cachait
+    15 lignes sur 44 à Saillans, 21 à Lasalle."""
+    flux = {"from_id": 1, "to_id": 8405, "to_name": "Basket Club de la voisine"}
+    assert bps.statut_extremites(flux, {1}, {8405}) == "delie"
+    bps.delier_extremites(flux, {1})
+    assert flux["to_id"] is None
+    assert flux["to_name"] == "Basket Club de la voisine"      # le nom reste
+
+
+def test_un_flux_vers_une_fiche_privee_reste_ecarte(bps):
+    """Une personne physique sans rôle civique, une entité en `probable` : elles
+    ne sont pas écartées par le périmètre mais par ce qu'elles sont. Rien n'en
+    sort, pas même un nom."""
+    assert bps.statut_extremites({"from_id": 1, "to_id": 8405}, {1}, set()) == "ecarte"
+
+
+def test_un_flux_entre_deux_entites_sans_fiche_est_ecarte(bps):
+    """Délier suppose qu'une extrémité au moins soit publiée : sinon le flux ne
+    dit rien de la commune."""
+    assert bps.statut_extremites({"from_id": 900, "to_id": 8405},
+                                 {1}, {900, 8405}) == "ecarte"
+
+
+def test_un_flux_entre_deux_fiches_publiees_garde_ses_liens(bps):
+    assert bps.statut_extremites({"from_id": 1, "to_id": 2}, {1, 2}, set()) == "garde"
+
+
 def test_flux_sans_beneficiaire_identifie_reste(bps):
     """Une extrémité vide ne prétend renvoyer nulle part : le flux se publie,
     sans lien. L'écarter effacerait de l'argent public au motif que le
