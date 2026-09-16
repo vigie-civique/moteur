@@ -41,7 +41,8 @@ config/saisies.json
 # Arbitrages d'entités : les fiches qu'un humain a décidé de garder
 # distinctes. Propre à une instance, comme seed_local.json.
 config/arbitrages_entites.json
-config/saisies.json.tmp
+# Temporaires d'écriture (nom unique) et verrou du fichier de saisies.
+config/saisies.json.*
 # Idem pour l'export lui-même, produit dans l'arborescence de l'instance.
 decisions/
 audits/

@@ -30,8 +30,17 @@ le lien survive au transfert vers une autre machine, où les `id` diffèrent.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:                                    # POSIX
+    import fcntl
+except ImportError:                     # Windows — l'installateur y vise aussi
+    fcntl = None
+    import msvcrt
 
 from .db import pivot_ids, transaction, upsert_entity, upsert_relation
 from .origine import ATELIER
@@ -141,20 +150,81 @@ def charger(chemin: Path | None = None) -> dict:
 
 
 def enregistrer(data: dict, chemin: Path | None = None) -> None:
-    """Écrit le fichier de façon atomique.
+    """Écrit le fichier de façon atomique. NE VERROUILLE PAS : passer par
+    `modifier()` dès que ce qu'on écrit dépend de ce qu'on a lu.
 
     Le passage par un fichier temporaire n'est pas de la superstition : l'API
     écrit ce fichier pendant qu'une collecte peut le lire, et un `write_text`
     interrompu laisserait un JSON tronqué — donc, d'après `charger()`, une
     erreur bloquante sur tout le travail saisi.
+
+    Le temporaire porte un nom UNIQUE. Il s'appelait `saisies.json.tmp` pour
+    tout le monde : deux écritures simultanées se le disputaient, la première à
+    renommer l'emportait et la seconde échouait sur un fichier disparu.
     """
     chemin = chemin or SAISIES
     chemin.parent.mkdir(parents=True, exist_ok=True)
     data["version"] = VERSION
-    tmp = chemin.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2),
-                   encoding="utf-8")
-    tmp.replace(chemin)
+    fd, tmp = tempfile.mkstemp(dir=chemin.parent, prefix=f"{chemin.name}.",
+                               suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False, indent=2))
+        os.replace(tmp, chemin)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+@contextmanager
+def _verrou(chemin: Path):
+    """Verrou exclusif sur `<fichier>.verrou`, entre fils ET entre processus.
+
+    Un verrou de fil ne suffirait pas : `vigie_marches_cr.py --vers-saisies` et
+    `importer_decisions.py` écrivent le même fichier depuis un autre processus
+    que l'API. Le verrou porte sur un fichier voisin, jamais sur `saisies.json`
+    lui-même, que `enregistrer()` remplace par renommage.
+    """
+    verrou = chemin.with_name(chemin.name + ".verrou")
+    verrou.parent.mkdir(parents=True, exist_ok=True)
+    with open(verrou, "a+b") as f:
+        if fcntl:
+            fcntl.flock(f, fcntl.LOCK_EX)
+        else:  # pragma: no cover — Windows : dix essais d'une seconde, puis OSError
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            if fcntl:
+                fcntl.flock(f, fcntl.LOCK_UN)
+            else:  # pragma: no cover
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+@contextmanager
+def modifier(chemin: Path | None = None, *, ecrire: bool = True):
+    """Lire, modifier, réécrire — sans que personne n'écrive entre-temps.
+
+        with saisies.modifier() as data:
+            data["saisies"].append(nouvelle)
+
+    `charger()` puis `enregistrer()` à la suite laissaient une fenêtre : deux
+    éditeurs lisaient le même fichier, chacun ajoutait sa ligne, et le second à
+    écrire effaçait celle du premier. Mesuré le 17/09 : quatre éditeurs
+    simultanés, 100 saisies envoyées, 31 conservées — sans une erreur visible
+    pour ceux dont la saisie avait disparu.
+
+    Une exception levée dans le bloc n'écrit rien. `ecrire=False` garde le
+    verrou pour une lecture à blanc qui doit voir un état stable.
+    """
+    chemin = chemin or SAISIES
+    with _verrou(chemin):
+        data = charger(chemin)
+        yield data
+        if ecrire:
+            enregistrer(data, chemin)
 
 
 def _source_de(saisie: dict) -> str:

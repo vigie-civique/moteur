@@ -228,3 +228,65 @@ class TestContratDesChamps:
         `verified` reste la marque d'une source institutionnelle."""
         from collectors.saisies import CONFIANCES
         assert "verified" not in CONFIANCES
+
+
+class TestEcrituresSimultanees:
+    """Plusieurs éditeurs écrivent le même fichier : aucune saisie ne se perd.
+
+    Mesuré sur l'atelier de Lasalle le 17/09/2026, avant le verrou : quatre
+    éditeurs, vingt-cinq saisies chacun, 31 conservées sur 100 et 66 échecs sur
+    un temporaire disparu. Ceux dont la saisie avait été écrasée n'en savaient
+    rien — l'écriture avait réussi pour eux.
+    """
+
+    def test_quatre_editeurs_ne_perdent_rien(self, atelier):
+        import threading
+
+        from collectors import saisies as mod
+
+        erreurs = []
+
+        def editeur(n):
+            for i in range(25):
+                try:
+                    with mod.modifier() as data:
+                        data["saisies"].append({"id": f"{n}-{i}"})
+                except Exception as e:  # noqa: BLE001 — c'est ce qu'on compte
+                    erreurs.append(repr(e))
+
+        fils = [threading.Thread(target=editeur, args=(n,)) for n in range(4)]
+        for f in fils:
+            f.start()
+        for f in fils:
+            f.join()
+
+        assert erreurs == []
+        ids = {s["id"] for s in mod.charger()["saisies"]}
+        assert len(ids) == 100
+
+    def test_une_erreur_dans_le_bloc_ne_reecrit_rien(self, atelier):
+        from collectors import saisies as mod
+
+        atelier["ecrire"]({"id": "deja-la"})
+        with pytest.raises(RuntimeError):
+            with mod.modifier() as data:
+                data["saisies"].clear()
+                raise RuntimeError("abandon")
+        assert [s["id"] for s in mod.charger()["saisies"]] == ["deja-la"]
+
+    def test_a_blanc_ne_reecrit_rien(self, atelier):
+        from collectors import saisies as mod
+
+        atelier["ecrire"]({"id": "deja-la"})
+        with mod.modifier(ecrire=False) as data:
+            data["saisies"].append({"id": "jamais-ecrite"})
+        assert [s["id"] for s in mod.charger()["saisies"]] == ["deja-la"]
+
+    def test_aucun_temporaire_ne_traine(self, atelier):
+        from collectors import saisies as mod
+
+        with mod.modifier() as data:
+            data["saisies"].append({"id": "x"})
+        voisins = {p.name for p in atelier["fichier"].parent.iterdir()
+                   if p.name.startswith("saisies.json")}
+        assert voisins == {"saisies.json", "saisies.json.verrou"}

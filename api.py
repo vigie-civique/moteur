@@ -2275,9 +2275,8 @@ def atelier_saisie_creer(req: SaisieCreate, user=Depends(require_auth)):
         "saisi_par": user["email"],
         "saisi_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    data = _saisies.charger()
-    data.setdefault("saisies", []).append(saisie)
-    _saisies.enregistrer(data)
+    with _saisies.modifier() as data:
+        data.setdefault("saisies", []).append(saisie)
 
     # Rejouer TOUT le fichier plutôt qu'insérer cette ligne seule : c'est le même
     # code qui écrira en base au prochain `run_all`, donc le résultat visible
@@ -2314,17 +2313,35 @@ def atelier_saisie_retirer(saisie_id: str, user=Depends(require_auth)):
     machine qui a déjà importé cette saisie, une ligne disparue du fichier serait
     indistinguable d'une ligne jamais reçue, et l'import la laisserait en place.
     """
-    data = _saisies.charger()
-    cible = next((s for s in data.get("saisies", []) if s.get("id") == saisie_id), None)
-    if cible is None:
-        raise HTTPException(404, f"saisie {saisie_id} introuvable.")
-    if cible.get("retire"):
+    deja_retiree = False
+    with _saisies.modifier() as data:
+        cible = next((s for s in data.get("saisies", [])
+                      if s.get("id") == saisie_id), None)
+        if cible is None:
+            raise HTTPException(404, f"saisie {saisie_id} introuvable.")
+        if cible.get("retire"):
+            deja_retiree = True
+        else:
+            cible["retire"] = True
+            cible["retire_par"] = user["email"]
+            cible["retire_le"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if deja_retiree:
         return {"ok": True, "deja_retiree": True}
-    cible["retire"] = True
-    cible["retire_par"] = user["email"]
-    cible["retire_le"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    _saisies.enregistrer(data)
     resultat = _saisies.import_saisies()
+
+    # La création laissait une trace dans `audit_log`, le retrait non : on
+    # savait qui avait saisi une ligne, jamais qui l'avait fait disparaître du
+    # site — alors que c'est le geste qui retire une information publiée.
+    conn = get_db_rw()
+    try:
+        conn.execute(
+            "INSERT INTO audit_log(user_id, entity_id, table_name, action, field,"
+            " old_value, new_value) VALUES(?,?,?,?,?,?,?)",
+            (user["id"], None, "saisies", "retrait", cible.get("objet"),
+             json.dumps(cible, ensure_ascii=False), None))
+        conn.commit()
+    finally:
+        conn.close()
     return {"ok": True, "import": resultat}
 
 
