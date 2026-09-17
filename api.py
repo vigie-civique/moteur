@@ -80,20 +80,16 @@ async def _api_auth_guard(request, call_next):
     if admin_key and provided and _secrets.compare_digest(provided, admin_key):
         return await call_next(request)
 
-    # 2) JWT access valide (décodage + kind=access + non révoqué) — logique api_auth
+    # 2) JWT access valide — jugé par `api_auth.utilisateur_du_jeton`, le même
+    #    contrôle que les routes : révocation, compte désactivé (effet à la
+    #    requête suivante, pas à l'expiration du jeton), sessions closes par un
+    #    changement de mot de passe.
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
-        token = auth[7:].strip()
         try:
-            from api_auth import _decode, _revoked, _db
-            payload = _decode(token)
-            if payload.get("kind") == "access":
-                conn = _db()
-                try:
-                    if not _revoked(token, conn):
-                        return await call_next(request)
-                finally:
-                    conn.close()
+            from api_auth import utilisateur_du_jeton
+            utilisateur_du_jeton(auth[7:].strip(), "access")
+            return await call_next(request)
         except Exception:
             pass
 
@@ -122,8 +118,10 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Auth JWT — atelier
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from api_auth import router as auth_router, require_auth, require_role
+from api_auth import (router as auth_router, comptes as comptes_router, au_moins,  # noqa: E402
+                      exiger, require_au_moins, require_auth, require_role)
 app.include_router(auth_router)
+app.include_router(comptes_router)
 
 # Clé admin pour les endpoints d'écriture (env ADMIN_KEY — si absente, accès localhost uniquement)
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
@@ -1143,14 +1141,13 @@ def optional_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_opt_b
         return None
 
 def _check_admin(x_admin_key: Optional[str], user: Optional[dict] = None,
-                 allow_validator: bool = False):
-    """Autorise : JWT admin (rôle), JWT validateur si allow_validator,
-    ou clé ADMIN_KEY (fallback scripts/CLI)."""
-    if user:
-        if user.get("role") == "admin":
-            return
-        if allow_validator and user.get("role") in ("validator", "contributor"):
-            return
+                 role_min: str = "admin"):
+    """Autorise : JWT d'au moins `role_min`, ou clé ADMIN_KEY (scripts/CLI).
+
+    `allow_validator=True` laissait passer `validator` ET `contributor` : le nom
+    promettait un validateur, le code admettait tout compte."""
+    if user and au_moins(user, role_min):
+        return
     if not ADMIN_KEY:
         raise HTTPException(403, "Endpoint d'écriture désactivé — configurer ADMIN_KEY en production")
     if x_admin_key != ADMIN_KEY:
@@ -1190,7 +1187,13 @@ def _public_snapshot_status():
 # Le raccord snapshot → site public vit avec le builder : il doit être
 # appelable par le script de déploiement sans démarrer l'API.
 from scripts.build_public_snapshot import (  # noqa: E402
+    RULES as _REGLES_PUBLICATION,
     synchroniser_site_public as _sync_public_static)
+
+#: Confiances qui partent sur le site, lues dans les règles de l'instance. Poser
+#: l'une d'elles, c'est trancher (réservé au validateur) : un contributeur propose
+#: en `probable` ou `hypothesis`.
+PUBLIABLES = frozenset(_REGLES_PUBLICATION["confidence"]["public"])
 
 @app.get("/api/admin/public-snapshot")
 def public_snapshot_status(x_admin_key: Optional[str] = Header(default=None),
@@ -1494,7 +1497,7 @@ def publication_verifier_en_ligne(x_admin_key: Optional[str] = Header(default=No
 
     Ouvert au validateur : constater n'écrit rien dans les données.
     """
-    _check_admin(x_admin_key, user, allow_validator=True)
+    _check_admin(x_admin_key, user, role_min="contributor")
     verdict = pub.verifier_en_ligne()
     _journal_publication(user, "verification-en-ligne", {
         "url": verdict.get("url_interrogee"),
@@ -1566,7 +1569,7 @@ def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
     par le filtre de publication n'a pas de page, et proposer le lien enverrait
     sur un 404 en laissant croire à une panne.
     """
-    _check_admin(x_admin_key, user, allow_validator=True)
+    _check_admin(x_admin_key, user, role_min="contributor")
     etat = pub.etat_publication()
     depuis = (etat.get("publie") or {}).get("publie_le")
     borne = None
@@ -1629,7 +1632,9 @@ def review_candidate(
     x_admin_key: Optional[str] = Header(default=None),
     user=Depends(optional_user),
 ):
-    _check_admin(x_admin_key, user, allow_validator=True)
+    if user and not au_moins(user, "validator"):
+        exiger(user, "validator", "Trancher une relation candidate")
+    _check_admin(x_admin_key, user, role_min="validator")
     if req.action not in ("accept", "reject", "ignore"):
         raise HTTPException(400, "action doit être: accept, reject ou ignore")
 
@@ -1751,6 +1756,59 @@ def atelier_workqueue(
     finally:
         conn.close()
 
+# ─── Journal ─────────────────────────────────────────────────────────────────
+# Qui a fait quoi, toutes fiches confondues. L'historique n'existait que fiche
+# par fiche : pour savoir ce qu'un éditeur avait touché dans la journée, il
+# fallait ouvrir les fiches une à une — donc savoir d'avance lesquelles.
+
+#: Ce que désigne chaque table du journal, pour qui ne lit pas le schéma.
+LIBELLE_TABLE_JOURNAL = {
+    "entities": "fiche", "annotations": "donnée importée", "saisies": "saisie",
+    "relations": "relation", "entity_websites": "site", "relation_candidates":
+    "relation candidate", "users": "compte", "publication": "publication",
+}
+
+
+@app.get("/api/atelier/journal")
+def atelier_journal(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    qui: Optional[str] = Query(None, description="adresse de l'auteur"),
+    quoi: Optional[str] = Query(None, description="table : entities, annotations…"),
+    user=Depends(require_auth),
+):
+    filtres, params = [], []
+    if qui:
+        filtres.append("u.email = ?"); params.append(qui.strip().lower())
+    if quoi:
+        filtres.append("a.table_name = ?"); params.append(quoi)
+    where = ("WHERE " + " AND ".join(filtres)) if filtres else ""
+    conn = get_db()
+    try:
+        total = row(conn, f"SELECT COUNT(*) AS n FROM audit_log a "
+                          f"LEFT JOIN users u ON u.id = a.user_id {where}", params)["n"]
+        lignes = rows(conn, f"""
+            SELECT a.id, a.at, u.email AS par, u.role, a.table_name AS quoi, a.action,
+                   a.entity_id, e.name AS fiche, a.field AS champ,
+                   substr(a.old_value, 1, 300) AS avant, substr(a.new_value, 1, 300) AS apres
+            FROM audit_log a
+            LEFT JOIN users u    ON u.id = a.user_id
+            LEFT JOIN entities e ON e.id = a.entity_id
+            {where}
+            ORDER BY a.id DESC
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset])
+        auteurs = [r["email"] for r in rows(conn, """
+            SELECT DISTINCT u.email FROM audit_log a JOIN users u ON u.id = a.user_id
+            ORDER BY u.email""")]
+    finally:
+        conn.close()
+    for ligne in lignes:
+        ligne["quoi_libelle"] = LIBELLE_TABLE_JOURNAL.get(ligne["quoi"], ligne["quoi"])
+    return {"total": total, "lignes": lignes, "auteurs": auteurs,
+            "tables": LIBELLE_TABLE_JOURNAL}
+
+
 # ─── Conflits d'édition ───────────────────────────────────────────────────────
 # Deux éditeurs sur la même ligne : le second à écrire doit l'apprendre, et
 # apprendre de qui il s'agit. Mesuré le 17/09/2026 sur une copie de l'atelier :
@@ -1793,7 +1851,7 @@ class ValidationStatusUpdate(BaseModel):
 def atelier_update_status(
     entity_id: int = FPath(..., ge=1),
     req: ValidationStatusUpdate = ...,
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Trancher le statut d'une fiche")),
 ):
     if req.validation_status not in VALID_STATUSES:
         raise HTTPException(400, f"validation_status invalide — valeurs: {', '.join(VALID_STATUSES)}")
@@ -2150,6 +2208,16 @@ def atelier_annotate(
         note = (req.note if "note" in fournis
                 else (existing["note"] if existing else None))
 
+        # Valider, rejeter (ce qui retire la ligne du site) ou poser une fiabilité
+        # tranche ; noter et corriger proposent. Comparé à l'EXISTANT : un
+        # contributeur qui renvoie le statut affiché sans le changer ne tranche rien.
+        statut_avant = existing["review_status"] if existing else "pending"
+        conf_avant = existing["confidence"] if existing else None
+        if new_status != statut_avant:
+            exiger(user, "validator", "Valider ou rejeter une ligne")
+        if (confidence or None) != (conf_avant or None):
+            exiger(user, "validator", "Poser la fiabilité d'une ligne")
+
         # Les corrections sont FUSIONNÉES avec l'existant, pas remplacées : la
         # page d'atelier peut n'envoyer que le champ qu'elle vient d'éditer.
         # Une valeur vide retire la correction et rend la donnée d'origine.
@@ -2324,6 +2392,10 @@ def atelier_saisie_creer(req: SaisieCreate, user=Depends(require_auth)):
     if req.confidence not in _saisies.CONFIANCES:
         raise HTTPException(400, f"confidence : valeurs admises — "
                                  f"{', '.join(_saisies.CONFIANCES)}")
+    # `confirmed` est publiable : saisir « confirmé », c'est trancher. Le
+    # contributeur saisit en `probable`, un validateur confirme.
+    if req.confidence in PUBLIABLES:
+        exiger(user, "validator", "Saisir une donnée confirmée")
     conn = get_db()
     try:
         valeurs = _valide_saisie(req.objet, req.valeurs)
@@ -2384,6 +2456,8 @@ def atelier_saisie_retirer(saisie_id: str, user=Depends(require_auth)):
                       if s.get("id") == saisie_id), None)
         if cible is None:
             raise HTTPException(404, f"saisie {saisie_id} introuvable.")
+        if cible.get("saisi_par") != user["email"]:
+            exiger(user, "validator", "Retirer la saisie de quelqu'un d'autre")
         if cible.get("retire"):
             deja_retiree = True
         else:
@@ -2640,7 +2714,7 @@ def _audit(conn, user_id: int, entity_id: int, field: str, old, new):
 def atelier_update_entity(
     entity_id: int = FPath(..., ge=1),
     req: EntityUpdate = ...,
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Réécrire une fiche entière")),
 ):
     conn = get_db_rw()
     try:
@@ -2931,6 +3005,8 @@ def atelier_patch_entity(
             ancien = current.get(champ)
             if str("" if ancien is None else ancien) == str("" if nouveau is None else nouveau):
                 continue
+            if champ in ("confidence", "validation_status"):
+                exiger(user, "validator", "Trancher la fiabilité ou le statut d'une fiche")
             _audit(conn, user["id"], entity_id, champ, ancien, nouveau)
             par_table.setdefault(table, {})[colonne] = nouveau
 
@@ -2990,7 +3066,7 @@ def add_contact(
         conn.close()
 
 @app.delete("/api/atelier/contacts/{contact_id}")
-def delete_contact(contact_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+def delete_contact(contact_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer un contact"))):
     conn = get_db_rw()
     try:
         if not row(conn, "SELECT 1 FROM contacts WHERE id=?", (contact_id,)):
@@ -3046,6 +3122,8 @@ def add_relation(
 ):
     if req.relation_type not in RELATION_TYPES:
         raise HTTPException(400, "relation_type invalide")
+    if req.confidence in PUBLIABLES:
+        exiger(user, "validator", "Ajouter une relation publiable (verified)")
     if req.confidence not in ("verified", "probable", "hypothesis"):
         raise HTTPException(400, "confidence invalide")
     if req.direction not in ("from", "to"):
@@ -3086,6 +3164,8 @@ def update_relation(
         rel = row(conn, "SELECT * FROM relations WHERE id=?", (rel_id,))
         if not rel:
             raise HTTPException(404, "Relation introuvable")
+        if req.confidence is not None and req.confidence != rel.get("confidence"):
+            exiger(user, "validator", "Changer la fiabilité d'une relation")
         updates, params = [], []
         for field in ("relation_type", "since", "until", "source", "confidence"):
             val = getattr(req, field)
@@ -3106,7 +3186,7 @@ def update_relation(
         conn.close()
 
 @app.delete("/api/atelier/relations/{rel_id}")
-def delete_relation(rel_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+def delete_relation(rel_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer une relation"))):
     conn = get_db_rw()
     try:
         rel = row(conn, "SELECT * FROM relations WHERE id=?", (rel_id,))
@@ -3172,7 +3252,7 @@ class BudgetAnnexeUpdate(BaseModel):
     confidence: Optional[str]   = None
 
 @app.post("/api/atelier/budget-annexe")
-def create_budget_annexe(req: BudgetAnnexeCreate, user=Depends(require_auth)):
+def create_budget_annexe(req: BudgetAnnexeCreate, user=Depends(require_au_moins("validator", "Ajouter au budget annexe"))):
     if req.section not in ("fonctionnement", "investissement", "dette"):
         raise HTTPException(400, "section invalide")
     if req.sens not in ("depense", "recette", "solde"):
@@ -3193,7 +3273,7 @@ def create_budget_annexe(req: BudgetAnnexeCreate, user=Depends(require_auth)):
         conn.close()
 
 @app.put("/api/atelier/budget-annexe/{ba_id}")
-def update_budget_annexe(ba_id: int = FPath(..., ge=1), req: BudgetAnnexeUpdate = ..., user=Depends(require_auth)):
+def update_budget_annexe(ba_id: int = FPath(..., ge=1), req: BudgetAnnexeUpdate = ..., user=Depends(require_au_moins("validator", "Modifier le budget annexe"))):
     conn = get_db_rw()
     try:
         existing = row(conn, "SELECT * FROM budget_annexe WHERE id=?", (ba_id,))
@@ -3211,7 +3291,7 @@ def update_budget_annexe(ba_id: int = FPath(..., ge=1), req: BudgetAnnexeUpdate 
         conn.close()
 
 @app.delete("/api/atelier/budget-annexe/{ba_id}")
-def delete_budget_annexe(ba_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+def delete_budget_annexe(ba_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer du budget annexe"))):
     conn = get_db_rw()
     try:
         if not row(conn, "SELECT 1 FROM budget_annexe WHERE id=?", (ba_id,)):
@@ -3315,7 +3395,7 @@ def update_note(note_id: int = FPath(..., ge=1), req: NoteUpdate = ..., user=Dep
         conn.close()
 
 @app.delete("/api/atelier/notes/{note_id}", status_code=204)
-def delete_note(note_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+def delete_note(note_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer une note"))):
     conn = get_db_rw()
     try:
         conn.execute("DELETE FROM entity_notes WHERE id=?", (note_id,))
@@ -3337,10 +3417,13 @@ def add_website(entity_id: int = FPath(..., ge=1), req: WebsiteAdd = ..., user=D
     try:
         if not row(conn, "SELECT 1 FROM entities WHERE id=?", (entity_id,)):
             raise HTTPException(404, "Entité introuvable")
+        # Un site ajouté à la main était validé d'office, donc publié. Celui d'un
+        # contributeur entre dans la file des candidats, où un validateur tranche.
+        statut = "validated" if au_moins(user, "validator") else "candidate"
         conn.execute(
             "INSERT OR IGNORE INTO entity_websites (entity_id, url, status, score, found_by)"
-            " VALUES (?,?,'validated',?,?)",
-            (entity_id, req.url.strip(), req.score, req.found_by)
+            " VALUES (?,?,?,?,?)",
+            (entity_id, req.url.strip(), statut, req.score, req.found_by)
         )
         conn.commit()
         return row(conn, "SELECT * FROM entity_websites WHERE entity_id=? AND url=?",
@@ -3350,7 +3433,7 @@ def add_website(entity_id: int = FPath(..., ge=1), req: WebsiteAdd = ..., user=D
 
 @app.patch("/api/atelier/websites/{website_id}")
 def patch_website(website_id: int = FPath(..., ge=1),
-                  body: dict = Body(...), user=Depends(require_auth)):
+                  body: dict = Body(...), user=Depends(require_au_moins("validator", "Trancher un site"))):
     status = body.get("status")
     if status not in ("validated", "rejected", "candidate", "broken"):
         raise HTTPException(422, "status invalide")
@@ -3378,7 +3461,7 @@ def patch_website(website_id: int = FPath(..., ge=1),
         conn.close()
 
 @app.delete("/api/atelier/websites/{website_id}", status_code=204)
-def delete_website(website_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+def delete_website(website_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer un site"))):
     conn = get_db_rw()
     try:
         site = row(conn, "SELECT entity_id, url, status FROM entity_websites WHERE id=?",
@@ -3421,7 +3504,7 @@ def queue_websites(status: str = "candidate", limit: int = 100, user=Depends(req
 # ─── Analyses / cross-references (Sprint F) ───────────────────────────────────
 
 @app.get("/api/analyses/mandats-croises")
-def analyse_mandats_croises(min_roles: int = 2, user=Depends(require_auth)):
+def analyse_mandats_croises(min_roles: int = 2, user=Depends(require_au_moins("validator", "Voir les analyses"))):
     conn = get_db()
     try:
         return rows(conn,
@@ -3434,7 +3517,7 @@ def analyse_mandats_croises(min_roles: int = 2, user=Depends(require_auth)):
 @app.get("/api/analyses/conflits")
 def analyse_conflits(
     chronologie: Optional[str] = None,  # contemporain|lien_sans_flux|dates_manquantes|tous
-    user=Depends(require_auth)
+    user=Depends(require_au_moins("validator", "Voir les analyses"))
 ):
     conn = get_db()
     try:
@@ -3450,7 +3533,7 @@ def analyse_conflits(
 
 
 @app.get("/api/analyses/subventions")
-def analyse_subventions(entity_id: Optional[int] = None, user=Depends(require_auth)):
+def analyse_subventions(entity_id: Optional[int] = None, user=Depends(require_au_moins("validator", "Voir les analyses"))):
     conn = get_db()
     try:
         if entity_id:
@@ -3463,7 +3546,7 @@ def analyse_subventions(entity_id: Optional[int] = None, user=Depends(require_au
 
 
 @app.get("/api/analyses/marches")
-def analyse_marches(entity_id: Optional[int] = None, user=Depends(require_auth)):
+def analyse_marches(entity_id: Optional[int] = None, user=Depends(require_au_moins("validator", "Voir les analyses"))):
     conn = get_db()
     try:
         if entity_id:
@@ -3478,7 +3561,7 @@ def analyse_marches(entity_id: Optional[int] = None, user=Depends(require_auth))
 
 
 @app.get("/api/analyses/adresses-partagees")
-def analyse_adresses(user=Depends(require_auth)):
+def analyse_adresses(user=Depends(require_au_moins("validator", "Voir les analyses"))):
     conn = get_db()
     try:
         return rows(conn, "SELECT * FROM v_adresses_partagees", ())
@@ -3487,7 +3570,7 @@ def analyse_adresses(user=Depends(require_auth)):
 
 
 @app.get("/api/analyses/familles")
-def analyse_familles(min_personnes: int = 2, user=Depends(require_auth)):
+def analyse_familles(min_personnes: int = 2, user=Depends(require_au_moins("validator", "Voir les analyses"))):
     conn = get_db()
     try:
         return rows(conn,
@@ -3697,7 +3780,7 @@ def _journal(conn, user: dict, entity_id: Optional[int], table: str, action: str
 def queue_claim(
     item_id: int = FPath(..., ge=1),
     req: ClaimRequest = ...,
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Réserver un élément à trancher")),
 ):
     """
     Réserve un élément de file au nom du compte connecté, pour 10 minutes.
@@ -3741,7 +3824,7 @@ def queue_claim(
 def queue_unclaim(
     item_id: int = FPath(..., ge=1),
     table: str = Query(...),
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Libérer une réservation")),
 ):
     """Libère une réservation : la sienne, une réservation expirée, ou — admin —
     celle de n'importe qui. N'importe quel compte pouvait libérer celle d'autrui."""
@@ -3880,7 +3963,7 @@ class SynthesisItem(BaseModel):
 @app.post("/api/atelier/ia/syntheses")
 def push_syntheses(
     items: list[SynthesisItem],
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Déposer des synthèses")),
 ):
     """
     Push des synthèses générées en local vers l'atelier.
@@ -3918,7 +4001,7 @@ class EmbeddingItem(BaseModel):
 @app.post("/api/atelier/ia/embeddings")
 def push_embeddings(
     items: list[EmbeddingItem],
-    user=Depends(require_auth),
+    user=Depends(require_au_moins("validator", "Déposer l'index de recherche")),
 ):
     """
     Push des vecteurs RAG générés en local vers la DB atelier.

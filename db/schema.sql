@@ -959,7 +959,28 @@ CREATE TABLE IF NOT EXISTS users (
     failed_attempts INTEGER DEFAULT 0,
     locked_until    TEXT,
     last_login      TEXT,
-    created_at      TEXT DEFAULT (datetime('now'))
+    created_at      TEXT DEFAULT (datetime('now')),
+    -- Un compte ne se supprime pas : `audit_log` le référence. Il se désactive.
+    desactive_le    TEXT,
+    -- Génération de sessions : un mot de passe changé l'incrémente, et les jetons
+    -- d'une génération antérieure sont refusés, au lieu de courir sept jours.
+    sessions_version INTEGER DEFAULT 0
+);
+
+-- On n'entre dans l'atelier que sur invitation (17/09/2026). Le jeton du lien
+-- n'est jamais stocké, seulement son empreinte ; usage unique, sept jours.
+-- `nature` = 'mot_de_passe' : le même lien sert à reposer un mot de passe oublié.
+CREATE TABLE IF NOT EXISTS invitations (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    email        TEXT NOT NULL,
+    role         TEXT NOT NULL CHECK(role IN ('admin','validator','contributor')),
+    nature       TEXT NOT NULL DEFAULT 'compte' CHECK(nature IN ('compte','mot_de_passe')),
+    jeton_sha256 TEXT NOT NULL UNIQUE,
+    invite_par   INTEGER REFERENCES users(id),
+    cree_le      TEXT DEFAULT (datetime('now')),
+    expire_le    TEXT NOT NULL,
+    utilisee_le  TEXT,
+    annulee_le   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS revoked_tokens (

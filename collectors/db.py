@@ -63,6 +63,10 @@ _COLONNES_AJOUTEES = [
     ("businesses", "pappers_fetched_at", "TEXT"),
     ("businesses", "pappers_raw",     "TEXT"),
     ("associations", "siren",         "TEXT"),
+    # 17/09/2026 — comptes sur invitation. `api_auth._db()` les rattrape aussi :
+    # l'API ne passe pas par `init_db()`.
+    ("users", "desactive_le",         "TEXT"),
+    ("users", "sessions_version",     "INTEGER DEFAULT 0"),
 
     # 20/08/2026 — `origine` : qui a structuré la donnée de cette ligne, et donc
     # ce qu'un humain a le droit d'en faire. Cf. collectors/origine.py. Ajoutée
