@@ -136,6 +136,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 # ─── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/login")
@@ -197,23 +201,32 @@ def refresh_token(req: RefreshRequest):
 
 
 @router.post("/logout")
-def logout(creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
-    if not creds:
-        return {"ok": True}
+def logout(req: Optional[LogoutRequest] = None,
+           creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
+    """Révoque le jeton d'accès ET, s'il est fourni, celui de rafraîchissement.
+
+    Seul le jeton d'accès (une heure) était révoqué. Celui de rafraîchissement
+    (sept jours, gardé dans le navigateur) en refabriquait un neuf : après
+    « Déconnexion », la session survivait une semaine — constaté le 17/09/2026.
+    """
+    jetons = [creds.credentials] if creds else []
+    if req and req.refresh_token:
+        jetons.append(req.refresh_token)
+    conn = _db()
     try:
-        payload = _decode(creds.credentials)
-        exp_iso = datetime.fromtimestamp(payload["exp"], tz=timezone.utc).isoformat()
-        conn = _db()
-        try:
+        for jeton in jetons:
+            try:
+                payload = _decode(jeton)
+            except HTTPException:
+                continue                     # déjà expiré ou illisible : rien à révoquer
+            exp_iso = datetime.fromtimestamp(payload["exp"], tz=timezone.utc).isoformat()
             conn.execute(
                 "INSERT OR IGNORE INTO revoked_tokens(jti, expires_at) VALUES(?,?)",
-                (creds.credentials, exp_iso),
+                (jeton, exp_iso),
             )
-            conn.commit()
-        finally:
-            conn.close()
-    except HTTPException:
-        pass
+        conn.commit()
+    finally:
+        conn.close()
     return {"ok": True}
 
 

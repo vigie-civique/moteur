@@ -68,10 +68,15 @@ export async function initAuth() {
 
 export async function logout() {
   const token = sessionStorage.getItem('atelier_access')
-  if (token) {
-    fetch('/api/auth/logout', {
+  const refresh = localStorage.getItem('atelier_refresh')
+  if (token || refresh) {
+    // Le jeton de rafraîchissement part aussi : c'est lui qui vit sept jours.
+    // Attendu avant d'effacer la session, pour que la révocation ait lieu.
+    await fetch('/api/auth/logout', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json',
+                 ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ refresh_token: refresh }),
     }).catch(() => {})
   }
   _clearSession()
