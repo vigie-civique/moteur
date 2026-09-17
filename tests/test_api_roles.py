@@ -285,3 +285,73 @@ class TestComptes:
         assert ("admin@exemple.fr", "invitation", "nouvelle@exemple.fr") in faits
         assert ("nouvelle@exemple.fr", "inscription", "nouvelle@exemple.fr") in faits
         assert journal["lignes"][0]["quoi_libelle"] == "compte"
+
+
+# ─── Aperçu et publication ───────────────────────────────────────────────────
+
+@pytest.fixture
+def flux(atelier, tmp_path, monkeypatch):
+    """Le flux de publication sur des répertoires jetables, builder et contrôle factices."""
+    import json
+    from scripts import publication as pub
+    for nom in ("PUBLIE", "SITE", "BROUILLON", "APERCUS"):
+        (tmp_path / nom).mkdir()
+        monkeypatch.setattr(pub, nom, tmp_path / nom)
+    monkeypatch.setattr(pub, "ETAT", tmp_path / "etat.json")
+    monkeypatch.setattr(pub, "VERSIONS", tmp_path / "versions")
+    monkeypatch.setattr(pub, "VERROU", tmp_path / "publication.lock")
+
+    def build_snapshot(out):
+        (out / "stats.json").write_text(json.dumps({"entities_public": 1}), encoding="utf-8")
+        return {"entities_public": 1}
+    monkeypatch.setattr(pub, "build_snapshot", build_snapshot)
+    monkeypatch.setattr(pub, "controler", lambda cible: {
+        "ok": True, "compte_erreurs": 0, "compte_avertissements": 0,
+        "erreurs": [], "avertissements": [], "fichiers": 1, "rapport": "OK"})
+    return pub
+
+
+class TestApercuEtPublication:
+    def test_tout_compte_genere_son_apercu(self, atelier, flux):
+        c = atelier["client"]
+        h, j = atelier["compte"]("contrib@exemple.fr", "contributor")
+        r = c.post("/api/admin/publication/apercu", headers=h)
+        assert r.status_code == 200, r.text
+        etat = r.json()
+        assert etat["peut_apercevoir"] and not etat["peut_agir"]
+        assert etat["brouillon"]["genere_par"] == "contrib@exemple.fr"
+        assert etat["brouillon"]["compte"] == j["user"]["id"]
+        assert etat["etape"] == "pret_a_publier"
+        assert (flux.APERCUS / str(j["user"]["id"]) / "donnees" / "stats.json").is_file()
+        assert not (flux.BROUILLON / "stats.json").exists()
+
+    def test_ni_contributeur_ni_validateur_ne_publient(self, atelier, flux):
+        c = atelier["client"]
+        for email, role in (("contrib@exemple.fr", "contributor"), ("valid@exemple.fr", "validator")):
+            h, _ = atelier["compte"](email, role)
+            c.post("/api/admin/publication/apercu", headers=h)
+            assert c.post("/api/admin/publication/publier", headers=h).status_code == 403
+            assert c.post("/api/admin/publication/mettre-en-ligne", headers=h).status_code == 403
+        assert not (flux.PUBLIE / "stats.json").exists()
+
+    def test_ladmin_publie_depuis_son_propre_apercu_seulement(self, atelier, flux):
+        c = atelier["client"]
+        h_val, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        h_admin, _ = atelier["compte"]("admin@exemple.fr", "admin")
+        c.post("/api/admin/publication/apercu", headers=h_val)
+
+        r = c.post("/api/admin/publication/publier", headers=h_admin)
+        assert r.status_code == 409                       # l'aperçu d'un autre ne compte pas
+        assert "aperçu" in r.json()["detail"]["message"]
+
+        c.post("/api/admin/publication/apercu", headers=h_admin)
+        r = c.post("/api/admin/publication/publier", headers=h_admin)
+        assert r.status_code == 200, r.text
+        assert r.json()["publie"]["apercu_genere_par"] == "admin@exemple.fr"
+        assert (flux.PUBLIE / "stats.json").is_file()
+
+    def test_arreter_le_serveur_dapercu_est_reserve_a_ladmin(self, atelier, flux):
+        h, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        r = atelier["client"].post("/api/admin/publication/apercu/serveur", headers=h,
+                                   json={"action": "arreter"})
+        assert r.status_code == 403

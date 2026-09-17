@@ -1410,9 +1410,13 @@ def _etat_complet(x_admin_key: Optional[str], user: Optional[dict]) -> dict:
     """
     role = _role_effectif(x_admin_key, user)
     contexte = _public_snapshot_status()
-    return pub.etat_publication() | {
+    # Connecté, on voit SON aperçu ; par la clé de service, le brouillon de la
+    # ligne de commande.
+    return pub.etat_publication((user or {}).get("id")) | {
         "role": role,
         "peut_agir": pub.peut_publier(role),
+        # Générer et regarder un aperçu : tout compte (arbitré le 17/09/2026).
+        "peut_apercevoir": bool(user) or _cle_admin_valide(x_admin_key),
         "project": contexte["project"],
         "rules": contexte["rules"],
         "rules_path": contexte["rules_path"],
@@ -1436,17 +1440,22 @@ def publication_etat(x_admin_key: Optional[str] = Header(default=None),
 @app.post("/api/admin/publication/apercu")
 def publication_apercu(x_admin_key: Optional[str] = Header(default=None),
                        user=Depends(optional_user)):
-    """Construit le snapshot dans le brouillon et le contrôle. Rien de servi ne bouge.
+    """Construit l'aperçu et le contrôle. Rien de servi ne bouge.
+
+    Ouvert à TOUT compte depuis le 17/09/2026 : chacun génère le sien, daté,
+    dans `audits/apercus/<compte>/`, qui remplace son précédent. La clé de
+    service, sans compte, génère le brouillon de la ligne de commande.
 
     Un contrôle rouge n'est PAS une erreur de cette route : l'aperçu a bien été
     produit, c'est son verdict qui est rouge — et c'est exactement ce qu'on
     voulait pouvoir regarder. Répondre 500 ici ferait disparaître le rapport
     dans une bannière d'erreur au lieu de l'afficher.
     """
-    _check_admin(x_admin_key, user)
+    _check_admin(x_admin_key, user, role_min="contributor")
     from scripts.build_public_snapshot import PerimetreNonClasse
     try:
-        resume = pub.generer_apercu(auteur=_auteur(user))
+        resume = (pub.generer_apercu_du_compte(user["id"], auteur=_auteur(user)) if user
+                  else pub.generer_apercu(auteur=_auteur(user)))
     except pub.PublicationRefusee as e:
         raise HTTPException(400, e.message)
     except PerimetreNonClasse as e:
@@ -1465,11 +1474,13 @@ def publication_apercu(x_admin_key: Optional[str] = Header(default=None),
 @app.post("/api/admin/publication/publier")
 def publication_publier(x_admin_key: Optional[str] = Header(default=None),
                         user=Depends(optional_user)):
-    """Porte l'aperçu contrôlé vers les deux emplacements servis. Admin seul."""
+    """Porte l'aperçu contrôlé vers les deux emplacements servis. Admin seul, et
+    à partir de SON aperçu : on publie ce qu'on a regardé."""
     _check_admin(x_admin_key, user)
     role = _role_effectif(x_admin_key, user)
     try:
-        publie = pub.publier(auteur=_auteur(user), role=role)
+        publie = pub.publier(auteur=_auteur(user), role=role,
+                             apercu=pub.apercu_du_compte(user["id"]) if user else None)
     except pub.PublicationRefusee as e:
         _journal_publication(user, "publication-refusee",
                              {"motif": e.message, "role": role})
@@ -1570,7 +1581,7 @@ def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
     sur un 404 en laissant croire à une panne.
     """
     _check_admin(x_admin_key, user, role_min="contributor")
-    etat = pub.etat_publication()
+    etat = pub.etat_publication((user or {}).get("id"))
     depuis = (etat.get("publie") or {}).get("publie_le")
     borne = None
     if depuis:
@@ -1616,11 +1627,18 @@ def publication_apercu_serveur(req: ApercuServeurRequest = ApercuServeurRequest(
     sur son propre port, avec `VIGIE_DATA_DIR` pointé sur le brouillon. C'est la
     seule façon qu'un aperçu ressemble à ce qui sera publié — et il est servi à
     la RACINE de ce port parce que les liens du site sont absolus.
+
+    Tout compte montre SON aperçu ; tous passent par le même port, le serveur
+    choisissant l'aperçu d'après le lien. L'arrêter coupe celui de tout le
+    monde : réservé à l'admin.
     """
-    _check_admin(x_admin_key, user)
+    _check_admin(x_admin_key, user,
+                 role_min="admin" if req.action == "arreter" else "contributor")
     try:
         if req.action == "arreter":
             return pub.arreter_serveur_apercu()
+        if user:
+            return pub.demarrer_serveur_apercu_du_compte(user["id"])
         return pub.demarrer_serveur_apercu()
     except pub.PublicationRefusee as e:
         raise HTTPException(400, e.message)

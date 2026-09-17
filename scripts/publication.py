@@ -20,6 +20,14 @@ sur la bonne volonté de l'appelant. « Publier » recopie un brouillon déjà
 contrôlé vers les deux autres, en recontrôlant à chaque arrivée — parce que ce
 qui compte est ce qui est SERVI, jamais ce que le builder croit avoir produit.
 
+APERÇUS PAR COMPTE (17/09/2026, arbitré par Julien). Dans l'atelier, chaque
+compte — quel que soit son rôle — génère SON aperçu, daté, dans
+`audits/apercus/<compte>/` : les données contrôlées et le site construit dessus.
+Il est écrasé par le prochain aperçu du même compte et effacé au bout de
+`VIGIE_APERCU_JOURS` jours. Publier reste réservé à l'admin, et part de SON
+aperçu, qui doit passer les contrôles. Le brouillon unique ci-dessus reste le
+chemin de la ligne de commande (`deploy/publier-site.sh`, passe quotidienne).
+
 Ce fichier ne touche pas à la base : l'auditabilité (qui a généré, qui a publié)
 est écrite par `api.py`, qui a les utilisateurs. Ici, tout est chemin et
 processus — c'est ce qui permet aux tests de rejouer le flux sur des répertoires
@@ -42,7 +50,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -73,6 +81,13 @@ ETAT = ROOT / "audits" / "publication_etat.json"
 # la durée de l'opération et relâché même si elle échoue — un verrou qui
 # survivrait à un plantage bloquerait l'instance jusqu'au prochain redémarrage.
 VERROU = ROOT / "audits" / "publication.lock"
+
+# Les aperçus de l'atelier, un répertoire par compte, et leur durée de vie.
+APERCUS = ROOT / "audits" / "apercus"
+APERCU_JOURS = int(os.environ.get("VIGIE_APERCU_JOURS") or 7)   # vide dans .env = défaut
+# Le build du site public écrit dans `public/.svelte-kit/`, commun à tous les
+# builds : deux aperçus construits en même temps s'y marcheraient dessus.
+VERROU_BUILD = ROOT / "audits" / "apercu-build.lock"
 
 # Combien de versions servies on garde en arrière. Une seule suffit à revenir
 # en arrière ; en garder davantage occuperait le disque de l'atelier sans que
@@ -343,8 +358,11 @@ def verifier_en_ligne(url: str | None = None) -> dict:
     return verdict
 
 
-def etat_publication() -> dict:
+def etat_publication(compte: int | None = None) -> dict:
     """L'état complet, tel que la page Publication le montre.
+
+    Avec `compte`, l'aperçu montré est celui de ce compte ; sans, le brouillon
+    de la ligne de commande.
 
     Le répertoire publié est relu à chaque appel, pas seulement le journal : une
     instance qui publiait avant ce flux a un snapshot en place et aucun état.
@@ -366,12 +384,15 @@ def etat_publication() -> dict:
     publie["existe"] = stats_publiees is not None
     publie["repertoire"] = str(PUBLIE)
 
-    stats_brouillon = _stats_du_repertoire(BROUILLON)
-    brouillon["existe"] = stats_brouillon is not None
-    brouillon["repertoire"] = str(BROUILLON)
-    if stats_brouillon is not None:
-        brouillon.setdefault("stats", stats_brouillon)
-        brouillon.setdefault("exclusions", stats_brouillon.get("exclusions", {}))
+    if compte is not None:
+        brouillon = apercu_du_compte(compte)
+    else:
+        stats_brouillon = _stats_du_repertoire(BROUILLON)
+        brouillon["existe"] = stats_brouillon is not None
+        brouillon["repertoire"] = str(BROUILLON)
+        if stats_brouillon is not None:
+            brouillon.setdefault("stats", stats_brouillon)
+            brouillon.setdefault("exclusions", stats_brouillon.get("exclusions", {}))
 
     en_ligne = dict(etat.get("en_ligne") or {})
     # Une vérification faite AVANT la promotion en cours ne dit rien de ce qui
@@ -392,7 +413,8 @@ def etat_publication() -> dict:
                  "url": site_url()},
         "en_ligne": en_ligne,
         "mise_en_ligne": etat_mise_en_ligne(),
-        "apercu": etat_serveur_apercu(),
+        "apercu": (etat_serveur_apercu_du_compte(compte) if compte is not None
+                   else etat_serveur_apercu()),
         "roles_qui_publient": sorted(ROLES_QUI_PUBLIENT),
     }
 
@@ -458,6 +480,122 @@ def generer_apercu(auteur: str | None = None, cible: Path | None = None,
         etat["brouillon"] = resume
         ecrire_etat(etat)
         return resume
+
+
+# ── Aperçus par compte ───────────────────────────────────────────────────────
+
+def dossier_apercu(compte: int) -> Path:
+    """`audits/apercus/<compte>` — le numéro est vérifié entier : il devient un
+    chemin, et rien d'autre qu'un entier ne doit pouvoir y entrer."""
+    if isinstance(compte, bool) or not isinstance(compte, int) or compte <= 0:
+        raise PublicationRefusee(f"Compte invalide pour un aperçu : {compte!r}")
+    return APERCUS / str(compte)
+
+
+def _fiche_apercu(compte: int) -> Path:
+    return dossier_apercu(compte) / "apercu.json"
+
+
+def _expire_le(genere_le: str | None) -> str | None:
+    if not genere_le:
+        return None
+    try:
+        debut = datetime.fromisoformat(genere_le)
+    except ValueError:
+        return None
+    return (debut + timedelta(days=APERCU_JOURS)).isoformat(timespec="seconds")
+
+
+def apercu_du_compte(compte: int) -> dict:
+    """L'aperçu d'un compte, tel que la page le montre — ou `existe: False`."""
+    dossier = dossier_apercu(compte)
+    donnees, site = dossier / "donnees", dossier / "site"
+    try:
+        fiche = json.loads(_fiche_apercu(compte).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        fiche = {}
+    stats = _stats_du_repertoire(donnees)
+    existe = bool(fiche.get("genere_le")) and stats is not None
+    return {
+        **fiche,
+        "compte": compte,
+        "existe": existe,
+        "repertoire": str(donnees),
+        "stats": fiche.get("stats") or stats,
+        "exclusions": fiche.get("exclusions") or (stats or {}).get("exclusions", {}),
+        "expire_le": _expire_le(fiche.get("genere_le")),
+        "duree_jours": APERCU_JOURS,
+        "site": {
+            "repertoire": str(site),
+            "existe": (site / "index.html").is_file(),
+            "perime": _build_perime(site, donnees),
+        },
+    }
+
+
+def _build_perime(site: Path, donnees: Path) -> bool:
+    index, stats = site / "index.html", donnees / "stats.json"
+    if not index.is_file():
+        return True
+    return stats.is_file() and index.stat().st_mtime < stats.stat().st_mtime
+
+
+def purger_apercus(maintenant_: datetime | None = None) -> list[int]:
+    """Efface les aperçus plus vieux que `APERCU_JOURS`. Rend les comptes purgés.
+
+    Un aperçu sans fiche lisible (génération interrompue) est jugé sur la date
+    du répertoire. Rien d'autre que des sous-répertoires numérotés n'est touché.
+    """
+    if not APERCUS.is_dir():
+        return []
+    instant = (maintenant_ or datetime.now(timezone.utc)).timestamp()
+    limite = instant - APERCU_JOURS * 86400
+    purges = []
+    for dossier in APERCUS.iterdir():
+        if not (dossier.is_dir() and dossier.name.isdigit()):
+            continue
+        try:
+            genere = datetime.fromisoformat(json.loads(
+                (dossier / "apercu.json").read_text(encoding="utf-8"))["genere_le"]).timestamp()
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            genere = dossier.stat().st_mtime
+        if genere < limite:
+            shutil.rmtree(dossier, ignore_errors=True)
+            purges.append(int(dossier.name))
+    return purges
+
+
+def generer_apercu_du_compte(compte: int, auteur: str | None = None,
+                             builder=None, controleur=None) -> dict:
+    """L'aperçu de CE compte : construit, contrôlé, daté. Il remplace le précédent
+    du même compte, et rien d'autre — ni le brouillon de la ligne de commande,
+    ni l'aperçu d'un autre compte, ni ce qui est servi."""
+    dossier = dossier_apercu(compte)
+    donnees = _verifier_cible_brouillon(dossier / "donnees")
+    builder = builder or build_snapshot
+    controleur = controleur or controler
+    purger_apercus()
+    # Sous le verrou de publication : l'admin peut publier ce même répertoire.
+    # Attente plus longue que pour la ligne de commande : plusieurs personnes
+    # peuvent demander un aperçu dans la même minute.
+    with verrou_de_publication(delai=300.0):
+        if donnees.exists():
+            shutil.rmtree(donnees)          # écrasé, jamais complété
+        donnees.mkdir(parents=True)
+        stats = builder(donnees)
+        retirer_rebuts(donnees)
+        controle = controleur(donnees)
+        resume = {
+            "genere_le": maintenant(),
+            "genere_par": auteur,
+            "compte": compte,
+            "stats": stats,
+            "exclusions": (stats or {}).get("exclusions", {}),
+            "controle": controle,
+        }
+        _fiche_apercu(compte).write_text(json.dumps(resume, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+    return apercu_du_compte(compte)
 
 
 # ── Publication ──────────────────────────────────────────────────────────────
@@ -666,7 +804,8 @@ def _differences(avant: dict | None, apres: dict | None) -> dict:
 
 
 def publier(auteur: str | None = None, role: str | None = None,
-            source: Path | None = None, controleur=None) -> dict:
+            source: Path | None = None, controleur=None,
+            apercu: dict | None = None) -> dict:
     """Porte un aperçu DÉJÀ contrôlé vers les deux emplacements servis.
 
     Le contrôle est rejoué trois fois — sur le brouillon avant de bouger, puis
@@ -683,21 +822,35 @@ def publier(auteur: str | None = None, role: str | None = None,
 
     Toute l'opération tient sous un verrou : deux clics valent deux requêtes, et
     rien n'empêchait deux publications de se recouvrir.
+
+    `apercu` : l'aperçu d'un compte (`apercu_du_compte`). Dans l'atelier, l'admin
+    publie SON aperçu, généré par lui ; un aperçu expiré ne se publie pas.
     """
     if not peut_publier(role):
         raise PublicationRefusee(
             "Publier est réservé au rôle admin. L'état de publication et "
             "l'aperçu restent consultables.")
+    if apercu is not None:
+        if not apercu.get("existe"):
+            raise PublicationRefusee(
+                "Vous n'avez pas d'aperçu à publier — générer d'abord votre aperçu, "
+                "le regarder, puis publier.")
+        expire = apercu.get("expire_le")
+        if expire and datetime.fromisoformat(expire) < datetime.now(timezone.utc):
+            raise PublicationRefusee(
+                "Votre aperçu a expiré — en générer un nouveau : il montrera l'état "
+                "actuel de la base.")
+        source = Path(apercu["repertoire"])
 
     with verrou_de_publication():
-        return _publier_sous_verrou(auteur, source, controleur)
+        return _publier_sous_verrou(auteur, source, controleur, apercu)
 
 
-def _publier_sous_verrou(auteur, source, controleur) -> dict:
+def _publier_sous_verrou(auteur, source, controleur, apercu=None) -> dict:
     source = (source or BROUILLON).resolve()
     controleur = controleur or controler
     etat = lire_etat()
-    brouillon = etat.get("brouillon") or {}
+    brouillon = apercu if apercu is not None else (etat.get("brouillon") or {})
     if not (source / "stats.json").is_file():
         raise PublicationRefusee(
             "Aucun aperçu à publier — générer un aperçu d'abord.")
@@ -979,7 +1132,7 @@ def _npm() -> str:
     return shutil.which("npm") or "npm"
 
 
-def construire_apercu(cible: Path | None = None) -> dict:
+def construire_apercu(cible: Path | None = None, build: Path | None = None) -> dict:
     """Construit le site public sur le brouillon, tel qu'il sera publié.
 
     L'aperçu montrait `vite dev` : rendu à la volée, modules non groupés, aucun
@@ -998,6 +1151,7 @@ def construire_apercu(cible: Path | None = None) -> dict:
     les données, `VIGIE_BUILD_DIR` où écrire. Rien n'est déplacé.
     """
     cible = _verifier_cible_brouillon(cible or BROUILLON)
+    build = build or APERCU_BUILD
     if not (cible / "stats.json").is_file():
         raise PublicationRefusee(
             "Aucun aperçu à construire — générer un aperçu d'abord.")
@@ -1007,7 +1161,7 @@ def construire_apercu(cible: Path | None = None) -> dict:
             "L'aperçu construit le site lui-même, il lui faut de quoi tourner.")
 
     APERCU_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with APERCU_LOG.open("w", encoding="utf-8") as journal:
+    with _verrou_de_build(), APERCU_LOG.open("w", encoding="utf-8") as journal:
         journal.write(f"$ npm run build  (VIGIE_DATA_DIR={cible})\n\n")
         journal.flush()
         issue = subprocess.run(
@@ -1015,7 +1169,7 @@ def construire_apercu(cible: Path | None = None) -> dict:
             cwd=str(ROOT / "public"),
             env={**os.environ,
                  "VIGIE_DATA_DIR": str(cible),
-                 "VIGIE_BUILD_DIR": str(APERCU_BUILD)},
+                 "VIGIE_BUILD_DIR": str(build)},
             stdout=journal, stderr=subprocess.STDOUT,
         )
     if issue.returncode != 0:
@@ -1023,14 +1177,36 @@ def construire_apercu(cible: Path | None = None) -> dict:
             "Le build de l'aperçu a échoué — c'est un défaut de l'artefact "
             "publiable, pas de l'atelier. Il n'y a rien à montrer tant qu'il "
             "n'est pas corrigé.", {"journal": _fin_du_journal(40)})
-    if not (APERCU_BUILD / "index.html").is_file():
+    if not (build / "index.html").is_file():
         raise PublicationRefusee(
             "Le build s'est terminé sans écrire de page d'accueil.",
             {"journal": _fin_du_journal(40)})
 
-    pages = sum(1 for _ in APERCU_BUILD.rglob("*.html"))
-    return {"repertoire": str(APERCU_BUILD), "pages": pages,
+    pages = sum(1 for _ in build.rglob("*.html"))
+    return {"repertoire": str(build), "pages": pages,
             "construit_le": maintenant(), "donnees": str(cible)}
+
+
+@contextmanager
+def _verrou_de_build(delai: float = 600.0):
+    """Un build du site à la fois : tous écrivent dans `public/.svelte-kit/`."""
+    VERROU_BUILD.parent.mkdir(parents=True, exist_ok=True)
+    fin = time.monotonic() + delai
+    with open(VERROU_BUILD, "w") as f:
+        while True:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= fin:
+                    raise PublicationRefusee(
+                        "Un autre aperçu est en construction depuis dix minutes — "
+                        "réessayer plus tard.")
+                time.sleep(0.5)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def etat_serveur_apercu() -> dict:
@@ -1056,6 +1232,75 @@ def etat_serveur_apercu() -> dict:
             "perime": _apercu_perime(BROUILLON),
         },
     }
+
+
+# Le serveur sert soit UN build (ligne de commande, tests), soit TOUS les aperçus
+# de l'atelier, chacun choisi par le cookie que pose le lien de l'atelier
+# (`?apercu=<compte>`). `_serveur_racine` dit lequel tourne.
+_serveur_racine = None
+
+
+def etat_serveur_apercu_du_compte(compte: int) -> dict:
+    actif = (_serveur is not None and _serveur.poll() is None
+             and _serveur_racine == APERCUS)
+    apercu = apercu_du_compte(compte)
+    return {
+        "actif": actif,
+        "url": APERCU_URL if actif else None,
+        # À ajouter à chaque lien : c'est lui qui dit au serveur QUEL aperçu montrer.
+        "parametre": f"apercu={compte}",
+        "port": APERCU_PORT,
+        "installe": _vite().exists(),
+        "journal": str(APERCU_LOG) if actif else None,
+        "build": {
+            "repertoire": apercu["site"]["repertoire"],
+            "existe": apercu["site"]["existe"],
+            "perime": apercu["site"]["perime"],
+        },
+    }
+
+
+def demarrer_serveur_apercu_du_compte(compte: int) -> dict:
+    """Construit le site de l'aperçu de ce compte s'il est absent ou périmé, et
+    s'assure que le serveur des aperçus tourne. Il n'arrête jamais celui d'un
+    autre compte : tous passent par le même port."""
+    global _serveur, _serveur_racine
+    apercu = apercu_du_compte(compte)
+    if not apercu["existe"]:
+        raise PublicationRefusee("Aucun aperçu à montrer — générer votre aperçu d'abord.")
+    if not _vite().exists():
+        raise PublicationRefusee(
+            "Le site public n'a pas ses dépendances : `cd public && npm install`. "
+            "L'aperçu construit le site lui-même, il lui faut de quoi tourner.")
+    donnees = Path(apercu["repertoire"])
+    site = Path(apercu["site"]["repertoire"])
+    if apercu["site"]["perime"]:
+        construire_apercu(donnees, build=site)
+
+    if _serveur is not None and _serveur.poll() is None:
+        if _serveur_racine == APERCUS:
+            return etat_serveur_apercu_du_compte(compte)
+        arreter_serveur_apercu()             # un aperçu de ligne de commande
+    if _port_repond():
+        raise PublicationRefusee(
+            f"Le port {APERCU_PORT} est déjà occupé par un autre service. "
+            "Choisir un autre port (VIGIE_APERCU_PORT), ou arrêter celui qui "
+            "l'occupe.")
+    APERCUS.mkdir(parents=True, exist_ok=True)
+    journal = APERCU_LOG.open("a", encoding="utf-8")
+    _serveur = subprocess.Popen(
+        [sys.executable, str(ROOT / "scripts" / "servir_apercu.py"),
+         str(APERCUS), "--par-compte", "--port", str(APERCU_PORT)],
+        cwd=str(ROOT), stdout=journal, stderr=subprocess.STDOUT,
+    )
+    _serveur_racine = APERCUS
+    if not _attendre_le_port():
+        journal_lu = _fin_du_journal()
+        arreter_serveur_apercu()
+        raise PublicationRefusee(
+            f"L'aperçu n'a pas démarré sur le port {APERCU_PORT} "
+            f"(réglable par VIGIE_APERCU_PORT).\n\n{journal_lu}")
+    return etat_serveur_apercu_du_compte(compte)
 
 
 def _apercu_perime(cible: Path) -> bool:
@@ -1088,7 +1333,7 @@ def demarrer_serveur_apercu(cible: Path | None = None,
     Le prix est un build à chaque ouverture, une poignée de secondes. Le
     contrepoids est qu'on regarde enfin ce qu'on s'apprête à mettre en ligne.
     """
-    global _serveur
+    global _serveur, _serveur_racine
     cible = _verifier_cible_brouillon(cible or BROUILLON)
     if not (cible / "stats.json").is_file():
         raise PublicationRefusee("Aucun aperçu à montrer — générer un aperçu d'abord.")
@@ -1136,6 +1381,7 @@ def demarrer_serveur_apercu(cible: Path | None = None,
         cwd=str(ROOT),
         stdout=journal, stderr=subprocess.STDOUT,
     )
+    _serveur_racine = APERCU_BUILD
 
     # On ne rend pas la main sur un « c'est parti » : un port déjà pris fait
     # sortir Vite en une seconde, et l'atelier afficherait une prévisualisation
@@ -1179,7 +1425,8 @@ def _fin_du_journal(lignes: int = 20, fichier: Path | None = None) -> str:
 
 
 def arreter_serveur_apercu() -> dict:
-    global _serveur
+    global _serveur, _serveur_racine
+    _serveur_racine = None
     if _serveur is not None and _serveur.poll() is None:
         _serveur.terminate()
         try:

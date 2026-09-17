@@ -26,9 +26,18 @@ rien de plus :
     /             → index.html
     inconnu       → 404.html, avec un vrai code 404
 
+Aperçus par compte
+------------------
+Avec `--par-compte`, le répertoire est `audits/apercus/`, et chaque requête sert
+`<compte>/site/`. Le compte vient du lien de l'atelier (`?apercu=<compte>`), qui
+pose un cookie puis renvoie vers la même adresse sans paramètre : les liens
+internes du site, absolus, continuent de marcher. Un seul port pour tout
+l'atelier, et chacun voit son aperçu.
+
 Usage
 -----
     python3 scripts/servir_apercu.py <répertoire> [--port 5180]
+    python3 scripts/servir_apercu.py audits/apercus --par-compte [--port 5180]
 """
 from __future__ import annotations
 
@@ -37,7 +46,9 @@ import functools
 import http.server
 import socketserver
 import sys
+from http.cookies import SimpleCookie
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -103,6 +114,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+COOKIE = "vigie_apercu"
+
+
+class HandlerParCompte(Handler):
+    """Choisit le build servi d'après le compte : `?apercu=` puis cookie."""
+
+    racine: Path = Path(".")
+
+    def _choisir(self) -> bool:
+        morceaux = urlsplit(self.path)
+        demande = parse_qs(morceaux.query).get("apercu", [""])[0]
+        if demande:
+            if not demande.isdigit():
+                self.send_error(400)
+                return False
+            self.send_response(303)
+            self.send_header("Set-Cookie", f"{COOKIE}={demande}; Path=/; SameSite=Lax")
+            self.send_header("Location", morceaux.path or "/")
+            self.end_headers()
+            return False
+        cookie = SimpleCookie(self.headers.get("Cookie", ""))
+        compte = cookie[COOKIE].value if COOKIE in cookie else ""
+        site = self.racine / compte / "site"
+        if not compte.isdigit() or not (site / "index.html").is_file():
+            corps = ("<!doctype html><meta charset=utf-8><title>Aperçu</title>"
+                     "<p style='font:16px system-ui;margin:2rem'>Aucun aperçu à montrer. "
+                     "Ouvrez votre aperçu depuis la page Publication de l'atelier.</p>"
+                     ).encode("utf-8")
+            self.send_response(404)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(corps)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(corps)
+            return False
+        self.directory = str(site.resolve())
+        return True
+
+    def do_GET(self):  # noqa: N802
+        if self._choisir():
+            super().do_GET()
+
+    def do_HEAD(self):  # noqa: N802
+        if self._choisir():
+            super().do_HEAD()
+
+
 class Serveur(socketserver.TCPServer):
     # Redémarrer l'aperçu ne doit pas buter sur un TIME_WAIT.
     allow_reuse_address = True
@@ -113,7 +171,21 @@ def main(argv=None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("repertoire", type=Path)
     ap.add_argument("--port", type=int, default=5180)
+    ap.add_argument("--par-compte", action="store_true",
+                    help="servir <répertoire>/<compte>/site selon le compte du visiteur")
     args = ap.parse_args(argv)
+
+    if args.par_compte:
+        HandlerParCompte.racine = args.repertoire.resolve()
+        handler = functools.partial(HandlerParCompte, directory=str(args.repertoire.resolve()))
+        with Serveur(("127.0.0.1", args.port), handler) as httpd:
+            print(f"Aperçus par compte servis sur http://localhost:{args.port} "
+                  f"depuis {args.repertoire}", flush=True)
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                return 0
+        return 0
 
     if not (args.repertoire / "index.html").is_file():
         print(f"Rien à servir : {args.repertoire}/index.html est absent.",

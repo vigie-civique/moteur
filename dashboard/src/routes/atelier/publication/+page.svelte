@@ -12,12 +12,13 @@
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
   import { currentUser } from '$lib/stores/auth.js'
+  import { LIBELLE_ROLE } from '$lib/roles.js'
 
   const KEY_STORAGE = 'vigie-admin-key'
 
   const ETAPES = [
     { cle: 'publie_actuel', titre: 'État publié' },
-    { cle: 'apercu',        titre: 'Aperçu brouillon' },
+    { cle: 'apercu',        titre: 'Aperçu' },
     { cle: 'controles',     titre: 'Contrôles' },
     { cle: 'publication',   titre: 'Publication' },
   ]
@@ -61,8 +62,21 @@
 
   $: role = etat?.role || $currentUser?.role || null
   $: peutAgir = etat?.peut_agir === true
+  // Générer et regarder SON aperçu : tout compte. Publier : l'admin seul.
+  $: peutApercevoir = etat?.peut_apercevoir === true
+  // Chaque lien porte le compte : le serveur d'aperçu montre à chacun le sien.
+  // Le serveur d'aperçu est commun à l'atelier : qu'il tourne ne dit pas que
+  // CE compte a un site à montrer. Sans cette nuance, la page offrait « Ouvrir
+  // l'aperçu » à qui n'avait rien construit — ou dont le site se construisait.
+  $: apercuPret = apercu.actif && apercu.build?.existe !== false
+  function lienApercu(chemin) {
+    return `${apercu.url}${chemin}${apercu.parametre ? `?${apercu.parametre}` : ''}`
+  }
   $: etape = etat?.etape || 'aucun_apercu'
-  $: badge = LIBELLE_ETAPE[etape] || LIBELLE_ETAPE.aucun_apercu
+  // « Prêt à publier » ne dit rien à qui ne publie pas : pour lui, l'aperçu est vert.
+  $: badge = (etape === 'pret_a_publier' && etat && !peutAgir)
+    ? { texte: 'Aperçu vert', ton: 'ok' }
+    : (LIBELLE_ETAPE[etape] || LIBELLE_ETAPE.aucun_apercu)
   $: brouillon = etat?.brouillon || {}
   $: publie = etat?.publie || {}
   $: controle = brouillon.controle || null
@@ -291,18 +305,23 @@
       {#if peutAgir}
         <span class="muted">Admin — clé facultative</span>
       {:else if role}
-        <span class="muted">Rôle {role} — lecture seule</span>
+        <span class="muted">{LIBELLE_ROLE[role] ?? role} — aperçu, sans publication</span>
       {/if}
-      <input
-        type="password"
-        bind:value={adminKey}
-        placeholder="Clé admin (facultative)"
-        on:keydown={(e) => e.key === 'Enter' && charger()}
-      />
+      <!-- La clé de service sert aux scripts, jamais à quelqu'un de connecté. -->
+      {#if !$currentUser}
+        <input
+          type="password"
+          bind:value={adminKey}
+          placeholder="Clé admin (facultative)"
+          on:keydown={(e) => e.key === 'Enter' && charger()}
+        />
+      {/if}
       <button class="secondary" on:click={() => charger()} disabled={loading}>
         {loading ? 'Lecture…' : 'Recharger'}
       </button>
-      <button class="ghost" on:click={forgetKey}>Oublier la clé</button>
+      {#if !$currentUser}
+        <button class="ghost" on:click={forgetKey}>Oublier la clé</button>
+      {/if}
     </div>
   </section>
 
@@ -386,14 +405,14 @@
   <!-- ② L'aperçu ----------------------------------------------------------- -->
   <section class="carte">
     <header>
-      <h2>② Aperçu brouillon</h2>
+      <h2>② {$currentUser ? 'Mon aperçu' : 'Aperçu brouillon'}</h2>
       <div class="actions">
         {#if brouillon.existe}
           <span class="tag ok">aperçu généré</span>
         {:else}
           <span class="tag neutre">aucun aperçu</span>
         {/if}
-        {#if peutAgir}
+        {#if peutApercevoir}
           <button class="primary" on:click={genererApercu}
                   disabled={generating || serveurEnCours || publishing}>
             {generating ? 'Génération…' : serveurEnCours ? 'Construction du site…' : 'Générer un aperçu'}
@@ -402,10 +421,19 @@
       </div>
     </header>
 
-    <p class="muted">
-      Construit dans <code>{brouillon.repertoire}</code> — rien de servi n’est touché
-      à cette étape.
-    </p>
+    {#if $currentUser}
+      <p class="muted">
+        Votre aperçu : le site tel qu’il serait publié avec la base d’aujourd’hui.
+        Rien de ce qui est en ligne ne bouge. Il est remplacé par le prochain aperçu
+        que vous générez{#if brouillon.expire_le}, et s’efface le {date(brouillon.expire_le)}{:else},
+        et s’efface au bout de {brouillon.duree_jours ?? 7} jours{/if}.
+      </p>
+    {:else}
+      <p class="muted">
+        Construit dans <code>{brouillon.repertoire}</code> — rien de servi n’est touché
+        à cette étape.
+      </p>
+    {/if}
 
     {#if !brouillon.existe}
       <p class="muted">Aucun aperçu pour l’instant.</p>
@@ -455,26 +483,29 @@
       <div class="apercu">
         <div class="apercu-barre">
           <strong>Prévisualisation</strong>
-          {#if apercu.actif && apercu.build?.perime}
+          {#if apercuPret && apercu.build?.perime}
             <span class="tag ko">en marche · build plus ancien que le brouillon</span>
-          {:else if apercu.actif}
+          {:else if apercuPret}
             <span class="tag ok">en marche · {apercu.url}</span>
           {:else if !apercu.installe}
             <span class="tag ko">dépendances du site absentes</span>
           {:else}
             <span class="tag neutre">arrêtée</span>
           {/if}
-          {#if peutAgir}
-            {#if apercu.actif}
+          {#if peutApercevoir}
+            {#if apercuPret}
               {#if apercu.build?.perime}
-                <!-- Un brouillon régénéré hors de ce bouton, en ligne de commande. -->
+                <!-- Un aperçu régénéré dont le site n'est pas encore reconstruit. -->
                 <button class="secondary" on:click={() => serveurApercu('demarrer')} disabled={serveurEnCours}>
                   {serveurEnCours ? 'Construction…' : 'Reconstruire l’aperçu'}
                 </button>
               {/if}
-              <button class="secondary" on:click={() => serveurApercu('arreter')} disabled={serveurEnCours}>
-                Arrêter
-              </button>
+              {#if peutAgir}
+                <!-- Le serveur montre les aperçus de tout l'atelier : l'arrêter les coupe tous. -->
+                <button class="secondary" on:click={() => serveurApercu('arreter')} disabled={serveurEnCours}>
+                  Arrêter
+                </button>
+              {/if}
             {:else}
               <button class="secondary" on:click={() => serveurApercu('demarrer')}
                       disabled={serveurEnCours || !apercu.installe}>
@@ -482,8 +513,8 @@
               </button>
             {/if}
           {/if}
-          {#if apercu.actif}
-            <a class="lien" href={apercu.url} target="_blank" rel="noreferrer">
+          {#if apercuPret}
+            <a class="lien" href={lienApercu('/')} target="_blank" rel="noreferrer">
               Ouvrir l’aperçu ↗
             </a>
           {/if}
@@ -494,7 +525,7 @@
             L’aperçu fait tourner le site public lui-même :
             <code>cd public &amp;&amp; npm install</code> une fois, puis il démarre d’ici.
           </p>
-        {:else if apercu.actif}
+        {:else if apercuPret}
           <!-- L'aperçu s'ouvre dans un onglet, il ne s'encadre plus.
                L'iframe était pilotée des DEUX côtés : les puces changeaient son
                `src`, mais naviguer dans le site embarqué ne les mettait pas à
@@ -508,23 +539,23 @@
                Un onglet à part règle les trois : la navigation appartient au
                site, l'atelier n'en garde que les portes d'entrée. -->
           <p class="cadre-bandeau">
-            APERÇU ATELIER — snapshot brouillon, non publié. C’est le
-            <strong>build statique</strong> du site, celui qui partira en ligne,
-            construit sur <code>{brouillon.repertoire}</code>.
+            APERÇU — non publié. C’est le site tel qu’il partirait en ligne,
+            construit sur {$currentUser ? 'votre aperçu' : 'le brouillon'}
+            du {date(brouillon.genere_le)}.
             {#if apercu.build?.pages}({apercu.build.pages} pages, construites le
             {date(apercu.build.construit_le)}){/if}
             Il s’ouvre dans un onglet séparé : la navigation y appartient au site.
           </p>
           <div class="apercu-liens">
             {#each LIENS_APERCU as l}
-              <a class="puce" href={apercu.url + l.chemin} target="_blank"
+              <a class="puce" href={lienApercu(l.chemin)} target="_blank"
                  rel="noreferrer">{l.label} ↗</a>
             {/each}
             {#if modifications?.modifications?.length}
               <span class="separateur">fiches modifiées :</span>
               {#each modifications.modifications.slice(0, 8) as m}
                 {#if m.dans_apercu}
-                  <a class="puce" href={`${apercu.url}/entite/${m.id}`} target="_blank"
+                  <a class="puce" href={lienApercu(`/entite/${m.id}`)} target="_blank"
                      rel="noreferrer"
                      title="{m.modifications} modification(s), dernière le {m.derniere}">
                     {m.name} ↗
@@ -624,8 +655,8 @@
 
     {#if !peutAgir}
       <p class="muted">
-        Publier est réservé au rôle admin. L’état ci-dessus et l’aperçu restent
-        consultables.
+        Publier est réservé aux administrateurs, à partir de leur propre aperçu.
+        Le vôtre sert à regarder l’effet de vos corrections avant qu’elles partent.
       </p>
     {:else if etape === 'aucun_apercu'}
       <p class="muted">Générer un aperçu d’abord.</p>
@@ -642,7 +673,7 @@
       </p>
     {:else}
       <p class="ligne">
-        L’aperçu du {date(brouillon.genere_le)} est contrôlé. Publier construit
+        {$currentUser ? 'Votre aperçu' : 'L’aperçu'} du {date(brouillon.genere_le)} est contrôlé. Publier construit
         chaque copie <em>à côté</em> de ce qui est servi, la contrôle, puis la met
         en service d’un seul geste — <code>{publie.repertoire}</code> puis
         <code>{etat.site?.repertoire}</code>. Un refus laisse la version
