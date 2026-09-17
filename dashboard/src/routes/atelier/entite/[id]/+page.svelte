@@ -2,12 +2,13 @@
   import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
-  import { goto } from '$app/navigation'
+  import { goto, beforeNavigate } from '$app/navigation'
   import { authFetch } from '$lib/stores/auth.js'
+  import { heureLocale } from '$lib/heure.js'
   import MapEdit from '$lib/components/MapEdit.svelte'
 
   const ENTITY_TYPES  = ['person','business','association','place','service','property']
-  const CONFIDENCES   = ['verified','probable','hypothesis']
+  const CONFIDENCES   = ['verified','confirmed','probable','hypothesis']
   const VALID_STATUSES = ['draft','unverified','reviewing','verified','published','rejected']
   const CONTACT_TYPES = ['website','phone','email','other']
   const GENDERS       = ['M','F','']
@@ -22,6 +23,40 @@
   let dirty      = false
   let error      = ''
   let saveMsg    = ''
+  let initial    = {}      // le formulaire tel que lu : ce qu'on compare pour savoir ce qui a changé
+  let conflit    = null    // détail d'un 409 : { message, par, le, champs, updated_at }
+
+  // Libellés des champs, pour l'historique et le conflit : « validation_status »
+  // ne dit rien à qui corrige une fiche.
+  const LIBELLES = {
+    name: 'Nom complet', short_name: 'Nom court', address: 'Adresse',
+    confidence: 'Qualité source', validation_status: 'Statut de validation',
+    responsible: 'Responsable', firstname: 'Prénom', lastname: 'Nom',
+    birth_year: 'Année de naissance', birth_month: 'Mois de naissance', gender: 'Genre',
+    naf_code: 'Code NAF', naf_label: 'Activité', legal_form: 'Forme juridique',
+    biz_status: 'Statut', capital: 'Capital', employees_range: 'Effectif',
+    biz_creation: 'Date de création', closing_date: 'Date de fermeture',
+    rna_id: 'N° RNA', asso_object: 'Objet social', asso_status: 'Statut',
+    asso_creation: 'Date de création', dissolution_date: 'Date de dissolution',
+    osm_category: 'Catégorie OSM', osm_value: 'Valeur OSM', svc_category: 'Catégorie',
+    operator: 'Opérateur', opening_hours: 'Horaires',
+    lat: 'Latitude', lng: 'Longitude',
+  }
+  // Champs du formulaire que l'enregistrement n'envoie pas : le type ne change
+  // pas ici, les coordonnées passent par la carte.
+  const NON_ENVOYES = new Set(['type', 'lat', 'lng'])
+
+  // Ce que l'éditeur a réellement changé. On n'envoie QUE cela : renvoyer toute
+  // la fiche réécrivait aussi les champs qu'un autre venait de corriger.
+  $: modifies = Object.keys(form).filter(k =>
+    !NON_ENVOYES.has(k) && String(form[k] ?? '') !== String(initial[k] ?? ''))
+
+  beforeNavigate(({ cancel, type }) => {
+    if (!modifies.length) return
+    // Fermeture d'onglet ou lien externe : le navigateur pose lui-même la question.
+    if (type === 'leave') { cancel(); return }
+    if (!confirm('Des modifications ne sont pas enregistrées. Quitter la fiche quand même ?')) cancel()
+  })
 
   // new contact form
   let newContact = { type: 'website', value: '', label: '' }
@@ -48,8 +83,20 @@
   }
 
   function initForm() {
+    form = formDepuis(entity)
+    initial = { ...form }
+    contacts  = [...(entity.contacts  ?? [])]
+    relations = [...(entity.relations ?? [])]
+    audit     = [...(entity.audit     ?? [])]
+    notes     = [...(entity.notes     ?? [])]
+    websites  = [...(entity.websites  ?? [])]
+    dirty = false
+    conflit = null
+  }
+
+  function formDepuis(entity) {
     // Copie tous les champs éditables
-    form = {
+    return {
       name:        entity.name        ?? '',
       short_name:  entity.short_name  ?? '',
       type:        entity.type        ?? 'business',
@@ -88,12 +135,6 @@
       operator:      entity.operator      ?? '',
       opening_hours: entity.opening_hours ?? '',
     }
-    contacts  = [...(entity.contacts  ?? [])]
-    relations = [...(entity.relations ?? [])]
-    audit     = [...(entity.audit     ?? [])]
-    notes     = [...(entity.notes     ?? [])]
-    websites  = [...(entity.websites  ?? [])]
-    dirty = false
   }
 
   function markDirty() { dirty = true; saveMsg = '' }
@@ -101,29 +142,31 @@
   async function save() {
     saving = true; saveMsg = ''; error = ''
     try {
-      // Verrou optimiste : envoyer updated_at lu au chargement
+      // Verrou optimiste : envoyer updated_at lu au chargement. Un champ vidé
+      // part en `null`, que l'API traite comme un effacement.
       const body = { updated_at: entity.updated_at ?? '' }
-      for (const [k, v] of Object.entries(form)) {
-        body[k] = v === '' ? null : v
-      }
+      for (const k of modifies) body[k] = form[k] === '' ? null : form[k]
       const res = await authFetch(`/atelier/entities/${entityId}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       })
       if (res.status === 409) {
-        // Conflit d'édition concurrente
         const d = await res.json()
-        error = '⚠ Conflit : ' + (d.detail || 'La fiche a été modifiée par quelqu\'un d\'autre. Rechargez et recommencez.')
+        conflit = typeof d.detail === 'object' && d.detail
+          ? d.detail
+          : { message: 'Cette fiche a été modifiée pendant que vous l\'éditiez.' }
         return
       }
       if (!res.ok) {
         const d = await res.json()
-        throw new Error(d.detail || `${res.status}`)
+        throw new Error((typeof d.detail === 'object' ? d.detail?.message : d.detail) || `${res.status}`)
       }
       const saved = await res.json()
       // Mettre à jour updated_at local pour le prochain save
       if (saved.updated_at) entity = { ...entity, updated_at: saved.updated_at }
+      initial = { ...form }
       dirty = false
+      conflit = null
       saveMsg = 'Sauvegardé ✓'
       // Recharge l'audit log
       const r2 = await authFetch(`/atelier/entities/${entityId}`)
@@ -134,6 +177,29 @@
     } finally {
       saving = false
     }
+  }
+
+  // Après un conflit : relire la fiche à jour SANS perdre ce que l'éditeur a
+  // tapé. Les champs qu'il n'a pas touchés prennent la version de l'autre ; les
+  // siens restent, et rien n'est enregistré tant qu'il ne l'a pas relu.
+  async function reprendre() {
+    error = ''
+    const res = await authFetch(`/atelier/entities/${entityId}`)
+    if (!res.ok) { error = `Relecture impossible (${res.status})`; return }
+    const frais = await res.json()
+    const aGarder = Object.fromEntries(modifies.map(k => [k, form[k]]))
+    entity = frais
+    initial = formDepuis(frais)
+    form = { ...initial, ...aGarder }
+    audit = [...(frais.audit ?? [])]
+    dirty = Object.keys(aGarder).length > 0
+    conflit = null
+    saveMsg = 'Version à jour chargée — vos modifications sont gardées : relisez, puis enregistrez.'
+  }
+
+  function abandonner() {
+    initial = { ...form }        // rien à protéger : on repart de la base
+    load()
   }
 
   async function addContact() {
@@ -406,11 +472,36 @@
     <div class="topbar-actions">
       {#if saveMsg}<span class="save-msg">{saveMsg}</span>{/if}
       {#if error}<span class="save-error">{error}</span>{/if}
-      <button class="btn-save" on:click={save} disabled={saving || !dirty}>
+      <button class="btn-save" on:click={save} disabled={saving || !modifies.length || !!conflit}>
         {saving ? 'Sauvegarde...' : 'Sauvegarder'}
       </button>
     </div>
   </div>
+
+  {#if conflit}
+    <div class="conflit" role="alert">
+      <strong>⚠ {conflit.message}</strong>
+      <p>
+        {#if conflit.par}Par <b>{conflit.par}</b>{#if conflit.le}, le {heureLocale(conflit.le)}{/if}.{:else if conflit.le}Le {heureLocale(conflit.le)}.{/if}
+        Rien de ce que vous avez tapé n'est perdu : c'est toujours dans le formulaire.
+      </p>
+      {#if conflit.champs?.length}
+        <ul>
+          {#each conflit.champs as c}
+            <li>
+              {LIBELLES[c.champ] ?? c.champ} : « {c.avant ?? '—'} » → « {c.apres ?? '—'} »
+              {#if c.par && c.par !== conflit.par}<span class="muted">({c.par})</span>{/if}
+              {#if modifies.includes(c.champ)}<em> — vous l'avez modifié aussi : c'est votre valeur qui sera gardée</em>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <div class="conflit-actions">
+        <button class="btn-save" on:click={reprendre}>Charger la version à jour en gardant mes modifications</button>
+        <button class="btn-secondaire" on:click={abandonner}>Abandonner mes modifications</button>
+      </div>
+    </div>
+  {/if}
 
   {#if loading}
     <div class="center-msg">Chargement…</div>
@@ -910,9 +1001,9 @@
             <tbody>
               {#each audit as a}
                 <tr>
-                  <td>{a.at?.slice(0,16).replace('T',' ') ?? '—'}</td>
+                  <td>{heureLocale(a.at)}</td>
                   <td>{a.user_email ?? '—'}</td>
-                  <td>{a.field ?? a.action}</td>
+                  <td>{LIBELLES[a.field] ?? a.field ?? a.action}</td>
                   <td class="old-val">{a.old_value ?? '—'}</td>
                   <td class="new-val">{a.new_value ?? '—'}</td>
                 </tr>
@@ -982,6 +1073,30 @@
   }
   .btn-save:hover:not(:disabled) { background: #1d4ed8; }
   .btn-save:disabled { opacity: .45; cursor: default; }
+
+  /* ── Conflit d'édition ── */
+  .conflit {
+    flex-shrink: 0;
+    padding: .75rem 1rem;
+    background: #3b2506;
+    border-bottom: 1px solid #b45309;
+    color: #fde68a;
+    font-size: .85rem;
+    line-height: 1.45;
+  }
+  .conflit p { margin: .3rem 0; }
+  .conflit ul { margin: .3rem 0 .5rem 1.1rem; }
+  .conflit em { color: #fca5a5; font-style: normal; }
+  .conflit-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
+  .btn-secondaire {
+    padding: .38rem .9rem;
+    border: 1px solid #b45309;
+    border-radius: 6px;
+    font-size: .8rem;
+    color: #fde68a;
+    cursor: pointer;
+  }
+  .btn-secondaire:hover { background: #451a03; }
 
   /* ── Body ── */
   .editor-body {

@@ -1751,11 +1751,43 @@ def atelier_workqueue(
     finally:
         conn.close()
 
+# ─── Conflits d'édition ───────────────────────────────────────────────────────
+# Deux éditeurs sur la même ligne : le second à écrire doit l'apprendre, et
+# apprendre de qui il s'agit. Mesuré le 17/09/2026 sur une copie de l'atelier :
+# le statut d'une fiche et l'annotation d'une délibération passaient au dernier
+# arrivé sans un mot, la note du premier comprise.
+
+def _conflit(message: str, par: Optional[str], le: Optional[str],
+             **detail) -> HTTPException:
+    """Un 409 qui dit QUI a écrit, QUAND, et ce qu'il y a maintenant.
+
+    Le 409 des fiches disait « updated_at attendu='…', actuel='…' » : exact pour
+    un script, illisible pour qui édite, et sans ce qu'il faut pour décider.
+    `le` est un horodatage SQLite (UTC, sans fuseau) : l'interface le rend en
+    heure locale.
+    """
+    return HTTPException(409, {"message": message, "par": par, "le": le, **detail})
+
+
+def _dernier_auteur(conn, entity_id: int,
+                    champ: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
+    """(email, horodatage) de la dernière écriture journalisée sur une fiche."""
+    sql = ("SELECT u.email, a.at FROM audit_log a LEFT JOIN users u ON u.id = a.user_id "
+           "WHERE a.entity_id = ?" + (" AND a.field = ?" if champ else "")
+           + " ORDER BY a.id DESC LIMIT 1")
+    r = conn.execute(sql, (entity_id, champ) if champ else (entity_id,)).fetchone()
+    return (r[0], r[1]) if r else (None, None)
+
+
 # ─── PATCH /api/atelier/entities/{id}/status ──────────────────────────────────
 
 class ValidationStatusUpdate(BaseModel):
     validation_status: str
     note: str = ""
+    # Le statut que l'éditeur avait sous les yeux. Fourni, il devient une
+    # condition : si la fiche a changé de statut entre-temps → 409. Absent, on
+    # écrit sans condition — les scripts n'ont rien sous les yeux.
+    statut_lu: Optional[str] = None
 
 @app.patch("/api/atelier/entities/{entity_id}/status")
 def atelier_update_status(
@@ -1768,11 +1800,18 @@ def atelier_update_status(
 
     conn = get_db_rw()
     try:
+        # Réserver l'écriture AVANT de lire : sans cela deux requêtes lisent le
+        # même statut, passent toutes deux la condition, et la seconde écrase.
+        conn.execute("BEGIN IMMEDIATE")
         entity = row(conn, "SELECT id, validation_status FROM entities WHERE id=?", (entity_id,))
         if not entity:
             raise HTTPException(404, "Entité introuvable")
 
         old_status = entity["validation_status"] or "unverified"
+        if req.statut_lu is not None and req.statut_lu != old_status:
+            par, le = _dernier_auteur(conn, entity_id, "validation_status")
+            raise _conflit("Le statut de cette fiche a changé pendant que vous la "
+                           "regardiez.", par, le, actuel=old_status)
         conn.execute(
             "UPDATE entities SET validation_status=?, updated_at=datetime('now') WHERE id=?",
             (req.validation_status, entity_id),
@@ -2065,6 +2104,9 @@ class AnnotationUpdate(BaseModel):
     note: Optional[str] = None
     # {champ: valeur} — valeur nulle ou vide = correction annulée.
     corrections: Optional[dict] = None
+    # `reviewed_at` tel que l'éditeur l'a lu (null : aucune annotation encore).
+    # FOURNI, il devient une condition — quelqu'un a annoté entre-temps → 409.
+    lu_le: Optional[str] = None
 
 
 @app.patch("/api/atelier/annotations/{object_type}/{object_id}")
@@ -2081,15 +2123,28 @@ def atelier_annotate(
 
     conn = get_db_rw()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         existing = row(conn,
-            "SELECT review_status, confidence, note, corrections FROM annotations "
+            "SELECT review_status, confidence, note, corrections, reviewed_by, "
+            "reviewed_at FROM annotations "
             "WHERE object_type=? AND object_id=?", (object_type, object_id))
+        fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
+        if "lu_le" in fournis:
+            actuel_le = existing["reviewed_at"] if existing else None
+            if (req.lu_le or None) != actuel_le:
+                raise _conflit(
+                    "Quelqu'un a annoté cette ligne pendant que vous la regardiez.",
+                    existing["reviewed_by"] if existing else None, actuel_le,
+                    actuel={"review_status": existing["review_status"],
+                            "confidence": existing["confidence"],
+                            "note": existing["note"],
+                            "corrections": parse_json_field(existing["corrections"], {}),
+                            "reviewed_at": actuel_le} if existing else None)
         new_status = req.review_status or (existing["review_status"] if existing else "pending")
 
         # Sémantique PATCH : un champ ABSENT du corps n'est pas touché. Sans
         # ça, corriger un montant effaçait la note qui l'explique — et la note
         # est justement ce qui rend la correction défendable.
-        fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
         confidence = (req.confidence if "confidence" in fournis
                       else (existing["confidence"] if existing else None))
         note = (req.note if "note" in fournis
@@ -2134,13 +2189,23 @@ def atelier_annotate(
             INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
             VALUES(?,?,?,?,?,?,?)
         """, (user["id"], None, "annotations", "annotate", f"{object_type}/{object_id}",
+              # La note et la fiabilité y entrent : une note écrasée par un
+              # autre éditeur ne laissait jusqu'ici aucune trace de ce qu'elle
+              # disait.
               json.dumps({"statut": existing["review_status"] if existing else None,
+                          "confidence": existing["confidence"] if existing else None,
+                          "note": existing["note"] if existing else None,
                           "corrections": anciennes}, ensure_ascii=False),
-              json.dumps({"statut": new_status, "corrections": corrections},
+              json.dumps({"statut": new_status, "confidence": confidence,
+                          "note": note, "corrections": corrections},
                          ensure_ascii=False)))
         conn.commit()
+        apres = row(conn, "SELECT reviewed_at FROM annotations "
+                          "WHERE object_type=? AND object_id=?", (object_type, object_id))
         return {"ok": True, "object_type": object_type, "object_id": object_id,
-                "review_status": new_status, "corrections": corrections}
+                "review_status": new_status, "corrections": corrections,
+                "reviewed_by": user["email"],
+                "reviewed_at": apres["reviewed_at"] if apres else None}
     finally:
         conn.close()
 
@@ -2562,7 +2627,8 @@ class EntityUpdate(BaseModel):
 
 
 def _audit(conn, user_id: int, entity_id: int, field: str, old, new):
-    if str(old or "") != str(new or ""):
+    # `is None` et non `or` : un capital à 0 effacé est une modification.
+    if str("" if old is None else old) != str("" if new is None else new):
         conn.execute("""
             INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
             VALUES(?,?,'entities','update',?,?,?)
@@ -2733,6 +2799,41 @@ class EntityPatch(BaseModel):
     opening_hours: Optional[str] = None
 
 
+#: Champ de la requête → (table, colonne, types d'entité concernés ou None).
+_CHAMPS_FICHE = {
+    "name": ("entities", "name", None),
+    "short_name": ("entities", "short_name", None),
+    "address": ("entities", "address", None),
+    "confidence": ("entities", "confidence", None),
+    "validation_status": ("entities", "validation_status", None),
+    "responsible": ("entities", "responsible", None),
+    "firstname": ("persons", "firstname", {"person"}),
+    "lastname": ("persons", "lastname", {"person"}),
+    "birth_year": ("persons", "birth_year", {"person"}),
+    "birth_month": ("persons", "birth_month", {"person"}),
+    "gender": ("persons", "gender", {"person"}),
+    "naf_code": ("businesses", "naf_code", {"business"}),
+    "naf_label": ("businesses", "naf_label", {"business"}),
+    "legal_form": ("businesses", "legal_form", {"business"}),
+    "biz_status": ("businesses", "status", {"business"}),
+    "capital": ("businesses", "capital", {"business"}),
+    "employees_range": ("businesses", "employees_range", {"business"}),
+    "biz_creation": ("businesses", "creation_date", {"business"}),
+    "closing_date": ("businesses", "closing_date", {"business"}),
+    "rna_id": ("associations", "rna_id", {"association"}),
+    "asso_object": ("associations", "object", {"association"}),
+    "asso_status": ("associations", "status", {"association"}),
+    "asso_creation": ("associations", "creation_date", {"association"}),
+    "dissolution_date": ("associations", "dissolution_date", {"association"}),
+    "osm_category": ("places", "osm_category", {"place"}),
+    "osm_value": ("places", "osm_value", {"place"}),
+    "svc_category": ("services", "category", {"service"}),
+    "operator": ("services", "operator", {"service"}),
+    "opening_hours": ("services", "opening_hours", {"service"}),
+}
+_CONFIANCES_FICHE = ("verified", "confirmed", "probable", "hypothesis")
+
+
 @app.patch("/api/atelier/entities/{entity_id}")
 def atelier_patch_entity(
     entity_id: int = FPath(..., ge=1),
@@ -2741,10 +2842,21 @@ def atelier_patch_entity(
 ):
     """
     Mise à jour partielle avec verrou optimiste.
-    Rejette (409) si updated_at reçu ≠ valeur actuelle en DB (édition concurrente détectée).
+
+    - Seuls les champs PRÉSENTS dans le corps sont touchés ; `null` ou `""`
+      EFFACE la valeur. Avant le 17/09/2026, `null` valait « non fourni » : un
+      champ vidé dans l'atelier ne s'effaçait jamais, et la page affichait
+      « Sauvegardé ✓ » quand même.
+    - Un champ fourni mais inchangé n'écrit rien et ne déplace pas `updated_at`.
+    - 409 si `updated_at` reçu ≠ valeur en base, avec qui, quand, et quels champs.
     """
+    fournis = (req.model_fields_set if hasattr(req, "model_fields_set")
+               else req.__fields_set__) - {"updated_at"}
     conn = get_db_rw()
     try:
+        # Réserver l'écriture avant de lire : la condition et l'écriture forment
+        # un seul geste, qu'aucune autre requête ne peut couper en deux.
+        conn.execute("BEGIN IMMEDIATE")
         current = row(conn, """
             SELECT e.*, p.firstname, p.lastname, p.birth_year, p.birth_month, p.gender,
                    b.naf_code, b.naf_label, b.legal_form, b.status AS biz_status,
@@ -2767,119 +2879,80 @@ def atelier_patch_entity(
         # ── Verrou optimiste ──────────────────────────────────────────────────
         db_updated_at = current.get("updated_at") or ""
         if req.updated_at != db_updated_at:
-            raise HTTPException(
-                409,
-                f"Conflit : la fiche a été modifiée entre-temps (updated_at attendu={req.updated_at!r}, "
-                f"actuel={db_updated_at!r}). Rechargez et réessayez.",
-            )
+            champs = rows(conn, """
+                SELECT a.field AS champ, u.email AS par, a.at AS le,
+                       a.old_value AS avant, a.new_value AS apres
+                FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+                WHERE a.entity_id = ? AND a.table_name = 'entities'
+                  AND a.at >= ?
+                ORDER BY a.id
+            """, (entity_id, req.updated_at or ""))
+            # Un champ, une ligne : de sa valeur lue à sa valeur actuelle. Deux
+            # écritures du même champ ne font pas deux lignes à comparer.
+            par_champ: dict[str, dict] = {}
+            for c in champs:
+                if c["champ"] in par_champ:
+                    par_champ[c["champ"]].update(par=c["par"], le=c["le"], apres=c["apres"])
+                else:
+                    par_champ[c["champ"]] = dict(c)
+            champs = list(par_champ.values())
+            # Le déclencheur `entities_updated_at` déplace `updated_at` à TOUTE
+            # écriture, collecte comprise, et une collecte ne journalise rien.
+            # Sans champ journalisé depuis la lecture, l'auteur n'est donc pas
+            # le dernier humain connu — ce serait accuser quelqu'un à tort.
+            if champs:
+                dernier = max(champs, key=lambda c: c["le"] or "")
+                raise _conflit("Cette fiche a été modifiée pendant que vous l'éditiez.",
+                               dernier["par"], dernier["le"], champs=champs,
+                               updated_at=db_updated_at)
+            raise _conflit("Cette fiche a été mise à jour par la collecte pendant que "
+                           "vous l'éditiez.", None, db_updated_at, champs=[],
+                           updated_at=db_updated_at)
 
         entity_type = current["type"]
+        par_table: dict[str, dict] = {}
+        for champ in fournis:
+            if champ not in _CHAMPS_FICHE:
+                continue
+            table, colonne, types = _CHAMPS_FICHE[champ]
+            if types is not None and entity_type not in types:
+                continue
+            nouveau = getattr(req, champ)
+            if isinstance(nouveau, str):
+                nouveau = nouveau.strip() or None
+            if nouveau is None and champ in ("name", "confidence", "validation_status"):
+                raise HTTPException(400, f"« {champ} » ne peut pas être vidé.")
+            if champ == "confidence" and nouveau not in _CONFIANCES_FICHE:
+                raise HTTPException(400, f"confidence : valeurs admises — "
+                                         f"{', '.join(_CONFIANCES_FICHE)}")
+            if champ == "validation_status" and nouveau not in VALID_STATUSES:
+                raise HTTPException(400, f"validation_status : valeurs admises — "
+                                         f"{', '.join(VALID_STATUSES)}")
+            ancien = current.get(champ)
+            if str("" if ancien is None else ancien) == str("" if nouveau is None else nouveau):
+                continue
+            _audit(conn, user["id"], entity_id, champ, ancien, nouveau)
+            par_table.setdefault(table, {})[colonne] = nouveau
 
-        # ── Champs entities ───────────────────────────────────────────────────
-        base_fields = ["name", "short_name", "address", "confidence",
-                       "validation_status", "responsible"]
-        base_updates, base_params = [], []
-        for f in base_fields:
-            val = getattr(req, f)
-            if val is not None:
-                _audit(conn, user["id"], entity_id, f, current.get(f), val)
-                base_updates.append(f"{f}=?")
-                base_params.append(val)
-
-        if base_updates:
-            base_updates.append("updated_at=datetime('now')")
-            conn.execute(
-                f"UPDATE entities SET {', '.join(base_updates)} WHERE id=?",
-                base_params + [entity_id],
-            )
-        else:
-            # Même sans champ de base modifié, mettre à jour updated_at si on touche une sous-table
-            pass
-
-        # ── Champs type-spécifiques ───────────────────────────────────────────
-        if entity_type == "person":
-            pf = {k: getattr(req, k) for k in
-                  ["firstname", "lastname", "birth_year", "birth_month", "gender"]
-                  if getattr(req, k) is not None}
-            if pf:
-                for k, v in pf.items():
-                    _audit(conn, user["id"], entity_id, k, current.get(k), v)
-                sets = ", ".join(f"{k}=?" for k in pf)
-                conn.execute(f"UPDATE persons SET {sets} WHERE entity_id=?",
-                             list(pf.values()) + [entity_id])
-                if not base_updates:
-                    conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                                 (entity_id,))
-
-        elif entity_type == "business":
-            bf = {}
-            for src, dst in [("naf_code","naf_code"), ("naf_label","naf_label"),
-                              ("legal_form","legal_form"), ("biz_status","status"),
-                              ("capital","capital"), ("employees_range","employees_range"),
-                              ("biz_creation","creation_date"), ("closing_date","closing_date")]:
-                val = getattr(req, src)
-                if val is not None:
-                    _audit(conn, user["id"], entity_id, src, current.get(src), val)
-                    bf[dst] = val
-            if bf:
-                sets = ", ".join(f"{k}=?" for k in bf)
-                conn.execute(f"UPDATE businesses SET {sets} WHERE entity_id=?",
-                             list(bf.values()) + [entity_id])
-                if not base_updates:
-                    conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                                 (entity_id,))
-
-        elif entity_type == "association":
-            af = {}
-            for src, dst in [("rna_id","rna_id"), ("asso_object","object"),
-                              ("asso_status","status"), ("asso_creation","creation_date"),
-                              ("dissolution_date","dissolution_date")]:
-                val = getattr(req, src)
-                if val is not None:
-                    _audit(conn, user["id"], entity_id, src, current.get(src), val)
-                    af[dst] = val
-            if af:
-                sets = ", ".join(f"{k}=?" for k in af)
-                conn.execute(f"UPDATE associations SET {sets} WHERE entity_id=?",
-                             list(af.values()) + [entity_id])
-                if not base_updates:
-                    conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                                 (entity_id,))
-
-        elif entity_type == "place":
-            plf = {}
-            for f in ["osm_category", "osm_value"]:
-                val = getattr(req, f)
-                if val is not None:
-                    _audit(conn, user["id"], entity_id, f, current.get(f), val)
-                    plf[f] = val
-            if plf:
-                sets = ", ".join(f"{k}=?" for k in plf)
-                conn.execute(f"UPDATE places SET {sets} WHERE entity_id=?",
-                             list(plf.values()) + [entity_id])
-                if not base_updates:
-                    conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                                 (entity_id,))
-
-        elif entity_type == "service":
-            sf = {}
-            for src, dst in [("svc_category","category"), ("operator","operator"),
-                              ("opening_hours","opening_hours")]:
-                val = getattr(req, src)
-                if val is not None:
-                    _audit(conn, user["id"], entity_id, src, current.get(src), val)
-                    sf[dst] = val
-            if sf:
-                sets = ", ".join(f"{k}=?" for k in sf)
-                conn.execute(f"UPDATE services SET {sets} WHERE entity_id=?",
-                             list(sf.values()) + [entity_id])
-                if not base_updates:
-                    conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                                 (entity_id,))
+        for table, valeurs in par_table.items():
+            sets = ", ".join(f"{c}=?" for c in valeurs)
+            cle = "id" if table == "entities" else "entity_id"
+            if table != "entities":
+                # 160 fiches de Lasalle (17/09/2026) n'ont pas de ligne de détail :
+                # l'UPDATE n'atteignait aucune ligne, et l'objet corrigé d'une
+                # association disparaissait derrière « Sauvegardé ✓ ».
+                conn.execute(f"INSERT OR IGNORE INTO {table}(entity_id) VALUES(?)",
+                             (entity_id,))
+            conn.execute(f"UPDATE {table} SET {sets} WHERE {cle}=?",
+                         list(valeurs.values()) + [entity_id])
+        if par_table:
+            conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
+                         (entity_id,))
 
         conn.commit()
         updated = row(conn, "SELECT updated_at FROM entities WHERE id=?", (entity_id,))
         return {"ok": True, "id": entity_id,
+                "modifies": sorted(c for champs in par_table.values() for c in champs),
                 "updated_at": updated["updated_at"] if updated else None}
     finally:
         conn.close()

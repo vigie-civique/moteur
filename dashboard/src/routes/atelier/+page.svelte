@@ -2,11 +2,13 @@
   import { COMMUNE, COMMUNE_A, EPCI, EPCI_NB_AUTRES } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch } from '$lib/stores/auth.js'
+  import { heureLocale } from '$lib/heure.js'
 
   let data       = null
   let stats      = {}
   let loading    = true
   let error      = ''
+  let avis       = ''      // ce qu'une action n'a pas pu faire, sans masquer la liste
   let filter     = 'unverified'
   let typeFilter = ''
   // Par défaut, l'atelier travaille sur la commune. Depuis l'élargissement de
@@ -74,15 +76,29 @@
     }
   }
 
-  async function setStatus(id, validation_status) {
-    const res = await authFetch(`/atelier/entities/${id}/status`, {
+  // `statut_lu` : le statut affiché dans la liste. La liste reste ouverte des
+  // heures ; si quelqu'un a tranché la fiche entre-temps, l'API refuse (409)
+  // au lieu d'écraser sa décision — et dit qui l'a prise.
+  async function setStatus(item, validation_status) {
+    avis = ''
+    const res = await authFetch(`/atelier/entities/${item.id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ validation_status }),
+      body: JSON.stringify({ validation_status,
+                             statut_lu: item.validation_status || 'unverified' }),
     })
     if (res.ok) {
-      data.items = data.items.filter(e => e.id !== id)
+      data.items = data.items.filter(e => e.id !== item.id)
       data.total = Math.max(0, data.total - 1)
       await loadStats()
+    } else if (res.status === 409) {
+      const d = (await res.json()).detail || {}
+      avis = `« ${item.name} » : ${d.message || 'le statut a changé entre-temps.'}`
+        + (d.par ? ` Par ${d.par}` : '') + (d.le ? `, le ${heureLocale(d.le)}` : '')
+        + '. Rien n\'a été écrasé ; la liste a été rechargée.'
+      await Promise.all([loadQueue(), loadStats()])
+    } else {
+      // Un échec passait sans un mot : la ligne restait, et rien ne disait pourquoi.
+      avis = `« ${item.name} » : l'enregistrement a échoué (${res.status}).`
     }
   }
 
@@ -148,6 +164,8 @@
               style="--tc:{TYPE_COLORS[t]}" on:click={() => changeType(t)}>{t}</button>
     {/each}
   </div>
+
+  {#if avis}<div class="avis" role="status">{avis}</div>{/if}
 
   <!-- Table -->
   {#if loading}
@@ -218,10 +236,10 @@
               <td class="actions-cell">
                 <a href="/atelier/entite/{item.id}" class="act act-edit" title="Éditer">✏️</a>
                 {#if filter !== 'reviewing'}
-                  <button class="act act-review" on:click={() => setStatus(item.id, 'reviewing')} title="Mettre en révision">→</button>
+                  <button class="act act-review" on:click={() => setStatus(item, 'reviewing')} title="Mettre en révision">→</button>
                 {/if}
-                <button class="act act-ok"  on:click={() => setStatus(item.id, 'verified')} title="Valider">✓</button>
-                <button class="act act-ko"  on:click={() => setStatus(item.id, 'rejected')} title="Rejeter">✗</button>
+                <button class="act act-ok"  on:click={() => setStatus(item, 'verified')} title="Valider">✓</button>
+                <button class="act act-ko"  on:click={() => setStatus(item, 'rejected')} title="Rejeter">✗</button>
               </td>
             </tr>
           {/each}
@@ -371,6 +389,11 @@
 
   .msg { padding: 2rem; text-align: center; color: #64748b; font-size: .85rem; }
   .msg.error { color: #f87171; }
+  .avis {
+    margin: .25rem 0 .5rem; padding: .5rem .75rem;
+    background: #3b2506; border: 1px solid #b45309; border-radius: 6px;
+    color: #fde68a; font-size: .82rem;
+  }
 
   .load-more {
     align-self: center; margin: .4rem 0;

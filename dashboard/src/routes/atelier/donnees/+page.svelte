@@ -3,6 +3,7 @@
   // Le manque central pointé par CARTE_PRODUIT §4 : ces données étaient
   // collectées mais ni éditables ni validables côté atelier.
   import { api } from '$lib/api.js'
+  import { heureLocale } from '$lib/heure.js'
 
   const TABS = [
     { key: 'deliberation', label: 'Délibérations' },
@@ -39,6 +40,7 @@
   let selected = null        // item en cours d'annotation
   let draft = { review_status: 'pending', confidence: '', note: '' }
   let saving = false
+  let conflit = null         // 409 : quelqu'un a annoté la ligne entre-temps
 
   // ─── Corrections ───────────────────────────────────────────────────────────
   // Annoter « rejeté » fait disparaître la donnée ; le plus souvent il faut la
@@ -87,6 +89,7 @@
   }
 
   function pick(it) {
+    conflit = null
     selected = it
     draft = {
       review_status: it.annotation?.review_status || 'pending',
@@ -108,7 +111,13 @@
         const v = corrections[champ]
         if (v !== undefined) aEnvoyer[champ] = v === '' ? null : v
       }
-      const res = await api.annotate(tab, selected.id, { ...draft, corrections: aEnvoyer })
+      // `lu_le` : la revue telle qu'affichée. Si quelqu'un a annoté la ligne
+      // depuis, l'API refuse au lieu d'écraser sa note.
+      const res = await api.annotate(tab, selected.id, {
+        ...draft, corrections: aEnvoyer,
+        lu_le: selected.annotation?.reviewed_at ?? null,
+      })
+      conflit = null
       corrections = { ...(res.corrections || {}) }
       selected.annotation = {
         ...selected.annotation,
@@ -116,6 +125,8 @@
         confidence: draft.confidence || null,
         note: draft.note,
         corrections: res.corrections || {},
+        reviewed_by: res.reviewed_by,
+        reviewed_at: res.reviewed_at,
       }
       items = items   // trigger reactivity
       if (statusFilter && res.review_status !== statusFilter) {
@@ -123,10 +134,31 @@
         selected = null
       }
     } catch (e) {
-      error = e.message || "Échec de l'enregistrement"
+      if (e.status === 409 && e.detail && typeof e.detail === 'object') {
+        conflit = e.detail
+      } else {
+        error = (typeof e.detail === 'object' ? e.detail?.message : e.detail)
+          || e.message || "Échec de l'enregistrement"
+      }
     } finally {
       saving = false
     }
+  }
+
+  // Prendre la revue de l'autre comme nouvelle base, sans toucher à ce que
+  // l'éditeur a saisi : il relit, puis enregistre — ou non.
+  function reprendreVersion() {
+    const a = conflit?.actuel
+    selected.annotation = a
+      ? { ...selected.annotation, ...a, reviewed_by: conflit.par }
+      : { ...selected.annotation, reviewed_at: null }
+    items = items
+    conflit = null
+  }
+
+  function abandonnerSaisie() {
+    reprendreVersion()
+    pick(selected)
   }
 
   $: counts = items.reduce((acc, it) => {
@@ -337,11 +369,24 @@
                     placeholder="Pourquoi cette correction ? La note s'affiche au survol du repère « rectifié » sur le site public."></textarea>
         </label>
 
-        <button class="save" on:click={save} disabled={saving}>
+        {#if conflit}
+          <div class="conflit" role="alert">
+            <strong>⚠ {conflit.message}</strong>
+            <p>
+              {#if conflit.par}Par <b>{conflit.par}</b>{/if}{#if conflit.le}, le {heureLocale(conflit.le)}{/if}.
+              {#if conflit.actuel}Sa revue : <b>{STATUSES.find(x => x.key === conflit.actuel.review_status)?.label ?? conflit.actuel.review_status}</b>{#if conflit.actuel.note}, avec la note « {conflit.actuel.note} »{/if}.{/if}
+              Ce que vous avez saisi est toujours là.
+            </p>
+            <button class="save" on:click={reprendreVersion}>Partir de sa version en gardant ma saisie</button>
+            <button class="secondaire" on:click={abandonnerSaisie}>Abandonner ma saisie</button>
+          </div>
+        {/if}
+
+        <button class="save" on:click={save} disabled={saving || !!conflit}>
           {saving ? 'Enregistrement…' : 'Enregistrer'}
         </button>
         {#if selected.annotation?.reviewed_by}
-          <p class="meta">Dernière revue : {selected.annotation.reviewed_by}{selected.annotation.reviewed_at ? ' · ' + selected.annotation.reviewed_at : ''}</p>
+          <p class="meta">Dernière revue : {selected.annotation.reviewed_by}{selected.annotation.reviewed_at ? ' · ' + heureLocale(selected.annotation.reviewed_at) : ''}</p>
         {/if}
       {/if}
     </aside>
@@ -431,6 +476,17 @@
   .save { width: 100%; padding: .55rem; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 600; }
   .save:disabled { opacity: .6; }
   .meta { color: #64748b; font-size: .72rem; margin: .5rem 0 0; }
+  .conflit {
+    margin: .5rem 0; padding: .6rem .7rem;
+    background: #3b2506; border: 1px solid #b45309; border-radius: 6px;
+    color: #fde68a; font-size: .8rem; line-height: 1.45;
+  }
+  .conflit p { margin: .3rem 0 .5rem; }
+  .conflit .save { margin-bottom: .35rem; }
+  .conflit .secondaire {
+    width: 100%; padding: .4rem; border: 1px solid #b45309; border-radius: 6px;
+    color: #fde68a; font-size: .8rem; cursor: pointer;
+  }
 
   @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
 </style>

@@ -3,12 +3,24 @@
  */
 import { authFetch } from './stores/auth.js'
 
+// Une réponse en échec devient une erreur qui garde son statut et son détail
+// décodé. Le message reste « <statut> <corps> » : la page Publication le lit
+// ainsi. Un 409 porte depuis le 17/09/2026 un détail STRUCTURÉ (qui, quand,
+// quoi) — le perdre dans une chaîne, c'était ne plus pouvoir le dire.
+async function echec(r) {
+  const texte = await r.text()
+  const e = new Error(`${r.status} ${texte}`)
+  e.status = r.status
+  try { e.detail = JSON.parse(texte).detail } catch { e.detail = texte }
+  return e
+}
+
 const BASE = '/api'
 
 // Appels authentifiés (JWT atelier) — passent par authFetch (refresh auto).
 async function getAuth(path) {
   const r = await authFetch(path)
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -18,7 +30,7 @@ async function patchAuth(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -26,7 +38,7 @@ async function patchAuth(path, body) {
 // le Bearer token est attaché quand il existe, et un 401 redirige vers le login.
 async function get(path) {
   const r = await authFetch(path)
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -34,7 +46,7 @@ async function getAdmin(path, adminKey) {
   const r = await authFetch(path, {
     headers: adminKey ? { 'x-admin-key': adminKey } : {},
   })
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -44,7 +56,7 @@ async function post(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   })
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -57,13 +69,13 @@ async function postAdmin(path, body, adminKey) {
     },
     body: JSON.stringify(body ?? {}),
   })
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
 async function del(path) {
   const r = await authFetch(path, { method: 'DELETE' })
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+  if (!r.ok) throw await echec(r)
   return r.json()
 }
 
@@ -171,7 +183,7 @@ export const api = {
     // Pas de Content-Type ici : le navigateur doit poser lui-même la frontière
     // multipart, et l'écraser à la main casse la lecture côté serveur.
     const r = await authFetch('/atelier/documents', { method: 'POST', body: form })
-    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`)
+    if (!r.ok) throw await echec(r)
     return r.json()
   },
 
