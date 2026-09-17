@@ -174,9 +174,15 @@ sudo ln -s /etc/nginx/sites-available/vigie-atelier /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d atelier.example.org
 
-# g) Un compte
+# g) Le premier compte, administrateur
 python3 scripts/create_user.py add --email vous@exemple.org --role admin
 ```
+
+C'est le seul compte qui se crée en ligne de commande. Les autres personnes
+entrent **sur invitation** : page **Comptes** de l'atelier, où l'administrateur
+inscrit une adresse, choisit le rôle (contributeur, validateur, administrateur)
+et transmet le lien. Renseigner `ATELIER_URL` dans `.env` pour que ce lien porte
+l'adresse publique de l'atelier.
 
 Ce que le dispositif fait déjà pour vous, et qu'il ne faut pas défaire :
 

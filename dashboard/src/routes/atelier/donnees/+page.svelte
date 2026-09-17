@@ -4,6 +4,8 @@
   // collectées mais ni éditables ni validables côté atelier.
   import { api } from '$lib/api.js'
   import { heureLocale } from '$lib/heure.js'
+  import { currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
 
   const TABS = [
     { key: 'deliberation', label: 'Délibérations' },
@@ -41,6 +43,8 @@
   let draft = { review_status: 'pending', confidence: '', note: '' }
   let saving = false
   let conflit = null         // 409 : quelqu'un a annoté la ligne entre-temps
+  // Valider, rejeter, poser la fiabilité : trancher. Le contributeur note et corrige.
+  $: tranche = auMoins($currentUser, 'validator')
 
   // ─── Corrections ───────────────────────────────────────────────────────────
   // Annoter « rejeté » fait disparaître la donnée ; le plus souvent il faut la
@@ -288,10 +292,11 @@
         </div>
 
         <label class="field">
-          <span>Statut de revue</span>
+          <span>Statut de revue{#if !tranche} <em class="hint">— Vous proposez ; un validateur tranche.</em>{/if}</span>
           <div class="seg">
             {#each ['pending','validated','rejected'] as s}
-              <button class:on={draft.review_status === s} on:click={() => (draft.review_status = s)}>
+              <button class:on={draft.review_status === s} on:click={() => (draft.review_status = s)}
+                      disabled={!tranche && draft.review_status !== s}>
                 {s === 'pending' ? 'À revoir' : s === 'validated' ? 'Valider' : 'Rejeter'}
               </button>
             {/each}
@@ -300,7 +305,7 @@
 
         <label class="field">
           <span>Fiabilité</span>
-          <select bind:value={draft.confidence}>
+          <select bind:value={draft.confidence} disabled={!tranche}>
             {#each CONFIDENCES as c}
               <option value={c}>{c || '— (non renseigné)'}</option>
             {/each}

@@ -4,6 +4,7 @@
   import { stats } from '$lib/stores/app.js'
   import { api } from '$lib/api.js'
   import { currentUser, initAuth } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
   import { COMMUNE, COMMUNE_DE, LA_COMMUNE, CODE_POSTAL, SITE_NOM } from '$lib/instance.js'
   import 'leaflet/dist/leaflet.css'
   import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -13,7 +14,8 @@
     initAuth()   // réhydrate currentUser depuis le token de session
     // Sur la page login : pas de token → /stats renvoie 401 (verrou global API).
     // Inutile de le tenter, ça déclenchait un refresh + redirect en boucle.
-    if ($page.url.pathname.startsWith('/atelier/login')) return
+    if ($page.url.pathname.startsWith('/atelier/login')
+        || $page.url.pathname.startsWith('/atelier/invitation')) return
     try {
       const s = await api.stats()
       stats.set(s)
@@ -31,7 +33,7 @@
     { href: '/atelier/geo',         label: '📍 Géoloc' },
     { href: '/atelier/queue/websites', label: '✓ Validation' },
     { href: '/atelier/donnees',     label: '📥 Données importées' },
-    { href: '/atelier/analyses',    label: '🔬 Analyses' },
+    { href: '/atelier/analyses',    label: '🔬 Analyses', min: 'validator' },
     { href: '/atelier/ia',          label: '🤖 IA' },
     { href: '/atelier/publication', label: '🚀 Publication' },
   ]
@@ -40,7 +42,10 @@
   // (décision 03/07/2026 : 1 admin + 2 validateurs), mais un validateur qui
   // vient de corriger doit pouvoir voir si c'est en ligne et si le dernier
   // contrôle est rouge. Cacher l'état ne protégeait rien.
-  $: nav = NAV.filter(n => !n.adminOnly || !$currentUser || $currentUser.role === 'admin')
+  $: nav = NAV.filter(n => !n.min || auMoins($currentUser, n.min))
+  // Connexion et invitation : la personne n'a pas (encore) de session. Lui
+  // montrer le menu de l'atelier, c'était l'inviter dans des pages fermées.
+  $: horsSession = ['/atelier/login', '/atelier/invitation'].includes($page.url.pathname)
   // « 👁 Voir le site public » — app publique séparée (dev : 5174).
   const PUBLIC_URL = 'http://localhost:5174'
 </script>
@@ -61,6 +66,7 @@
       <span class="sub">{CODE_POSTAL} — atelier de veille</span>
     </a>
 
+    {#if !horsSession}
     <nav>
       {#each nav as n}
         {#if n.soon}
@@ -72,7 +78,9 @@
       <a class="view-public" href={PUBLIC_URL} target="_blank" rel="noopener">👁 Voir le site public</a>
     </nav>
 
-    {#if $stats}
+    {/if}
+
+    {#if $stats && !horsSession}
       <div class="badge-row">
         <span class="badge biz">{$stats.businesses ?? 0} entreprises</span>
         <span class="badge asso">{$stats.associations ?? 0} assos</span>

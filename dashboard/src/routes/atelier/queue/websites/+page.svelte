@@ -1,10 +1,12 @@
 <script>
   import { onMount } from 'svelte'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
 
   // Qui réserve, c'est le compte connecté : l'API ne lit plus le nom envoyé.
   $: me = $currentUser?.email || ''
   $: admin = $currentUser?.role === 'admin'
+  $: tranche = auMoins($currentUser, 'validator')
   let avis = ''         // ce qu'une action n'a pas pu faire — à la place d'un alert() bloquant
 
   let candidates   = []
@@ -110,6 +112,7 @@
 
   {#if error}<p class="err-msg">{error}</p>{/if}
   {#if avis}<p class="avis" role="status">{avis}</p>{/if}
+  {#if $currentUser && !tranche}<p class="avis" role="status">Vous proposez ; un validateur tranche. Ces sites attendent son verdict.</p>{/if}
   {#if loading}<p class="muted-center">Chargement…</p>
   {:else if candidates.length === 0}
     <p class="muted-center">Aucune URL avec le statut "{statusFilter}".</p>
@@ -133,11 +136,14 @@
                 <button class="btn-liberer" on:click={() => liberer(c.id)}>Libérer</button>
               {/if}
             </span>
-          {:else}
+          {:else if tranche}
             <button class="btn-claim" on:click={() => claimItem(c.id)}
                     disabled={claiming[c.id]}>→ Prendre</button>
+          {:else}
+            <span></span>
           {/if}
           <div class="cand-actions">
+            {#if tranche}
             {#if statusFilter !== 'validated'}
               <button class="btn-validate" on:click={() => setStatus(c.id,'validated')}
                       disabled={saving[c.id] || (c.reservation && c.reservation.par !== me)}>✓ Valider</button>
@@ -145,6 +151,7 @@
             {#if statusFilter !== 'rejected'}
               <button class="btn-reject"   on:click={() => setStatus(c.id,'rejected')}
                       disabled={saving[c.id] || (c.reservation && c.reservation.par !== me)}>✕ Rejeter</button>
+            {/if}
             {/if}
           </div>
         </div>

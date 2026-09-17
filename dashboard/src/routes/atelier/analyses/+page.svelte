@@ -1,7 +1,8 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
-  import { authFetch } from '$lib/stores/auth.js'
+  import { authFetch, currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
 
   let mandats     = []
   let conflits    = []
@@ -15,7 +16,7 @@
   let activeTab = 'mandats'
   let chronoFilter = 'tous'  // tous | contemporain | lien_sans_flux | dates_manquantes
 
-  onMount(() => loadAll())
+  onMount(() => { if (auMoins($currentUser, 'validator')) loadAll(); else loading = false })
 
   async function loadAll() {
     loading = true; error = ''
@@ -82,6 +83,9 @@
   </div>
 
   {#if error}<p class="err">{error}</p>{/if}
+  {#if $currentUser && !auMoins($currentUser, 'validator')}
+    <p class="err">Les analyses croisées sont réservées aux validateurs et aux administrateurs.</p>
+  {/if}
 
   <div class="tabs">
     {#each TABS as t}

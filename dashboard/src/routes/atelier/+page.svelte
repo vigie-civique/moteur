@@ -1,7 +1,8 @@
 <script>
   import { COMMUNE, COMMUNE_A, EPCI, EPCI_NB_AUTRES } from '$lib/instance.js'
   import { onMount } from 'svelte'
-  import { authFetch } from '$lib/stores/auth.js'
+  import { authFetch, currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
   import { heureLocale } from '$lib/heure.js'
 
   let data       = null
@@ -9,6 +10,7 @@
   let loading    = true
   let error      = ''
   let avis       = ''      // ce qu'une action n'a pas pu faire, sans masquer la liste
+  $: tranche = auMoins($currentUser, 'validator')
   let filter     = 'unverified'
   let typeFilter = ''
   // Par défaut, l'atelier travaille sur la commune. Depuis l'élargissement de
@@ -166,6 +168,7 @@
   </div>
 
   {#if avis}<div class="avis" role="status">{avis}</div>{/if}
+  {#if $currentUser && !tranche}<div class="msg">Vous pouvez corriger les fiches (✏️). Vous proposez ; un validateur tranche.</div>{/if}
 
   <!-- Table -->
   {#if loading}
@@ -235,11 +238,13 @@
               <td class="center">{item.rel_count ?? 0}</td>
               <td class="actions-cell">
                 <a href="/atelier/entite/{item.id}" class="act act-edit" title="Éditer">✏️</a>
-                {#if filter !== 'reviewing'}
-                  <button class="act act-review" on:click={() => setStatus(item, 'reviewing')} title="Mettre en révision">→</button>
+                {#if tranche}
+                  {#if filter !== 'reviewing'}
+                    <button class="act act-review" on:click={() => setStatus(item, 'reviewing')} title="Mettre en révision">→</button>
+                  {/if}
+                  <button class="act act-ok"  on:click={() => setStatus(item, 'verified')} title="Valider">✓</button>
+                  <button class="act act-ko"  on:click={() => setStatus(item, 'rejected')} title="Rejeter">✗</button>
                 {/if}
-                <button class="act act-ok"  on:click={() => setStatus(item, 'verified')} title="Valider">✓</button>
-                <button class="act act-ko"  on:click={() => setStatus(item, 'rejected')} title="Rejeter">✗</button>
               </td>
             </tr>
           {/each}

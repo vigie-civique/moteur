@@ -1,7 +1,19 @@
 <script>
   import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { goto } from '$app/navigation'
+  import { onMount } from 'svelte'
   import { currentUser } from '$lib/stores/auth.js'
+  import { messageErreur } from '$lib/roles.js'
+
+  // Sans aucun compte, personne ne peut en inviter : le dire, plutôt que de
+  // laisser chercher un mot de passe qui n'existe pas.
+  let aucunCompte = false
+  onMount(async () => {
+    try {
+      const r = await fetch('/api/auth/etat')
+      if (r.ok) aucunCompte = !(await r.json()).comptes
+    } catch { /* l'erreur de connexion le dira */ }
+  })
 
   let email    = ''
   let password = ''
@@ -20,7 +32,7 @@
       })
       const data = await res.json()
       if (!res.ok) {
-        error = data.detail || 'Erreur de connexion'
+        error = messageErreur(data.detail, 'Erreur de connexion')
         return
       }
       sessionStorage.setItem('atelier_access',  data.access_token)
@@ -79,6 +91,19 @@
         {loading ? 'Connexion...' : 'Se connecter'}
       </button>
     </form>
+
+    {#if aucunCompte}
+      <p class="note">
+        Cet atelier n'a encore aucun compte. Le premier compte administrateur se crée
+        à l'installation ; c'est ensuite lui qui invite les autres personnes.
+      </p>
+    {:else}
+      <p class="note">
+        On entre dans l'atelier sur invitation d'un administrateur. Vous avez reçu un lien ?
+        Ouvrez-le pour créer votre compte. Mot de passe oublié : demandez un nouveau lien
+        à un administrateur.
+      </p>
+    {/if}
   </div>
 </div>
 
@@ -182,4 +207,11 @@
   }
   .submit:hover:not(:disabled) { background: #1d4ed8; }
   .submit:disabled { opacity: .45; cursor: default; }
+
+  .note {
+    margin-top: 1.1rem;
+    font-size: .78rem;
+    line-height: 1.5;
+    color: #94a3b8;
+  }
 </style>

@@ -360,9 +360,12 @@ openssl rand -hex 32                      # coller la valeur après « JWT_SECRE
 #    verrou JWT, et une clé absente ne donne aucun accès. ALLOWED_ORIGINS ne
 #    sert qu'à un atelier en ligne ; en local, laissez-la vide.
 
-# 2. Un compte. Le mot de passe est demandé au clavier, il n'apparaît nulle part.
+# 2. Le premier compte, administrateur. Le mot de passe est demandé au clavier,
+#    il n'apparaît nulle part.
 venv/bin/python scripts/create_user.py add --email vous@exemple.org --role admin
-#    Rôles : admin, validator, contributor.
+#    Les autres personnes entrent sur invitation : page « Comptes » de l'atelier.
+#    Rôles emboîtés — contributeur (propose), validateur (tranche, voit les
+#    analyses), administrateur (comptes et publication).
 venv/bin/python scripts/create_user.py list
 
 # 3. L'API — dans un terminal qu'on laisse ouvert.

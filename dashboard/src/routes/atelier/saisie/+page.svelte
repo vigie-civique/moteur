@@ -11,9 +11,15 @@
   // base : le collecteur `saisies` le rejoue à chaque collecte, donc une
   // reconstruction complète de la base ne l'efface pas.
   import { api } from '$lib/api.js'
+  import { currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
 
   let contrat = {}          // {objet: {champ*: [genre, aide]}}
   let confiances = []
+  // Saisir « confirmed », c'est publier : réservé au validateur.
+  $: tranche = auMoins($currentUser, 'validator')
+  $: confiancesPermises = tranche ? confiances : confiances.filter(c => c !== 'confirmed')
+  $: if (!tranche && confidence === 'confirmed') confidence = 'probable'
   let objet = 'flux'
   let valeurs = {}
   let confidence = 'confirmed'
@@ -449,7 +455,7 @@
       <label class="field">
         <span>Fiabilité</span>
         <select bind:value={confidence}>
-          {#each confiances as c}<option value={c}>{c}</option>{/each}
+          {#each confiancesPermises as c}<option value={c}>{c}</option>{/each}
         </select>
         <p class="hint">
           <code>confirmed</code> est publié sur le site. <code>probable</code> reste

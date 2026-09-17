@@ -3,8 +3,10 @@
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
   import { goto, beforeNavigate } from '$app/navigation'
-  import { authFetch } from '$lib/stores/auth.js'
+  import { authFetch, currentUser } from '$lib/stores/auth.js'
+  import { auMoins } from '$lib/roles.js'
   import { heureLocale } from '$lib/heure.js'
+  import { LIBELLES } from '$lib/champs.js'
   import MapEdit from '$lib/components/MapEdit.svelte'
 
   const ENTITY_TYPES  = ['person','business','association','place','service','property']
@@ -24,24 +26,10 @@
   let error      = ''
   let saveMsg    = ''
   let initial    = {}      // le formulaire tel que lu : ce qu'on compare pour savoir ce qui a changé
+  // Fiabilité, statut, verdict sur un site : trancher, réservé au validateur.
+  $: tranche = auMoins($currentUser, 'validator')
   let conflit    = null    // détail d'un 409 : { message, par, le, champs, updated_at }
 
-  // Libellés des champs, pour l'historique et le conflit : « validation_status »
-  // ne dit rien à qui corrige une fiche.
-  const LIBELLES = {
-    name: 'Nom complet', short_name: 'Nom court', address: 'Adresse',
-    confidence: 'Qualité source', validation_status: 'Statut de validation',
-    responsible: 'Responsable', firstname: 'Prénom', lastname: 'Nom',
-    birth_year: 'Année de naissance', birth_month: 'Mois de naissance', gender: 'Genre',
-    naf_code: 'Code NAF', naf_label: 'Activité', legal_form: 'Forme juridique',
-    biz_status: 'Statut', capital: 'Capital', employees_range: 'Effectif',
-    biz_creation: 'Date de création', closing_date: 'Date de fermeture',
-    rna_id: 'N° RNA', asso_object: 'Objet social', asso_status: 'Statut',
-    asso_creation: 'Date de création', dissolution_date: 'Date de dissolution',
-    osm_category: 'Catégorie OSM', osm_value: 'Valeur OSM', svc_category: 'Catégorie',
-    operator: 'Opérateur', opening_hours: 'Horaires',
-    lat: 'Latitude', lng: 'Longitude',
-  }
   // Champs du formulaire que l'enregistrement n'envoie pas : le type ne change
   // pas ici, les coordonnées passent par la carte.
   const NON_ENVOYES = new Set(['type', 'lat', 'lng'])
@@ -306,7 +294,7 @@
   let editRelForm  = {}
   let relSaving    = false
   let relError     = ''
-  let newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence:'verified' }
+  let newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence: auMoins($currentUser, 'validator') ? 'verified' : 'probable' }
   let relSearch = ''
   let relSearchResults = []
   let relTarget = null
@@ -445,7 +433,7 @@
       const res = await authFetch(`/atelier/entities/${entityId}/relations`, { method:'POST', body:JSON.stringify(body) })
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail||`${res.status}`) }
       relations = [...relations, await res.json()]
-      newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence:'verified' }
+      newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence: auMoins($currentUser, 'validator') ? 'verified' : 'probable' }
       relTarget = null; relSearch = ''
     } catch(e) { relError = e.message }
     finally { relAdding = false }
@@ -535,7 +523,8 @@
           </label>
           <label>
             Qualité source
-            <select bind:value={form.confidence} on:change={markDirty}>
+            <select bind:value={form.confidence} on:change={markDirty} disabled={!tranche}
+                    title={tranche ? '' : 'Réservé au validateur'}>
               {#each CONFIDENCES as c}
                 <option value={c}>
                   {c === 'verified' ? 'verified — source officielle' :
@@ -546,7 +535,8 @@
           </label>
           <label>
             Statut de validation
-            <select bind:value={form.validation_status} on:change={markDirty}>
+            <select bind:value={form.validation_status} on:change={markDirty} disabled={!tranche}
+                    title={tranche ? '' : 'Réservé au validateur'}>
               {#each VALID_STATUSES as s}<option value={s}>{s}</option>{/each}
             </select>
           </label>
@@ -903,13 +893,15 @@
                 <a href={w.url} target="_blank" rel="noopener" class="web-url">{w.url}</a>
                 <span class="web-meta">{w.found_by} {w.score != null ? `(${w.score.toFixed(2)})` : ''}</span>
                 <div class="web-actions">
-                  {#if w.status !== 'validated'}
-                    <button class="web-btn web-validate" on:click={() => setWebStatus(w.id,'validated')} title="Valider">✓</button>
+                  {#if tranche}
+                    {#if w.status !== 'validated'}
+                      <button class="web-btn web-validate" on:click={() => setWebStatus(w.id,'validated')} title="Valider">✓</button>
+                    {/if}
+                    {#if w.status !== 'rejected'}
+                      <button class="web-btn web-reject"   on:click={() => setWebStatus(w.id,'rejected')}  title="Rejeter">✕</button>
+                    {/if}
+                    <button class="web-btn web-del" on:click={() => deleteWebsite(w.id)} title="Supprimer">🗑</button>
                   {/if}
-                  {#if w.status !== 'rejected'}
-                    <button class="web-btn web-reject"   on:click={() => setWebStatus(w.id,'rejected')}  title="Rejeter">✕</button>
-                  {/if}
-                  <button class="web-btn web-del" on:click={() => deleteWebsite(w.id)} title="Supprimer">🗑</button>
                 </div>
               </li>
             {/each}

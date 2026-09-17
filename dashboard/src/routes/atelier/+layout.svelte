@@ -3,10 +3,13 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { currentUser, logout } from '$lib/stores/auth.js'
+  import { LIBELLE_ROLE, auMoins } from '$lib/roles.js'
 
   let ready = false
 
-  $: isLogin = $page.url.pathname === '/atelier/login'
+  // Pages ouvertes sans session : la connexion, et l'invitation — où l'invité
+  // n'a pas encore de compte.
+  $: isLogin = ['/atelier/login', '/atelier/invitation'].includes($page.url.pathname)
 
   onMount(async () => {
     if (isLogin) { ready = true; return }
@@ -57,15 +60,20 @@
     goto('/atelier/login')
   }
 
+  // `min` : le rôle à partir duquel la page sert à quelque chose. L'API tient
+  // le droit ; le menu évite seulement d'ouvrir une page qui refuserait tout.
   const NAV = [
     { href: '/atelier',                        label: 'File de travail' },
     { href: '/atelier/donnees',                label: 'Données importées' },
     { href: '/atelier/saisie',                 label: 'Saisir une donnée' },
     { href: '/atelier/queue/websites',         label: '→ Websites candidats' },
-    { href: '/atelier/analyses',               label: 'Analyses croisées' },
+    { href: '/atelier/analyses',               label: 'Analyses croisées', min: 'validator' },
     { href: '/atelier/ia',                     label: 'Recherche IA' },
     { href: '/atelier/publication',            label: 'Publication' },
+    { href: '/atelier/journal',                label: 'Journal' },
+    { href: '/atelier/comptes',                label: 'Comptes', min: 'admin' },
   ]
+  $: nav = NAV.filter(n => !n.min || auMoins($currentUser, n.min))
 </script>
 
 {#if isLogin}
@@ -75,17 +83,17 @@
     <aside class="atelier-sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">Atelier</span>
-        <span class="role-badge" class:admin={$currentUser.role === 'admin'}>{$currentUser.role}</span>
+        <span class="role-badge" class:admin={$currentUser.role === 'admin'}>{LIBELLE_ROLE[$currentUser.role] ?? $currentUser.role}</span>
       </div>
 
       <nav class="sidebar-nav">
-        {#each NAV as n}
+        {#each nav as n}
           <a href={n.href} class:active={$page.url.pathname === n.href}>{n.label}</a>
         {/each}
       </nav>
 
       <div class="sidebar-footer">
-        <span class="user-email">{$currentUser.email}</span>
+        <a class="user-email" href="/atelier/mon-compte" title="Mon compte">{$currentUser.email}</a>
         <button class="logout-btn" on:click={handleLogout}>Déconnexion</button>
       </div>
     </aside>
