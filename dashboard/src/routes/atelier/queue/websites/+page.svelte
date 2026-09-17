@@ -2,8 +2,10 @@
   import { onMount } from 'svelte'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
 
-  // Identité du valideur pour le claim (verrou nominatif)
-  $: me = $currentUser?.email || 'atelier'
+  // Qui réserve, c'est le compte connecté : l'API ne lit plus le nom envoyé.
+  $: me = $currentUser?.email || ''
+  $: admin = $currentUser?.role === 'admin'
+  let avis = ''         // ce qu'une action n'a pas pu faire — à la place d'un alert() bloquant
 
   let candidates   = []
   let loading      = true
@@ -24,13 +26,24 @@
     finally { loading = false }
   }
 
+  // Le détail d'une erreur de l'API : un objet { message, par, … } ou une chaîne.
+  async function motif(res, defaut) {
+    const d = (await res.json().catch(() => ({}))).detail
+    return (typeof d === 'object' ? d?.message : d) || defaut
+  }
+
   async function setStatus(id, status) {
     saving = { ...saving, [id]: true }
+    avis = ''
     try {
       const res = await authFetch(`/atelier/websites/${id}`, {
         method: 'PATCH', body: JSON.stringify({ status })
       })
       if (res.ok) candidates = candidates.filter(c => c.id !== id)
+      else {
+        avis = await motif(res, `Échec de l'enregistrement (${res.status}).`)
+        if (res.status === 409) await load()
+      }
     } finally {
       const s = { ...saving }; delete s[id]; saving = s
     }
@@ -39,24 +52,30 @@
   async function claimItem(id) {
     claiming = { ...claiming, [id]: true }
     try {
+      avis = ''
       const res = await authFetch(`/atelier/queue/${id}/claim`, {
         method: 'POST',
-        body: JSON.stringify({ table: 'entity_websites', locked_by: me }),
+        body: JSON.stringify({ table: 'entity_websites' }),
       })
-      if (res.status === 409) {
-        const d = await res.json()
-        alert(d.detail || 'Item déjà pris par quelqu\'un d\'autre.')
-        return
-      }
       if (res.ok) {
-        // Met à jour l'état local
+        const r = await res.json()
         candidates = candidates.map(c =>
-          c.id === id ? { ...c, locked_by: me } : c
+          c.id === id ? { ...c, reservation: { par: r.locked_by, expire_dans_min: r.expires_in_min } } : c
         )
+      } else {
+        avis = await motif(res, `Réservation impossible (${res.status}).`)
+        if (res.status === 409) await load()
       }
     } finally {
       const cl = { ...claiming }; delete cl[id]; claiming = cl
     }
+  }
+
+  async function liberer(id) {
+    avis = ''
+    const res = await authFetch(`/atelier/queue/${id}/claim?table=entity_websites`, { method: 'DELETE' })
+    if (res.ok) candidates = candidates.map(c => c.id === id ? { ...c, reservation: null } : c)
+    else avis = await motif(res, `Libération impossible (${res.status}).`)
   }
 
   function scoreColor(s) {
@@ -90,6 +109,7 @@
   </div>
 
   {#if error}<p class="err-msg">{error}</p>{/if}
+  {#if avis}<p class="avis" role="status">{avis}</p>{/if}
   {#if loading}<p class="muted-center">Chargement…</p>
   {:else if candidates.length === 0}
     <p class="muted-center">Aucune URL avec le statut "{statusFilter}".</p>
@@ -106,8 +126,13 @@
             {c.score != null ? c.score.toFixed(2) : '—'}
           </span>
           <span class="cand-source muted">{c.found_by}</span>
-          {#if c.locked_by}
-            <span class="cand-lock" title="Item pris par {c.locked_by}">🔒 {c.locked_by}</span>
+          {#if c.reservation}
+            <span class="cand-lock" title="Réservé encore {c.reservation.expire_dans_min} min">
+              🔒 {c.reservation.par === me ? 'vous' : c.reservation.par}
+              {#if c.reservation.par === me || admin}
+                <button class="btn-liberer" on:click={() => liberer(c.id)}>Libérer</button>
+              {/if}
+            </span>
           {:else}
             <button class="btn-claim" on:click={() => claimItem(c.id)}
                     disabled={claiming[c.id]}>→ Prendre</button>
@@ -115,11 +140,11 @@
           <div class="cand-actions">
             {#if statusFilter !== 'validated'}
               <button class="btn-validate" on:click={() => setStatus(c.id,'validated')}
-                      disabled={saving[c.id] || (c.locked_by && c.locked_by !== me)}>✓ Valider</button>
+                      disabled={saving[c.id] || (c.reservation && c.reservation.par !== me)}>✓ Valider</button>
             {/if}
             {#if statusFilter !== 'rejected'}
               <button class="btn-reject"   on:click={() => setStatus(c.id,'rejected')}
-                      disabled={saving[c.id] || (c.locked_by && c.locked_by !== me)}>✕ Rejeter</button>
+                      disabled={saving[c.id] || (c.reservation && c.reservation.par !== me)}>✕ Rejeter</button>
             {/if}
           </div>
         </div>
@@ -175,5 +200,10 @@
   button:disabled { opacity: .45; cursor: default; }
 
   .err-msg { color: #f87171; font-size: .83rem; }
+  .avis { margin: 0 0 .6rem; padding: .5rem .75rem; background: #3b2506; border: 1px solid #b45309;
+          border-radius: 6px; color: #fde68a; font-size: .82rem; }
+  .cand-lock { display: flex; align-items: center; gap: .35rem; color: #fbbf24; white-space: nowrap; }
+  .btn-liberer { border: 1px solid #b45309; border-radius: 4px; padding: .1rem .4rem;
+                 font-size: .68rem; color: #fde68a; cursor: pointer; }
   .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
 </style>

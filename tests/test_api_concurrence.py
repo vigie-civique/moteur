@@ -218,3 +218,58 @@ class TestFiche:
         champs = r.json()["detail"]["champs"]
         assert [(c["champ"], c["avant"], c["apres"]) for c in champs] == [
             ("address", None, "3 rue Basse")]
+
+
+class TestReservation:
+    def _site(self, atelier):
+        eid = atelier["fiche"]()
+        _, wid = atelier["sql"](
+            "INSERT INTO entity_websites(entity_id, url, status) VALUES(?, 'https://four.fr', 'candidate')",
+            (eid,))
+        return wid
+
+    def test_on_reserve_a_son_nom_pas_a_celui_quon_ecrit(self, atelier):
+        wid = self._site(atelier)
+        r = atelier["en_tant_que"](UN).post(
+            f"/api/atelier/queue/{wid}/claim",
+            json={"table": "entity_websites", "locked_by": DEUX["email"]})
+        assert r.status_code == 200
+        assert r.json()["locked_by"] == UN["email"]
+
+    def test_le_second_voit_qui_a_pris_et_ne_peut_ni_trancher_ni_liberer(self, atelier):
+        wid = self._site(atelier)
+        atelier["en_tant_que"](UN).post(f"/api/atelier/queue/{wid}/claim",
+                                         json={"table": "entity_websites"})
+        deux = atelier["en_tant_que"](DEUX)
+        r = deux.post(f"/api/atelier/queue/{wid}/claim", json={"table": "entity_websites"})
+        assert r.status_code == 409 and r.json()["detail"]["par"] == UN["email"]
+        liste = deux.get("/api/atelier/queue/websites").json()
+        assert liste[0]["reservation"]["par"] == UN["email"]
+        assert deux.patch(f"/api/atelier/websites/{wid}", json={"status": "validated"}).status_code == 409
+        assert deux.delete(f"/api/atelier/queue/{wid}/claim?table=entity_websites").status_code == 403
+
+    def test_un_admin_libere_et_une_reservation_expiree_ne_compte_plus(self, atelier):
+        wid = self._site(atelier)
+        atelier["en_tant_que"](UN).post(f"/api/atelier/queue/{wid}/claim",
+                                         json={"table": "entity_websites"})
+        admin = {**DEUX, "role": "admin"}
+        assert atelier["en_tant_que"](admin).delete(
+            f"/api/atelier/queue/{wid}/claim?table=entity_websites").status_code == 200
+        atelier["sql"]("UPDATE entity_websites SET locked_by=?, locked_at=datetime('now', '-11 minutes')"
+                       " WHERE id=?", (UN["email"], wid))
+        deux = atelier["en_tant_que"](DEUX)
+        assert deux.get("/api/atelier/queue/websites").json()[0]["reservation"] is None
+        assert deux.patch(f"/api/atelier/websites/{wid}", json={"status": "rejected"}).status_code == 200
+
+    def test_reserver_liberer_et_trancher_laissent_une_trace(self, atelier):
+        wid = self._site(atelier)
+        un = atelier["en_tant_que"](UN)
+        un.post(f"/api/atelier/queue/{wid}/claim", json={"table": "entity_websites"})
+        un.patch(f"/api/atelier/websites/{wid}", json={"status": "validated"})
+        un.delete(f"/api/atelier/queue/{wid}/claim?table=entity_websites")
+        journal, _ = atelier["sql"](
+            "SELECT user_id, action, old_value, new_value FROM audit_log "
+            "WHERE table_name='entity_websites' ORDER BY id")
+        assert [(j["user_id"], j["action"]) for j in journal] == [
+            (1, "reservation"), (1, "update"), (1, "liberation")]
+        assert (journal[1]["old_value"], journal[1]["new_value"]) == ("candidate", "validated")

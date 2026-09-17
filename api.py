@@ -3356,10 +3356,22 @@ def patch_website(website_id: int = FPath(..., ge=1),
         raise HTTPException(422, "status invalide")
     conn = get_db_rw()
     try:
-        if not row(conn, "SELECT 1 FROM entity_websites WHERE id=?", (website_id,)):
+        conn.execute("BEGIN IMMEDIATE")
+        site = row(conn, "SELECT * FROM entity_websites WHERE id=?", (website_id,))
+        if not site:
             raise HTTPException(404)
+        # La réservation n'était tenue que par l'interface, qui grisait les
+        # boutons : l'API, elle, laissait trancher un site pris par un autre.
+        active = _reservation_active(site)
+        if active and active["par"] != user["email"]:
+            raise _conflit(f"Pris par {active['par']}, qui l'examine.", active["par"],
+                           active["le"], expire_dans_min=active["expire_dans_min"])
         conn.execute("UPDATE entity_websites SET status=?, last_check=datetime('now') WHERE id=?",
                      (status, website_id))
+        # Valider un site le publie : ce geste n'était journalisé nulle part.
+        if site["status"] != status:
+            _journal(conn, user, site["entity_id"], "entity_websites", "update",
+                     f"site {site['url']}", avant=site["status"], apres=status)
         conn.commit()
         return row(conn, "SELECT * FROM entity_websites WHERE id=?", (website_id,))
     finally:
@@ -3369,7 +3381,12 @@ def patch_website(website_id: int = FPath(..., ge=1),
 def delete_website(website_id: int = FPath(..., ge=1), user=Depends(require_auth)):
     conn = get_db_rw()
     try:
+        site = row(conn, "SELECT entity_id, url, status FROM entity_websites WHERE id=?",
+                   (website_id,))
         conn.execute("DELETE FROM entity_websites WHERE id=?", (website_id,))
+        if site:
+            _journal(conn, user, site["entity_id"], "entity_websites", "delete",
+                     f"site {site['url']}", avant=site["status"])
         conn.commit()
     finally:
         conn.close()
@@ -3381,8 +3398,9 @@ def delete_website(website_id: int = FPath(..., ge=1), user=Depends(require_auth
 def queue_websites(status: str = "candidate", limit: int = 100, user=Depends(require_auth)):
     conn = get_db()
     try:
-        return rows(conn, """
+        lignes = rows(conn, """
             SELECT ew.id, ew.url, ew.status, ew.score, ew.found_by,
+                   ew.locked_by, ew.locked_at,
                    e.id AS entity_id, e.name AS entity_name, e.type AS entity_type
             FROM entity_websites ew
             JOIN entities e ON e.id = ew.entity_id
@@ -3390,6 +3408,12 @@ def queue_websites(status: str = "candidate", limit: int = 100, user=Depends(req
             ORDER BY ew.score DESC, e.name
             LIMIT ?
         """, (status, limit))
+        # La réservation n'était pas renvoyée : un autre éditeur ne voyait
+        # jamais qu'un site était pris. Une réservation expirée n'en est plus une.
+        for ligne in lignes:
+            ligne["reservation"] = _reservation_active(ligne)
+            del ligne["locked_by"], ligne["locked_at"]
+        return lignes
     finally:
         conn.close()
 
@@ -3632,10 +3656,41 @@ _CLAIM_EXPIRES_MIN = 10   # minutes avant qu'un claim expire
 
 class ClaimRequest(BaseModel):
     table:     str     # "relation_candidates" | "entity_websites"
-    locked_by: str     # email ou identifiant du valideur
+    # IGNORÉ depuis le 17/09/2026 : le nom venait du navigateur, et l'on pouvait
+    # réserver au nom de n'importe qui. C'est le compte connecté qui réserve.
+    locked_by: Optional[str] = None
 
 
 CLAIMABLE_TABLES = {"relation_candidates", "entity_websites"}
+
+
+def _reservation_active(ligne: dict) -> Optional[dict]:
+    """{par, le, expire_dans_min} si la ligne est réservée et que ça n'a pas
+    expiré ; None sinon. `locked_at` est un horodatage SQLite (UTC)."""
+    par, le = ligne.get("locked_by"), ligne.get("locked_at")
+    if not par or not le:
+        return None
+    try:
+        pose = datetime.fromisoformat(le).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None                       # date illisible : réservation caduque
+    age = (datetime.now(timezone.utc) - pose).total_seconds() / 60
+    if age >= _CLAIM_EXPIRES_MIN:
+        return None
+    return {"par": par, "le": le, "expire_dans_min": round(_CLAIM_EXPIRES_MIN - age, 1)}
+
+
+def _entite_de(table: str, ligne: dict) -> Optional[int]:
+    return ligne.get("entity_id") if table == "entity_websites" else ligne.get("from_id")
+
+
+def _journal(conn, user: dict, entity_id: Optional[int], table: str, action: str,
+             champ: Optional[str], avant=None, apres=None) -> None:
+    conn.execute(
+        "INSERT INTO audit_log(user_id, entity_id, table_name, action, field, "
+        "old_value, new_value) VALUES(?,?,?,?,?,?,?)",
+        (user["id"], entity_id, table, action, champ,
+         None if avant is None else str(avant), None if apres is None else str(apres)))
 
 
 @app.post("/api/atelier/queue/{item_id}/claim")
@@ -3645,53 +3700,37 @@ def queue_claim(
     user=Depends(require_auth),
 ):
     """
-    Pose un lock mou sur un item de queue.
-    - Si déjà locké par quelqu'un d'autre et non expiré → 409.
-    - Sinon → pose locked_by + locked_at.
-    Le claim expire après 10 minutes (côté serveur : on vérifie à la pose suivante).
+    Réserve un élément de file au nom du compte connecté, pour 10 minutes.
+    - Déjà réservé par quelqu'un d'autre, et pas expiré → 409 (qui, depuis quand).
+    - La réservation est journalisée : on sait qui travaillait sur quoi.
     """
     if req.table not in CLAIMABLE_TABLES:
         raise HTTPException(400, f"table invalide — valeurs: {', '.join(CLAIMABLE_TABLES)}")
 
     conn = get_db_rw()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         existing = row(conn, f"SELECT * FROM {req.table} WHERE id=?", (item_id,))
         if not existing:
             raise HTTPException(404, "Item introuvable")
 
-        current_lock  = existing.get("locked_by")
-        current_lock_at = existing.get("locked_at")
-
-        # Vérifier si le claim est encore valide
-        if current_lock and current_lock_at:
-            import datetime as _dt
-            try:
-                lock_time = _dt.datetime.fromisoformat(current_lock_at)
-                age_min = (
-                    _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
-                    - lock_time.replace(tzinfo=None)
-                ).total_seconds() / 60
-                if age_min < _CLAIM_EXPIRES_MIN and current_lock != req.locked_by:
-                    raise HTTPException(
-                        409,
-                        f"Item déjà locké par {current_lock!r} "
-                        f"(depuis {age_min:.1f} min, expire dans {_CLAIM_EXPIRES_MIN - age_min:.1f} min)."
-                    )
-            except HTTPException:
-                raise
-            except Exception:
-                pass  # Date invalide → on écrase le claim
+        active = _reservation_active(existing)
+        if active and active["par"] != user["email"]:
+            raise _conflit(f"Déjà pris par {active['par']}.", active["par"], active["le"],
+                           expire_dans_min=active["expire_dans_min"])
 
         conn.execute(
             f"UPDATE {req.table} SET locked_by=?, locked_at=datetime('now') WHERE id=?",
-            (req.locked_by, item_id),
+            (user["email"], item_id),
         )
+        _journal(conn, user, _entite_de(req.table, existing), req.table, "reservation",
+                 str(item_id))
         conn.commit()
         return {
             "ok": True,
             "table": req.table,
             "item_id": item_id,
-            "locked_by": req.locked_by,
+            "locked_by": user["email"],
             "expires_in_min": _CLAIM_EXPIRES_MIN,
         }
     finally:
@@ -3704,17 +3743,30 @@ def queue_unclaim(
     table: str = Query(...),
     user=Depends(require_auth),
 ):
-    """Libère un claim sur un item de queue."""
+    """Libère une réservation : la sienne, une réservation expirée, ou — admin —
+    celle de n'importe qui. N'importe quel compte pouvait libérer celle d'autrui."""
     if table not in CLAIMABLE_TABLES:
         raise HTTPException(400, f"table invalide — valeurs: {', '.join(CLAIMABLE_TABLES)}")
     conn = get_db_rw()
     try:
-        if not row(conn, f"SELECT 1 FROM {table} WHERE id=?", (item_id,)):
+        conn.execute("BEGIN IMMEDIATE")
+        existing = row(conn, f"SELECT * FROM {table} WHERE id=?", (item_id,))
+        if not existing:
             raise HTTPException(404, "Item introuvable")
+        active = _reservation_active(existing)
+        if active and active["par"] != user["email"] and user.get("role") != "admin":
+            raise HTTPException(403, {
+                "message": f"Réservé par {active['par']} : seul ce compte ou un "
+                           f"administrateur peut le libérer avant l'expiration.",
+                "par": active["par"], "le": active["le"],
+                "expire_dans_min": active["expire_dans_min"]})
         conn.execute(
             f"UPDATE {table} SET locked_by=NULL, locked_at=NULL WHERE id=?",
             (item_id,),
         )
+        if existing.get("locked_by"):
+            _journal(conn, user, _entite_de(table, existing), table, "liberation",
+                     str(item_id), avant=existing["locked_by"])
         conn.commit()
         return {"ok": True, "table": table, "item_id": item_id}
     finally:
