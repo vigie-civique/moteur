@@ -134,7 +134,11 @@ def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
             fait="SELECT COUNT(*) FROM relation_candidates "
                  "WHERE review_status <> 'pending'",
             table="relation_candidates",
-            steps=("commissions", "dir_deports", "dir_web"),
+            # `liens` (détection de rapprochements) est câblé depuis le
+            # 23/09/2026 seulement : avant, `collectors/detect_links.py`
+            # n'était appelé par rien. Une file vide AVANT cette date ne
+            # voulait donc pas dire ce qu'elle avait l'air de dire.
+            steps=("liens", "commissions", "dir_deports", "dir_web"),
         ),
         FileDeTravail(
             cle="sites-candidats",

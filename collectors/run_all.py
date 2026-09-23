@@ -139,6 +139,7 @@ from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.sispea         import run_sispea
 from collectors.urbanisme      import run as run_urbanisme
 from collectors.saisies        import import_saisies
+from collectors.detect_links   import run as run_detect_links
 
 
 def run_origine():
@@ -342,6 +343,17 @@ STEPS = {
     # entité que la collecte vient peut-être de créer. AVANT `origine` et
     # `perimetre`, qui doivent classer ces lignes comme les autres.
     "saisies":   ("Saisies de l'atelier (config/saisies.json)", import_saisies),
+    # Dérivé : rapproche ce que les autres ont écrit, et n'affirme RIEN — il
+    # pose des candidats dans `relation_candidates`, que l'atelier tranche
+    # (file « Liens présumés »). Après `saisies`, pour voir aussi ce qu'un
+    # humain vient d'ajouter.
+    #
+    # ⚠️ Ce module existait depuis des mois sans être appelé par quoi que ce
+    # soit. Câblé ici le 23/09/2026, mais sur ses seuls `SIGNAUX_PAR_DEFAUT` :
+    # joué entier, il posait 59 799 candidats sur les trois instances, dont
+    # 52 637 liens de famille présumés entre particuliers — cf. son en-tête.
+    "liens":     ("Rapprochements à trancher (doublons, élus-dirigeants)",
+                  lambda: run_detect_links()),
     # Classe les faits par origine — institutionnel, verbatim, atelier. C'est
     # cette colonne que l'API interroge avant d'autoriser une rectification :
     # sans ce step, une base entière reste non classée, donc entièrement

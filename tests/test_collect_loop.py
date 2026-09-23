@@ -80,6 +80,7 @@ SANS_RYTHME = {
     "saisies":       "rejoue `config/saisies.json` : des décisions humaines, pas une source",
     "approbations":  "dérivé du texte des séances",
     "budgets_votes": "dérivé du texte des séances",
+    "liens":         "dérivé — rapproche des entités déjà collectées, ne source rien",
 }
 
 

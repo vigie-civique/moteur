@@ -14,9 +14,24 @@ Signaux détectés (par score décroissant) :
   42 toponym              — lieu dans le nom d'une entité
 
 Usage:
-    python collectors/detect_links.py [--dry-run] [--reset]
-    --dry-run : affiche le compte sans écrire en base
-    --reset   : supprime d'abord tous les candidats pending avant de relancer
+    python collectors/detect_links.py [--dry-run] [--reset] [--tous-signaux]
+    --dry-run       : affiche le compte sans écrire en base
+    --reset         : supprime d'abord tous les candidats pending
+    --tous-signaux  : ajoute les deux signaux familiaux, éteints par défaut
+
+⚠️ **Ce module n'a jamais tourné** avant le 23/09/2026 : il n'était ni un step
+de `run_all.py`, ni appelé par un script. Joué à blanc ce jour-là sur copie des
+trois instances, il produisait **59 799 candidats**, dont **52 637 `maiden_name`
+(88 %)** — des liens de FAMILLE présumés entre personnes physiques nommées,
+déduits des parenthèses SIRENE. Les 87 sièges de commission qui attendaient
+vraiment à Lasalle y auraient disparu.
+
+D'où `SIGNAUX_PAR_DEFAUT`, arbitré par Julien le 23/09 : le step quotidien ne
+pose que ce qu'un humain peut trancher — un doublon, un élu retrouvé dirigeant,
+un toponyme. Les deux signaux familiaux restent écrits, et éteints : ils
+inféreraient des liens de parenté sur des particuliers, à 54 000 exemplaires,
+pour une file que personne ne descendra jamais. `--tous-signaux` les rallume
+pour une enquête menée à la main, en connaissance de cause.
 """
 import sqlite3
 import unicodedata
@@ -26,13 +41,22 @@ import sys
 from pathlib import Path
 
 from .config import DB_PATH   # la base est nommée dans la config, pas ici
+from .db import log_run_end, log_run_start
 
 # Seuil max de personnes partageant un patronyme pour suggérer un lien familial.
 # Au-delà, le patronyme est considéré comme trop courant sur le territoire.
 MAX_SURNAME_FREQ = 5
 
-# IDs des entités "fantômes" créées pour les subventions (à matcher avec vraies entités)
-PHANTOM_SUBSIDY_IDS = list(range(107, 122))
+#: Ce que la passe quotidienne pose : des candidats qu'on peut trancher sur
+#: pièce. Mesuré le 23/09/2026 — 16/42/33 doublons, 3/1/2 élus-dirigeants,
+#: 97/156/100 toponymes sur Lasalle, Saillans et Brassac.
+SIGNAUX_PAR_DEFAUT = ("entity_duplicate", "same_full_name", "toponym",
+                      "subsidy_entity_match")
+
+#: Les deux qui infèrent une parenté. Hors passe automatique — cf. l'en-tête.
+SIGNAUX_FAMILLE = ("maiden_name", "same_surname")
+
+TOUS_SIGNAUX = SIGNAUX_PAR_DEFAUT + SIGNAUX_FAMILLE
 
 
 # ── Normalisation ──────────────────────────────────────────────────────────────
@@ -274,13 +298,28 @@ def detect_toponyms(cur, entities) -> int:
 
 def detect_subsidy_phantoms(cur) -> int:
     """
-    Signal subsidy_entity_match : entités fantômes (107-121) créées pour les subventions
-    correspondant à de vraies entités RNA / associations déjà dans la DB.
+    Signal subsidy_entity_match : un bénéficiaire de subvention nommé dans un
+    acte, mais qu'aucun registre n'atteste — ni SIREN, ni RNA — rapproché d'une
+    vraie association ou d'un service déjà en base.
+
+    ⚖️ Générique depuis le 23/09/2026. Le fantôme se reconnaissait à une PLAGE
+    D'IDENTIFIANTS écrite en dur (`range(107, 122)`), relevée un jour sur la
+    base de Lasalle. Sur une autre commune ces quinze identifiants désignent
+    quinze entités quelconques, et le signal aurait rapproché n'importe quoi ;
+    sur Lasalle même, les identifiants avaient bougé et il rendait 0. Le fantôme
+    est une PROPRIÉTÉ — touché de l'argent public sans exister dans un registre
+    — pas un numéro de ligne. Mesuré : 59 à Lasalle, 8 à Saillans, 3 à Brassac.
     """
-    ph_ids = PHANTOM_SUBSIDY_IDS
-    phantoms = cur.execute(
-        f"SELECT id, name FROM entities WHERE id IN ({','.join('?'*len(ph_ids))})", ph_ids
-    ).fetchall()
+    phantoms = cur.execute("""
+        SELECT DISTINCT e.id, e.name FROM entities e
+        JOIN financial_flows f ON f.to_id = e.id
+        WHERE f.type LIKE 'subvention%'
+          AND NOT EXISTS (SELECT 1 FROM businesses b
+                           WHERE b.entity_id = e.id AND b.siren IS NOT NULL)
+          AND NOT EXISTS (SELECT 1 FROM associations a
+                           WHERE a.entity_id = e.id AND a.rna_id IS NOT NULL)
+    """).fetchall()
+    ph_ids = [p["id"] for p in phantoms] or [-1]
     real = cur.execute(
         "SELECT id, name FROM entities WHERE type IN ('association','service') "
         f"AND id NOT IN ({','.join('?'*len(ph_ids))})", ph_ids
@@ -310,11 +349,31 @@ def detect_subsidy_phantoms(cur) -> int:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run(dry_run=False, reset=False):
+def run(dry_run=False, reset=False, signaux=SIGNAUX_PAR_DEFAUT):
+    """Pose des candidats pour les `signaux` demandés. Rien d'autre n'est joué.
+
+    Un signal absent de `signaux` n'est pas seulement tu : son détecteur ne
+    tourne pas. Les deux signaux familiaux parcourent des dizaines de milliers
+    de couples de personnes — les exécuter pour jeter le résultat coûterait la
+    minute qu'on a cherché à ne pas payer.
+    """
+    inconnus = set(signaux) - set(TOUS_SIGNAUX)
+    if inconnus:
+        raise ValueError(f"signal inconnu : {', '.join(sorted(inconnus))} — "
+                         f"valeurs : {', '.join(TOUS_SIGNAUX)}")
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     cur = conn.cursor()
+
+    # Journaliser la passe, comme tout collecteur : c'est ce qui permet à la
+    # file « Liens présumés » de dire POURQUOI elle est vide. Sans cette ligne,
+    # un zéro y voudrait dire « jamais mesuré ici » alors qu'on vient de
+    # chercher — cf. `collectors/files.py`. Pas en `--dry-run` : une mesure à
+    # blanc n'est pas une passe, et la dater ferait croire à un relevé.
+    avant = cur.execute("SELECT COUNT(*) FROM relation_candidates").fetchone()[0]
+    run_id = None if dry_run else log_run_start(conn, "liens", avant)
 
     if reset:
         cur.execute("DELETE FROM relation_candidates WHERE review_status='pending'")
@@ -324,31 +383,37 @@ def run(dry_run=False, reset=False):
     all_entities = [dict(r) for r in cur.execute("SELECT id, type, name FROM entities").fetchall()]
     persons = [e for e in all_entities if e["type"] == "person"]
 
+    # Chaque détecteur est paresseux : `lambda`, pas un appel. Sans quoi les
+    # six tourneraient pour qu'on en garde trois.
+    DETECTEURS = {
+        "entity_duplicate":     ("Doublons d'entités",
+                                 lambda: detect_entity_duplicates(cur, all_entities)),
+        "same_full_name":       ("Élus/candidats ↔ dirigeants SIRENE",
+                                 lambda: detect_elu_sirene_match(cur)),
+        "subsidy_entity_match": ("Bénéficiaires sans registre ↔ entités connues",
+                                 lambda: detect_subsidy_phantoms(cur)),
+        "toponym":              ("Toponymies (lieu dans nom d'entité)",
+                                 lambda: detect_toponyms(cur, all_entities)),
+        "maiden_name":          ("Noms de jeune fille (parenthèses SIRENE)",
+                                 lambda: detect_maiden_names(cur, persons)),
+        "same_surname":         ("Patronymes rares partagés",
+                                 lambda: detect_rare_surnames(cur, persons)),
+    }
+
     results = {}
+    for rang, signal in enumerate(TOUS_SIGNAUX, 1):
+        if signal not in signaux:
+            continue
+        titre, detecteur = DETECTEURS[signal]
+        print(f"[{rang}] {titre}…")
+        results[signal] = detecteur()
+        print(f"    → {results[signal]}")
 
-    print("\n[1] Doublons d'entités…")
-    results["entity_duplicate"] = detect_entity_duplicates(cur, all_entities)
-    print(f"    → {results['entity_duplicate']}")
-
-    print("[2] Noms de jeune fille (parenthèses SIRENE)…")
-    results["maiden_name"] = detect_maiden_names(cur, persons)
-    print(f"    → {results['maiden_name']}")
-
-    print("[3] Élus/candidats ↔ dirigeants SIRENE…")
-    results["same_full_name"] = detect_elu_sirene_match(cur)
-    print(f"    → {results['same_full_name']}")
-
-    print("[4] Bénéficiaires fantômes ↔ entités RNA…")
-    results["subsidy_entity_match"] = detect_subsidy_phantoms(cur)
-    print(f"    → {results['subsidy_entity_match']}")
-
-    print("[5] Toponymies (lieu dans nom d'entité)…")
-    results["toponym"] = detect_toponyms(cur, all_entities)
-    print(f"    → {results['toponym']}")
-
-    print("[6] Patronymes rares partagés…")
-    results["same_surname"] = detect_rare_surnames(cur, persons)
-    print(f"    → {results['same_surname']}")
+    eteints = [s for s in TOUS_SIGNAUX if s not in signaux]
+    if eteints:
+        # Un signal éteint doit se VOIR : sinon un zéro dans la file ressemble
+        # à « rien à trouver » alors qu'il veut dire « on n'a pas cherché ».
+        print(f"    (éteints, non joués : {', '.join(eteints)})")
 
     total = sum(results.values())
     tag = "[DRY-RUN] " if dry_run else ""
@@ -359,14 +424,18 @@ def run(dry_run=False, reset=False):
 
     if not dry_run:
         conn.commit()
+        apres = cur.execute("SELECT COUNT(*) FROM relation_candidates").fetchone()[0]
+        log_run_end(conn, run_id, "ok", apres, avant)
         print("Candidats enregistrés dans relation_candidates.")
     else:
         conn.rollback()
     conn.close()
+    return results
 
 
 if __name__ == "__main__":
     run(
         dry_run="--dry-run" in sys.argv,
         reset="--reset" in sys.argv,
+        signaux=TOUS_SIGNAUX if "--tous-signaux" in sys.argv else SIGNAUX_PAR_DEFAUT,
     )
