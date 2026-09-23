@@ -1132,6 +1132,12 @@ def candidates(
         for ligne in lignes:
             ligne["reservation"] = _reservation_active(ligne)
             del ligne["locked_by"], ligne["locked_at"]
+            # Ce que « Oui » changera, lu dans les RÈGLES de l'instance et non
+            # deviné par l'écran. Depuis que `detect_links` est câblé, la file
+            # mélange des sièges de commission (qui se publient) et des
+            # doublons ou des lieux-dits partagés (qui ne sortent jamais) :
+            # une seule phrase pour les deux aurait menti aux trois quarts.
+            ligne["sort_si_accepte"] = _sort_du_type(ligne["relation_type"])
         return lignes
     finally:
         conn.close()
@@ -1199,6 +1205,7 @@ def _public_snapshot_status():
 # appelable par le script de déploiement sans démarrer l'API.
 from scripts.build_public_snapshot import (  # noqa: E402
     RULES as _REGLES_PUBLICATION,
+    sort_du_type as _sort_du_type,
     synchroniser_site_public as _sync_public_static)
 
 #: Confiances qui partent sur le site, lues dans les règles de l'instance. Poser

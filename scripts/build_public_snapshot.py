@@ -1735,6 +1735,29 @@ def relation_pertinente(rel: dict, civic_ids: set[int],
     return bool(bouts & civic_ids) or bool(bouts & beneficiaires)
 
 
+def sort_du_type(relation_type: str | None) -> str:
+    """Ce qu'un TYPE de lien peut devenir, indépendamment de ses extrémités.
+
+    Trois réponses : `prive` (il ne sort jamais), `public` (il sort si ses
+    extrémités le permettent), `selon_pertinence` (lien économique, jugé au cas
+    par cas). Extrait de `is_public_relation` le 23/09/2026, qui l'appelle
+    désormais — l'atelier en a besoin pour dire à un bénévole ce que son geste
+    changera, et deux lectures de la même règle finiraient par se contredire.
+
+    ⚖️ Le défaut est PRIVÉ. Un type absent des trois listes ne sort pas : c'est
+    ce qui a évité une fuite quand le détecteur de liens a été câblé et s'est
+    mis à proposer `même_personne_probable`, qu'aucun marqueur ne visait.
+    """
+    t = relation_type or ""
+    if any(marker in t for marker in RULES["relations"]["private_markers"]):
+        return "prive"
+    if t in set(RULES["relations"]["public_allowlist"]):
+        return "public"
+    if t in set(RULES["relations"].get("relevance_allowlist", [])):
+        return "selon_pertinence"
+    return "prive"
+
+
 def is_public_relation(rel: dict, public_ids: set[int],
                        civic_ids: set[int] | None = None,
                        beneficiaires: set[int] | None = None,
@@ -1744,16 +1767,19 @@ def is_public_relation(rel: dict, public_ids: set[int],
     if rel["from_id"] not in public_ids or rel["to_id"] not in public_ids:
         return False, "endpoint_not_public"
     relation_type = rel.get("relation_type") or ""
-    if any(marker in relation_type for marker in RULES["relations"]["private_markers"]):
-        return False, "private_relation_type"
-    if relation_type in set(RULES["relations"]["public_allowlist"]):
+    sort = sort_du_type(relation_type)
+    if sort == "public":
         return True, "public"
     # Liens économiques : publiés au cas par cas selon la pertinence, pas par type.
-    if relation_type in set(RULES["relations"].get("relevance_allowlist", [])):
+    if sort == "selon_pertinence":
         if relation_pertinente(rel, civic_ids or set(), beneficiaires or set(),
                                ei_ids or set()):
             return True, "public_par_pertinence"
         return False, "economique_sans_lien_public"
+    # `prive` : soit un marqueur le vise, soit aucune liste ne l'admet. Les deux
+    # motifs restent distingués — l'un est une décision, l'autre un défaut.
+    if any(marker in relation_type for marker in RULES["relations"]["private_markers"]):
+        return False, "private_relation_type"
     return False, "not_in_public_allowlist"
 
 

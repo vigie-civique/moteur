@@ -34,6 +34,20 @@
     subsidy_entity_match: "Le bénéficiaire d'une subvention porte ce nom.",
   }
 
+  // Ce que « Oui » change VRAIMENT, selon le type de lien. L'API le calcule
+  // depuis les règles de publication de l'instance (`sort_du_type`) : depuis
+  // que `detect_links` est câblé, la file mêle des sièges de commission, qui
+  // se publient, et des doublons ou des lieux-dits partagés, qui ne sortent
+  // jamais du site. Une phrase unique aurait menti sur les trois quarts.
+  const EFFET = {
+    public: "Il devient une relation publiée, et peut rendre une personne "
+          + "publiable au titre de ce lien.",
+    selon_pertinence: "Il devient une relation ; elle ne sera publiée que si "
+          + "elle touche un acteur public ou de l'argent public.",
+    prive: "Il est enregistré pour le travail de l'atelier, et ne sera PAS "
+          + "publié : ce type de lien ne sort jamais du site.",
+  }
+
   onMount(() => charger())
 
   async function charger() {
@@ -103,9 +117,10 @@
       <h1>Ces deux-là sont-ils vraiment liés ?</h1>
       <p class="intro">
         Un détecteur a remarqué quelque chose : un nom dans un procès-verbal,
-        une adresse commune, un homonyme. Il ne tranche rien —
-        <strong>aucun de ces liens n'est publié</strong> tant que personne ne
-        l'a confirmé.
+        deux fiches qui se ressemblent, un homonyme. Il ne tranche rien —
+        <strong>aucun de ces liens n'existe</strong> tant que personne ne l'a
+        confirmé, et beaucoup ne sortiront jamais sur le site même confirmés.
+        Chaque ligne dit ce que « Oui » changerait.
       </p>
     </div>
     {#if !loading && !error}
@@ -146,6 +161,12 @@
             {#if l.signal_detail}<span class="detail">{l.signal_detail}</span>{/if}
           </p>
 
+          <!-- La conséquence AVANT le geste, pas seulement après : c'est la
+               règle du chantier, et ici elle change d'un lien à l'autre. -->
+          <p class="consequence" class:jamais={l.sort_si_accepte === 'prive'}>
+            {EFFET[l.sort_si_accepte] ?? EFFET.prive}
+          </p>
+
           {#if l.reservation}
             <p class="reservation" class:mienne={l.reservation.par === me}>
               {#if l.reservation.par === me}
@@ -166,7 +187,7 @@
             <div class="gestes">
               <button class="oui" disabled={occupe[l.id]}
                       on:click={() => trancher(l, 'accept', 'lien confirmé',
-                        "Il devient une relation, et peut rendre la personne publiable au titre de ce mandat.")}>
+                        EFFET[l.sort_si_accepte] ?? EFFET.prive)}>
                 Oui, le lien existe
               </button>
               <button class="non" disabled={occupe[l.id]}
@@ -235,6 +256,14 @@
   }
   .indice { font-size: .9rem; line-height: 1.45; color: #94a3b8; margin: 0; }
   .detail { color: #64748b; }
+
+  .consequence {
+    font-size: .85rem; line-height: 1.45; color: #cbd5e1; margin: 0;
+    border-left: 2px solid #3b82f6; padding-left: .55rem;
+  }
+  /* Un lien qui ne sortira jamais se distingue d'un lien publiable : c'est la
+     seule chose que le bénévole doit savoir avant de cliquer. */
+  .consequence.jamais { color: #94a3b8; border-left-color: #475569; }
 
   .reservation {
     font-size: .85rem; color: #fcd34d; background: #2a2412;

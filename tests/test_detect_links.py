@@ -187,3 +187,39 @@ def test_normalisation(entree, attendu):
 def test_le_nom_de_naissance_se_lit_entre_parentheses():
     assert parse_married_name("Marie DUPONT (MARTIN)") == ("Marie DUPONT", "MARTIN")
     assert parse_married_name("Jean DURAND") == (None, None)
+
+
+# ── Aucun type proposé ne sort du site par inadvertance ──────────────────────
+
+def test_aucun_type_propose_ne_sort_sans_etre_admis():
+    """Le détecteur propose des types ; les règles décident ce qui se publie.
+
+    Câbler `detect_links` a fait entrer `même_personne_probable` dans la file —
+    un type qu'AUCUN marqueur privé ne vise (« probable » n'est pas
+    « présumé »). Il ne sort pas, mais par DÉFAUT, pas par décision : il est
+    absent des allowlists. Ce test fige ce défaut. Inscrire un jour l'un de ces
+    types dans `public_allowlist` publierait « X et Y sont la même personne »
+    ou « ces deux fiches sont un doublon » sur le site : que ce soit alors un
+    choix, pas un effet de bord.
+    """
+    from scripts.build_public_snapshot import sort_du_type
+
+    # Les types que les six détecteurs savent produire, relevés dans le module.
+    PROPOSES = {
+        "doublon_probable":       "prive",   # marqueur « doublon »
+        "famille_présumé":        "prive",   # marqueurs « famille » et « présumé »
+        "même_lieu_dit":          "prive",   # marqueur « même_lieu_dit »
+        "même_personne_probable": "prive",   # aucun marqueur : privé par défaut
+    }
+    for type_, attendu in PROPOSES.items():
+        assert sort_du_type(type_) == attendu, (
+            f"« {type_} » sortirait en « {sort_du_type(type_)} » : un lien "
+            f"présumé entre deux personnes ne se publie pas sans décision.")
+
+
+def test_un_type_inconnu_est_prive_par_defaut():
+    """La règle qui a tout sauvé : ce qui n'est admis nulle part ne sort pas."""
+    from scripts.build_public_snapshot import sort_du_type
+    assert sort_du_type("type_invente_demain") == "prive"
+    assert sort_du_type(None) == "prive"
+    assert sort_du_type("") == "prive"
