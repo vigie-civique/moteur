@@ -98,3 +98,107 @@ def verdict_de(valeur: str | None) -> str | None:
 def ecarte(valeur: str | None) -> bool:
     """L'objet doit-il sortir de la publication ?"""
     return verdict_de(valeur) == ECARTE
+
+
+# ─── Les gestes — ce qu'on CLIQUE, et le verdict que ça pose ──────────────────
+# Lot C du chantier « L'atelier du premier jour », 23/09/2026.
+#
+# Un verdict est un mot de machine : `retenu`, `ecarte`. Un geste est une
+# phrase qu'on assume : « Cette information concerne une personne ». Les deux
+# ne se confondent pas, et l'atelier n'a jamais montré que les premiers — au
+# mieux sous forme de ✓ et de ✗, sans libellé, sans conséquence annoncée, sans
+# retour en arrière.
+#
+# ⚖️ **Un geste ne crée PAS un état de plus.** Les quatre verdicts du 21/09
+# suffisent ; un geste, c'est un verdict PLUS un motif, et le motif est ce qui
+# manquait. Deux personnes écartent une ligne pour des raisons opposées — l'une
+# parce que le chiffre est faux, l'autre parce qu'il touche à la vie privée —
+# et six semaines plus tard rien ne les distingue. Le motif entre dans la note
+# de la décision, en français, avec le nom de celui qui l'a posé.
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Geste:
+    cle: str
+    libelle: str        # ce qui est écrit sur le bouton
+    verdict: str        # ce que ça pose dans `annotations.review_status`
+    effet: str          # ce que ça change, dit avant le clic
+    motif: str | None = None   # la raison, consignée dans la note
+    #: Vrai si le geste demande une explication libre en plus du motif. Écarter
+    #: pour inexactitude sans dire ce qui est faux laisse le suivant au même
+    #: point que soi.
+    demande_un_mot: bool = False
+
+
+GESTES = (
+    Geste(
+        cle="retenir",
+        libelle="Retenir pour la prochaine publication",
+        verdict=RETENU,
+        effet="La ligne part sur le site à la prochaine mise en ligne, et porte "
+              "votre nom dans le journal de l'atelier.",
+    ),
+    Geste(
+        cle="autre-preuve",
+        libelle="Demander une autre preuve",
+        verdict=A_REVOIR,
+        motif="la preuve fournie ne suffit pas",
+        effet="La ligne reste en ligne si elle y est déjà — ce n'est pas un "
+              "retrait — et revient dans la file avec votre demande.",
+    ),
+    Geste(
+        cle="contradiction",
+        libelle="Ces deux sources se contredisent",
+        verdict=A_REVOIR,
+        motif="deux sources se contredisent",
+        demande_un_mot=True,
+        effet="La ligne revient dans la file, avec le conflit décrit. Rien "
+              "n'est retiré : c'est un arbitrage à rendre, pas une erreur "
+              "constatée.",
+    ),
+    Geste(
+        cle="personnelle",
+        libelle="Cette information concerne une personne",
+        verdict=ECARTE,
+        motif="donnée personnelle",
+        effet="La ligne SORT du site à la prochaine mise en ligne. Elle reste "
+              "en base, avec le motif : on ne perd pas ce qu'on a lu, on cesse "
+              "de le publier.",
+    ),
+    Geste(
+        cle="inexact",
+        libelle="Ce n'est pas exact",
+        verdict=ECARTE,
+        motif="inexact",
+        demande_un_mot=True,
+        effet="La ligne SORT du site à la prochaine mise en ligne. Dites ce "
+              "qui est faux : sans cela, le suivant reprendra au même point.",
+    ),
+    Geste(
+        cle="remettre",
+        libelle="Remettre à relire",
+        verdict=JAMAIS_RELU,
+        effet="Annule la décision précédente. La ligne retourne à l'état où "
+              "personne ne s'est prononcé.",
+    ),
+)
+
+GESTES_PAR_CLE = {g.cle: g for g in GESTES}
+
+
+def geste_de(cle: str | None) -> Geste | None:
+    """Le geste nommé `cle`, ou None — jamais deviné, comme un verdict."""
+    return GESTES_PAR_CLE.get((cle or "").strip().lower()) or None
+
+
+def note_du_geste(geste: Geste, precision: str = "") -> str:
+    """La note consignée : le motif, puis ce que la personne a ajouté.
+
+    Sans motif ni précision, la note reste VIDE plutôt que de répéter le
+    libellé du bouton — `review_status` le porte déjà, et une note qui
+    paraphrase son verdict encombre l'historique sans rien apprendre.
+    """
+    morceaux = [m for m in (geste.motif, (precision or "").strip()) if m]
+    return " — ".join(morceaux)

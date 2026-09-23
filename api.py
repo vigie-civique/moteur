@@ -38,9 +38,11 @@ from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
-from collectors.verdict import JAMAIS_RELU, OBJETS, VERDICTS, verdict_de
+from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, VERDICTS,
+                                geste_de, note_du_geste, verdict_de)
 from collectors.files import (GEO_A_FAIRE, GEO_DEPUIS, GEO_ETAT,
-                              RESERVATION_MINUTES, geo_params, relever)
+                              RESERVATION_MINUTES, a_trancher, geo_params,
+                              premier_jour, relever)
 
 # Boîte englobante de la commune, telle que déclarée par l'instance.
 COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
@@ -1736,6 +1738,197 @@ def atelier_stats(user=Depends(require_auth)):
     finally:
         conn.close()
 
+# ─── /api/atelier/decision/{type}/{id} — l'écran d'une décision ──────────────
+# Lot C du chantier, 23/09/2026. Trois zones, et rien d'autre : la QUESTION en
+# français, les PREUVES avec leur origine et leur date, le GESTE et sa
+# conséquence. L'atelier ne montrait jusqu'ici qu'un tableau de lignes et des
+# ✓ ✗ sans libellé : on tranchait sans jamais voir sur quoi.
+
+#: Ce qu'il faut savoir d'un objet pour en décider : sa revendication en une
+#: phrase, et l'acte qui la porte. Une clé par type d'`OBJETS` servi ici.
+_REVENDICATION = {
+    "flow": lambda o: (
+        f"{_euros(o['amount'])} — {o['description'] or o['type'] or 'flux'}"
+        + (f", de {o['from_name']}" if o.get("from_name") else "")
+        + (f" à {o['to_name']}" if o.get("to_name") else "")
+        + (f", en {o['year']}" if o.get("year") else "")),
+    "marche": lambda o: (
+        f"{_euros(o['montant'])} — {o['objet'] or 'marché'}"
+        + (f", attribué à {o['titulaire_nom']}" if o.get("titulaire_nom") else "")
+        + (f" par {o['acheteur_nom']}" if o.get("acheteur_nom") else "")
+        + (f", le {o['date_notif']}" if o.get("date_notif") else "")),
+    "deliberation": lambda o: (o["title"] or "acte sans titre")
+        + (f", séance du {o['date']}" if o.get("date") else ""),
+}
+
+
+def _euros(montant) -> str:
+    """Un montant en français, ou ce qu'il faut lire quand il n'y en a pas.
+
+    ⭐ **Un montant absent ne s'affiche pas « 0 € »**, et ZÉRO non plus. Relevé
+    le 23/09/2026 sur Lasalle : 10 flux ont `amount` NULL, 2 valent 0, et
+    l'écran de décision présentait le premier comme « 0 € — Demande subvention
+    DETR ». Personne ne vote une subvention de zéro euro : ce zéro dit que la
+    lecture de l'acte n'a pas su retenir le montant. Le présenter comme un fait
+    ferait écarter une ligne juste pour un défaut de collecte — et c'est
+    exactement la famille de défauts qui a le plus coûté à ce projet.
+    """
+    if montant is None or int(montant) == 0:
+        return "Aucun montant retenu"
+    return f"{int(montant):,}".replace(",", " ") + " €"
+
+
+def _acte_de(conn, object_type: str, object_id: int) -> Optional[dict]:
+    """L'acte qui porte la ligne : son titre, sa date, et SON TEXTE.
+
+    C'est la pièce. Sans elle, « ce montant est-il bien celui que l'acte a
+    voté ? » est une question à laquelle on ne peut pas répondre, et le geste
+    se réduit à faire confiance au collecteur — ce qu'on voulait justement
+    cesser de faire.
+
+    ⚠️ Le lien se relit DANS LA TABLE SOURCE, pas dans la ligne servie par la
+    liste : `_donnees_query` ne sélectionne pas `event_id`, et s'appuyer sur
+    ses colonnes rendait « Aucun acte rattaché » sur tous les flux. Un test l'a
+    attrapé ; à l'écran, la zone de preuves serait restée vide sans un mot.
+    """
+    if object_type == "deliberation":
+        eid = object_id
+    else:
+        table = TABLE_DE_TYPE[object_type]
+        lien = row(conn, f"SELECT event_id FROM {table} WHERE id=?", (object_id,))
+        eid = lien["event_id"] if lien else None
+    if not eid:
+        return None
+    acte = row(conn, "SELECT id, title, date, content, source, source_url, "
+                     "raw_document_id FROM events WHERE id=?", (eid,))
+    return dict(acte) if acte else None
+
+
+#: Les colonnes de traçabilité que l'écran affiche et que la liste n'a pas
+#: besoin de porter. Lues dans la table source, pour la même raison.
+def _tracabilite(conn, object_type: str, object_id: int) -> dict:
+    table = TABLE_DE_TYPE[object_type]
+    colonnes = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    voulues = [c for c in ("saisi_par", "saisi_le", "source_url", "origine")
+               if c in colonnes]
+    if not voulues:
+        return {}
+    r = row(conn, f"SELECT {', '.join(voulues)} FROM {table} WHERE id=?",
+            (object_id,))
+    return dict(r) if r else {}
+
+
+@app.get("/api/atelier/decision/{object_type}/{object_id}")
+def atelier_decision(
+    object_type: str,
+    object_id: int = FPath(..., ge=1),
+    user=Depends(require_auth),
+):
+    """Un objet, ses preuves, les gestes ouverts, et le suivant de la file."""
+    if object_type not in TABLE_DE_TYPE:
+        raise HTTPException(400, f"type invalide — valeurs: "
+                                 f"{', '.join(TABLE_DE_TYPE)}")
+    sql, params = _donnees_query(object_type, 1000)
+    conn = get_db()
+    try:
+        items = {o["id"]: o for o in rows(conn, sql, params)}
+        objet = items.get(object_id)
+        if not objet:
+            raise HTTPException(404, "Ligne introuvable")
+
+        a = row(conn, "SELECT review_status, note, reviewed_by, reviewed_at "
+                      "FROM annotations WHERE object_type=? AND object_id=?",
+                (object_type, object_id))
+        verdict = verdict_de(a["review_status"]) if a else JAMAIS_RELU
+
+        # Le suivant, et le reste : la MÊME définition du « à trancher » que la
+        # carte d'« Aujourd'hui », et elle TRAVERSE LES TYPES. L'écran comptait
+        # d'abord toutes les lignes de la table — 544 flux à Lasalle — puis les
+        # 76 flux probables quand la carte en annonçait 79, les trois marchés
+        # restant invisibles. Deux définitions du même travail, et c'est celle
+        # de l'écran qui décide le bénévole à s'arrêter.
+        file = a_trancher(conn)
+        suivant = next((x for x in file
+                        if not (x["objet"] == object_type and x["id"] == object_id)),
+                       None)
+
+        return {
+            "type": object_type,
+            "id": object_id,
+            "question": _QUESTION_DE_TYPE.get(object_type, "Cette ligne est-elle juste ?"),
+            "revendication": _REVENDICATION[object_type](objet),
+            "objet": {**objet, **_tracabilite(conn, object_type, object_id)},
+            "acte": _acte_de(conn, object_type, object_id),
+            "decision": {"verdict": verdict,
+                         "note": (a["note"] if a else "") or "",
+                         "par": a["reviewed_by"] if a else None,
+                         "le": a["reviewed_at"] if a else None},
+            "gestes": [
+                {"cle": g.cle, "libelle": g.libelle, "verdict": g.verdict,
+                 "effet": g.effet, "demande_un_mot": g.demande_un_mot}
+                for g in GESTES
+                # « Remettre à relire » n'a de sens que sur une ligne tranchée :
+                # l'offrir toujours, c'est proposer d'annuler ce qui n'existe pas.
+                if not (g.verdict == JAMAIS_RELU and verdict == JAMAIS_RELU)
+            ],
+            "suivant": suivant,
+            "reste": len(file),
+        }
+    finally:
+        conn.close()
+
+
+class GesteRequest(BaseModel):
+    geste: str
+    #: Ce que la personne ajoute. Obligatoire pour les gestes qui le demandent :
+    #: écarter sans dire ce qui est faux laisse le suivant au même point.
+    precision: str = ""
+
+
+@app.post("/api/atelier/decision/{object_type}/{object_id}")
+def atelier_poser_geste(
+    object_type: str,
+    object_id: int = FPath(..., ge=1),
+    req: GesteRequest = ...,
+    user=Depends(require_au_moins("validator", "Trancher une ligne")),
+):
+    """Poser un GESTE. Il devient un verdict et un motif, par `_decider`.
+
+    Un geste n'ouvre pas un second chemin d'écriture : il se traduit en
+    verdict, et repart par l'écrivain unique des décisions. Deux chemins pour
+    écrire la même chose, c'est deux vérités.
+    """
+    if object_type not in TABLE_DE_TYPE:
+        raise HTTPException(400, f"type invalide — valeurs: {', '.join(TABLE_DE_TYPE)}")
+    geste = geste_de(req.geste)
+    if geste is None:
+        raise HTTPException(400, f"geste inconnu : « {req.geste} » — valeurs : "
+                                 f"{', '.join(g.cle for g in GESTES)}")
+    if geste.demande_un_mot and not req.precision.strip():
+        raise HTTPException(400, {
+            "message": f"« {geste.libelle} » demande d'expliquer en un mot ce "
+                       f"qui ne va pas : sans cela, la personne suivante "
+                       f"reprendra au même point.",
+            "geste": geste.cle})
+
+    res = _decider(object_type, object_id,
+                   AnnotationUpdate(review_status=geste.verdict,
+                                    note=note_du_geste(geste, req.precision)),
+                   user)
+    return {"ok": True, "id": object_id, "geste": geste.cle,
+            "verdict": res["review_status"], "effet": geste.effet,
+            "reviewed_by": res["reviewed_by"], "reviewed_at": res["reviewed_at"]}
+
+
+#: La question posée, par type. Reprise du registre des files pour que l'écran
+#: et la carte d'« Aujourd'hui » ne se contredisent pas.
+_QUESTION_DE_TYPE = {
+    "flow":         "Ce montant est-il bien celui que l'acte a voté ?",
+    "marche":       "Ce marché est-il bien celui que l'acte a attribué ?",
+    "deliberation": "Cet acte est-il bien ce que son titre annonce ?",
+}
+
+
 # ─── /api/atelier/files ───────────────────────────────────────────────────────
 
 @app.get("/api/atelier/files")
@@ -1755,7 +1948,12 @@ def atelier_files(user=Depends(require_auth)):
     conn = get_db()
     try:
         return {"files": relever(conn, COMMUNE_NAME, CODE_POSTAL),
-                "reservation_minutes": RESERVATION_MINUTES}
+                "reservation_minutes": RESERVATION_MINUTES,
+                # Lot D : ce qu'un bénévole peut faire EN ARRIVANT, selon son
+                # rôle. Avant le 23/09/2026, un contributeur qui se connectait
+                # n'avait aucun geste qui compte — le seul qui lui était ouvert
+                # écrivait dans une colonne que la publication ne lisait pas.
+                "premier_jour": premier_jour(user.get("role", ""))}
     finally:
         conn.close()
 

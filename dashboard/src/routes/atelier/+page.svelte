@@ -17,8 +17,10 @@
 
   let files   = []
   let minutes = 10
+  let jour    = { miens: [], herites: [] }
   let loading = true
   let error   = ''
+  let toutVoir = false
 
   onMount(async () => {
     try {
@@ -27,6 +29,7 @@
       const d = await res.json()
       files = d.files
       minutes = d.reservation_minutes
+      jour = d.premier_jour ?? jour
     } catch (e) {
       error = e.message
     } finally {
@@ -127,7 +130,17 @@
           <p class="effet">{f.effet}</p>
 
           {#if ouvert && f.reste !== 0}
-            <a class="bouton" href={f.route}>Commencer</a>
+            <!-- Quand la file a un écran de décision, « Commencer » ouvre UNE
+                 question avec ses preuves, pas un tableau. La vue d'ensemble
+                 reste atteignable juste à côté : on ne supprime une liste
+                 qu'en la remplaçant. -->
+            {#if f.premier}
+              <a class="bouton"
+                 href="/atelier/decision/{f.premier.objet}/{f.premier.id}">Commencer</a>
+              <a class="discret-lien" href={f.route}>ou voir la liste entière</a>
+            {:else}
+              <a class="bouton" href={f.route}>Commencer</a>
+            {/if}
           {:else if ouvert}
             <a class="bouton discret" href={f.route}>Regarder quand même</a>
           {:else}
@@ -142,6 +155,40 @@
         </section>
       {/each}
     </div>
+
+    <!-- Lot D — ce qu'on peut faire en arrivant. Un contributeur qui se
+         connectait n'avait, jusqu'au 23/09/2026, aucun geste qui compte : le
+         seul qui lui était ouvert écrivait dans une colonne que la publication
+         ne lisait pas. Trois gestes, et ce que chacun APPORTE. -->
+    {#if jour.miens.length}
+      <section class="premier-jour">
+        <h2>Ce que vous pouvez faire</h2>
+        <ul>
+          {#each jour.miens as g}
+            <li>
+              <a href={g.route}>{g.titre}</a>
+              <p>{g.pourquoi}</p>
+            </li>
+          {/each}
+        </ul>
+        {#if jour.herites.length}
+          <p class="herite">
+            Votre rôle vous ouvre aussi {jour.herites.length} gestes plus
+            simples.
+            <button class="lien-nu" on:click={() => toutVoir = !toutVoir}>
+              {toutVoir ? 'les replier' : 'les voir'}
+            </button>
+          </p>
+          {#if toutVoir}
+            <ul class="herites">
+              {#each jour.herites as g}
+                <li><a href={g.route}>{g.titre}</a> <p>{g.pourquoi}</p></li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </section>
+    {/if}
 
     {#each expertes as f (f.cle)}
       <section class="experte">
@@ -259,9 +306,31 @@
     border: 1px solid #334155;
   }
   .bouton.discret:hover { background: #1e293b; }
+  .discret-lien { font-size: .82rem; color: #93c5fd; margin-top: .3rem; }
 
   .interdit { font-size: .85rem; line-height: 1.45; color: #94a3b8; margin: .25rem 0 0; }
   .interdit a { color: #93c5fd; }
+
+  .premier-jour {
+    padding: 1rem 1.1rem; border: 1px solid #334155;
+    border-radius: .5rem; background: #0f1626;
+  }
+  .premier-jour h2 {
+    font-size: .8rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: #94a3b8; margin: 0 0 .7rem;
+  }
+  .premier-jour ul { list-style: none; padding: 0; margin: 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem; }
+  .premier-jour li { display: flex; flex-direction: column; gap: .2rem; }
+  .premier-jour a { font-size: .98rem; font-weight: 600; color: #93c5fd; text-decoration: none; }
+  .premier-jour a:hover { text-decoration: underline; }
+  .premier-jour p { font-size: .85rem; line-height: 1.45; color: #94a3b8; margin: 0; }
+  .herite { margin-top: .9rem !important; }
+  .herites { margin-top: .6rem !important; opacity: .85; }
+  .lien-nu {
+    background: transparent; border: none; color: #93c5fd; cursor: pointer;
+    font-size: .85rem; text-decoration: underline; padding: 0;
+  }
 
   .experte {
     padding: 1rem 1.1rem;

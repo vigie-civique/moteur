@@ -85,6 +85,24 @@ def geo_params(commune: str, code_postal: str) -> tuple:
     return (commune, commune, code_postal)
 
 
+# ─── Ce qui attend un arbitrage, par type d'objet ─────────────────────────────
+# Une seule définition, trois lectures : le COMPTE de la carte « Aujourd'hui »,
+# la PREMIÈRE ligne qu'ouvre « Commencer », et le RESTE affiché par l'écran de
+# décision. Le 23/09/2026, l'écran comptait toutes les lignes de la table — 544
+# flux — quand la carte en annonçait 79 : deux définitions du même « à faire »,
+# et c'est l'écran qui aurait décidé le bénévole à abandonner.
+ECRANS = (
+    ("flow", "SELECT id FROM financial_flows "
+             "WHERE confidence IN ('probable','hypothesis') "
+             "ORDER BY year DESC, amount DESC"),
+    ("marche", "SELECT id FROM marches_publics "
+               "WHERE confidence IN ('probable','hypothesis') "
+               "ORDER BY date_notif DESC"),
+)
+
+REQUETE_ECRAN = dict(ECRANS)
+
+
 @dataclass(frozen=True)
 class FileDeTravail:
     """Une file : ce qu'on demande, ce que ça fait, et où on le fait.
@@ -111,6 +129,11 @@ class FileDeTravail:
     #: ne peut pas finir ne se met pas devant quelqu'un qui arrive.
     experte: bool = False
     params: tuple = ()
+    #: Les types d'`annotations` que cette file fait trancher, et la requête qui
+    #: rend leurs identifiants dans l'ordre de traitement. Renseignés, le relevé
+    #: y cherche la PREMIÈRE ligne non tranchée : c'est ce qui permet à
+    #: « Commencer » d'ouvrir un écran de décision plutôt qu'un tableau.
+    ecran: tuple[tuple[str, str], ...] = ()
 
 
 def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
@@ -198,6 +221,11 @@ def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
                  "WHERE object_type IN ('marche','flow') "
                  "AND review_status <> 'jamais_relu'",
             steps=("cm_flux", "marches", "seed", "saisies"),
+            # Les flux d'abord : ce sont eux qui portent les baux et les
+            # subventions lues dans les procès-verbaux, là où le texte de
+            # l'acte permet vraiment de trancher. La définition vit dans
+            # `ECRANS` — l'écran de décision la relit pour son « reste ».
+            ecran=ECRANS,
         ),
         FileDeTravail(
             cle="fiches",
@@ -267,6 +295,38 @@ def _derniere_passe(conn, steps: tuple[str, ...]) -> Optional[dict]:
     return {"collecteur": r[0], "issue": r[1], "trouve": r[2], "le": r[3]}
 
 
+def a_trancher(conn, ecran: tuple[tuple[str, str], ...] = ECRANS) -> list[dict]:
+    """Tout ce qui attend un geste dans cette file, DANS L'ORDRE, tous types.
+
+    Une seule définition, trois lectures : le compte de la carte
+    « Aujourd'hui », la première ligne qu'ouvre « Commencer », et le reste que
+    l'écran de décision affiche juste avant qu'on tranche.
+
+    ⚠️ Elle traverse les types. La file « Chiffres à confirmer » porte des flux
+    ET des marchés ; l'écran de décision, lui, est ouvert sur un type. Compter
+    par type y annonçait 76 quand la carte en annonçait 79 — trois marchés
+    invisibles, et une file qu'on croit finie alors qu'il reste à faire.
+    """
+    sortie = []
+    for objet, requete in ecran:
+        tranches = {r[0] for r in conn.execute(
+            "SELECT object_id FROM annotations WHERE object_type = ? "
+            "AND review_status <> 'jamais_relu'", (objet,))}
+        sortie += [{"objet": objet, "id": oid}
+                   for (oid,) in conn.execute(requete) if oid not in tranches]
+    return sortie
+
+
+def _premier_a_trancher(conn, ecran: tuple[tuple[str, str], ...]) -> Optional[dict]:
+    """La première ligne que personne n'a tranchée — la porte de « Commencer ».
+
+    Renvoie None quand tout est tranché : l'écran retombe alors sur la vue
+    d'ensemble, qui, elle, existe toujours.
+    """
+    file = a_trancher(conn, ecran)
+    return file[0] if file else None
+
+
 def relever(conn, commune: str, code_postal: str) -> list[dict]:
     """L'état de toutes les files. Aucune écriture, aucun effet de bord.
 
@@ -285,8 +345,114 @@ def relever(conn, commune: str, code_postal: str) -> list[dict]:
             ligne["reste"] = _un_nombre(conn, f.reste, f.params)
             ligne["fait"] = _un_nombre(conn, f.fait, f.params) if f.fait else None
             ligne["en_cours"] = _en_cours(conn, f.table)
+            ligne["premier"] = _premier_a_trancher(conn, f.ecran) if f.ecran else None
         except Exception as e:                       # table absente, colonne absente
-            ligne.update(reste=None, fait=None, en_cours=[], indisponible=str(e))
+            ligne.update(reste=None, fait=None, en_cours=[], premier=None,
+                         indisponible=str(e))
         ligne["derniere_passe"] = _derniere_passe(conn, f.steps)
         releve.append(ligne)
     return releve
+
+
+# ─── Le premier jour — ce qu'un bénévole peut faire en arrivant ──────────────
+# Lot D du chantier, 23/09/2026.
+#
+# Le constat qui l'a ouvert : les rôles emboîtés existent depuis le 21/09, mais
+# **un contributeur qui se connectait n'avait rien à faire qui compte**. Le seul
+# geste qui lui était ouvert écrivait dans `entities.validation_status`, que la
+# publication ne lisait pas. Il pouvait cliquer toute une soirée sans rien
+# changer, et rien ne le lui disait.
+#
+# Trois gestes, pas plus. Une liste de douze possibilités n'est pas un
+# accueil : c'est un menu de plus. Et chacun dit ce qu'il APPORTE — un bénévole
+# qui ne voit pas l'effet de son travail ne revient pas.
+
+@dataclass(frozen=True)
+class Geste_du_jour:
+    titre: str
+    pourquoi: str      # ce que ça apporte au dispositif, pas ce que ça fait au clic
+    route: str
+
+
+#: Par rôle, du plus simple au plus engageant. Les rôles sont EMBOÎTÉS : un
+#: validateur fait tout ce que fait un contributeur, donc sa liste ne répète pas
+#: la précédente, elle la prolonge — l'écran les enchaîne.
+PREMIER_JOUR = {
+    "contributor": (
+        Geste_du_jour(
+            titre="Corriger un nom, une adresse, une date",
+            pourquoi="Vous proposez ; un validateur confirme. Une correction "
+                     "garde votre nom dans l'historique de la fiche.",
+            route="/atelier/fiches"),
+        Geste_du_jour(
+            titre="Saisir une donnée lue dans un procès-verbal",
+            pourquoi="Elle entre en « probable » : elle ne part pas sur le site "
+                     "tant que personne ne l'a retenue. Rien ne peut casser.",
+            route="/atelier/saisie"),
+        Geste_du_jour(
+            titre="Lire une file et signaler ce qui cloche",
+            pourquoi="Repérer une ligne douteuse vaut déjà beaucoup : les "
+                     "validateurs ne peuvent pas tout relire.",
+            route="/atelier"),
+    ),
+    "validator": (
+        Geste_du_jour(
+            titre="Trancher un chiffre, preuve sous les yeux",
+            pourquoi="L'écran montre l'acte et le passage où le montant "
+                     "apparaît. C'est le geste qui change le site.",
+            route="/atelier"),
+        Geste_du_jour(
+            titre="Confirmer ou écarter un lien présumé",
+            pourquoi="Un détecteur propose, vous décidez. Rien n'est publié "
+                     "avant votre confirmation.",
+            route="/atelier/relations"),
+        Geste_du_jour(
+            titre="Poser un point au bon endroit sur la carte",
+            pourquoi="Un point posé à la main fait autorité : il remplace "
+                     "l'approximation du géocodeur.",
+            route="/atelier/geo"),
+    ),
+    "admin": (
+        Geste_du_jour(
+            titre="Inviter quelqu'un, et lui donner son rôle",
+            pourquoi="L'atelier n'a de sens qu'à plusieurs. Chaque rôle est "
+                     "décrit en une phrase au moment d'inviter.",
+            route="/atelier/comptes"),
+        Geste_du_jour(
+            titre="Générer un aperçu du site avant de publier",
+            pourquoi="L'aperçu est à vous : vous voyez l'effet des décisions "
+                     "sans rien mettre en ligne.",
+            route="/atelier/publication"),
+        Geste_du_jour(
+            titre="Lire le journal : qui a fait quoi",
+            pourquoi="C'est ce qui rend le travail collectif vérifiable, et "
+                     "ce qui permet de revenir sur une décision.",
+            route="/atelier/journal"),
+    ),
+}
+
+#: Les rôles, du moins au plus étendu — le miroir de `api_auth.ROLES`.
+ROLES_EMBOITES = ("contributor", "validator", "admin")
+
+
+def premier_jour(role: str) -> dict:
+    """Les TROIS gestes du premier jour pour `role`, et ce qu'il hérite.
+
+    Les rôles sont emboîtés, mais empiler neuf gestes devant un administrateur
+    qui arrive n'est plus un accueil : c'est un menu de plus, et c'est
+    exactement ce que ce lot devait supprimer. L'écran met en avant les trois
+    du rôle, et rappelle d'une ligne que le reste lui est ouvert aussi.
+
+    Un rôle inconnu rend une liste vide plutôt qu'une liste devinée : mieux
+    vaut un accueil absent qu'un accueil qui propose un geste refusé ensuite.
+    """
+    if role not in ROLES_EMBOITES:
+        return {"miens": [], "herites": []}
+    rang = ROLES_EMBOITES.index(role)
+    dire = lambda g, r: {"titre": g.titre, "pourquoi": g.pourquoi,
+                         "route": g.route, "role": r}
+    return {
+        "miens": [dire(g, role) for g in PREMIER_JOUR.get(role, ())],
+        "herites": [dire(g, r) for r in ROLES_EMBOITES[:rang]
+                    for g in PREMIER_JOUR.get(r, ())],
+    }
