@@ -1,407 +1,291 @@
 <script>
-  import { COMMUNE, COMMUNE_A, EPCI, EPCI_NB_AUTRES } from '$lib/instance.js'
+  // « Aujourd'hui » — la porte d'entrée de l'atelier depuis le 23/09/2026.
+  //
+  // Avant : une liste de 5 484 fiches `unverified`, triée par type et par nom.
+  // Rien n'y disait ce qu'on attendait de vous, ni combien il restait, ni si
+  // quelqu'un d'autre s'en occupait. Elle n'a pas disparu — c'est la seule
+  // porte vers les 22 783 fiches — mais elle est devenue une VUE EXPERTE
+  // (/atelier/fiches), et ce n'est plus par là qu'on arrive.
+  //
+  // Le registre des files vit dans `collectors/files.py`, pas ici : cette page
+  // n'invente aucune question et ne compte rien elle-même.
+  import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
-  import { auMoins } from '$lib/roles.js'
+  import { auMoins, LIBELLE_ROLE } from '$lib/roles.js'
   import { heureLocale } from '$lib/heure.js'
-  import { VERDICTS, VERDICT, FIABILITE, FIABILITE_AIDE } from '$lib/axes.js'
 
-  let data       = null
-  let stats      = {}
-  let loading    = true
-  let error      = ''
-  let avis       = ''      // ce qu'une action n'a pas pu faire, sans masquer la liste
-  $: tranche = auMoins($currentUser, 'validator')
-  let filter     = 'jamais_relu'
-  let typeFilter = ''
-  // Par défaut, l'atelier travaille sur la commune. Depuis l'élargissement de
-  // la collecte aux 15 communes de l'intercommunalité, la file contient plus
-  // de fiches C2 que C1 : sans ce défaut, on valide des commerces de Trèves en
-  // croyant traiter Lasalle.
-  let perimFilter = 'C1'
-  let offset     = 0
-  const LIMIT    = 50
+  let files   = []
+  let minutes = 10
+  let loading = true
+  let error   = ''
 
-  const TYPES    = ['person', 'business', 'association', 'place', 'service']
-
-  const PERIMETRES = [
-    { key: 'C1',   label: 'La commune',    tip: `${COMMUNE} — le cœur du projet` },
-    { key: 'C2',   label: 'Interco',       tip: `${EPCI} et ses ${EPCI_NB_AUTRES} autres communes membres. Collectées pour la comparaison, publiées seulement en agrégat.` },
-    { key: 'C3',   label: 'Supra',         tip: 'Préfecture, département, région, agences d\'État' },
-    { key: 'lien', label: 'Rattaché',      tip: "Hors du territoire mais lié à un acteur suivi — SCI d'élu, titulaire de marché" },
-    { key: '',     label: 'Tout',          tip: 'Tous périmètres confondus' },
-  ]
-
-  const PERIM_COLORS = {
-    C1: '#14556b', C2: '#9a6b12', C3: '#5b5b66', lien: '#7c3f58',
-  }
-
-  const TYPE_COLORS = {
-    person: '#7f1d1d', business: '#1d4ed8', association: '#065f46',
-    place: '#4c1d95', service: '#92400e',
-  }
-
-  onMount(() => { loadStats(); loadQueue() })
-
-  async function loadStats() {
+  onMount(async () => {
     try {
-      const res = await authFetch('/atelier/stats')
-      if (res.ok) stats = await res.json()
-    } catch {}
-  }
-
-  async function loadQueue() {
-    loading = true; error = ''
-    try {
-      const qs = new URLSearchParams({ status: filter, limit: LIMIT, offset })
-      if (typeFilter) qs.set('type', typeFilter)
-      if (perimFilter) qs.set('perimetre', perimFilter)
-      const res = await authFetch(`/atelier/workqueue?${qs}`)
+      const res = await authFetch('/atelier/files')
       if (!res.ok) throw new Error(`${res.status}`)
-      data = await res.json()
+      const d = await res.json()
+      files = d.files
+      minutes = d.reservation_minutes
     } catch (e) {
       error = e.message
     } finally {
       loading = false
     }
-  }
+  })
 
-  // Poser un verdict. Depuis le 21/09/2026 il est lu par la publication :
-  // « Écarter » retire vraiment la fiche du site — ce que l'ancien ✗ ne faisait
-  // pas. `statut_lu` : le verdict affiché dans la liste. La liste reste ouverte
-  // des heures ; si quelqu'un a tranché la fiche entre-temps, l'API refuse (409)
-  // au lieu d'écraser sa décision — et dit qui l'a prise.
-  async function setStatus(item, verdict) {
-    avis = ''
-    const res = await authFetch(`/atelier/entities/${item.id}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ verdict, statut_lu: item.verdict || 'jamais_relu' }),
-    })
-    if (res.ok) {
-      data.items = data.items.filter(e => e.id !== item.id)
-      data.total = Math.max(0, data.total - 1)
-      // La ligne quitte cette file : dire où elle est allée, et comment revenir.
-      avis = `« ${item.name} » → ${VERDICT[verdict].libelle}. ${VERDICT[verdict].effet}`
-        + (verdict !== 'jamais_relu' ? ' Pour revenir en arrière : onglet « '
-           + VERDICT[verdict].libelle + ' », « Remettre à relire ».' : '')
-      await loadStats()
-    } else if (res.status === 409) {
-      const d = (await res.json()).detail || {}
-      avis = `« ${item.name} » : ${d.message || 'le statut a changé entre-temps.'}`
-        + (d.par ? ` Par ${d.par}` : '') + (d.le ? `, le ${heureLocale(d.le)}` : '')
-        + '. Rien n\'a été écrasé ; la liste a été rechargée.'
-      await Promise.all([loadQueue(), loadStats()])
-    } else {
-      // Un échec passait sans un mot : la ligne restait, et rien ne disait pourquoi.
-      avis = `« ${item.name} » : l'enregistrement a échoué (${res.status}).`
-    }
-  }
+  $: aFaire  = files.filter(f => !f.experte)
+  $: expertes = files.filter(f => f.experte)
+  $: reste = aFaire.reduce((n, f) => n + (f.reste ?? 0), 0)
 
-  function changeFilter(s) { filter = s; offset = 0; loadQueue() }
-  function changeType(t)   { typeFilter = t; offset = 0; loadQueue() }
-  function changePerim(p)  { perimFilter = p; offset = 0; loadQueue() }
+  // Les milliers se séparent ici, sans passer par `Intl` : selon la version de
+  // Chrome et les données de locale présentes sur la machine — un VPS en sert
+  // parfois un jeu minimal — `toLocaleString('fr-FR')` rend « 1 128 » ou
+  // « 1128 ». Constaté à l'écran le 23/09/2026 sur cette page même, où
+  // l'en-tête séparait et pas les cartes. L'espace est insécable : un nombre
+  // ne se coupe pas en fin de ligne.
+  const nb = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 
-  function activite(item) {
-    if (item.type === 'business')    return item.naf_label || item.siren || ''
-    if (item.type === 'association') return item.asso_object || item.rna_id || ''
-    if (item.type === 'service')     return item.svc_category || ''
-    if (item.type === 'place')       return item.osm_value || ''
-    return ''
+  // ⭐ Un zéro ne s'affiche JAMAIS nu : il dit d'où il vient. Une file vide
+  // parce que le détecteur a cherché et n'a rien trouvé, et une file vide
+  // parce qu'il n'a jamais tourné ici, ne racontent pas la même chose — et
+  // c'est la seconde qui trompe, parce qu'elle a l'air d'un travail fini.
+  function raisonDuZero(f) {
+    const p = f.derniere_passe
+    if (!p) return "Aucune passe de collecte connue pour cette file : ce zéro "
+                 + "n'a jamais été mesuré ici."
+    const quand = p.le ? heureLocale(p.le) : 'à une date inconnue'
+    if (p.issue === 'error' || p.issue === 'timeout')
+      return `Le dernier passage de « ${p.collecteur} » (${quand}) a échoué : `
+           + `ce zéro dit l'échec, pas l'absence.`
+    return `« ${p.collecteur} » est passé ${quand} et n'a rien trouvé de neuf. `
+         + `Rien n'attend un geste pour l'instant.`
   }
 </script>
 
-<svelte:head><title>File de travail — Atelier {COMMUNE}</title></svelte:head>
+<svelte:head><title>Aujourd'hui — Atelier {COMMUNE}</title></svelte:head>
 
 <div class="page">
 
-  <!-- Header -->
-  <div class="header">
-    <div class="header-left">
-      <h1>File de travail</h1>
-      {#if stats.total !== undefined}
-        <span class="total">
-          {stats.perimetre?.C1?.toLocaleString('fr-FR') ?? '—'} {COMMUNE_A}
-          <span class="total-sub">sur {stats.total?.toLocaleString('fr-FR')} en base</span>
-        </span>
-      {/if}
-      <a class="tool-link" href="/atelier/geo">📍 Correction géoloc (top 150 exposées)</a>
+  <header class="entete">
+    <div>
+      <h1>Aujourd'hui</h1>
+      <p class="sous-titre">
+        Ce qui attend un regard sur {COMMUNE}.
+        {#if $currentUser}
+          Vous êtes <strong>{LIBELLE_ROLE[$currentUser.role] ?? $currentUser.role}</strong>.
+        {/if}
+      </p>
     </div>
-    <div class="stat-chips">
-      {#each VERDICTS as v}
-        <button class="chip" class:active={filter === v.cle} title={v.effet}
-                on:click={() => changeFilter(v.cle)}>
-          {v.libelle}
-          <span class="chip-count">{stats[v.cle] ?? 0}</span>
-        </button>
+    {#if !loading && !error}
+      <p class="compte-global">
+        <strong>{nb(reste)}</strong> à regarder
+      </p>
+    {/if}
+  </header>
+
+  {#if loading}
+    <p class="msg">Relevé des files…</p>
+  {:else if error}
+    <p class="msg erreur">Les files n'ont pas pu être relevées ({error}).</p>
+  {:else}
+
+    <div class="files">
+      {#each aFaire as f (f.cle)}
+        {@const ouvert = auMoins($currentUser, f.role_min)}
+        <section class="file" class:vide={f.reste === 0} class:ferme={!ouvert}>
+          <h2>{f.titre}</h2>
+          <p class="question">{f.question}</p>
+
+          {#if f.indisponible}
+            <p class="raison">
+              Cette file n'a pas pu être relevée sur cette base. Les autres ne
+              sont pas concernées.
+            </p>
+          {:else if f.reste === 0}
+            <p class="raison">{raisonDuZero(f)}</p>
+          {:else}
+            <p class="reste"><strong>{nb(f.reste)}</strong> en attente</p>
+          {/if}
+
+          {#if f.fait > 0}
+            <p class="avancement">{nb(f.fait)} déjà tranché{f.fait > 1 ? 's' : ''}.</p>
+          {/if}
+
+          <!-- « Repérer les chantiers en cours » est la demande d'origine : la
+               réservation existait depuis le premier lot, mais rien ne la
+               montrait en dehors de la file elle-même. -->
+          {#each f.en_cours as c}
+            <p class="en-cours">
+              {c.par} en a {c.combien} en cours
+              {#if c.depuis}depuis {heureLocale(c.depuis)}{/if}
+              <span class="expire">— la réservation retombe au bout de {minutes} min</span>
+            </p>
+          {/each}
+
+          <p class="geste">{f.geste}.</p>
+          <p class="effet">{f.effet}</p>
+
+          {#if ouvert && f.reste !== 0}
+            <a class="bouton" href={f.route}>Commencer</a>
+          {:else if ouvert}
+            <a class="bouton discret" href={f.route}>Regarder quand même</a>
+          {:else}
+            <!-- Lot D : ce qu'un rôle ne peut pas faire doit se VOIR, pas
+                 s'apprendre par un 403 qui parle de clé d'administration. -->
+            <p class="interdit">
+              Trancher ici demande le rôle
+              « {LIBELLE_ROLE[f.role_min] ?? f.role_min} ».
+              <a href={f.route}>Vous pouvez regarder la file</a>.
+            </p>
+          {/if}
+        </section>
       {/each}
     </div>
-  </div>
 
-  <!-- Filtre périmètre : quel territoire on traite -->
-  <div class="perim-bar">
-    <span class="perim-label">Périmètre</span>
-    {#each PERIMETRES as p}
-      <button class="perim-btn" class:active={perimFilter === p.key}
-              style="--pc:{PERIM_COLORS[p.key] ?? '#334155'}"
-              title={p.tip} on:click={() => changePerim(p.key)}>
-        {p.label}
-        {#if p.key && stats.perimetre?.[p.key] !== undefined}
-          <span class="perim-count">{stats.perimetre[p.key]}</span>
-        {/if}
-      </button>
+    {#each expertes as f (f.cle)}
+      <section class="experte">
+        <h2>{f.titre} <span class="etiquette">vue experte</span></h2>
+        <p>
+          {nb(f.reste)} fiches n'ont jamais été relues, sur {nb((f.reste ?? 0) + (f.fait ?? 0))}.
+          <strong>C'est normal, et ce n'est pas une tâche</strong> : une fiche
+          jamais relue continue d'être publiée si les règles l'admettent — sans
+          quoi le site se viderait. C'est la seule porte vers toutes les fiches.
+        </p>
+        <a class="bouton discret" href={f.route}>Ouvrir la liste complète</a>
+      </section>
     {/each}
-  </div>
 
-  <!-- Filtre type -->
-  <div class="type-bar">
-    <button class="type-btn" class:active={typeFilter === ''} on:click={() => changeType('')}>Tous</button>
-    {#each TYPES as t}
-      <button class="type-btn" class:active={typeFilter === t}
-              style="--tc:{TYPE_COLORS[t]}" on:click={() => changeType(t)}>{t}</button>
-    {/each}
-  </div>
-
-  {#if avis}<div class="avis" role="status">{avis}</div>{/if}
-  {#if $currentUser && !tranche}<div class="msg">Vous pouvez corriger les fiches (✏️). Vous proposez ; un validateur tranche.</div>{/if}
-
-  <!-- Table -->
-  {#if loading}
-    <div class="msg">Chargement…</div>
-  {:else if error}
-    <div class="msg error">Erreur : {error}</div>
-  {:else if data}
-    <div class="table-wrap">
-      <div class="table-meta">{data.total} résultat{data.total !== 1 ? 's' : ''}</div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th title="C1 la commune · C2 l'intercommunalité · C3 autorité supra-communale · lien rattaché à un acteur suivi">Périm.</th>
-            <th>Nom</th>
-            <th>Adresse</th>
-            <th>Activité / Objet</th>
-            <th>Responsable</th>
-            <th title="Website, téléphone, email">Contact</th>
-            <th title="Ce que la machine sait de la fiche — pas un jugement humain">Fiabilité</th>
-            <th title="Nombre de relations dans le graphe">Rel.</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each data.items as item (item.id)}
-            <tr>
-              <td>
-                <span class="type-badge" style="background:{TYPE_COLORS[item.type] ?? '#334155'}">
-                  {item.type}
-                </span>
-              </td>
-              <td>
-                {#if item.perimetre}
-                  <span class="perim-badge" style="--pc:{PERIM_COLORS[item.perimetre] ?? '#334155'}"
-                        title={item.commune ?? 'commune inconnue'}>{item.perimetre}</span>
-                {:else}
-                  <span class="perim-badge unset" title="non classé — relancer python3 -m collectors.run_all --step perimetre">?</span>
-                {/if}
-              </td>
-              <td class="name-cell">
-                <a href="/atelier/entite/{item.id}" class="entity-link">{item.name}</a>
-                {#if item.perimetre !== 'C1' && item.commune}
-                  <span class="commune-hint">{item.commune}</span>
-                {/if}
-              </td>
-              <td class="addr-cell">{item.address ?? '—'}</td>
-              <td class="detail-cell">{activite(item) || '—'}</td>
-              <td class="resp-cell">{item.responsible ?? '—'}</td>
-              <td class="contact-cell">
-                {#if item.website}
-                  <a href={item.website} target="_blank" rel="noopener" title={item.website}>🌐</a>
-                {/if}
-                {#if item.contacts_count > 0 && !item.website}
-                  <span title="{item.contacts_count} contact(s)">📋</span>
-                {/if}
-                {#if !item.website && !item.contacts_count}
-                  <span class="empty-contact">—</span>
-                {/if}
-              </td>
-              <td class="conf-cell">
-                <span class="conf conf-{item.confidence}" title={FIABILITE_AIDE[item.confidence] ?? ''}>
-                  {FIABILITE[item.confidence] ?? item.confidence ?? '—'}
-                </span>
-              </td>
-              <td class="center">{item.rel_count ?? 0}</td>
-              <td class="actions-cell">
-                <a href="/atelier/entite/{item.id}" class="act act-edit" title="Éditer">✏️</a>
-                {#if tranche}
-                  {#each VERDICTS.filter(v => v.cle !== filter) as v}
-                    <button class="act act-mot act-{v.cle}" title={v.effet}
-                            on:click={() => setStatus(item, v.cle)}>{v.geste}</button>
-                  {/each}
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-
-      {#if data.items.length === 0}
-        <div class="msg">Aucune entité dans cette file.</div>
-      {/if}
-
-      {#if data.total > offset + LIMIT}
-        <button class="load-more" on:click={() => { offset += LIMIT; loadQueue() }}>
-          Charger plus ({data.total - offset - LIMIT} restantes)
-        </button>
-      {/if}
-    </div>
   {/if}
 </div>
 
 <style>
+  /* Tailles et contrastes choisis pour une salle communale et un portable
+     qu'on ne choisit pas : rien sous 13 px, rien en dessous de #94a3b8 sur le
+     fond sombre. Le reste de l'atelier est encore en gris 11 px — lot F. */
   .page {
-    padding: .9rem 1.1rem;
-    height: 100%;
+    padding: 1.2rem 1.4rem 2rem;
+    max-width: 68rem;
     display: flex;
     flex-direction: column;
-    gap: .6rem;
+    gap: 1.1rem;
   }
 
-  .header {
+  .entete {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
     flex-wrap: wrap;
   }
-  .header-left { display: flex; align-items: baseline; gap: .65rem; }
-  h1 { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
-  .total { font-size: .75rem; color: #64748b; }
+  h1 { font-size: 1.5rem; font-weight: 700; color: #f1f5f9; margin: 0; }
+  .sous-titre { font-size: .95rem; color: #94a3b8; margin: .3rem 0 0; }
+  .sous-titre strong { color: #cbd5e1; font-weight: 600; }
+  .compte-global { font-size: .95rem; color: #94a3b8; margin: 0; }
+  .compte-global strong { font-size: 1.5rem; color: #f1f5f9; }
 
-  .stat-chips { display: flex; gap: .3rem; flex-wrap: wrap; }
-  .chip {
-    display: flex; align-items: center; gap: .3rem;
-    padding: .25rem .6rem; border-radius: 999px;
-    border: 1px solid #334155; background: #1e293b;
-    color: #94a3b8; font-size: .73rem; cursor: pointer; transition: all .12s;
-  }
-  .chip.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
-  .chip:hover:not(.active) { border-color: #475569; color: #e2e8f0; }
-  .chip-count {
-    background: rgba(255,255,255,.15); border-radius: 999px;
-    padding: 0 5px; font-size: .68rem; font-weight: 700;
+  .msg { font-size: .95rem; color: #94a3b8; }
+  .msg.erreur { color: #fca5a5; }
+
+  .files {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: .9rem;
   }
 
-  .type-bar { display: flex; gap: .25rem; flex-wrap: wrap; }
-  .type-btn {
-    padding: .2rem .5rem; border-radius: 4px;
-    border: 1px solid #334155; background: transparent;
-    color: #94a3b8; font-size: .72rem; cursor: pointer; transition: all .12s;
+  .file {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    padding: 1rem 1.1rem 1.1rem;
+    border: 1px solid #334155;
+    border-radius: .5rem;
+    background: #111a2b;
   }
-  .type-btn.active { background: var(--tc, #3b82f6); border-color: var(--tc, #3b82f6); color: #fff; }
-  .type-btn:hover:not(.active) { border-color: #475569; color: #e2e8f0; }
+  .file.vide { background: #0f1626; border-color: #263449; }
+  .file.ferme { opacity: .92; }
 
-  .table-wrap { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: .4rem; }
-  .table-meta { font-size: .73rem; color: #64748b; padding: .15rem 0; }
-
-  table { width: 100%; border-collapse: collapse; font-size: .78rem; }
-
-  th {
-    text-align: left; padding: .38rem .5rem;
-    color: #64748b; font-size: .69rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .04em;
-    border-bottom: 1px solid #334155; white-space: nowrap;
-    cursor: default;
+  .file h2 {
+    font-size: .8rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin: 0;
   }
-
-  td { padding: .4rem .5rem; border-bottom: 1px solid #1e293b; vertical-align: middle; color: #cbd5e1; }
-  tr:hover td { background: #1e293b; }
-
-  .perim-bar {
-    display: flex; align-items: center; gap: .4rem;
-    margin-bottom: .6rem; flex-wrap: wrap;
-  }
-  .perim-label {
-    font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
-    opacity: .6; margin-right: .3rem;
-  }
-  .perim-btn {
-    border: 1px solid var(--pc); background: transparent; color: var(--pc);
-    border-radius: 999px; padding: .18rem .6rem; font-size: .78rem;
-    cursor: pointer; display: inline-flex; align-items: center; gap: .35rem;
-  }
-  .perim-btn.active { background: var(--pc); color: #fff; }
-  .perim-count { font-variant-numeric: tabular-nums; opacity: .8; font-size: .72rem; }
-  .perim-badge {
-    display: inline-block; min-width: 2.1rem; text-align: center;
-    background: var(--pc); color: #fff; border-radius: 4px;
-    padding: .1rem .3rem; font-size: .68rem; font-weight: 600;
-  }
-  .perim-badge.unset { background: #b91c1c; }
-  .commune-hint {
-    display: block; font-size: .7rem; opacity: .65; margin-top: .1rem;
-  }
-  .total-sub { opacity: .6; font-weight: 400; }
-
-  .type-badge {
-    display: inline-block; padding: 1px 6px; border-radius: 3px;
-    font-size: .66rem; font-weight: 600; color: #fff; white-space: nowrap;
+  .question {
+    font-size: 1.12rem;
+    line-height: 1.35;
+    color: #f1f5f9;
+    margin: 0;
   }
 
-  .name-cell { max-width: 180px; }
-  .entity-link {
-    color: #93c5fd; font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+  .reste { font-size: .95rem; color: #cbd5e1; margin: 0; }
+  .reste strong { font-size: 1.6rem; color: #f8fafc; font-weight: 700; }
+
+  /* Un zéro avec sa raison : lisible, pas une note de bas de page. */
+  .raison { font-size: .9rem; line-height: 1.45; color: #94a3b8; margin: 0; }
+
+  .avancement { font-size: .85rem; color: #94a3b8; margin: 0; }
+
+  .en-cours {
+    font-size: .85rem;
+    color: #fcd34d;
+    background: #2a2412;
+    border-radius: .3rem;
+    padding: .35rem .5rem;
+    margin: 0;
   }
-  .entity-link:hover { color: #bfdbfe; text-decoration: underline; }
+  .expire { color: #a1893f; }
 
-  .addr-cell   { max-width: 160px; color: #94a3b8; font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .detail-cell { max-width: 180px; color: #94a3b8; font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .resp-cell   { max-width: 120px; color: #cbd5e1; font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .geste { font-size: .95rem; color: #cbd5e1; margin: .25rem 0 0; }
+  .effet { font-size: .85rem; line-height: 1.45; color: #94a3b8; margin: 0; }
 
-  .contact-cell { text-align: center; font-size: .88rem; }
-  .empty-contact { color: #334155; }
-
-  .conf { font-size: .7rem; border-radius: 3px; padding: 1px 5px; }
-  .conf-verified   { color: #4ade80; background: #052e16; }
-  .conf-probable   { color: #fbbf24; background: #451a03; }
-  .conf-hypothesis { color: #94a3b8; background: #1e293b; }
-
-  .center { text-align: center; color: #475569; }
-
-  .actions-cell { display: flex; gap: .2rem; align-items: center; white-space: nowrap; }
-
-  .act {
-    width: 26px; height: 26px; border-radius: 4px;
-    border: 1px solid #334155; font-size: .78rem; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; transition: all .12s;
+  .bouton {
+    align-self: flex-start;
+    margin-top: .45rem;
+    padding: .45rem .9rem;
+    border-radius: .3rem;
+    background: #3b82f6;
+    color: #fff;
+    font-size: .92rem;
+    font-weight: 600;
     text-decoration: none;
   }
-  .act-edit   { background: #1e293b; color: #e2e8f0; font-size: .82rem; }
-  .act-edit:hover { background: #334155; border-color: #475569; }
-  /* Des mots, plus des ✓ ✗ nus : on sait ce que fait le bouton avant d'appuyer. */
-  .act-mot { width: auto; padding: 0 .45rem; font-size: .72rem; }
-  .act-jamais_relu { background: #1e293b; color: #cbd5e1; }
-  .act-jamais_relu:hover { background: #334155; border-color: #475569; }
-  .act-a_revoir { background: #1e3a5f; color: #93c5fd; }
-  .act-a_revoir:hover { background: #1d4ed8; border-color: #1d4ed8; }
-  .act-retenu  { background: #052e16; color: #4ade80; }
-  .act-retenu:hover { background: #166534; border-color: #166534; }
-  .act-ecarte  { background: #450a0a; color: #f87171; }
-  .act-ecarte:hover { background: #7f1d1d; border-color: #7f1d1d; }
-
-  .msg { padding: 2rem; text-align: center; color: #64748b; font-size: .85rem; }
-  .msg.error { color: #f87171; }
-  .avis {
-    margin: .25rem 0 .5rem; padding: .5rem .75rem;
-    background: #3b2506; border: 1px solid #b45309; border-radius: 6px;
-    color: #fde68a; font-size: .82rem;
+  .bouton:hover { background: #2563eb; }
+  .bouton.discret {
+    background: transparent;
+    color: #93c5fd;
+    border: 1px solid #334155;
   }
+  .bouton.discret:hover { background: #1e293b; }
 
-  .load-more {
-    align-self: center; margin: .4rem 0;
-    padding: .4rem 1.1rem; border: 1px solid #334155;
-    border-radius: 6px; background: #1e293b; color: #94a3b8;
-    font-size: .78rem; cursor: pointer;
+  .interdit { font-size: .85rem; line-height: 1.45; color: #94a3b8; margin: .25rem 0 0; }
+  .interdit a { color: #93c5fd; }
+
+  .experte {
+    padding: 1rem 1.1rem;
+    border: 1px dashed #334155;
+    border-radius: .5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
   }
-  .load-more:hover { border-color: #475569; color: #e2e8f0; }
+  .experte h2 {
+    font-size: .95rem; font-weight: 700; color: #cbd5e1; margin: 0;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .etiquette {
+    font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+    color: #94a3b8; border: 1px solid #334155; border-radius: .2rem;
+    padding: .1rem .35rem; font-weight: 600;
+  }
+  .experte p { font-size: .9rem; line-height: 1.5; color: #94a3b8; margin: 0; }
+  .experte strong { color: #cbd5e1; }
+
+  /* Lot F en avance sur ce seul écran : à 820 px les cartes tiennent encore. */
+  @media (max-width: 640px) {
+    .page { padding: 1rem .9rem 2rem; }
+    .files { grid-template-columns: 1fr; }
+  }
 </style>

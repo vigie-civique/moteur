@@ -62,11 +62,18 @@
 
   // `min` : le rôle à partir duquel la page sert à quelque chose. L'API tient
   // le droit ; le menu évite seulement d'ouvrir une page qui refuserait tout.
+  // 23/09/2026 — le menu suit les files (`collectors/files.py`). Avant, il
+  // ouvrait sur la liste des 5 484 fiches, ne nommait aucune des files de
+  // travail, et deux d'entre elles n'y figuraient pas du tout : `/atelier/geo`
+  // existait sans entrée, et les liens présumés n'avaient aucune page.
   const NAV = [
-    { href: '/atelier',                        label: 'File de travail' },
-    { href: '/atelier/donnees',                label: 'Données importées' },
+    { href: '/atelier',                        label: "Aujourd'hui" },
+    { href: '/atelier/relations',              label: 'Liens présumés' },
+    { href: '/atelier/queue/websites',         label: 'Adresses de sites' },
+    { href: '/atelier/geo',                    label: 'Points sur la carte' },
+    { href: '/atelier/donnees',                label: 'Chiffres à confirmer' },
+    { href: '/atelier/fiches',                 label: 'Toutes les fiches' },
     { href: '/atelier/saisie',                 label: 'Saisir une donnée' },
-    { href: '/atelier/queue/websites',         label: '→ Websites candidats' },
     { href: '/atelier/analyses',               label: 'Analyses croisées', min: 'validator' },
     { href: '/atelier/ia',                     label: 'Recherche IA' },
     { href: '/atelier/publication',            label: 'Publication' },

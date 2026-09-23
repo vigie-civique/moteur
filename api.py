@@ -39,6 +39,8 @@ from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
 from collectors.verdict import JAMAIS_RELU, OBJETS, VERDICTS, verdict_de
+from collectors.files import (GEO_A_FAIRE, GEO_DEPUIS, GEO_ETAT,
+                              RESERVATION_MINUTES, geo_params, relever)
 
 # Boîte englobante de la commune, telle que déclarée par l'instance.
 COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
@@ -1112,9 +1114,10 @@ def candidates(
 
     conn = get_db()
     try:
-        return rows(conn, f"""
+        lignes = rows(conn, f"""
             SELECT rc.id, rc.relation_type, rc.confidence, rc.signal,
                    rc.signal_detail, rc.score, rc.review_status, rc.created_at,
+                   rc.locked_by, rc.locked_at,
                    f.id AS from_id, f.name AS from_name, f.type AS from_type,
                    t.id AS to_id,   t.name AS to_name,   t.type AS to_type
             FROM relation_candidates rc
@@ -1123,6 +1126,13 @@ def candidates(
             {where}
             ORDER BY rc.score DESC
         """, params)
+        # La réservation était lisible sur la file des sites et pas ici, alors
+        # que les deux tables la portent et que le même endpoint la pose : un
+        # éditeur ne voyait jamais qu'un lien était déjà pris (23/09/2026).
+        for ligne in lignes:
+            ligne["reservation"] = _reservation_active(ligne)
+            del ligne["locked_by"], ligne["locked_at"]
+        return lignes
     finally:
         conn.close()
 
@@ -1718,6 +1728,30 @@ def atelier_stats(user=Depends(require_auth)):
         return result
     finally:
         conn.close()
+
+# ─── /api/atelier/files ───────────────────────────────────────────────────────
+
+@app.get("/api/atelier/files")
+def atelier_files(user=Depends(require_auth)):
+    """« Aujourd'hui » : les files de travail, leur reste, et ce qui est en cours.
+
+    Le registre vit dans `collectors/files.py` — question en français, geste,
+    effet sur le site, et les collecteurs qui alimentent chaque file. Cet
+    endpoint ne fait que le relever.
+
+    Toutes les files sont renvoyées, y compris celles qu'un contributeur ne peut
+    pas trancher : ce qu'on ne peut pas faire doit se VOIR, pas s'apprendre par
+    un 403 (lot D). `role_min` accompagne donc chaque ligne, et l'écran la
+    présente sans son bouton plutôt que de la cacher.
+    """
+    from collectors.config import CODE_POSTAL, COMMUNE_NAME
+    conn = get_db()
+    try:
+        return {"files": relever(conn, COMMUNE_NAME, CODE_POSTAL),
+                "reservation_minutes": RESERVATION_MINUTES}
+    finally:
+        conn.close()
+
 
 # ─── /api/atelier/workqueue ────────────────────────────────────────────────────
 
@@ -3823,7 +3857,10 @@ def rag_ask(body: dict = Body(...), user=Depends(require_auth)):
 # Claim queue : lock mou sur un item de validation pour éviter le double-traitement.
 # Expiration : 10 minutes. Utilise locked_by + locked_at sur relation_candidates ou entity_websites.
 
-_CLAIM_EXPIRES_MIN = 10   # minutes avant qu'un claim expire
+# La durée vit dans `collectors/files.py` : le relevé des files s'en sert pour
+# dire « en cours », et poser la réservation ici avec un autre nombre ferait
+# apparaître un chantier que plus personne ne tient (23/09/2026).
+_CLAIM_EXPIRES_MIN = RESERVATION_MINUTES
 
 
 class ClaimRequest(BaseModel):
@@ -3958,36 +3995,31 @@ def geo_review(limit: int = Query(150, ge=1, le=500), user=Depends(require_auth)
     from collectors.config import CODE_POSTAL, COMMUNE_NAME
     conn = get_db()
     try:
-        items = rows(conn, """
+        # Le prédicat et l'état viennent de `collectors/files.py` : le compte
+        # affiché sur « Aujourd'hui » et cette liste sont la MÊME définition.
+        # Avant le 23/09/2026, `geo_status` se calculait ici en Python, et rien
+        # n'aurait empêché un compte écrit ailleurs de dire autre chose.
+        items = rows(conn, f"""
             SELECT e.id, e.type, e.name, e.address, e.lat, e.lng,
                    e.geocode_source, e.geocode_score,
+                   ({GEO_ETAT}) AS geo_etat,
+                   CASE WHEN {GEO_A_FAIRE} THEN 1 ELSE 0 END AS a_faire,
                    ( (SELECT COUNT(*) FROM financial_flows f WHERE f.from_id=e.id OR f.to_id=e.id)*3
                    + (SELECT COUNT(*) FROM marches_publics m WHERE m.titulaire_id=e.id OR m.acheteur_id=e.id)*3
                    + MIN((SELECT COUNT(*) FROM relations r WHERE r.from_id=e.id OR r.to_id=e.id),12)
                    + CASE WHEN e.type='service' THEN 2 ELSE 0 END ) AS expo
-            FROM entities e
-            WHERE e.confidence IN ('verified','confirmed')
-              AND e.type IN ('business','association','service','place')
-              AND (e.commune = ?
-                   OR UPPER(e.address) LIKE '%' || UPPER(?) || '%'
-                   OR e.address LIKE '%' || ? || '%')
-              AND e.name NOT LIKE 'Commission %'
-              AND e.name NOT LIKE 'Conseil %'
-            ORDER BY expo DESC
-        """, (COMMUNE_NAME, COMMUNE_NAME, CODE_POSTAL))
+            {GEO_DEPUIS}
+            ORDER BY a_faire DESC, expo DESC
+            LIMIT ?
+        """, (*geo_params(COMMUNE_NAME, CODE_POSTAL), limit))
+        # `geo_status` reste servi sous son ancien nom et ses anciennes valeurs :
+        # la page `/atelier/geo` les lit, et deux vocabulaires d'un coup, c'est
+        # un écran cassé pour une amélioration de nommage.
+        ANCIENS = {"absent": "missing", "pose_a_la_main": "ok_manual",
+                   "approximatif": "imprecise", "sur": "ok"}
         for r in items:
-            if r["lat"] is None:
-                r["geo_status"] = "missing"
-            elif r["geocode_source"] == "manual":
-                r["geo_status"] = "ok_manual"
-            elif (r["geocode_score"] or 0) < 0.6 or r["geocode_source"] in ("osm", "ban", None):
-                r["geo_status"] = "imprecise"
-            else:
-                r["geo_status"] = "ok"
-        # à corriger (missing/imprecise) d'abord, par exposition décroissante
-        to_fix = lambda r: 0 if r["geo_status"] in ("missing", "imprecise") else 1
-        items.sort(key=lambda r: (to_fix(r), -r["expo"]))
-        return items[:limit]
+            r["geo_status"] = ANCIENS[r["geo_etat"]]
+        return items
     finally:
         conn.close()
 
