@@ -26,8 +26,17 @@ CREATE TABLE IF NOT EXISTS entities (
     -- naissait donc lasalloise, et comme le tag n'est jamais écrasé, la
     -- corriger après coup ne faisait rien. Trois incidents en sont sortis.
     commune     TEXT,
+    -- Ce que la MACHINE sait de la fiche — pas un jugement humain. Le défaut
+    -- `verified` vient de `collectors/db.py::upsert_entity` : « vérifié » y veut
+    -- dire « écrit par un script ». Le jugement humain est un VERDICT, dans
+    -- `annotations` (object_type = 'entity') — cf. collectors/verdict.py.
     confidence  TEXT DEFAULT 'verified'
                      CHECK(confidence IN ('verified','confirmed','probable','hypothesis')),
+    -- Comment la fiche est entrée : institutionnel (un registre l'atteste),
+    -- verbatim (lue dans un document), atelier (saisie à la main). SANS défaut :
+    -- une fiche sans preuve d'origine doit se voir. Déduite par
+    -- scripts/classer_origine.py, écrite `atelier` par collectors/saisies.py.
+    origine     TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
     -- Renseignées par le géocodeur et par scripts/classer_perimetre.py. Elles
     -- manquaient au schéma publié alors que le script de publication les
     -- interroge : sur une base neuve, la publication échouait sans que rien
@@ -50,6 +59,11 @@ CREATE TABLE IF NOT EXISTS entities (
     -- sur « no such column: validation_status ». Constaté le 20/08/2026 sur
     -- Lasalle-v3, Saillans et Brassac-v2 : les trois. Seule l'instance dont la
     -- base venait de la production fonctionnait, ce qui masquait le défaut.
+    -- GELÉE depuis le 21/09/2026 : plus rien ne l'écrit. Aucune étape de
+    -- publication ne l'a jamais lue — 22 783 fiches `unverified` sur les trois
+    -- instances, et le ✓ de l'atelier sans effet sur le site. Le verdict d'une
+    -- fiche est une décision (`annotations`). Colonne gardée : les bases
+    -- existantes la portent, et `scripts/migrer_verdicts.py` la lit une fois.
     validation_status TEXT DEFAULT 'unverified',
     responsible       TEXT,
     -- Coordonnées projetées (Lambert-93) et qualité du géocodage.
@@ -355,9 +369,13 @@ CREATE INDEX IF NOT EXISTS idx_flows_type    ON financial_flows(type);
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS annotations (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    object_type   TEXT    NOT NULL,           -- deliberation | flow | marche
+    -- Les DÉCISIONS de l'atelier : ce qu'un humain a dit d'un objet publiable.
+    -- Absence de ligne = jamais relu. Depuis le 21/09/2026 : fiches et relations
+    -- en plus des trois types importés, et verdicts en français. Les anciens
+    -- mots (pending / validated / rejected) restent lus — cf. collectors/verdict.py.
+    object_type   TEXT    NOT NULL,           -- entity | relation | deliberation | flow | marche
     object_id     INTEGER NOT NULL,
-    review_status TEXT    NOT NULL DEFAULT 'pending',  -- pending | validated | rejected
+    review_status TEXT    NOT NULL DEFAULT 'jamais_relu',  -- jamais_relu | retenu | a_revoir | ecarte
     confidence    TEXT,                        -- verified | confirmed | probable | hypothesis
     note          TEXT,
     reviewed_by   TEXT,

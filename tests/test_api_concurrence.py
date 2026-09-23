@@ -83,23 +83,27 @@ class TestStatut:
         eid = atelier["fiche"]()
         r1 = atelier["en_tant_que"](UN).patch(
             f"/api/atelier/entities/{eid}/status",
-            json={"validation_status": "verified", "statut_lu": "unverified"})
+            json={"verdict": "retenu", "statut_lu": "jamais_relu"})
         assert r1.status_code == 200
 
         r2 = atelier["en_tant_que"](DEUX).patch(
             f"/api/atelier/entities/{eid}/status",
-            json={"validation_status": "rejected", "statut_lu": "unverified"})
+            json={"verdict": "ecarte", "statut_lu": "jamais_relu"})
         assert r2.status_code == 409
         detail = r2.json()["detail"]
         assert detail["par"] == UN["email"]
-        assert detail["actuel"] == "verified"
-        statut, _ = atelier["sql"]("SELECT validation_status FROM entities WHERE id=?", (eid,))
-        assert statut[0]["validation_status"] == "verified"
+        assert detail["actuel"] == "retenu"
+        # Le verdict est une DÉCISION, là où la publication la lit — plus la
+        # colonne `validation_status`, que rien ne lisait.
+        statut, _ = atelier["sql"](
+            "SELECT review_status FROM annotations WHERE object_type='entity' "
+            "AND object_id=?", (eid,))
+        assert statut[0]["review_status"] == "retenu"
 
     def test_sans_statut_lu_un_script_ecrit_toujours(self, atelier):
         eid = atelier["fiche"]()
         r = atelier["en_tant_que"](UN).patch(
-            f"/api/atelier/entities/{eid}/status", json={"validation_status": "reviewing"})
+            f"/api/atelier/entities/{eid}/status", json={"verdict": "a_revoir"})
         assert r.status_code == 200
 
 

@@ -30,7 +30,7 @@ SCHEMA = RACINE / "db" / "schema.sql"
 ATTENDU = {
     "entities": {"id", "type", "name", "commune", "confidence", "perimetre",
                  "name_norm", "geocode_source", "validation_status",
-                 "responsible", "x_l93", "y_l93", "geocode_score"},
+                 "responsible", "x_l93", "y_l93", "geocode_score", "origine"},
     "businesses": {"entity_id", "siren", "naf_code", "pappers_fetched_at",
                    "pappers_raw"},
     "associations": {"entity_id", "rna_id", "siren"},

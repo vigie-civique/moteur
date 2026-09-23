@@ -4,6 +4,7 @@
   import { authFetch, currentUser } from '$lib/stores/auth.js'
   import { auMoins } from '$lib/roles.js'
   import { heureLocale } from '$lib/heure.js'
+  import { VERDICTS, VERDICT, FIABILITE, FIABILITE_AIDE } from '$lib/axes.js'
 
   let data       = null
   let stats      = {}
@@ -11,7 +12,7 @@
   let error      = ''
   let avis       = ''      // ce qu'une action n'a pas pu faire, sans masquer la liste
   $: tranche = auMoins($currentUser, 'validator')
-  let filter     = 'unverified'
+  let filter     = 'jamais_relu'
   let typeFilter = ''
   // Par défaut, l'atelier travaille sur la commune. Depuis l'élargissement de
   // la collecte aux 15 communes de l'intercommunalité, la file contient plus
@@ -21,7 +22,6 @@
   let offset     = 0
   const LIMIT    = 50
 
-  const STATUSES = ['draft', 'unverified', 'reviewing']
   const TYPES    = ['person', 'business', 'association', 'place', 'service']
 
   const PERIMETRES = [
@@ -36,21 +36,9 @@
     C1: '#14556b', C2: '#9a6b12', C3: '#5b5b66', lien: '#7c3f58',
   }
 
-  const STATUS_LABELS = {
-    draft: 'Brouillon', unverified: 'Non vérifié',
-    reviewing: 'En révision', verified: 'Validé',
-    published: 'Publié', rejected: 'Rejeté',
-  }
-
   const TYPE_COLORS = {
     person: '#7f1d1d', business: '#1d4ed8', association: '#065f46',
     place: '#4c1d95', service: '#92400e',
-  }
-
-  const CONF_TIPS = {
-    verified:   'Source officielle (SIRENE, RNA, délibérations)',
-    probable:   'Déduit par croisement de sources',
-    hypothesis: 'Supposé — à vérifier',
   }
 
   onMount(() => { loadStats(); loadQueue() })
@@ -78,19 +66,24 @@
     }
   }
 
-  // `statut_lu` : le statut affiché dans la liste. La liste reste ouverte des
-  // heures ; si quelqu'un a tranché la fiche entre-temps, l'API refuse (409)
+  // Poser un verdict. Depuis le 21/09/2026 il est lu par la publication :
+  // « Écarter » retire vraiment la fiche du site — ce que l'ancien ✗ ne faisait
+  // pas. `statut_lu` : le verdict affiché dans la liste. La liste reste ouverte
+  // des heures ; si quelqu'un a tranché la fiche entre-temps, l'API refuse (409)
   // au lieu d'écraser sa décision — et dit qui l'a prise.
-  async function setStatus(item, validation_status) {
+  async function setStatus(item, verdict) {
     avis = ''
     const res = await authFetch(`/atelier/entities/${item.id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ validation_status,
-                             statut_lu: item.validation_status || 'unverified' }),
+      body: JSON.stringify({ verdict, statut_lu: item.verdict || 'jamais_relu' }),
     })
     if (res.ok) {
       data.items = data.items.filter(e => e.id !== item.id)
       data.total = Math.max(0, data.total - 1)
+      // La ligne quitte cette file : dire où elle est allée, et comment revenir.
+      avis = `« ${item.name} » → ${VERDICT[verdict].libelle}. ${VERDICT[verdict].effet}`
+        + (verdict !== 'jamais_relu' ? ' Pour revenir en arrière : onglet « '
+           + VERDICT[verdict].libelle + ' », « Remettre à relire ».' : '')
       await loadStats()
     } else if (res.status === 409) {
       const d = (await res.json()).detail || {}
@@ -134,10 +127,11 @@
       <a class="tool-link" href="/atelier/geo">📍 Correction géoloc (top 150 exposées)</a>
     </div>
     <div class="stat-chips">
-      {#each STATUSES as s}
-        <button class="chip" class:active={filter === s} on:click={() => changeFilter(s)}>
-          {STATUS_LABELS[s]}
-          {#if stats[s] !== undefined}<span class="chip-count">{stats[s]}</span>{/if}
+      {#each VERDICTS as v}
+        <button class="chip" class:active={filter === v.cle} title={v.effet}
+                on:click={() => changeFilter(v.cle)}>
+          {v.libelle}
+          <span class="chip-count">{stats[v.cle] ?? 0}</span>
         </button>
       {/each}
     </div>
@@ -189,7 +183,7 @@
             <th>Activité / Objet</th>
             <th>Responsable</th>
             <th title="Website, téléphone, email">Contact</th>
-            <th title="Qualité de la source de données">Qualité source</th>
+            <th title="Ce que la machine sait de la fiche — pas un jugement humain">Fiabilité</th>
             <th title="Nombre de relations dans le graphe">Rel.</th>
             <th>Actions</th>
           </tr>
@@ -231,19 +225,18 @@
                 {/if}
               </td>
               <td class="conf-cell">
-                <span class="conf conf-{item.confidence}" title={CONF_TIPS[item.confidence] ?? ''}>
-                  {item.confidence ?? '—'}
+                <span class="conf conf-{item.confidence}" title={FIABILITE_AIDE[item.confidence] ?? ''}>
+                  {FIABILITE[item.confidence] ?? item.confidence ?? '—'}
                 </span>
               </td>
               <td class="center">{item.rel_count ?? 0}</td>
               <td class="actions-cell">
                 <a href="/atelier/entite/{item.id}" class="act act-edit" title="Éditer">✏️</a>
                 {#if tranche}
-                  {#if filter !== 'reviewing'}
-                    <button class="act act-review" on:click={() => setStatus(item, 'reviewing')} title="Mettre en révision">→</button>
-                  {/if}
-                  <button class="act act-ok"  on:click={() => setStatus(item, 'verified')} title="Valider">✓</button>
-                  <button class="act act-ko"  on:click={() => setStatus(item, 'rejected')} title="Rejeter">✗</button>
+                  {#each VERDICTS.filter(v => v.cle !== filter) as v}
+                    <button class="act act-mot act-{v.cle}" title={v.effet}
+                            on:click={() => setStatus(item, v.cle)}>{v.geste}</button>
+                  {/each}
                 {/if}
               </td>
             </tr>
@@ -385,12 +378,16 @@
   }
   .act-edit   { background: #1e293b; color: #e2e8f0; font-size: .82rem; }
   .act-edit:hover { background: #334155; border-color: #475569; }
-  .act-review { background: #1e3a5f; color: #93c5fd; }
-  .act-review:hover { background: #1d4ed8; border-color: #1d4ed8; }
-  .act-ok  { background: #052e16; color: #4ade80; }
-  .act-ok:hover { background: #166534; border-color: #166534; }
-  .act-ko  { background: #450a0a; color: #f87171; }
-  .act-ko:hover { background: #7f1d1d; border-color: #7f1d1d; }
+  /* Des mots, plus des ✓ ✗ nus : on sait ce que fait le bouton avant d'appuyer. */
+  .act-mot { width: auto; padding: 0 .45rem; font-size: .72rem; }
+  .act-jamais_relu { background: #1e293b; color: #cbd5e1; }
+  .act-jamais_relu:hover { background: #334155; border-color: #475569; }
+  .act-a_revoir { background: #1e3a5f; color: #93c5fd; }
+  .act-a_revoir:hover { background: #1d4ed8; border-color: #1d4ed8; }
+  .act-retenu  { background: #052e16; color: #4ade80; }
+  .act-retenu:hover { background: #166534; border-color: #166534; }
+  .act-ecarte  { background: #450a0a; color: #f87171; }
+  .act-ecarte:hover { background: #7f1d1d; border-color: #7f1d1d; }
 
   .msg { padding: 2rem; text-align: center; color: #64748b; font-size: .85rem; }
   .msg.error { color: #f87171; }

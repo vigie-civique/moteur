@@ -46,6 +46,7 @@ from collectors.config import DB_PATH   # nommée dans la config
 # qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
 # seuil couvrait le moins.
 from collectors.config import STEP_META  # noqa: E402
+from collectors.verdict import ecarte, verdict_de  # noqa: E402
 # Ce que ce site EST, pour un lecteur qui y arrive sans rien savoir. Publié
 # DANS LES DONNÉES et pas seulement dans le gabarit : une mention qui
 # n'existe que dans la page disparaît de tout ce qui n'est pas la page —
@@ -284,6 +285,11 @@ def nettoyer_titre_evenement(titre: str | None) -> str:
 # Les corrections ne sont PAS écrites dans les tables sources (règle n°1 :
 # jamais écraser). Elles sont appliquées ici, à la sortie, sur une copie.
 
+# Depuis le 21/09/2026 la table porte aussi le verdict des FICHES (`entity`) et
+# des RELATIONS (`relation`), lus plus bas dans `build_snapshot`. Jusque-là le
+# jugement d'une fiche vivait dans `entities.validation_status`, que rien ici ne
+# lisait : cf. `collectors/verdict.py`.
+#
 # `annotations.object_type` ↔ table source.
 TYPES_REVUS = {
     "deliberation": ("deliberation", "conseil_municipal", "délibérations_cc", "pv_cc"),
@@ -396,7 +402,10 @@ def charger_revue(conn) -> dict[str, dict[int, dict]]:
         except (json.JSONDecodeError, TypeError):
             corr = {}
         revue[a["object_type"]][a["object_id"]] = {
-            "statut": a["review_status"],
+            # Normalisé : une base non migrée garde `rejected` ou `validated`,
+            # un export d'avant le 21/09 aussi. Un mot inconnu ne retire rien —
+            # retirer du site exige que quelqu'un l'ait décidé.
+            "statut": verdict_de(a["review_status"]) or "jamais_relu",
             "confidence": a["confidence"],
             "note": (a["note"] or "").strip(),
             "corrections": corr if isinstance(corr, dict) else {},
@@ -413,7 +422,7 @@ def appliquer_revue(ligne: dict, verdict: dict | None) -> dict | None:
     """
     if not verdict:
         return ligne
-    if verdict["statut"] == "rejected":
+    if ecarte(verdict["statut"]):
         return None
     ligne = dict(ligne)
     corrigees = set()
@@ -2266,6 +2275,13 @@ def build_snapshot(out: Path) -> dict:
         exclusions = defaultdict(Counter)
         revue = charger_revue(conn)
         counters["revue_annotations"] = sum(len(v) for v in revue.values())
+        # Une relation écartée par l'atelier ne se publie pas — et ne JUSTIFIE
+        # plus rien : un mandat jugé faux ne peut pas continuer de rendre une
+        # personne publiable au titre de son rôle civique. Passée en JSON aux
+        # requêtes ci-dessous (`json_each`), vide dans le cas courant.
+        relations_ecartees = json.dumps(sorted(
+            rid for rid, v in revue.get("relation", {}).items() if ecarte(v["statut"])))
+        pas_ecartee = "AND r.id NOT IN (SELECT value FROM json_each(?))"
 
         entity_rows = rows(conn, """
             SELECT
@@ -2300,10 +2316,12 @@ def build_snapshot(out: Path) -> dict:
                   AND e.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
                   AND r.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
                   AND r.relation_type IN ({",".join("?" for _ in RULES["people"]["publish_only_with_relation_types"])})
+                  {pas_ecartee}
             """, [
                 *sorted(RULES["confidence"]["public"]),
                 *sorted(RULES["confidence"]["public"]),
                 *sorted(RULES["people"]["publish_only_with_relation_types"]),
+                relations_ecartees,
             ])
         }
 
@@ -2335,11 +2353,13 @@ def build_snapshot(out: Path) -> dict:
                                              WHERE legal_form_code = '1000')
                       AND r.to_id   NOT IN (SELECT entity_id FROM businesses
                                              WHERE legal_form_code = '1000')
+                      {pas_ecartee}
                 """, [
                     *sorted(RULES["confidence"]["public"]),
                     *sorted(RULES["confidence"]["public"]),
                     *eco_types,
                     *sorted(beneficiaires), *sorted(beneficiaires),
+                    relations_ecartees,
                 ])
             }
 
@@ -2353,11 +2373,12 @@ def build_snapshot(out: Path) -> dict:
         # Ceux qui siègent au conseil communautaire : seules personnes des
         # communes C2 publiables en fiche (cf. `publiable_dans_perimetre`).
         ids_conseil_communautaire = {
-            r["entity_id"] for r in rows(conn, """
-                SELECT DISTINCT from_id AS entity_id FROM relations
+            r["entity_id"] for r in rows(conn, f"""
+                SELECT DISTINCT from_id AS entity_id FROM relations r
                 WHERE relation_type IN ('élu_cc','vice_président_cc','président_cc')
                   AND confidence IN ('verified','confirmed')
-            """)
+                  {pas_ecartee}
+            """, [relations_ecartees])
         }
 
         public_entities: list[dict] = []
@@ -2366,7 +2387,23 @@ def build_snapshot(out: Path) -> dict:
         # d'argent public se publient déliés (cf. `statut_extremites`).
         ecartees_du_perimetre: set[int] = set()
         location_quality = Counter()
+        revue_fiches = revue.get("entity", {})
         for entity in entity_rows:
+            # Le verdict de l'atelier passe AVANT les règles : écarter une fiche
+            # n'a pas à attendre que le filtre soit d'accord. Il ne peut en
+            # revanche rien OUVRIR — une fiche que les règles tiennent privée le
+            # reste, même `retenu` (cf. `collectors/verdict.py`).
+            verdict = revue_fiches.get(entity["id"])
+            if verdict and ecarte(verdict["statut"]):
+                exclusions["entities"]["rejete_en_atelier"] += 1
+                entity_exclusions.append({
+                    "id": entity["id"],
+                    "type": entity["type"],
+                    "name": entity["name"],
+                    "confidence": entity["confidence"],
+                    "reasons": ["rejete_en_atelier"],
+                })
+                continue
             item, reasons = public_entity(
                 entity,
                 confirmed_urls.get(entity["id"], []),
@@ -2404,10 +2441,15 @@ def build_snapshot(out: Path) -> dict:
         """)
         public_relations: list[dict] = []
         relation_exclusions: list[dict] = []
+        revue_relations = revue.get("relation", {})
         for rel in relation_rows:
-            ok, reason = is_public_relation(rel, public_ids,
-                                            civic_person_ids, beneficiaires,
-                                            ei_ids)
+            verdict = revue_relations.get(rel["id"])
+            if verdict and ecarte(verdict["statut"]):
+                ok, reason = False, "rejete_en_atelier"
+            else:
+                ok, reason = is_public_relation(rel, public_ids,
+                                                civic_person_ids, beneficiaires,
+                                                ei_ids)
             if not ok:
                 exclusions["relations"][reason] += 1
                 relation_exclusions.append({

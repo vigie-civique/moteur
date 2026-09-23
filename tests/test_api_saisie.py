@@ -92,10 +92,10 @@ class TestGardeOrigine:
         conn.close()
 
         r = api_client.patch(f"/api/atelier/annotations/flow/{fid}",
-                             json={"review_status": "rejected",
+                             json={"review_status": "ecarte",
                                    "note": "montant aberrant, signalé à l'OFGL"})
         assert r.status_code == 200
-        assert r.json()["review_status"] == "rejected"
+        assert r.json()["review_status"] == "ecarte"
 
     def test_rectifier_une_lecture_est_permis(self, client):
         api_client, chemin = client

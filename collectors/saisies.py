@@ -379,12 +379,16 @@ def _inserer_entite(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
     eid = upsert_entity(conn, type=v["type"], name=v["name"],
                         address=v.get("address"), commune=v.get("commune"),
                         confidence=s.get("confidence", "confirmed"))
-    # L'entité saisie n'a pas de colonne `origine` : le référentiel se décrit
-    # déjà par `confidence` et `validation_status`, et lui ajouter une troisième
-    # échelle brouillerait les deux autres. Une entité créée à la main est une
-    # entité validée — c'est le sens du geste.
-    conn.execute("UPDATE entities SET validation_status='validated' WHERE id=?",
-                 (eid,))
+    # Une fiche créée à la main est d'origine `atelier` — ce que le commentaire
+    # d'ici refusait jusqu'au 21/09/2026 au motif que `confidence` et
+    # `validation_status` la décrivaient déjà. Ils ne la décrivaient pas : le
+    # second n'était lu par rien, et l'on y écrivait `validated`, un mot que
+    # l'API refusait elle-même. Le VERDICT, lui, n'est pas posé ici : saisir,
+    # c'est proposer ; retenir revient à qui tranche (collectors/verdict.py).
+    # Colonne absente sur une base pas encore passée par `init_db` : rien écrit
+    # plutôt qu'une saisie qui échoue.
+    if any(r[1] == "origine" for r in conn.execute("PRAGMA table_info(entities)")):
+        conn.execute("UPDATE entities SET origine=? WHERE id=?", (ATELIER, eid))
     return True
 
 

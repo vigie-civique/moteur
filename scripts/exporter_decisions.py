@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collectors import saisies as _saisies  # noqa: E402
 from collectors.config import COMMUNE_INSEE, COMMUNE_NAME  # noqa: E402
 from collectors.db import get_conn  # noqa: E402
+from collectors.verdict import verdict_de  # noqa: E402
 from scripts.decisions import CLES, cle_entite  # noqa: E402
 
 
@@ -56,7 +57,20 @@ def exporter(conn, dest: Path, sans_personnes: bool) -> dict[str, int]:
         r = conn.execute("SELECT type FROM entities WHERE id=?", (entity_id,)).fetchone()
         return bool(r) and r[0] == "person"
 
-    # ── 1. Annotations : le cœur de l'arbitrage (actes, marchés, flux) ───────
+    def touche_une_personne(type_: str, oid: int) -> bool:
+        if type_ == "entity":
+            return est_personne(oid)
+        if type_ == "relation":
+            r = conn.execute("SELECT from_id, to_id FROM relations WHERE id=?",
+                             (oid,)).fetchone()
+            return bool(r) and (est_personne(r[0]) or est_personne(r[1]))
+        return False
+
+    # ── 1. Décisions : le cœur de l'arbitrage ────────────────────────────────
+    # Actes, marchés, flux — et depuis le 21/09/2026 fiches et relations, dont
+    # le verdict vivait avant dans `entities.validation_status` (section 2).
+    # Le verdict part dans le vocabulaire neuf, quelle que soit la façon dont
+    # la base l'a stocké.
     annotations = []
     for a in conn.execute("""SELECT object_type, object_id, review_status, confidence,
                                     note, reviewed_by, reviewed_at
@@ -65,29 +79,25 @@ def exporter(conn, dest: Path, sans_personnes: bool) -> dict[str, int]:
         fabrique = CLES.get(type_)
         if not fabrique:
             continue
+        if sans_personnes and touche_une_personne(type_, oid):
+            personnes_retirees += 1
+            continue
         k = fabrique(conn, oid)
         if not k:
             orphelines += 1
             continue
         annotations.append({
             "objet": type_, "cle": k[0], "libelle": k[1],
-            "statut": a[2], "confidence": a[3], "note": a[4],
+            "statut": verdict_de(a[2]) or a[2], "confidence": a[3], "note": a[4],
             "par": a[5], "le": a[6],
         })
 
-    # ── 2. Statuts d'entités : ce que la file de revue a tranché ─────────────
-    statuts = []
-    for eid, statut, nom in conn.execute(
-            """SELECT id, validation_status, name FROM entities
-               WHERE validation_status IS NOT NULL AND validation_status != 'unverified'"""):
-        if sans_personnes and est_personne(eid):
-            personnes_retirees += 1
-            continue
-        k = cle_entite(conn, eid)
-        if not k:
-            orphelines += 1
-            continue
-        statuts.append({"cle": k[0], "libelle": k[1], "statut": statut})
+    # ── 2. Statuts d'entités : plus produits depuis le 21/09/2026 ────────────
+    # `validation_status` est gelée : le verdict d'une fiche part dans la
+    # section 1 (`objet: entity`). Le fichier reste écrit, vide, pour qu'un
+    # atelier d'avant qui l'attend ne croie pas l'export tronqué ; l'import sait
+    # toujours lire ceux des exports anciens.
+    statuts: list[dict] = []
 
     # ── 3. Sites web validés : le maillon rare ──────────────────────────────
     # Rare parce qu'il n'existe dans aucun open data et qu'il coûte une

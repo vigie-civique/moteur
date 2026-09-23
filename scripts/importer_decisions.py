@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from collectors import saisies as _saisies  # noqa: E402
+from collectors.verdict import JAMAIS_RELU, verdict_de  # noqa: E402
 from collectors.config import COMMUNE_INSEE, COMMUNE_NAME  # noqa: E402
 from collectors.db import get_conn  # noqa: E402
 from scripts.decisions import resoudre  # noqa: E402
@@ -89,23 +90,25 @@ def _appliquer(conn, sql, params, rap, appliquer):
 def importer(conn, src: Path, appliquer: bool, forcer: bool) -> Rapport:
     rap = Rapport()
 
-    # ── Annotations ─────────────────────────────────────────────────────────
-    for d in _lire(src / "annotations.jsonl"):
-        oid = resoudre(conn, d["cle"])
-        if oid is None:
-            rap.non_rattachees.append(f"[{d['objet']}] {d.get('libelle', d['cle'])[:56]}")
-            continue
+    # ── Décisions ───────────────────────────────────────────────────────────
+    # Lues dans le vocabulaire neuf (collectors/verdict.py), qu'elles viennent
+    # d'un export d'avant le 21/09 (`validated`, `rejected`) ou d'après.
+    def poser(objet: str, oid: int, recu: str | None, d: dict, libelle: str) -> None:
+        statut = verdict_de(recu)
+        if statut is None:
+            rap.desaccords.append(f"[{objet}] {libelle[:44]} — verdict inconnu « {recu} »")
+            return
         actuel = conn.execute(
             "SELECT review_status FROM annotations WHERE object_type=? AND object_id=?",
-            (d["objet"], oid)).fetchone()
-        if actuel and actuel[0] == d["statut"]:
+            (objet, oid)).fetchone()
+        actuel_lu = verdict_de(actuel[0]) if actuel else JAMAIS_RELU
+        if actuel and actuel_lu == statut:
             rap.a_jour += 1
-            continue
-        if actuel and actuel[0] not in ("pending", None) and not forcer:
+            return
+        if actuel_lu != JAMAIS_RELU and not forcer:
             rap.desaccords.append(
-                f"[{d['objet']}] {d.get('libelle', '')[:44]} — ici « {actuel[0]} », "
-                f"reçu « {d['statut']} »")
-            continue
+                f"[{objet}] {libelle[:44]} — ici « {actuel_lu} », reçu « {statut} »")
+            return
         _appliquer(conn, """
             INSERT INTO annotations (object_type, object_id, review_status,
                                      confidence, note, reviewed_by, reviewed_at)
@@ -114,26 +117,25 @@ def importer(conn, src: Path, appliquer: bool, forcer: bool) -> Rapport:
               review_status=excluded.review_status, confidence=excluded.confidence,
               note=excluded.note, reviewed_by=excluded.reviewed_by,
               reviewed_at=excluded.reviewed_at, updated_at=datetime('now')
-        """, (d["objet"], oid, d["statut"], d.get("confidence"), d.get("note"),
+        """, (objet, oid, statut, d.get("confidence"), d.get("note"),
               d.get("par"), d.get("le")), rap, appliquer)
 
-    # ── Statuts d'entités ───────────────────────────────────────────────────
+    for d in _lire(src / "annotations.jsonl"):
+        oid = resoudre(conn, d["cle"])
+        if oid is None:
+            rap.non_rattachees.append(f"[{d['objet']}] {d.get('libelle', d['cle'])[:56]}")
+            continue
+        poser(d["objet"], oid, d.get("statut"), d, d.get("libelle", ""))
+
+    # ── Statuts d'entités : exports d'avant le 21/09/2026 ───────────────────
+    # `entities.validation_status` est gelée : un statut reçu devient une
+    # décision sur la fiche, là où la publication la lit.
     for d in _lire(src / "entites-statuts.jsonl"):
         eid = resoudre(conn, d["cle"])
         if eid is None:
             rap.non_rattachees.append(f"[entité] {d.get('libelle', d['cle'])[:56]}")
             continue
-        actuel = conn.execute("SELECT validation_status FROM entities WHERE id=?",
-                              (eid,)).fetchone()[0]
-        if actuel == d["statut"]:
-            rap.a_jour += 1
-            continue
-        if actuel not in ("unverified", None) and not forcer:
-            rap.desaccords.append(f"[entité] {d.get('libelle','')[:44]} — ici "
-                                  f"« {actuel} », reçu « {d['statut']} »")
-            continue
-        _appliquer(conn, "UPDATE entities SET validation_status=? WHERE id=?",
-                   (d["statut"], eid), rap, appliquer)
+        poser("entity", eid, d.get("statut"), {}, d.get("libelle", ""))
 
     # ── Sites web ───────────────────────────────────────────────────────────
     for d in _lire(src / "sites.jsonl"):

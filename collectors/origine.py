@@ -46,10 +46,13 @@ ATELIER        = "atelier"
 
 ORIGINES = (INSTITUTIONNEL, VERBATIM, ATELIER)
 
-#: Tables portant la colonne `origine`. Ce sont celles où une ligne représente
-#: un fait daté et chiffré — donc celles qu'un humain pourrait vouloir corriger
-#: ou compléter. Les tables de référentiel (entities, businesses…) n'en ont pas :
-#: leur origine se lit dans `confidence` et `validation_status`.
+#: Tables portant la colonne `origine` ET une colonne `source` dont on la tire.
+#: Ce sont celles où une ligne représente un fait daté et chiffré — donc celles
+#: qu'un humain pourrait vouloir corriger ou compléter. `entities` porte aussi
+#: une `origine` depuis le 21/09/2026, mais sans `source` : elle se DÉDUIT de ce
+#: qui atteste la fiche (`scripts/classer_origine.py::classer_entites`). Avant,
+#: on disait qu'elle « se lisait dans `confidence` et `validation_status` » — le
+#: premier est un défaut de paramètre, le second n'était lu par rien.
 TABLES_ORIGINE = (
     "events",
     "financial_flows",

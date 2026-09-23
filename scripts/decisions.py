@@ -113,9 +113,28 @@ def cle_flux(conn, flow_id: int) -> tuple[str, str] | None:
             f"{annee or '?'} — {(desc or '')[:56]}")
 
 
+def cle_relation(conn, relation_id: int) -> tuple[str, str] | None:
+    """(clé, libellé) d'une relation : ses deux extrémités et son type.
+
+    Même forme que `relations-arbitrees.jsonl`, préfixée : une relation n'a
+    d'identité que par ce qu'elle relie. Deux relations de même type entre les
+    deux mêmes fiches sont indiscernables — la table les refuse de toute façon.
+    """
+    row = conn.execute(
+        "SELECT from_id, to_id, relation_type FROM relations WHERE id=?",
+        (relation_id,)).fetchone()
+    if not row:
+        return None
+    ka, kb = cle_entite(conn, row[0]), cle_entite(conn, row[1])
+    if not ka or not kb:
+        return None
+    return f"rel:{ka[0]}→{kb[0]}:{row[2]}", f"{ka[1][:30]} → {kb[1][:30]} ({row[2]})"
+
+
 # Un type d'objet arbitré → la fonction qui le désigne.
 CLES = {
     "entity": cle_entite,
+    "relation": cle_relation,
     "deliberation": cle_evenement,
     "event": cle_evenement,
     "marche": cle_marche,
@@ -162,4 +181,15 @@ def resoudre(conn, cle: str) -> int | None:
             if k and k[0] == cle:
                 return fid
         return None
+    if cle.startswith("rel:"):
+        # Le type ne contient jamais « : », les clés d'entité si : on coupe à
+        # la flèche, puis au DERNIER deux-points.
+        de, reste = cle[4:].split("→", 1)
+        vers, type_ = reste.rsplit(":", 1)
+        a, b = resoudre(conn, de), resoudre(conn, vers)
+        if a is None or b is None:
+            return None
+        r = conn.execute("SELECT id FROM relations WHERE from_id=? AND to_id=? "
+                         "AND relation_type=?", (a, b, type_)).fetchone()
+        return r[0] if r else None
     return None

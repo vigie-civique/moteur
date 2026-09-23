@@ -38,6 +38,7 @@ from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
+from collectors.verdict import JAMAIS_RELU, OBJETS, VERDICTS, verdict_de
 
 # Boîte englobante de la commune, telle que déclarée par l'instance.
 COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
@@ -1696,14 +1697,17 @@ def atelier_stats(user=Depends(require_auth)):
     conn = get_db()
     try:
         total = row(conn, "SELECT COUNT(*) AS n FROM entities")["n"]
-        by_status = rows(conn, """
-            SELECT validation_status, COUNT(*) AS n
-            FROM entities
-            GROUP BY validation_status
+        # Le verdict d'une fiche est une décision (`annotations`), plus la
+        # colonne `validation_status`, que la publication n'a jamais lue.
+        by_verdict = rows(conn, """
+            SELECT COALESCE(d.review_status, 'jamais_relu') AS verdict, COUNT(*) AS n
+            FROM entities e
+            LEFT JOIN annotations d ON d.object_type = 'entity' AND d.object_id = e.id
+            GROUP BY 1
         """)
         result = {"total": total}
-        for r in by_status:
-            result[r["validation_status"] or "unverified"] = r["n"]
+        for r in by_verdict:
+            result[r["verdict"]] = r["n"]
         # Le total seul ne dit plus rien depuis l'élargissement à l'EPCI :
         # l'atelier doit savoir combien de fiches relèvent de la commune.
         result["perimetre"] = {
@@ -1717,22 +1721,38 @@ def atelier_stats(user=Depends(require_auth)):
 
 # ─── /api/atelier/workqueue ────────────────────────────────────────────────────
 
-VALID_STATUSES = ("draft", "unverified", "reviewing", "verified", "published", "rejected")
+# `entities.validation_status` est GELÉE depuis le 21/09/2026 : plus rien ne
+# l'écrit, et la publication ne l'a jamais lue. Ses six anciens états restent
+# compris en entrée par `verdict_de` (cf. `collectors/verdict.py`).
+
+
+def _verdict_requis(valeur: Optional[str]) -> str:
+    """Le verdict qu'exprime `valeur`, ou un 400 qui dit les valeurs admises.
+
+    Les anciens mots (`rejected`, `verified`…) restent compris : un script ou
+    un export d'avant le 21/09 n'a pas à casser. Un mot inconnu est refusé —
+    on ne devine pas un verdict à la place de quelqu'un.
+    """
+    v = verdict_de(valeur)
+    if v is None:
+        raise HTTPException(400, f"verdict inconnu : « {valeur} » — valeurs : "
+                                 f"{', '.join(VERDICTS)}")
+    return v
 
 @app.get("/api/atelier/workqueue")
 def atelier_workqueue(
-    status: str = Query("unverified"),
+    status: str = Query(JAMAIS_RELU),
     type: Optional[str] = None,
     perimetre: Optional[str] = None,
     limit: int = Query(50, le=200),
     offset: int = 0,
     user=Depends(require_auth),
 ):
-    if status not in VALID_STATUSES:
-        raise HTTPException(400, f"status invalide — valeurs: {', '.join(VALID_STATUSES)}")
-
-    filters = ["(e.validation_status = ? OR (e.validation_status IS NULL AND ? = 'unverified'))"]
-    params: list = [status, status]
+    verdict = _verdict_requis(status)
+    # Les décisions sur une fiche n'existent que depuis le 21/09 : elles sont
+    # toutes écrites dans le vocabulaire neuf, l'égalité suffit.
+    filters = ["COALESCE(d.review_status, 'jamais_relu') = ?"]
+    params: list = [verdict]
     if type:
         filters.append("e.type = ?")
         params.append(type)
@@ -1749,12 +1769,17 @@ def atelier_workqueue(
 
     conn = get_db()
     try:
-        total = row(conn, f"SELECT COUNT(*) AS n FROM entities e {where}", params)["n"]
+        jointure = ("LEFT JOIN annotations d ON d.object_type = 'entity' "
+                    "AND d.object_id = e.id")
+        total = row(conn, f"SELECT COUNT(*) AS n FROM entities e {jointure} {where}",
+                    params)["n"]
         items = rows(conn, f"""
             SELECT
                 e.id, e.type, e.name, e.short_name, e.address,
-                e.confidence, e.validation_status, e.responsible, e.created_at,
+                e.confidence, e.responsible, e.created_at,
                 e.commune, e.perimetre,
+                COALESCE(d.review_status, 'jamais_relu') AS verdict,
+                d.reviewed_by AS verdict_par, d.reviewed_at AS verdict_le,
                 p.firstname, p.lastname,
                 b.siren, b.naf_label, b.status AS biz_status,
                 a.rna_id, a.object AS asso_object,
@@ -1766,6 +1791,7 @@ def atelier_workqueue(
             LEFT JOIN persons      p ON p.entity_id  = e.id
             LEFT JOIN businesses   b ON b.entity_id  = e.id
             LEFT JOIN associations a ON a.entity_id  = e.id
+            {jointure}
             {where}
             ORDER BY e.type, e.name
             LIMIT ? OFFSET ?
@@ -1781,7 +1807,7 @@ def atelier_workqueue(
 
 #: Ce que désigne chaque table du journal, pour qui ne lit pas le schéma.
 LIBELLE_TABLE_JOURNAL = {
-    "entities": "fiche", "annotations": "donnée importée", "saisies": "saisie",
+    "entities": "fiche", "annotations": "décision", "saisies": "saisie",
     "relations": "relation", "entity_websites": "site", "relation_candidates":
     "relation candidate", "users": "compte", "publication": "publication",
 }
@@ -1856,12 +1882,19 @@ def _dernier_auteur(conn, entity_id: int,
 
 
 # ─── PATCH /api/atelier/entities/{id}/status ──────────────────────────────────
+# Le ✓ ✗ de la file de travail. Jusqu'au 21/09/2026 il écrivait dans
+# `entities.validation_status`, que la publication ne lisait pas : trancher une
+# fiche ne changeait rien au site. Il pose désormais une DÉCISION, par le même
+# chemin que toutes les autres (`_decider`) — pas un second écrivain.
 
 class ValidationStatusUpdate(BaseModel):
-    validation_status: str
-    note: str = ""
-    # Le statut que l'éditeur avait sous les yeux. Fourni, il devient une
-    # condition : si la fiche a changé de statut entre-temps → 409. Absent, on
+    verdict: Optional[str] = None
+    # L'ancien nom du champ, lu par `verdict_de` : un script d'avant le 21/09
+    # continue de fonctionner, et `verified` y veut dire `retenu`.
+    validation_status: Optional[str] = None
+    note: Optional[str] = None
+    # Le verdict que l'éditeur avait sous les yeux. Fourni, il devient une
+    # condition : si la fiche a été tranchée entre-temps → 409. Absent, on
     # écrit sans condition — les scripts n'ont rien sous les yeux.
     statut_lu: Optional[str] = None
 
@@ -1871,43 +1904,26 @@ def atelier_update_status(
     req: ValidationStatusUpdate = ...,
     user=Depends(require_au_moins("validator", "Trancher le statut d'une fiche")),
 ):
-    if req.validation_status not in VALID_STATUSES:
-        raise HTTPException(400, f"validation_status invalide — valeurs: {', '.join(VALID_STATUSES)}")
-
-    conn = get_db_rw()
-    try:
-        # Réserver l'écriture AVANT de lire : sans cela deux requêtes lisent le
-        # même statut, passent toutes deux la condition, et la seconde écrase.
-        conn.execute("BEGIN IMMEDIATE")
-        entity = row(conn, "SELECT id, validation_status FROM entities WHERE id=?", (entity_id,))
-        if not entity:
-            raise HTTPException(404, "Entité introuvable")
-
-        old_status = entity["validation_status"] or "unverified"
-        if req.statut_lu is not None and req.statut_lu != old_status:
-            par, le = _dernier_auteur(conn, entity_id, "validation_status")
-            raise _conflit("Le statut de cette fiche a changé pendant que vous la "
-                           "regardiez.", par, le, actuel=old_status)
-        conn.execute(
-            "UPDATE entities SET validation_status=?, updated_at=datetime('now') WHERE id=?",
-            (req.validation_status, entity_id),
-        )
-        conn.execute("""
-            INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
-            VALUES(?,?,?,?,?,?,?)
-        """, (user["id"], entity_id, "entities", "update", "validation_status",
-              old_status, req.validation_status))
-        conn.commit()
-        return {"ok": True, "id": entity_id, "validation_status": req.validation_status}
-    finally:
-        conn.close()
+    demande = req.verdict if req.verdict is not None else req.validation_status
+    if demande is None:
+        raise HTTPException(400, "verdict manquant — valeurs : " + ", ".join(VERDICTS))
+    fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
+    decision = AnnotationUpdate(review_status=_verdict_requis(demande),
+                                **({"note": req.note} if "note" in fournis else {}))
+    res = _decider("entity", entity_id, decision, user, statut_lu=req.statut_lu)
+    return {"ok": True, "id": entity_id, "verdict": res["review_status"],
+            "reviewed_by": res["reviewed_by"], "reviewed_at": res["reviewed_at"]}
 
 # ─── Données importées (délibs / flux / marchés) — revue & annotation ─────────
 # Les collecteurs sont INSERT-only ; l'annotation vit dans une table à part
 # (annotations) pour ne jamais écraser les données sources. cf. CARTE_PRODUIT §4.
 
 DONNEES_TYPES = ("deliberation", "flow", "marche")
-ANNOTATION_STATUSES = ("pending", "validated", "rejected")
+
+#: Les objets qui portent un verdict sans passer par `/atelier/donnees` : la
+#: fiche et la relation. L'annotation n'a pas de clé étrangère — on vérifie ici
+#: qu'on ne décide pas d'un objet qui n'existe pas.
+TABLE_DE_DECISION = {"entity": "entities", "relation": "relations"}
 
 #: Table portant chaque type d'objet annotable. Sert à lire son `origine` avant
 #: d'autoriser une rectification — cf. `_verifier_origine_modifiable`.
@@ -2132,8 +2148,7 @@ def atelier_donnees(
 ):
     if type not in DONNEES_TYPES:
         raise HTTPException(400, f"type invalide — valeurs: {', '.join(DONNEES_TYPES)}")
-    if status and status not in ANNOTATION_STATUSES:
-        raise HTTPException(400, f"status invalide — valeurs: {', '.join(ANNOTATION_STATUSES)}")
+    filtre_verdict = _verdict_requis(status) if status else None
     if origine and origine not in ORIGINES + ("non-classe",):
         raise HTTPException(400, f"origine invalide — valeurs: "
                                  f"{', '.join(ORIGINES + ('non-classe',))}")
@@ -2153,10 +2168,13 @@ def atelier_donnees(
             if a:
                 a = dict(a)
                 a["corrections"] = parse_json_field(a.get("corrections"), {}) or {}
-            it["annotation"] = a or {"review_status": "pending", "confidence": None,
+                # Une base non migrée garde `rejected`, `validated` : l'écran ne
+                # reçoit que le vocabulaire neuf.
+                a["review_status"] = verdict_de(a["review_status"]) or JAMAIS_RELU
+            it["annotation"] = a or {"review_status": JAMAIS_RELU, "confidence": None,
                                      "note": "", "corrections": {},
                                      "reviewed_by": None, "reviewed_at": None}
-            if status and it["annotation"]["review_status"] != status:
+            if filtre_verdict and it["annotation"]["review_status"] != filtre_verdict:
                 continue
             out.append(it)
         return out
@@ -2192,31 +2210,63 @@ def atelier_annotate(
     req: AnnotationUpdate = ...,
     user=Depends(require_auth),
 ):
-    if object_type not in DONNEES_TYPES:
-        raise HTTPException(400, f"object_type invalide — valeurs: {', '.join(DONNEES_TYPES)}")
-    if req.review_status and req.review_status not in ANNOTATION_STATUSES:
-        raise HTTPException(400, f"review_status invalide — valeurs: {', '.join(ANNOTATION_STATUSES)}")
+    return _decider(object_type, object_id, req, user)
+
+
+def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
+             statut_lu: Optional[str] = None) -> dict:
+    """Le SEUL écrivain des décisions de l'atelier — cf. `collectors/verdict.py`.
+
+    Cinq types d'objets : les trois lignes importées (délibération, flux,
+    marché) et, depuis le 21/09/2026, la fiche et la relation. Sur ces deux-là
+    une décision porte un verdict et une note, rien d'autre : la fiabilité et les
+    valeurs d'une fiche se modifient sur la fiche, avec son propre verrou et son
+    propre historique. Deux chemins pour écrire la même chose, c'est deux
+    vérités.
+    """
+    if object_type not in OBJETS:
+        raise HTTPException(400, f"object_type invalide — valeurs: {', '.join(OBJETS)}")
+    demande = _verdict_requis(req.review_status) if req.review_status else None
+    fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
+    table_fiche = TABLE_DE_DECISION.get(object_type)
+    if table_fiche and ((req.confidence not in (None, "") and "confidence" in fournis)
+                        or req.corrections):
+        raise HTTPException(
+            400, "Une décision sur une fiche ou une relation porte un verdict et "
+                 "une note. La fiabilité et les valeurs se modifient sur la fiche.")
 
     conn = get_db_rw()
     try:
         conn.execute("BEGIN IMMEDIATE")
+        if table_fiche and not row(conn, f"SELECT 1 AS ok FROM {table_fiche} WHERE id=?",
+                                   (object_id,)):
+            raise HTTPException(404, f"{object_type} {object_id} introuvable.")
         existing = row(conn,
             "SELECT review_status, confidence, note, corrections, reviewed_by, "
             "reviewed_at FROM annotations "
             "WHERE object_type=? AND object_id=?", (object_type, object_id))
-        fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
+        # Lu dans le vocabulaire neuf, quelle que soit la façon dont il a été
+        # écrit : une base non migrée garde `pending` ou `rejected`.
+        statut_avant = ((verdict_de(existing["review_status"]) if existing else None)
+                        or JAMAIS_RELU)
+        if statut_lu is not None and _verdict_requis(statut_lu) != statut_avant:
+            raise _conflit("Le verdict de cette fiche a changé pendant que vous la "
+                           "regardiez.",
+                           existing["reviewed_by"] if existing else None,
+                           existing["reviewed_at"] if existing else None,
+                           actuel=statut_avant)
         if "lu_le" in fournis:
             actuel_le = existing["reviewed_at"] if existing else None
             if (req.lu_le or None) != actuel_le:
                 raise _conflit(
                     "Quelqu'un a annoté cette ligne pendant que vous la regardiez.",
                     existing["reviewed_by"] if existing else None, actuel_le,
-                    actuel={"review_status": existing["review_status"],
+                    actuel={"review_status": statut_avant,
                             "confidence": existing["confidence"],
                             "note": existing["note"],
                             "corrections": parse_json_field(existing["corrections"], {}),
                             "reviewed_at": actuel_le} if existing else None)
-        new_status = req.review_status or (existing["review_status"] if existing else "pending")
+        new_status = demande or statut_avant
 
         # Sémantique PATCH : un champ ABSENT du corps n'est pas touché. Sans
         # ça, corriger un montant effaçait la note qui l'explique — et la note
@@ -2226,13 +2276,12 @@ def atelier_annotate(
         note = (req.note if "note" in fournis
                 else (existing["note"] if existing else None))
 
-        # Valider, rejeter (ce qui retire la ligne du site) ou poser une fiabilité
+        # Retenir, écarter (ce qui retire l'objet du site) ou poser une fiabilité
         # tranche ; noter et corriger proposent. Comparé à l'EXISTANT : un
-        # contributeur qui renvoie le statut affiché sans le changer ne tranche rien.
-        statut_avant = existing["review_status"] if existing else "pending"
+        # contributeur qui renvoie le verdict affiché sans le changer ne tranche rien.
         conf_avant = existing["confidence"] if existing else None
         if new_status != statut_avant:
-            exiger(user, "validator", "Valider ou rejeter une ligne")
+            exiger(user, "validator", "Retenir ou écarter")
         if (confidence or None) != (conf_avant or None):
             exiger(user, "validator", "Poser la fiabilité d'une ligne")
 
@@ -2274,11 +2323,14 @@ def atelier_annotate(
         conn.execute("""
             INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
             VALUES(?,?,?,?,?,?,?)
-        """, (user["id"], None, "annotations", "annotate", f"{object_type}/{object_id}",
+        """, (user["id"],
+              # Une décision sur une fiche entre dans l'historique DE la fiche.
+              object_id if object_type == "entity" else None,
+              "annotations", "annotate", f"{object_type}/{object_id}",
               # La note et la fiabilité y entrent : une note écrasée par un
               # autre éditeur ne laissait jusqu'ici aucune trace de ce qu'elle
               # disait.
-              json.dumps({"statut": existing["review_status"] if existing else None,
+              json.dumps({"statut": statut_avant if existing else None,
                           "confidence": existing["confidence"] if existing else None,
                           "note": existing["note"] if existing else None,
                           "corrections": anciennes}, ensure_ascii=False),
@@ -2607,6 +2659,10 @@ def atelier_document_fichier(doc_id: int = FPath(..., ge=1), user=Depends(requir
 
 # ─── GET /api/atelier/entities/{id} — détail complet pour l'éditeur ───────────
 
+def _colonne_existe(conn, table: str, colonne: str) -> bool:
+    return any(r["name"] == colonne for r in rows(conn, f"PRAGMA table_info({table})"))
+
+
 @app.get("/api/atelier/entities/{entity_id}")
 def atelier_entity_detail(entity_id: int = FPath(..., ge=1), user=Depends(require_auth)):
     conn = get_db()
@@ -2614,8 +2670,11 @@ def atelier_entity_detail(entity_id: int = FPath(..., ge=1), user=Depends(requir
         e = row(conn, """
             SELECT e.id, e.type, e.name, e.short_name, e.address, e.commune,
                    e.perimetre,
-                   e.lat, e.lng, e.confidence, e.validation_status, e.responsible,
+                   e.lat, e.lng, e.confidence, e.responsible,
                    e.created_at, e.updated_at,
+                   COALESCE(d.review_status, 'jamais_relu') AS verdict,
+                   d.note AS verdict_note, d.reviewed_by AS verdict_par,
+                   d.reviewed_at AS verdict_le,
                    p.firstname, p.lastname, p.birth_year, p.birth_month, p.gender,
                    b.siren, b.siret_siege, b.naf_code, b.naf_label,
                    b.legal_form_code, b.legal_form, b.status AS biz_status,
@@ -2632,10 +2691,17 @@ def atelier_entity_detail(entity_id: int = FPath(..., ge=1), user=Depends(requir
             LEFT JOIN associations a  ON a.entity_id  = e.id
             LEFT JOIN places       pl ON pl.entity_id = e.id
             LEFT JOIN services     s  ON s.entity_id  = e.id
+            LEFT JOIN annotations  d  ON d.object_type = 'entity' AND d.object_id = e.id
             WHERE e.id = ?
         """, (entity_id,))
         if not e:
             raise HTTPException(404, "Entité introuvable")
+        # `origine` arrive avec la collecte (`init_db` la rattrape, `classer_origine`
+        # la remplit) : une instance pas encore recollectée ne l'a pas. La page
+        # ne doit pas tomber pour autant.
+        e["origine"] = (row(conn, "SELECT origine FROM entities WHERE id=?",
+                            (entity_id,))["origine"]
+                        if _colonne_existe(conn, "entities", "origine") else None)
 
         e["contacts"] = rows(conn,
             "SELECT id, type, value, label FROM contacts WHERE entity_id=? ORDER BY type, id",
@@ -2758,8 +2824,14 @@ def atelier_update_entity(
         entity_type = current["type"]
 
         # — Champs entities —
+        # `validation_status` en est sorti le 21/09/2026 : colonne gelée, le
+        # verdict est une décision (`_decider`). Refusé plutôt qu'ignoré — un
+        # geste qui ne fait rien derrière « Sauvegardé ✓ », c'est le lot 1.
+        if req.validation_status is not None:
+            raise HTTPException(400, "Le verdict d'une fiche ne s'écrit plus dans le formulaire : c'est "
+                                 "une décision, posée par les boutons Retenir / Écarter.")
         base_fields = ["name", "short_name", "type", "address", "lat", "lng",
-                       "confidence", "validation_status", "responsible"]
+                       "confidence", "responsible"]
         base_updates, base_params = [], []
         for f in base_fields:
             val = getattr(req, f)
@@ -2897,7 +2969,6 @@ _CHAMPS_FICHE = {
     "short_name": ("entities", "short_name", None),
     "address": ("entities", "address", None),
     "confidence": ("entities", "confidence", None),
-    "validation_status": ("entities", "validation_status", None),
     "responsible": ("entities", "responsible", None),
     "firstname": ("persons", "firstname", {"person"}),
     "lastname": ("persons", "lastname", {"person"}),
@@ -3002,6 +3073,9 @@ def atelier_patch_entity(
                            updated_at=db_updated_at)
 
         entity_type = current["type"]
+        if "validation_status" in fournis:
+            raise HTTPException(400, "Le verdict d'une fiche ne s'écrit plus dans le formulaire : c'est "
+                                 "une décision, posée par les boutons Retenir / Écarter.")
         par_table: dict[str, dict] = {}
         for champ in fournis:
             if champ not in _CHAMPS_FICHE:
@@ -3012,19 +3086,16 @@ def atelier_patch_entity(
             nouveau = getattr(req, champ)
             if isinstance(nouveau, str):
                 nouveau = nouveau.strip() or None
-            if nouveau is None and champ in ("name", "confidence", "validation_status"):
+            if nouveau is None and champ in ("name", "confidence"):
                 raise HTTPException(400, f"« {champ} » ne peut pas être vidé.")
             if champ == "confidence" and nouveau not in _CONFIANCES_FICHE:
                 raise HTTPException(400, f"confidence : valeurs admises — "
                                          f"{', '.join(_CONFIANCES_FICHE)}")
-            if champ == "validation_status" and nouveau not in VALID_STATUSES:
-                raise HTTPException(400, f"validation_status : valeurs admises — "
-                                         f"{', '.join(VALID_STATUSES)}")
             ancien = current.get(champ)
             if str("" if ancien is None else ancien) == str("" if nouveau is None else nouveau):
                 continue
-            if champ in ("confidence", "validation_status"):
-                exiger(user, "validator", "Trancher la fiabilité ou le statut d'une fiche")
+            if champ == "confidence":
+                exiger(user, "validator", "Trancher la fiabilité d'une fiche")
             _audit(conn, user["id"], entity_id, champ, ancien, nouveau)
             par_table.setdefault(table, {})[colonne] = nouveau
 

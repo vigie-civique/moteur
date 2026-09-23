@@ -74,6 +74,9 @@ _COLONNES_AJOUTEES = [
     # dans une catégorie choisie par le schéma. `scripts/classer_origine.py` la
     # remplit, et refuse de deviner ce qu'il ne reconnaît pas.
     ("events",               "origine", "TEXT"),
+    # 21/09/2026 — les fiches aussi : « séparer l'origine du verdict ». Déduite
+    # par `scripts/classer_origine.py::classer_entites`, sans défaut non plus.
+    ("entities",             "origine", "TEXT"),
     ("financial_flows",      "origine", "TEXT"),
     ("marches_publics",      "origine", "TEXT"),
     ("budget_vote",          "origine", "TEXT"),

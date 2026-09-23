@@ -6,18 +6,18 @@
   import { heureLocale } from '$lib/heure.js'
   import { currentUser } from '$lib/stores/auth.js'
   import { auMoins } from '$lib/roles.js'
+  import { VERDICTS, VERDICT } from '$lib/axes.js'
 
   const TABS = [
     { key: 'deliberation', label: 'Délibérations' },
     { key: 'flow',         label: 'Flux financiers' },
     { key: 'marche',       label: 'Marchés publics' },
   ]
-  const STATUSES = [
-    { key: '',          label: 'Tous' },
-    { key: 'pending',   label: 'À revoir' },
-    { key: 'validated', label: 'Validés' },
-    { key: 'rejected',  label: 'Rejetés' },
-  ]
+  // Le verdict, lu par la publication : « Écarté » retire la ligne du site.
+  // L'ancien « À revoir » désignait en fait l'absence de décision — il est
+  // devenu « Jamais relu » ; « À revoir » veut dire désormais qu'on y reviendra.
+  const STATUSES = [{ key: '', label: 'Tous' },
+                    ...VERDICTS.map(v => ({ key: v.cle, label: v.libelle }))]
   const CONFIDENCES = ['', 'verified', 'confirmed', 'probable', 'hypothesis']
 
   // Filtrer par origine n'est pas du confort : c'est ce qui rend l'arbitrage
@@ -40,7 +40,7 @@
   let loading = false
   let error = ''
   let selected = null        // item en cours d'annotation
-  let draft = { review_status: 'pending', confidence: '', note: '' }
+  let draft = { review_status: 'jamais_relu', confidence: '', note: '' }
   let saving = false
   let conflit = null         // 409 : quelqu'un a annoté la ligne entre-temps
   // Valider, rejeter, poser la fiabilité : trancher. Le contributeur note et corrige.
@@ -96,7 +96,7 @@
     conflit = null
     selected = it
     draft = {
-      review_status: it.annotation?.review_status || 'pending',
+      review_status: it.annotation?.review_status || 'jamais_relu',
       confidence:    it.annotation?.confidence || '',
       note:          it.annotation?.note || '',
     }
@@ -166,7 +166,7 @@
   }
 
   $: counts = items.reduce((acc, it) => {
-    const s = it.annotation?.review_status || 'pending'
+    const s = it.annotation?.review_status || 'jamais_relu'
     acc[s] = (acc[s] || 0) + 1
     return acc
   }, {})
@@ -207,9 +207,9 @@
       </select>
     </div>
     <div class="legend">
-      <span class="pill pending">{counts.pending || 0} à revoir</span>
-      <span class="pill validated">{counts.validated || 0} validés</span>
-      <span class="pill rejected">{counts.rejected || 0} rejetés</span>
+      {#each VERDICTS as v}
+        <span class="pill {v.cle}" title={v.effet}>{counts[v.cle] || 0} {v.libelle.toLowerCase()}</span>
+      {/each}
     </div>
   </div>
 
@@ -251,7 +251,8 @@
                   <td class="nowrap">{fmtMontant(it.montant)}</td>
                 {/if}
                 <td>
-                  <span class="dot {it.annotation?.review_status || 'pending'}"></span>
+                  <span class="dot {it.annotation?.review_status || 'jamais_relu'}"
+                        title={VERDICT[it.annotation?.review_status || 'jamais_relu']?.libelle}></span>
                   {#if Object.keys(it.annotation?.corrections || {}).length}<span class="crayon" title="Donnée rectifiée">✎</span>{/if}
                 </td>
               </tr>
@@ -292,15 +293,17 @@
         </div>
 
         <label class="field">
-          <span>Statut de revue{#if !tranche} <em class="hint">— Vous proposez ; un validateur tranche.</em>{/if}</span>
+          <span>Verdict{#if !tranche} <em class="hint">— Vous proposez ; un validateur tranche.</em>{/if}</span>
           <div class="seg">
-            {#each ['pending','validated','rejected'] as s}
-              <button class:on={draft.review_status === s} on:click={() => (draft.review_status = s)}
-                      disabled={!tranche && draft.review_status !== s}>
-                {s === 'pending' ? 'À revoir' : s === 'validated' ? 'Valider' : 'Rejeter'}
+            {#each VERDICTS as v}
+              <button class:on={draft.review_status === v.cle} title={v.effet}
+                      on:click={() => (draft.review_status = v.cle)}
+                      disabled={!tranche && draft.review_status !== v.cle}>
+                {v.libelle}
               </button>
             {/each}
           </div>
+          <em class="hint">{VERDICT[draft.review_status]?.effet}</em>
         </label>
 
         <label class="field">
@@ -441,9 +444,10 @@
   .corr input::placeholder, .corr textarea::placeholder { color: #475569; }
   .legend { display: flex; gap: .4rem; }
   .pill { font-size: .72rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
-  .pill.pending   { background: #78350f; color: #fde68a; }
-  .pill.validated { background: #065f46; color: #d1fae5; }
-  .pill.rejected  { background: #7f1d1d; color: #fecaca; }
+  .pill.jamais_relu { background: #334155; color: #e2e8f0; }
+  .pill.a_revoir    { background: #78350f; color: #fde68a; }
+  .pill.retenu      { background: #065f46; color: #d1fae5; }
+  .pill.ecarte      { background: #7f1d1d; color: #fecaca; }
 
   .err { background: #7f1d1d; color: #fecaca; padding: .5rem .75rem; border-radius: 6px; margin-bottom: .75rem; font-size: .85rem; }
 
@@ -460,9 +464,10 @@
   .muted { color: #64748b; font-size: .85rem; padding: 1rem; }
 
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
-  .dot.pending   { background: #f59e0b; }
-  .dot.validated { background: #10b981; }
-  .dot.rejected  { background: #ef4444; }
+  .dot.jamais_relu { background: #64748b; }
+  .dot.a_revoir    { background: #f59e0b; }
+  .dot.retenu      { background: #10b981; }
+  .dot.ecarte      { background: #ef4444; }
 
   .panel { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; position: sticky; top: 0; }
   .panel.empty { display: flex; align-items: center; justify-content: center; min-height: 120px; }
