@@ -1358,9 +1358,38 @@ def write_act_extracts(out: Path, textes: dict[int, str]) -> int:
     return len(textes)
 
 
+def comptes_syndicats_par_entite(conn) -> dict[int, list[dict]]:
+    """Les comptes d'un syndicat, par exercice puis par budget.
+
+    Écrits par `collectors/syndicats_comptes` depuis les balances DGFiP. Deux
+    budgets d'un même syndicat (principal, annexe) restent SÉPARÉS : les
+    additionner compterait deux fois ce que l'un reverse à l'autre. Une base
+    antérieure au 24/09/2026 n'a pas la table — la fiche n'a alors pas d'encart,
+    ce qui est exact : rien n'a été collecté.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT entity_id, year, budget, libelle_budget, nomenclature, poste,"
+            " montant FROM comptes_syndicats WHERE entity_id IS NOT NULL"
+            " ORDER BY entity_id, year DESC, budget").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    par: dict[int, dict[int, dict[str, dict]]] = defaultdict(lambda: defaultdict(dict))
+    for r in rows:
+        bloc = par[r["entity_id"]][r["year"]].setdefault(r["budget"], {
+            "libelle": r["libelle_budget"], "nomenclature": r["nomenclature"],
+            "postes": {}})
+        bloc["postes"][r["poste"]] = round(r["montant"] or 0)
+    return {
+        eid: [{"year": an, "budgets": list(budgets.values())}
+              for an, budgets in sorted(annees.items(), reverse=True)]
+        for eid, annees in par.items()
+    }
+
+
 def write_entity_bundles(out: Path, public_entities, public_relations,
                          public_events, public_links, public_flows,
-                         marches_data) -> int:
+                         marches_data, comptes_syndicats=None) -> int:
     """Un fichier par acteur : `entite/<id>.json`, tout pré-résolu.
 
     Avant ça, afficher une fiche imposait de télécharger `entities.json`
@@ -1432,6 +1461,8 @@ def write_entity_bundles(out: Path, public_entities, public_relations,
             "flows": sorted(flows_par_entite.get(eid, []),
                             key=lambda f: (f.get("year") or 0), reverse=True),
             "marches": marches_par_entite.get(eid, []),
+            **({"comptes_syndicat": (comptes_syndicats or {})[eid]}
+               if eid in (comptes_syndicats or {}) else {}),
         })
     return len(public_entities)
 
@@ -3787,7 +3818,8 @@ def build_snapshot(out: Path) -> dict:
         # ── Un fichier par acteur + index de recherche ────────────────────────
         bundles = write_entity_bundles(out, public_entities, public_relations,
                                        public_events, public_links, public_flows,
-                                       marches_data)
+                                       marches_data,
+                                       comptes_syndicats_par_entite(conn))
         stats["extraits_actes"] = write_act_extracts(out, textes_extraits)
         stats["extraits_masquages"] = dict(masquages)
         communes = {r["id"]: r.get("commune") for r in entity_rows}

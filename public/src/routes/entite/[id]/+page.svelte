@@ -17,6 +17,37 @@
   export let data
 
   $: ({ entity, relations, liens, flows, marches } = data)
+
+  // Comptes d'un syndicat auquel l'intercommunalité adhère (balances DGFiP).
+  // Le dernier exercice publié, budget par budget — jamais additionnés — et,
+  // en dessous, la tendance des recettes de fonctionnement. Un poste absent de
+  // la balance n'est pas affiché : zéro et « aucun compte » ne disent pas la
+  // même chose.
+  $: comptes = data.comptes_syndicat || []
+  $: dernierExercice = comptes[0]
+  const POSTES_SYNDICAT = [
+    ['recettes_fonctionnement', 'Recettes de fonctionnement'],
+    ['contributions_membres', '… dont contributions des membres'],
+    ['ventes_et_redevances', '… dont ventes et redevances'],
+    ['depenses_fonctionnement', 'Dépenses de fonctionnement'],
+    ['personnel', '… dont personnel'],
+    ['subventions_versees', '… dont subventions versées'],
+    ['depenses_investissement', 'Dépenses d’équipement'],
+    ['subventions_equipement_versees', 'Subventions d’équipement versées'],
+    ['encours_dette', 'Encours de la dette au 31/12'],
+  ]
+  const FINANCEURS = [
+    ['subventions_etat', 'État'], ['subventions_region', 'Région'],
+    ['subventions_departement', 'Département'], ['subventions_europe', 'Union européenne'],
+    ['subventions_autres', 'Autres (dont agences de l’eau)'],
+  ]
+  // La tendance ne suit que le budget principal — le plus gros de chaque
+  // exercice — pour ne pas mêler deux budgets sur une même ligne.
+  $: tendance = comptes.slice().reverse().map((c) => {
+    const principal = c.budgets.reduce((m, b) =>
+      (b.postes.recettes_fonctionnement ?? 0) > (m?.postes.recettes_fonctionnement ?? -1) ? b : m, null)
+    return { year: c.year, recettes: principal?.postes.recettes_fonctionnement }
+  }).filter((t) => t.recettes != null)
   $: id = entity?.id
 
   // Chronologie — pour les personnes exerçant un rôle public.
@@ -334,6 +365,47 @@
           </table>
         {/if}
 
+        {#if dernierExercice}
+          <h2>Comptes du syndicat <span class="count">{dernierExercice.year}</span></h2>
+          <p class="note">
+            Balances comptables publiées par la DGFiP : opérations réelles de
+            l’exercice, hors écritures d’ordre (amortissements, cessions). Les
+            contributions des membres sont celles de <em>tous</em> les membres
+            du syndicat, pas la seule part de la commune ou de son
+            intercommunalité.{#if dernierExercice.budgets.length > 1}
+            Ce syndicat tient {dernierExercice.budgets.length} budgets&nbsp;: ils
+            sont présentés séparément, un budget pouvant reverser à l’autre.{/if}
+          </p>
+          {#each dernierExercice.budgets as b}
+            {#if dernierExercice.budgets.length > 1}<h3 class="budget">{b.libelle}</h3>{/if}
+            <table>
+              <tbody>
+                {#each POSTES_SYNDICAT as [cle, libelle]}
+                  {#if b.postes[cle] != null}
+                    <tr class:sous={libelle.startsWith('…')}>
+                      <td>{libelle}</td><td class="r">{euros(b.postes[cle])}</td>
+                    </tr>
+                  {/if}
+                {/each}
+                {#if FINANCEURS.some(([cle]) => b.postes[cle])}
+                  <tr><td colspan="2" class="soustitre">Subventions reçues (fonctionnement et équipement)</td></tr>
+                  {#each FINANCEURS as [cle, libelle]}
+                    {#if b.postes[cle]}
+                      <tr class="sous"><td>{libelle}</td><td class="r">{euros(b.postes[cle])}</td></tr>
+                    {/if}
+                  {/each}
+                {/if}
+              </tbody>
+            </table>
+          {/each}
+          {#if tendance.length > 1}
+            <p class="note">
+              Recettes de fonctionnement du budget principal&nbsp;:
+              {#each tendance as t, i}{i ? ' · ' : ''}{t.year}&nbsp;: {euros(t.recettes)}{/each}.
+            </p>
+          {/if}
+        {/if}
+
         {#if marches.length}
           <h2>Marchés publics</h2>
           <table>
@@ -406,7 +478,7 @@
           {/if}
         {/if}
 
-        {#if !flows.length && !liens.length && !relations.length && !marches.length}
+        {#if !flows.length && !liens.length && !relations.length && !marches.length && !comptes.length}
           <p class="empty">
             Aucun acte public ni flux financier n'est rattaché à cet acteur dans
             les sources collectées à ce jour.
@@ -487,6 +559,9 @@
   .tag { font-size: .68rem; background: var(--ambre-pale); color: var(--ambre); padding: .05rem .4rem;
          border-radius: 99px; margin-left: .3rem; }
   .fdesc, .fsens { display: block; color: var(--gris); font-size: .8rem; }
+  tr.sous td:first-child { padding-left: 1.2rem; color: var(--gris); }
+  .soustitre { font-size: .8rem; color: var(--gris); padding-top: .6rem; }
+  h3.budget { font-size: .9rem; margin: .8rem 0 .3rem; }
 
   .rels { list-style: none; padding: 0; margin: 0; }
   .rels li { display: grid; grid-template-columns: 12rem 1fr auto; gap: .2rem .8rem; align-items: baseline;

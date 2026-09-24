@@ -167,3 +167,22 @@ def test_les_derives_nomment_des_steps_qui_existent():
                        if d not in STEPS} | {s for s in cl.DERIVES if s not in STEPS})
     assert inconnus == [], f"dérivé(s) ou source(s) inconnus : {inconnus}"
     assert set(cl.CLOTURE) <= set(STEPS)
+
+
+@pytest.mark.parametrize("argv, attendu", [
+    (["--run"], True), (["--loop"], True), ([], False)])
+def test_la_boucle_met_le_schema_a_jour_avant_de_collecter(
+        base, monkeypatch, argv, attendu):
+    """`run_all --step X` appelle `init_db` ; la boucle appelait `run_step`
+    directement et jamais `init_db`. Le 24/09/2026, `comptes_syndicats` n'existait
+    sur aucune instance après portage : le step `syndicats` aurait échoué chaque
+    matin. Le scan seul, lui, ne doit rien écrire."""
+    cl = _collect_loop()
+    appels = []
+    monkeypatch.setattr(cl, "init_db", lambda: appels.append("init"))
+    monkeypatch.setattr(cl, "sauvegarde", lambda: "(test)")
+    monkeypatch.setattr(cl, "get_conn", lambda: base)
+    monkeypatch.setattr(cl, "scan", lambda conn, force=False: [])
+    monkeypatch.setattr(sys, "argv", ["collect_loop.py", *argv])
+    assert cl.main() == 0
+    assert (appels == ["init"]) is attendu

@@ -133,3 +133,39 @@ def test_rejouer_met_a_jour_sans_dupliquer(base, entite):
     rows = base.execute("SELECT montant FROM comptes_syndicats"
                         " WHERE poste='depenses_fonctionnement'").fetchall()
     assert [r[0] for r in rows] == [404.0]
+
+
+# ── L'encart de la fiche ─────────────────────────────────────────────────────
+
+def _snapshot():
+    import importlib.util
+    import sys
+    from pathlib import Path
+    racine = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(racine))
+    spec = importlib.util.spec_from_file_location(
+        "snapshot_sous_test", racine / "scripts" / "build_public_snapshot.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_la_fiche_recoit_ses_comptes_par_exercice_et_par_budget(base, entite):
+    synd = entite("SIAEP", "service")
+    importer(base, synd, "200093797", [
+        _compte("6156", exer="2024", ident="PRINCIPAL", obnetdeb=100.0),
+        _compte("6156", exer="2024", ident="ANNEXE", obnetdeb=7.0),
+        _compte("6156", exer="2023", ident="PRINCIPAL", obnetdeb=90.0),
+    ])
+    comptes = _snapshot().comptes_syndicats_par_entite(base)[synd]
+    assert [c["year"] for c in comptes] == [2024, 2023]
+    montants = sorted(b["postes"]["depenses_fonctionnement"]
+                      for b in comptes[0]["budgets"])
+    assert montants == [7, 100], "deux budgets ne s'additionnent pas"
+
+
+def test_sans_table_la_fiche_na_pas_dencart(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(tmp_path / "ancienne.db")
+    conn.row_factory = sqlite3.Row
+    assert _snapshot().comptes_syndicats_par_entite(conn) == {}

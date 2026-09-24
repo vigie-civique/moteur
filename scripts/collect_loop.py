@@ -57,7 +57,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from collectors.config import DB_PATH, STEP_META          # noqa: E402
-from collectors.db import get_conn                        # noqa: E402
+from collectors.db import get_conn, init_db               # noqa: E402
 from collectors.run_all import STEPS, run_step            # noqa: E402
 
 # Ce que la boucle peut relancer : l'intersection du rythme déclaré et des steps
@@ -188,14 +188,21 @@ def main() -> int:
         raise SystemExit(f"step inconnu ou sans rythme déclaré : {args.only}\n"
                          f"  connus : {', '.join(sorted(SUIVIS))}")
 
-    conn = get_conn()
     agir = args.run or args.loop
+    if agir:
+        print(f"Sauvegarde avant collecte : {sauvegarde()}")
+        # Le schéma d'abord. `run_all` le met à jour avant tout step ; la boucle
+        # appelait `run_step` directement et ne le faisait jamais. Une table
+        # ajoutée au schéma (`comptes_syndicats`, 24/09/2026) n'existait donc
+        # sur aucune instance : le step qui l'écrit aurait échoué chaque matin,
+        # et comme un `error` ne rajeunit rien, il aurait été retenté en vain
+        # tous les jours. `init_db` est idempotent — IF NOT EXISTS, colonnes et
+        # index rattrapés.
+        init_db()
+    conn = get_conn()
     joues: list[str] = []
     echecs: dict[str, str] = {}
     try:
-        if agir:
-            print(f"Sauvegarde avant collecte : {sauvegarde()}")
-
         iteration = 0
         while True:
             iteration += 1
