@@ -47,6 +47,10 @@ from .db import log_run_end, log_run_start
 # Au-delà, le patronyme est considéré comme trop courant sur le territoire.
 MAX_SURNAME_FREQ = 5
 
+#: Au-delà de ce nombre de noms de structures qui le portent, un mot ne
+#: distingue plus personne (cf. `detect_subsidy_phantoms`).
+MAX_FREQ_MOT_DISTINCTIF = 5
+
 #: Ce que la passe quotidienne pose : des candidats qu'on peut trancher sur
 #: pièce. Mesuré le 23/09/2026 — 16/42/33 doublons, 3/1/2 élus-dirigeants,
 #: 97/156/100 toponymes sur Lasalle, Saillans et Brassac.
@@ -325,9 +329,24 @@ def detect_subsidy_phantoms(cur) -> int:
         f"AND id NOT IN ({','.join('?'*len(ph_ids))})", ph_ids
     ).fetchall()
 
+    # Un mot que portent beaucoup de noms ne désigne personne. Jusqu'au
+    # 24/09/2026 le filtre était la LONGUEUR (> 3 lettres) : « Lasalle 2 GYM »
+    # se réduisait à « lasalle », et ressortait à 100 % contre les soixante
+    # structures dont le nom contient la commune — le bon candidat, LASALLE 2
+    # GYMS, rejeté dans le même lot que le bruit. La fréquence est générique :
+    # elle écarte la commune, le canton, « association », sans liste à tenir.
+    frequence: dict[str, int] = {}
+    for r in real:
+        for w in set(normalize(r["name"]).split()):
+            frequence[w] = frequence.get(w, 0) + 1
+
+    def distinctifs(nom: str) -> list[str]:
+        return [w for w in normalize(nom).split()
+                if len(w) > 2 and frequence.get(w, 0) <= MAX_FREQ_MOT_DISTINCTIF]
+
     count = 0
     for ph in phantoms:
-        ph_words = [w for w in normalize(ph["name"]).split() if len(w) > 3]
+        ph_words = distinctifs(ph["name"])
         if not ph_words:
             continue
         for r in real:

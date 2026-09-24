@@ -164,6 +164,31 @@ def test_le_rapprochement_ne_depend_daucune_plage_didentifiants(base):
     ).fetchone()[0] == 1
 
 
+def test_le_nom_de_la_commune_ne_rapproche_personne(base):
+    """« Lasalle 2 GYM » se réduisait à « lasalle » (mots de plus de 3 lettres),
+    et sortait à 100 % contre chaque structure dont le nom porte la commune.
+    Relevé le 24/09/2026 : 60 candidats pour un seul bénéficiaire, et le bon —
+    LASALLE 2 GYMS — rejeté dans le même lot que le bruit."""
+    def entite(type_, nom):
+        return base.execute("INSERT INTO entities(type, name) VALUES(?,?)",
+                            (type_, nom)).lastrowid
+    commune = entite("service", "Commune de Lasalle")
+    bonne = entite("association", "LASALLE 2 GYMS")
+    for nom in ("Comité des fêtes de Lasalle", "Paroisse de Lasalle",
+                "Club taurin de Lasalle", "Boule de Lasalle", "Vétérans de Lasalle",
+                "Amis de la bibliothèque de Lasalle"):
+        entite("association", nom)
+    fantome = entite("association", "Lasalle 2 GYM")
+    base.execute("INSERT INTO financial_flows(type, year, amount, from_id, to_id, source) "
+                 "VALUES('subvention', 2026, 100, ?, ?, 'PV')", (commune, fantome))
+    base.commit()
+
+    detect_subsidy_phantoms(base.cursor())
+    cibles = {r[0] for r in base.execute(
+        "SELECT to_id FROM relation_candidates WHERE from_id = ?", (fantome,))}
+    assert cibles == {bonne}
+
+
 def test_sans_aucun_fantome_rien_nest_propose(base):
     """Zéro bénéficiaire sans registre : la requête ne doit pas partir en vrille
     sur une liste d'identifiants vide."""

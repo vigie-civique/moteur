@@ -442,9 +442,18 @@ def rapprochements(conn, seuil: float = 0.80,
         if len(a["_cle"]) < LONGUEUR_MINIMALE:
             continue
         for b in lignes[i + 1:]:
-            if len(b["_cle"]) < LONGUEUR_MINIMALE or a["_cle"] == b["_cle"]:
+            if len(b["_cle"]) < LONGUEUR_MINIMALE:
                 continue
             if not _communes_compatibles(a["commune"], b["commune"]):
+                continue
+            # Même nom ET même commune : c'est une grappe, `grappes()` la
+            # fusionne. Même nom mais une commune absente : `grappes()` ne la
+            # voit pas (sa clé porte la commune), et l'écarter ici aussi la
+            # perdait des deux côtés — « VIVALTO. », née d'un compte rendu,
+            # n'a jamais rejoint VIV'ALTO et ses subventions comptaient double.
+            meme_commune = ((a["commune"] or "").strip().lower()
+                            == (b["commune"] or "").strip().lower())
+            if a["_cle"] == b["_cle"] and meme_commune:
                 continue
             score = difflib.SequenceMatcher(None, a["_cle"], b["_cle"]).ratio()
             if score < seuil:

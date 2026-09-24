@@ -22,7 +22,8 @@ import pytest
 
 from collectors.formes_juridiques import type_pour_forme
 from collectors.rna import titre_du_record
-from scripts.fusionner_entites import choisir_garde, fusionner, grappes, jeton
+from scripts.fusionner_entites import (choisir_garde, fusionner, grappes, jeton,
+                                      rapprochements)
 
 
 # ── La forme juridique dit le type ───────────────────────────────────────────
@@ -305,6 +306,20 @@ def test_grappes_ne_franchissent_pas_les_communes(base, entite):
 def test_jeton_soude_les_apostrophes():
     assert jeton("VIV'ALTO") == jeton("VIVALTO") == frozenset({"vivalto"})
     assert jeton("Les Amis de la Bibliothèque") == frozenset({"amis", "bibliotheque"})
+
+
+def test_meme_nom_sans_commune_sort_au_rapprochement(base, entite):
+    """« VIVALTO. », née d'un compte rendu, n'a pas de commune ; VIV'ALTO, si.
+
+    `grappes()` ne les réunit pas (sa clé porte la commune) : si
+    `rapprochements()` les écartait aussi pour « nom identique », la paire ne
+    ressortait nulle part et ses subventions comptaient deux fois.
+    """
+    a = entite("VIV'ALTO", "association", "Lasalle")
+    b = entite("VIVALTO.", "association", None)
+    assert not [g for g in grappes(base) if len(g["membres"]) == 2]
+    paires = [{m["id"] for m in p["membres"]} for p in rapprochements(base)]
+    assert {a, b} in paires
 
 
 def test_un_lieu_homonyme_ne_se_fusionne_pas_tout_seul(base, entite):

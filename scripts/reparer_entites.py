@@ -46,9 +46,16 @@ def titre(t): print(f"\n\033[1m── {t} ──\033[0m")
 
 
 def base_de(instance: Path) -> Path:
-    bases = sorted(p for p in (instance / "db").glob("*.db"))
-    if not bases:
-        sys.exit(f"pas de base dans {instance}/db/")
+    """La base vivante, `<insee>.db` — jamais une sauvegarde.
+
+    `sorted(glob("*.db"))[0]` a servi jusqu'au 24/09/2026 : les sauvegardes
+    s'appellent `<insee>.avant-<motif>-<date>.db`, et « 30140.avant-… » passe
+    avant « 30140.db » dans l'ordre alphabétique. Dès la première sauvegarde,
+    le script lisait — et écrivait — une copie figée, sans rien en dire.
+    """
+    bases = [p for p in (instance / "db").glob("*.db") if "." not in p.stem]
+    if len(bases) != 1:
+        sys.exit(f"{instance}/db/ : {len(bases)} base(s) vivante(s), il en faut une.")
     return bases[0]
 
 

@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.fusionner_entites import (  # noqa: E402
     identifiants, ouvrir, rapprochements)
+from scripts.reparer_entites import base_de  # noqa: E402
 
 
 def _detail(conn, eid: int) -> dict:
@@ -74,7 +75,7 @@ def main() -> None:
     args = ap.parse_args()
 
     instance = args.instance.expanduser()
-    base = sorted((instance / "db").glob("*.db"))[0]
+    base = base_de(instance)
     conn = ouvrir(base)
     print(f"\033[1mBase : {base}\033[0m   seuil {args.seuil}")
 
