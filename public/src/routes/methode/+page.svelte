@@ -165,8 +165,9 @@
       modifiée.</li>
   </ul>
   <p>
-    Une erreur constatée peut être signalée par la page
-    <a href="/contact">Contact / Droit de réponse</a>.
+    Ce qui a été corrigé, et quand, se lit dans le
+    <a href="/corrections">journal des corrections</a>. Une erreur constatée
+    peut être signalée par la page <a href="/contact">Contact / Droit de réponse</a>.
   </p>
 
   <p class="renvoi">

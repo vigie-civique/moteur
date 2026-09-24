@@ -1,0 +1,9 @@
+[
+  {
+    "date": "2026-01-15",
+    "page": "/finances",
+    "constat": "Le total versé par la commune en 2025 était affiché à 0 €.",
+    "correction": "La commune est retrouvée malgré une différence de casse ; le total est recalculé.",
+    "signale_par": "un lecteur"
+  }
+]

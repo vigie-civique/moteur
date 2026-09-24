@@ -127,7 +127,8 @@
             <tr>
               <td>{s.source}</td>
               <td class="r">{nb(s.actes)}</td>
-              <td class="periode">{fmt(s.debut)} → {fmt(s.fin)}</td>
+              <td class="periode">{fmt(s.debut)} → {fmt(s.fin)}{#if s.a_venir}
+                <span class="avenir">+ {nb(s.a_venir)} annoncé{s.a_venir > 1 ? 's' : ''} à venir, jusqu'au {fmt(s.annonce_jusqu_au)}</span>{/if}</td>
               <td class="r">
                 {#if s.avec_document}{nb(s.avec_document)}{:else}<span class="zero">aucune</span>{/if}
               </td>
@@ -139,7 +140,8 @@
     <p class="note">
       Une période qui commence tard ne signifie pas que rien n'existait avant&nbsp;:
       elle indique le point à partir duquel la source publie, ou à partir duquel
-      nous collectons.
+      nous collectons. Elle s'arrête à la date d'arrêt des données&nbsp;; les
+      événements que l'agenda annonce pour plus tard sont comptés à part.
     </p>
 
     <h2>Fraîcheur de la collecte</h2>
@@ -202,6 +204,8 @@
   table.etroit { min-width: 0; }
   tr.total td { font-weight: 600; border-top: 2px solid var(--trait); }
   .periode { color: var(--gris); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* Un événement annoncé n'est pas une période couverte : il se lit dessous. */
+  .avenir { display: block; font-size: .78rem; white-space: normal; }
   .zero { color: var(--ambre); }
 
   .dormants { list-style: none; padding: 0; margin: .6rem 0 0; font-size: .9rem; color: var(--gris); }

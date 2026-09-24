@@ -2026,6 +2026,76 @@ def provenance(event: dict, source: str | None, event_type: str | None,
 
 
 
+JOURNAL_PATH = Path(os.environ.get("VIGIE_JOURNAL_CORRECTIONS")
+                    or ROOT / "config" / "journal_corrections.json")
+_DATE_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def lire_journal_corrections(path: Path = JOURNAL_PATH) -> list[dict]:
+    """Les erreurs DU SITE, reconnues et corrigées — écrites par l'instance.
+
+    Une donnée rectifiée à la main se relève toute seule (`corrige`). Un
+    calcul faux, un doublon qui comptait deux fois, un chiffre mal nommé ne
+    laissent aucune trace dans les données : ils n'existent que si quelqu'un
+    les écrit. Le fichier est facultatif ; une entrée incomplète est écartée,
+    jamais complétée — un journal ne s'invente pas.
+    """
+    if not path.exists():
+        return []
+    try:
+        brut = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  ⚠ {path.name} illisible ({exc}) : journal des corrections vide")
+        return []
+    entrees = []
+    for e in brut if isinstance(brut, list) else []:
+        if not isinstance(e, dict):
+            continue
+        date, constat, correction = (str(e.get(k) or "").strip()
+                                     for k in ("date", "constat", "correction"))
+        page = str(e.get("page") or "").strip()
+        if not (_DATE_ISO.match(date) and constat and correction):
+            continue
+        entrees.append({
+            "date": date,
+            # Un chemin du site, jamais une URL : le journal ne renvoie pas ailleurs.
+            "page": page if re.fullmatch(r"/[\w\-/]*", page) else None,
+            "constat": constat, "correction": correction,
+            "signale_par": str(e.get("signale_par") or "").strip() or None,
+        })
+    return sorted(entrees, key=lambda e: e["date"], reverse=True)
+
+
+def export_corrections(public_events: list[dict], public_flows: list[dict],
+                       marches: list[dict], journal: list[dict]) -> dict:
+    """Le journal des corrections : ce que le site a reconnu faux, et réparé.
+
+    « Rectifié » était promis sur /methode, avec « 0 » en face et aucun endroit
+    où lire ce qui avait été corrigé (audit du 24/09/2026). Un zéro se publie
+    aussi : c'est un fait, pas une absence de page.
+    """
+    donnees = []
+    for e in public_events:
+        if e.get("corrige"):
+            donnees.append({"nature": "acte", "id": e["id"], "type": e.get("type"),
+                            "date": e.get("date"),
+                            "libelle": e.get("title"), "champs": e["corrige"],
+                            "motif": e.get("note_revue")})
+    for f in public_flows:
+        if f.get("corrige"):
+            donnees.append({"nature": "flux", "id": f.get("id"),
+                            "date": f"{f['year']}" if f.get("year") else None,
+                            "libelle": f.get("description") or f.get("to_name"),
+                            "champs": f["corrige"], "motif": f.get("note_revue")})
+    for m in marches:
+        if m.get("corrige"):
+            donnees.append({"nature": "marche", "id": m.get("id"),
+                            "date": m.get("date_notif"), "libelle": m.get("objet"),
+                            "champs": m["corrige"], "motif": m.get("note_revue")})
+    donnees.sort(key=lambda d: d.get("date") or "", reverse=True)
+    return {"site": journal, "donnees": donnees}
+
+
 def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
     """Ce que la collecte couvre, et surtout ce qu'elle ne couvre pas.
 
@@ -2040,17 +2110,26 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
       - les EXCLUSIONS délibérées (périmètre, vie privée), qui ne sont pas
         des lacunes mais des choix, et qui sont déjà dans `stats`.
     """
+    # La période couverte s'arrête à la date d'arrêt : un concert annoncé pour
+    # le 14/11 faisait « couvrir » lasalle.fr jusqu'en novembre, deux mois après
+    # la collecte (audit du 24/09/2026). L'agenda à venir est compté à part.
+    arret = (stats.get("generated_at") or datetime.now().isoformat())[:10]
     par_source: dict[str, dict] = {}
     for e in public_events:
         src = e.get("source") or "inconnue"
         d = par_source.setdefault(src, {"source": src, "actes": 0,
                                         "debut": None, "fin": None,
-                                        "avec_document": 0})
+                                        "avec_document": 0,
+                                        "a_venir": 0, "annonce_jusqu_au": None})
         d["actes"] += 1
         if e.get("document") == "acte":
             d["avec_document"] += 1
         date = e.get("date")
-        if date:
+        if date and date[:10] > arret:
+            d["a_venir"] += 1
+            if d["annonce_jusqu_au"] is None or date > d["annonce_jusqu_au"]:
+                d["annonce_jusqu_au"] = date
+        elif date:
             if d["debut"] is None or date < d["debut"]:
                 d["debut"] = date
             if d["fin"] is None or date > d["fin"]:
@@ -3784,6 +3863,10 @@ def build_snapshot(out: Path) -> dict:
                       + sum(1 for f in public_flows if f.get("corrige"))
                       + sum(1 for m in marches_data if m.get("corrige")),
         }
+        corrections = export_corrections(public_events, public_flows, marches_data,
+                                         lire_journal_corrections())
+        write_json(out / "corrections.json", corrections)
+        stats["corrections_site"] = len(corrections["site"])
         stats["actualite_items"] = min(len(actualite), 400)
         stats["actualite_a_venir"] = len(a_venir)
         stats["actualite_par_genre"] = dict(Counter(i["genre"] for i in actualite))

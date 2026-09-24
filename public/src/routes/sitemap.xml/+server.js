@@ -43,7 +43,7 @@ const adresseXml = (url) => encodeURI(url)
 // navigation pure (hub) portent une priorité plus haute que les listes.
 const PAGES = [
   ['/', 1.0], ['/qui-decide', 0.9], ['/argent', 0.9], ['/comprendre', 0.8],
-  ['/methode', 0.8], ['/couverture', 0.7], ['/nouveautes', 0.8], ['/deliberations', 0.8],
+  ['/methode', 0.8], ['/couverture', 0.7], ['/corrections', 0.5], ['/nouveautes', 0.8], ['/deliberations', 0.8],
   ['/marches', 0.7], ['/elus', 0.7], ['/budgets', 0.7], ['/finances', 0.7],
   ['/impots', 0.7], ['/elus-et-structures', 0.7], ['/elections', 0.7],
   ['/com-com', 0.7], ['/acteurs-publics', 0.6], ['/urbanisme', 0.6],

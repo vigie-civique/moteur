@@ -64,6 +64,7 @@ def test_aucun_fichier_suivi_n_est_ignore():
     "config/publication_rules.json.avant-decp-20260824-211251",
     "config/arbitrages_entites.json",         # décisions humaines, nominatives
     "config/dossiers_locaux.json",
+    "config/journal_corrections.json",        # les erreurs d'UNE instance
     "public/static/data/entities.json",       # le snapshot servi
     "public/static/.data.precedent/entities.json",   # son retour arrière
     "dashboard/static/public_api/budget.json",
@@ -81,6 +82,7 @@ def test_ce_qui_appartient_a_une_instance_reste_ignore(chemin):
 @pytest.mark.parametrize("chemin", [
     "public/src/routes/territoire/+page.svelte",   # la page, pas le périmètre
     "config/publication_rules.exemple.json",       # l'exemple livré par le moteur
+    "config/journal_corrections.exemple.json",
     "scripts/carte_fond.py",
 ])
 def test_le_code_du_moteur_n_est_jamais_ignore(chemin):

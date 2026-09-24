@@ -4,7 +4,7 @@
   // « Comprendre » — la couche pédagogique (clé d'après CivLab).
   // Expliquer, pas seulement montrer : mission, mode d'emploi, institutions, fiabilité.
   const portes = [
-    { icone: 'decide', t: 'Qui décide ?',     d: 'Les élus, le conseil, l\'intercommunalité et les réseaux de pouvoir.', href: '/qui-decide' },
+    { icone: 'decide', t: 'Qui décide ?',     d: 'Les élus, le conseil, l\'intercommunalité et les liens documentés entre acteurs.', href: '/qui-decide' },
     { icone: 'argent', t: "Où va l'argent ?", d: 'Le budget, les subventions, les marchés publics, le foncier.',          href: '/argent' },
     { icone: 'acteurs', t: 'Qui agit ?',       d: 'L\'annuaire des acteurs du territoire, et leur carte.',                  href: '/acteurs-publics' },
   ]

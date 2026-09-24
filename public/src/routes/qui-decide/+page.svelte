@@ -2,7 +2,10 @@
   import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
 
-  // Hub « Qui décide ? » — la gouvernance et les réseaux de pouvoir.
+  // Hub « Qui décide ? » — la gouvernance et les liens documentés entre acteurs.
+  // « Réseaux de pouvoir » promettait plus que les données ne montrent (mandats,
+  // subventions, commissions) : même motif que l'abandon de « Graphe
+  // d'influence » ci-dessous (audit du 24/09/2026).
   // Modèle LittleSis / SF Government Graph : le pouvoir se lit en relations.
   // Chaque carte annonce depuis le 11/08/2026 le volume qu'elle couvre.
   export let data
@@ -41,7 +44,7 @@
 
 <svelte:head>
   <title>Qui décide ? — {SITE_NOM}</title>
-  <meta name="description" content="La gouvernance {COMMUNE_DE} : élus, intercommunalité, délibérations et réseaux de pouvoir." />
+  <meta name="description" content="La gouvernance {COMMUNE_DE} : élus, intercommunalité, délibérations et liens documentés entre acteurs." />
 </svelte:head>
 
 <section class="hub">
@@ -49,8 +52,8 @@
     <Icon name="decide" size={28} />
     <div>
       <h1>Qui décide&nbsp;?</h1>
-      <p>La gouvernance locale et les réseaux de pouvoir. Qui détient les mandats, qui vote quoi,
-         et comment les acteurs sont liés entre eux.</p>
+      <p>La gouvernance locale et les liens documentés entre acteurs. Qui détient les mandats,
+         qui vote quoi, et quels liens les actes publics établissent entre eux.</p>
     </div>
   </header>
 
