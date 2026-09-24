@@ -10,7 +10,7 @@
 // le découpage faisait perdre.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { INSTITUTIONAL, anneeDe, instanceDe } from '$lib/actes.js'
+import { INSTITUTIONAL, anneeDe, estSeance, instanceDe } from '$lib/actes.js'
 import { DATA_DIR, lireJSON } from '$lib/donnees.server.js'
 import { etatSource } from '$lib/couverture.js'
 
@@ -71,6 +71,9 @@ export function load() {
     total: actes.length,
     nCM: actes.filter((e) => instanceDe(e) === 'CM').length,
     nCC: actes.filter((e) => instanceDe(e) === 'CC').length,
+    delibCM: actes.filter((e) => instanceDe(e) === 'CM' && !estSeance(e)).length,
+    delibCC: actes.filter((e) => instanceDe(e) === 'CC' && !estSeance(e)).length,
+    seances: actes.filter(estSeance).length,
     anneeCourante,
     nCourante: parAnnee.get(anneeCourante)?.total ?? 0,
     votes: avecVote.length ? {

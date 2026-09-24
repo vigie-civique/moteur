@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
+import { estAttribue } from '$lib/marches.js'
 
 export const prerender = true
 
@@ -103,7 +104,11 @@ export function load() {
   const parNature = {}
   for (const e of entreprisesVivantes) parNature[e.na || 'societe'] = (parNature[e.na || 'societe'] || 0) + 1
   const marches = lire('marches.json', { marches: [] }).marches || []
-  const marchesCommune = marches.filter((m) => !m.portee || m.portee === 'commune').length
+  // Le compteur de l'accueil dit « marché attribué » : il compte des
+  // attributions, pas des avis (cf. `estAttribue`).
+  const marchesCommune = marches
+    .filter((m) => (!m.portee || m.portee === 'commune') && estAttribue(m)).length
+  const marchesInterco = marches.filter((m) => m.portee === 'intercommunalite')
   const delibParPortee = stats.deliberations_public_par_portee || {}
 
   // ZÉRO EST UNE RÉPONSE. Un `||` de repli aurait retenu le total du snapshot
@@ -156,7 +161,8 @@ export function load() {
     interco: {
       deliberations: delibParPortee.intercommunalite ?? 0,
       acteurs: (index.entities || []).filter((e) => e.p === 'intercommunalite').length,
-      marches: marches.filter((m) => m.portee === 'intercommunalite').length,
+      marches: marchesInterco.filter(estAttribue).length,
+      avis: marchesInterco.filter((m) => !estAttribue(m)).length,
       recents: ailleurs,
     },
     budget,

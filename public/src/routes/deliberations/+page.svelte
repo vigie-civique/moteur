@@ -7,12 +7,13 @@
   // Rendu au build par +page.server.js : sommaire des millésimes + index
   // compact des titres. Les actes eux-mêmes vivent sur /deliberations/<année>.
   export let data
-  $: ({ annees, index, total, nCM, nCC, anneeCourante, nCourante, votes } = data)
+  $: ({ annees, index, total, delibCM, delibCC, seances, anneeCourante, nCourante, votes } = data)
   // Aucune délibération collectée : ne pas afficher « 0 acte », qui se lit
   // « le conseil n'a rien décidé » au lieu de « nous n'avons pas collecté les
   // comptes rendus ». C'est le cas de tout dossier national.
   $: source = data.source || { etat: 'servie', sources: [] }
 
+  const nb = (n) => (n ?? 0).toLocaleString('fr-FR')
   let q = '', instance = 'all'
 
   const fold = (s) => (s || '').toLowerCase()
@@ -49,11 +50,20 @@
          la collecte a trouvé. Un acte non collecté n'y est pas. -->
     <Niveau type="calcul" compact base="les actes collectés depuis les sources officielles" />
     <div class="tiles">
-      <div class="tile"><span class="tval">{total}</span><span class="tlabel">actes recensés</span></div>
-      <div class="tile"><span class="tval">{nCM}</span><span class="tlabel">conseil municipal</span></div>
-      <div class="tile"><span class="tval">{nCC}</span><span class="tlabel">intercommunalité</span></div>
-      <div class="tile"><span class="tval">{nCourante}</span><span class="tlabel">en {anneeCourante}</span></div>
+      <div class="tile"><span class="tval">{nb(delibCM)}</span><span class="tlabel">délibérations municipales</span></div>
+      <div class="tile"><span class="tval">{nb(delibCC)}</span><span class="tlabel">délibérations intercommunales</span></div>
+      <div class="tile"><span class="tval">{nb(seances)}</span><span class="tlabel">séances (comptes rendus)</span></div>
+      <div class="tile"><span class="tval">{nb(nCourante)}</span><span class="tlabel">actes des assemblées en {anneeCourante}</span></div>
     </div>
+
+    <!-- Un total sans sa règle se compare à tort : l'accueil, cette page et
+         /couverture annonçaient trois nombres sans dire ce qu'ils comptent. -->
+    <p class="definition">
+      Soit <b>{nb(total)}</b> actes des assemblées&nbsp;: une <b>délibération</b> est une
+      décision votée, une <b>séance</b> est le conseil qui l'a votée (compte rendu ou
+      procès-verbal). L'accueil compte les {nb(delibCM)} délibérations municipales.
+      <a href="/couverture#totaux">Comment se composent les totaux du site</a>
+    </p>
 
     <div class="filters">
       <input placeholder="Rechercher un acte, toutes années confondues…" bind:value={q} />
@@ -98,7 +108,7 @@
           résultat, rarement la discussion. Il ne signifie pas non plus que la
           décision allait de soi — dans un conseil de quinze personnes, un
           désaccord se règle souvent avant le vote. Le vote n'est d'ailleurs
-          détaillé que pour {votes.connus} des {total} actes recensés.
+          détaillé que pour {votes.connus} des {total} actes des assemblées.
         </p>
 
         {#if votes.exemples.length}
@@ -158,6 +168,7 @@
   .sub a { color: var(--ardoise); }
   h2 { font-size: 1rem; margin: 1.5rem 0 .6rem; }
 
+  .definition { font-size: .88rem; color: var(--gris); margin: -.5rem 0 1rem; line-height: 1.5; }
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-bottom: 1.25rem; }
   .tile { background: #fff; border: 1px solid var(--trait); border-radius: 8px; padding: .7rem .9rem; display: flex; flex-direction: column; }
   .tval { font-size: 1.5rem; font-weight: 700; }

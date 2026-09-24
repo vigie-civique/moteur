@@ -177,6 +177,15 @@
                  .reduce((s, f) => s + (f.amount || 0), 0)
   $: verse = flows.filter(f => f.from_id === id && f.statut !== 'demande')
                   .reduce((s, f) => s + (f.amount || 0), 0)
+  // Un cumul sans sa période se lit comme un montant annuel : « REÇU 7 M€ »
+  // additionnait 2016-2026 sans le dire (audit du 24/09/2026).
+  const periodeDe = (rows) => {
+    const a = rows.filter(f => f.statut !== 'demande').map(f => f.year).filter(Boolean).sort()
+    if (!a.length) return ''
+    return a[0] === a[a.length - 1] ? `en ${a[0]}` : `cumul ${a[0]}–${a[a.length - 1]}`
+  }
+  $: periodeRecu = periodeDe(flows.filter(f => f.to_id === id))
+  $: periodeVerse = periodeDe(flows.filter(f => f.from_id === id))
   $: derniere = liens.find(e => e.date)?.date
 
   // ── L'état d'activité, dit par les registres ou tu par eux ──────────────
@@ -263,10 +272,10 @@
     <!-- Synthèse chiffrée : le résumé avant le détail. -->
     <div class="tiles">
       {#if recu > 0}
-        <div class="tile"><span class="tval">{euros(recu)}</span><span class="tlabel">reçu</span></div>
+        <div class="tile"><span class="tval">{euros(recu)}</span><span class="tlabel">reçu{periodeRecu ? ` · ${periodeRecu}` : ''}</span></div>
       {/if}
       {#if verse > 0}
-        <div class="tile"><span class="tval">{euros(verse)}</span><span class="tlabel">versé</span></div>
+        <div class="tile"><span class="tval">{euros(verse)}</span><span class="tlabel">versé{periodeVerse ? ` · ${periodeVerse}` : ''}</span></div>
       {/if}
       {#if relActives.length}
         <div class="tile"><span class="tval">{relActives.length}</span><span class="tlabel">lien{relActives.length > 1 ? 's' : ''} en cours</span></div>

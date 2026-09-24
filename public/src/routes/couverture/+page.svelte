@@ -78,8 +78,8 @@
     <!-- Donné en premier, et non enfoui : c'est le chiffre qui affaiblit le
          plus les affirmations du site, donc celui qu'il serait le plus
          malhonnête de laisser découvrir au lecteur. -->
-    <Niveau type="calcul" base="les actes publiés et leurs liens de source">
-      <b>{c.part_avec_piece} %</b> des actes publiés
+    <Niveau type="calcul" base="les pièces publiées et leurs liens de source">
+      <b>{c.part_avec_piece} %</b> des pièces publiées
       ({nb(c.actes_avec_piece)} sur {nb(c.actes_total)}) renvoient vers
       <b>le document de l'acte lui-même</b>. Pour tous les autres, le lien mène à
       la page qui le contient — le plus souvent le compte rendu entier d'une
@@ -91,11 +91,36 @@
       <a href="/deliberations">les délibérations</a>.
     </p>
 
+    {#if data.totaux?.lignes?.length}
+      <h2 id="totaux">Ce que comptent les totaux du site</h2>
+      <p>
+        Une <b>pièce</b> est tout ce que le site publie, quelle qu'en soit la
+        source. Une <b>délibération</b> est une décision votée&nbsp;; une
+        <b>séance</b>, le conseil qui l'a votée. L'accueil annonce les
+        délibérations municipales&nbsp;; la page des délibérations y ajoute les
+        séances et l'intercommunalité.
+      </p>
+      <div class="tableau">
+        <table class="etroit">
+          <thead><tr><th>Pièces publiées</th><th class="r">Nombre</th></tr></thead>
+          <tbody>
+            {#each data.totaux.lignes as l}
+              <tr>
+                <td>{#if l.href}<a href={l.href}>{l.libelle}</a>{:else}{l.libelle}{/if}</td>
+                <td class="r">{nb(l.n)}</td>
+              </tr>
+            {/each}
+            <tr class="total"><td>Total des pièces publiées</td><td class="r">{nb(data.totaux.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    {/if}
+
     <h2>Période couverte, par source</h2>
     <div class="tableau">
       <table>
         <thead>
-          <tr><th>Source</th><th class="r">Actes</th><th>Période</th><th class="r">Avec la pièce</th></tr>
+          <tr><th>Source</th><th class="r">Pièces</th><th>Période</th><th class="r">Avec la pièce</th></tr>
         </thead>
         <tbody>
           {#each c.sources as s}
@@ -174,6 +199,8 @@
   th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--trait); }
   th { font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; color: var(--gris); }
   .r { text-align: right; font-variant-numeric: tabular-nums; }
+  table.etroit { min-width: 0; }
+  tr.total td { font-weight: 600; border-top: 2px solid var(--trait); }
   .periode { color: var(--gris); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .zero { color: var(--ambre); }
 

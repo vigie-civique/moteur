@@ -1,4 +1,5 @@
 <script>
+  import { estAttribue } from '$lib/marches.js'
   import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
   import Niveau from '$lib/components/Niveau.svelte'
@@ -17,7 +18,7 @@
   let portee = 'tout'
 
   const yearOf = (m) => (m.date_notif || '').slice(0, 4)
-  const isAttrib = (m) => m.titulaire_nom && m.montant
+  const isAttrib = estAttribue
   const sum = (L) => L.reduce((s, m) => s + (m.montant || 0), 0)
 
   // Étiquette de source compacte + libellé long.
@@ -122,7 +123,9 @@
     <Niveau type="calcul" base="les marchés recensés dans les délibérations et les données ouvertes">
       Sur la période <b>{periode}</b>, <b>{dansPortee.filter(isAttrib).length}</b> marchés attribués sont recensés
       (titulaire et montant connus), pour <b>{eurosC(sum(dansPortee.filter(isAttrib)))}</b>,
-      auxquels s'ajoutent <b>{dansPortee.filter(m => !isAttrib(m)).length}</b> avis de consultation.
+      auxquels s'ajoutent <b>{dansPortee.filter(m => !isAttrib(m)).length}</b> avis publiés&nbsp;:
+      des consultations, ou des résultats dont le titulaire ou le montant manque.
+      Un avis n'est pas un marché attribué, et n'entre dans aucun total en euros.
       {#if constat}
         <br />
         <b>{constat.pourMoitie}</b> titulaires réunissent à eux seuls
@@ -164,14 +167,16 @@
            titulaire et un montant connus. Sans cette ligne, l'écart entre les
            deux chiffres passe pour une incohérence. -->
       <div class="tile">
-        <span class="tlabel">Recensés au total</span>
+        <span class="tlabel">Avis et attributions recensés</span>
         <span class="tval">{base.length}</span>
-        <span class="tsub">dont {attribues.length} attribué{attribues.length > 1 ? 's' : ''} · {avis.length} avis / consultations</span>
+        <span class="tsub">{attribues.length} marché{attribues.length > 1 ? 's' : ''} attribué{attribues.length > 1 ? 's' : ''} · {avis.length} avis publiés</span>
       </div>
       <div class="tile">
         <span class="tlabel">Acheteurs</span>
         <span class="tval">{acheteurs.length}</span>
-        <span class="tsub">commune &amp; intercommunalité</span>
+        <!-- « commune & intercommunalité » ne disait pas QUI achète : les noms,
+             à la place (audit du 24/09/2026). -->
+        <span class="tsub">{acheteurs.join(' · ')}</span>
       </div>
     </div>
 

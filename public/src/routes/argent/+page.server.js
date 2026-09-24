@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
+import { estAttribue } from '$lib/marches.js'
 
 export const prerender = true
 
@@ -18,6 +19,7 @@ export function load() {
   const flows = lire('flows.json', [])
   const dvf = lire('dvf.json', [])
   const fiscalite = lire('fiscalite.json', {})
+  const marches = lire('marches.json', { marches: [] }).marches || []
 
   const lignes = ofgl.ofgl || []
   const annee = lignes.reduce((max, l) => (l.year > max ? l.year : max), 0)
@@ -37,7 +39,10 @@ export function load() {
     recettes: agregat('Recettes de fonctionnement'),
     depenses: agregat('Dépenses de fonctionnement'),
     epargne: agregat('Épargne brute'),
-    marches: stats.marches_rows ?? null,
+    // Attributions et avis séparés : « 58 marchés publiés » comptait des avis
+    // comme autant de marchés (audit du 24/09/2026).
+    marches: marches.length ? marches.filter(estAttribue).length : (stats.marches_rows ?? null),
+    avis: marches.filter((m) => !estAttribue(m)).length,
     beneficiaires,
     totalVerse,
     dvf: transactions.length,

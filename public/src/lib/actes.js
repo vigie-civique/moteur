@@ -30,6 +30,13 @@ export const INSTITUTIONAL = {
 // (collectors/portee.py) et publiée dans le snapshot — pas sur une
 // correspondance type → instance écrite à la main. Un même type peut relever
 // des deux : c'est la donnée qui tranche, jamais la table.
+// Une SÉANCE est un conseil tenu (son compte rendu, son procès-verbal) ; une
+// DÉLIBÉRATION, une décision votée pendant la séance. Les compter ensemble sous
+// « actes » sans le dire faisait 1 308 « conseil municipal » ici et 1 179
+// « délibérations » sur l'accueil (audit du 24/09/2026).
+export const estSeance = (e) =>
+  e.type === 'conseil_municipal' || e.type === 'conseil_communautaire'
+
 export const instanceDe = (e) =>
   (e.portee === 'intercommunalite' || e.portee === 'territoire') ? 'CC' : 'CM'
 

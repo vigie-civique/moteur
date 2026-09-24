@@ -78,23 +78,27 @@
          conseil ni le même bulletin de vote, et les additionner sous le mot
          « délibérations » laissait croire à un conseil municipal deux fois plus
          actif. Le renvoi est là pour qu'aucune moitié ne se perde. -->
-    {#if interco?.deliberations || interco?.marches}
+    {#if interco?.deliberations || interco?.marches || interco?.avis}
       <p class="cadrage">
         Ces chiffres sont ceux <b>de la commune</b>. La {EPCI} en tient
-        {#if interco.deliberations}{interco.deliberations.toLocaleString('fr-FR')} délibérations{/if}{#if interco.deliberations && interco.marches} et {/if}{#if interco.marches}{interco.marches.toLocaleString('fr-FR')} marchés{/if}
+        {[
+          interco.deliberations && `${nombre(interco.deliberations)} délibérations`,
+          interco.marches && `${nombre(interco.marches)} marché${interco.marches > 1 ? 's' : ''} attribué${interco.marches > 1 ? 's' : ''}`,
+          interco.avis && `${nombre(interco.avis)} avis publiés`,
+        ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' et $1')}
         de plus, décidés pour la commune sans être décidés par elle&nbsp;:
         <a href="/com-com">voir ce que fait la {EPCI_COURT}</a>.
       </p>
     {/if}
     <div class="chiffres">
-      <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs en activité</span></span>
-      <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations</span></span>
+      <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs de la commune en activité</span></span>
+      <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations municipales</span></span>
       <span class="chiffre" class:vide={chiffres.marches === 0}>
         <b>{nombre(chiffres.marches)}</b>
-        <span>{chiffres.marches === 0 ? 'marché recensé' : 'marchés'}</span>
+        <span>{chiffres.marches > 1 ? 'marchés attribués recensés' : 'marché attribué recensé'}</span>
       </span>
       {#if budget}
-        <span class="chiffre"><b>{millions(budget.recettes)}</b><span>budget {budget.annee}</span></span>
+        <span class="chiffre"><b>{millions(budget.recettes)}</b><span>recettes de fonctionnement {budget.annee}</span></span>
       {/if}
     </div>
     <!-- Pas de badge « Calcul » ici : ces quatre chiffres n'ont pas la même
@@ -161,13 +165,13 @@
   <a class="porte" href="/qui-decide">
     <span class="porte-titre"><Icon name="decide" size={18} />Qui décide&nbsp;?</span>
     <p>Le conseil, l'intercommunalité, les commissions et les liens entre acteurs.</p>
-    <span class="porte-n">{nombre(chiffres.deliberations)} délibérations publiées</span>
+    <span class="porte-n">{nombre(chiffres.deliberations)} délibérations municipales publiées</span>
   </a>
   <a class="porte" href="/argent">
     <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
     <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
     <span class="porte-n">
-      {#if budget}{millions(budget.depenses)} dépensés en {budget.annee} · {/if}{nombre(chiffres.marches)} marché{chiffres.marches > 1 ? 's' : ''} de la commune{#if interco?.marches}, {nombre(interco.marches)} de la {EPCI_COURT}{/if}
+      {#if budget}{millions(budget.depenses)} de dépenses de fonctionnement en {budget.annee} · {/if}{nombre(chiffres.marches)} marché{chiffres.marches > 1 ? 's' : ''} attribué{chiffres.marches > 1 ? 's' : ''} par la commune{#if interco?.marches || interco?.avis} ; {EPCI_COURT}&nbsp;: {nombre(interco.marches)} attribué{interco.marches > 1 ? 's' : ''}{#if interco.avis}, {nombre(interco.avis)} avis{/if}{/if}
     </span>
   </a>
   <a class="porte" href="/acteurs-publics">
@@ -181,7 +185,7 @@
          déclarée est la gestion immobilière. Le chiffre unique décrivait un
          tissu économique qui n'existe pas. -->
     <span class="porte-n">
-      en activité&nbsp;: {nombre(chiffres.associations)} associations,
+      en activité, dont&nbsp;: {nombre(chiffres.associations)} associations,
       {nombre(chiffres.entreprisesProductives)} entreprises{#if chiffres.entreprisesPatrimoniales}
       et {nombre(chiffres.entreprisesPatrimoniales)} sociétés de patrimoine{/if}
     </span>
