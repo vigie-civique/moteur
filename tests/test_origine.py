@@ -26,6 +26,8 @@ class TestClassement:
         # Elles ont tourné six jours sans motif : chaque passe quotidienne
         # les signalait, personne ne lisait le rapport.
         "ccomptes", "gpu",
+        # Le jaune budgétaire (24/09).
+        "jaune-associations",
     ])
     def test_sources_institutionnelles(self, source):
         assert origine_de(source) == INSTITUTIONNEL

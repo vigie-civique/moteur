@@ -99,6 +99,7 @@ _MOTIFS_INSTITUTIONNELS = (
     r"fonds\s+vert",              # liste des projets subventionnés (MTE)
     r"scdl\b",                    # données essentielles des conventions de subvention
     r"occitanie",           # open data régional
+    r"jaune\b",             # annexe au PLF : l'État aux associations
     r"elections?\b",
     r"qualite[ _-]?eau",
     r"fiscalite",

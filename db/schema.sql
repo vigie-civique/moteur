@@ -1123,6 +1123,27 @@ CREATE TABLE IF NOT EXISTS budget_annuel (
     UNIQUE(year, compte, categorie)
 );
 
+-- Les comptes des SYNDICATS auxquels l'intercommunalité adhère — eau, déchets,
+-- rivières, énergie. Deuxième étage de délégation : la commune ne vote plus ces
+-- budgets, et pourtant elle les finance par sa cotisation à l'EPCI. Une ligne
+-- par syndicat, exercice, budget (principal ou annexe) et poste, tirée des
+-- balances DGFiP. `entity_id` est la fiche du syndicat ; `siren` et `budget`
+-- (l'identifiant de budget de la DGFiP, un SIRET) identifient la source.
+CREATE TABLE IF NOT EXISTS comptes_syndicats (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id   INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+    siren       TEXT NOT NULL,
+    year        INTEGER NOT NULL,
+    budget      TEXT NOT NULL,
+    libelle_budget TEXT,
+    nomenclature TEXT,
+    poste       TEXT NOT NULL,
+    montant     REAL,
+    source      TEXT DEFAULT 'dgfip-syndicats',
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE(siren, year, budget, poste)
+);
+
 CREATE TABLE IF NOT EXISTS budget_indicators (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     agregat TEXT NOT NULL,

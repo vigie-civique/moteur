@@ -391,6 +391,8 @@ STEP_META = {
     # budget, alors que le site en publie les pages.
     "ofgl":       (180, 22, "ofgl_agregats",     ""),
     "budget":     (180, 23, "budget_annuel",     ""),
+    # La DGFiP republie les balances des groupements une fois l'an.
+    "syndicats":  (180, 23, "comptes_syndicats", ""),
     "subventions":(180, 24, "financial_flows",   "source IN ('OFGL','DGCL')"),
     # La DGCL dépose un fichier par exercice, une fois l'an et tard : réclamer
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
@@ -407,6 +409,8 @@ STEP_META = {
     # Une région délibère toute l'année, mais son portail republie l'export par
     # lots : trimestriel est le rythme utile.
     "region":     (90,  25, "financial_flows",   "type='subvention_region'"),
+    # Un jaune par projet de loi de finances, donc un par an, à l'automne.
+    "jaune":      (365, 25, "financial_flows",   "source='jaune-associations'"),
     "eau":        (90,  26, "eau_analyses",      ""),
     # 365 jours : l'OFB publie UN exercice par an, vers la mi-année. Réclamer
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.

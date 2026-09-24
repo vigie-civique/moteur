@@ -62,7 +62,10 @@ _ANNULE = re.compile(r"annul|abandonn|caduc", re.I)
 
 # Sources qui attestent un paiement : comptes administratifs et agrégats
 # d'exécution budgétaire. Ce sont des comptes clos, pas des intentions.
-_SOURCES_PAYE = re.compile(r"\bOFGL\b|compte[s]? administratif|balance", re.I)
+# Le jaune budgétaire liste les associations ayant REÇU une subvention l'année
+# écoulée, montants tirés de Chorus, l'outil de paiement de l'État.
+_SOURCES_PAYE = re.compile(
+    r"\bOFGL\b|compte[s]? administratif|balance|^jaune-associations$", re.I)
 # Sources qui attestent un engagement : un marché notifié est signé, une
 # dotation notifiée par la DGCL est accordée. Ni l'un ni l'autre n'est encore
 # payé — c'est précisément ce que « engagé » veut dire, et ces flux sortaient

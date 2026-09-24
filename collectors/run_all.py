@@ -81,9 +81,11 @@ from collectors.marches_publics import main as run_marches_publics
 from collectors.banatic        import run as run_banatic
 from collectors.ofgl           import run as run_ofgl
 from collectors.budget         import run as run_budget
+from collectors.syndicats_comptes import run as run_syndicats
 from collectors.subventions_etat import run as run_subventions
 from collectors.dotations_investissement import run as run_dotations
 from collectors.subventions_ouvertes import run as run_subv_ouvertes
+from collectors.jaune_associations import run as run_jaune
 # main() de cm_finances lit sys.argv : appelé depuis ici, il tenterait de parser
 # les options de run_all. On prend la fonction qu'il enveloppe.
 from collectors.cm_finances    import run_subventions as _run_subv_cm
@@ -291,6 +293,10 @@ STEPS = {
     # `cm` et `events`.
     "ofgl":     ("Agrégats financiers OFGL",              run_ofgl),
     "budget":   ("Balances comptables DGFiP",             run_budget),
+    # Les budgets des syndicats auxquels l'EPCI adhère — eau, déchets, rivières,
+    # énergie. Après `banatic`, qui les pose et donne leur SIREN.
+    "syndicats": ("Comptes des syndicats adhérents (balances DGFiP)",
+                  run_syndicats),
     "subventions": ("Dotations et subventions de l'État", run_subventions),
     # Ce que l'État a ACCORDÉ, opération par opération (DETR, DSIL, DSID, DPV,
     # Fonds vert). À ne pas confondre avec `subventions` juste au-dessus, qui
@@ -307,6 +313,11 @@ STEPS = {
     # à la région, il est nommé dans l'instance — cf. run_collecteurs_regionaux.
     "region":   ("Subventions régionales (collecteurs déclarés)",
                  run_collecteurs_regionaux),
+    # Ce que l'ÉTAT verse aux associations du territoire, ligne à ligne : le
+    # jaune budgétaire « Effort financier de l'État en faveur des
+    # associations ». Après `rna` et `sirene`, dont il lit les identifiants.
+    "jaune":    ("Subventions de l'État aux associations (jaune budgétaire)",
+                 run_jaune),
     "cm_flux":  ("Flux financiers extraits des séances",  lambda: run_cm_flux(commit=True)),
     # `since=None` : reprise incrémentale depuis la dernière analyse connue.
     "eau":      ("Qualité des cours d'eau (Hub'Eau)",     lambda: run_qualite_eau(None)),

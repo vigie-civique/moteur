@@ -188,17 +188,42 @@ def import_adhesions(conn, epci_id: int, data: dict, dry_run: bool) -> int:
         n += 1
         if dry_run:
             continue
-        sid = upsert_entity(conn, type="service", name=libelle,
-                            confidence="verified")
+        siren = str(s.get("siren") or "").strip()
+        siren = siren if re.fullmatch(r"\d{9}", siren) else ""
+        # Le SIREN d'abord. `sirene` a souvent déjà posé le syndicat sous son nom
+        # officiel en capitales, avec sa commune (« SIAEP DE LASALLE », Lasalle) ;
+        # créé ici par le libellé BANATIC et sans commune, il devenait une
+        # seconde fiche que le rapprochement par (nom, commune) ne voyait pas.
+        # Deux fiches, dont celle qui portait la relation n'avait aucun SIREN.
+        existant = siren and conn.execute(
+            "SELECT entity_id FROM businesses WHERE siren=? ORDER BY entity_id LIMIT 1",
+            (siren,)).fetchone()
+        if existant:
+            sid = existant[0]
+        else:
+            sid = upsert_entity(conn, type="service", name=libelle,
+                                confidence="verified")
+            if siren:
+                conn.execute(
+                    "INSERT OR IGNORE INTO businesses (entity_id, siren) VALUES (?,?)",
+                    (sid, siren))
+                conn.execute(
+                    "UPDATE businesses SET siren=? WHERE entity_id=? AND siren IS NULL",
+                    (siren, sid))
         conn.execute(
             "INSERT OR IGNORE INTO services (entity_id, category, operator)"
             " VALUES (?,?,?)", (sid, "intercommunal", s.get("codeNatureJuridique")))
-        conn.execute(
-            "INSERT OR IGNORE INTO entity_notes (entity_id, note, source, confidence)"
-            " VALUES (?,?,?,?)",
-            (sid, f"SIREN: {s.get('siren')} | Nature: {s.get('codeNatureJuridique')} "
-                  f"| Population: {s.get('populationTotale')}",
-             "BANATIC", "verified"))
+        # `entity_notes` n'a pas de contrainte d'unicité : `INSERT OR IGNORE`
+        # n'ignorait rien, et chaque passe ajoutait la même note (trois fois
+        # par syndicat à Lasalle au 24/09).
+        note = (f"SIREN: {s.get('siren')} | Nature: {s.get('codeNatureJuridique')} "
+                f"| Population: {s.get('populationTotale')}")
+        if not conn.execute(
+            "SELECT 1 FROM entity_notes WHERE entity_id=? AND source='BANATIC'"
+            " AND note=?", (sid, note)).fetchone():
+            conn.execute(
+                "INSERT INTO entity_notes (entity_id, note, source, confidence)"
+                " VALUES (?,?,?,?)", (sid, note, "BANATIC", "verified"))
         upsert_relation(conn, epci_id, sid, "adhère_à", source="banatic",
                         confidence="verified")
     return n

@@ -34,6 +34,11 @@ EXCLUDE_DOMAINS = {
     "maps.google", "google.com", "bing.com", "yahoo.com",
     "tripadvisor.fr", "leparisien.fr", "mappy.com", "annuaire-mairie.fr",
     "net1901.org", "annuairefrancais.fr", "kbis.pro",
+    # Annuaires de collectivités et d'acheteurs publics : ils ont une page pour
+    # chaque syndicat, et passaient pour son site. Relevé le 24/09 à Lasalle —
+    # quatre syndicats sur huit n'avaient pour « site » qu'une de ces pages.
+    "comersis.fr", "selectra.info", "marchesonline.com", "observatoires.net",
+    "banatic.interieur.gouv.fr",
 }
 
 
