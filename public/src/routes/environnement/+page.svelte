@@ -1,5 +1,5 @@
 <script>
-  import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_A, INSEE, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
   import Niveau from '$lib/components/Niveau.svelte'
 
@@ -75,6 +75,16 @@
   $: derniereAnalyse = series.reduce(
     (mx, s) => (s.dernier_prelevement || '') > mx ? s.dernier_prelevement : mx, '')
   $: totalAnalyses = couverture.reduce((s, c) => s + (c.analyses || 0), 0)
+  // « 91 621 analyses d'eau » se lisait comme l'eau du robinet d'ici. Ce sont
+  // des analyses de cours d'eau et de captages, sur seize ans, aux stations des
+  // communes suivies — et aucune n'est à Lasalle. Le compteur dit donc sa
+  // période, son objet et son périmètre au point de lecture.
+  $: anneesAnalyses = couverture.map(c => c.annee).filter(Boolean).sort()
+  $: periodeAnalyses = anneesAnalyses.length
+    ? (anneesAnalyses[0] === anneesAnalyses.at(-1) ? anneesAnalyses[0]
+       : `${anneesAnalyses[0]}–${anneesAnalyses.at(-1)}`) : ''
+  $: communesStations = new Set(stations.map(s => s.code_commune).filter(Boolean))
+  $: stationsIci = stations.filter(s => s.code_commune === INSEE).length
   $: catnatRecents = catnat.slice(0, 8)
 
   const fmtDate = (d) => d
@@ -100,14 +110,26 @@
 
   {#if stations.length || risques.length || icpe.length || eauPotable.length}
     <div class="tiles">
-      <div class="tile"><span class="tval">{nb(totalAnalyses)}</span><span class="tlabel">analyses d'eau</span></div>
-      <div class="tile"><span class="tval">{stations.length}</span><span class="tlabel">stations de mesure</span></div>
+      <div class="tile"><span class="tval">{nb(totalAnalyses)}</span><span class="tlabel">analyses de cours d'eau et captages{#if periodeAnalyses}, {periodeAnalyses}{/if}</span></div>
+      <div class="tile"><span class="tval">{stations.length}</span><span class="tlabel">stations de mesure, dans {communesStations.size} commune{communesStations.size > 1 ? 's' : ''}</span></div>
       <div class="tile"><span class="tval">{risquesParType.length}</span><span class="tlabel">types de risque</span></div>
       <div class="tile"><span class="tval">{catnat.length}</span><span class="tlabel">arrêtés catastrophe naturelle</span></div>
       {#if derniereAnalyse}
         <div class="tile"><span class="tval">{fmtDate(derniereAnalyse)}</span><span class="tlabel">dernier prélèvement</span></div>
       {/if}
     </div>
+    {#if stations.length}
+      <p class="note">
+        Les analyses sont celles des stations de surveillance des rivières et
+        des captages (Naïades), pas celles de l'eau distribuée au robinet —
+        qui a sa propre section ci-dessous.
+        {#if stationsIci}{stationsIci} station{stationsIci > 1 ? 's sont' : ' est'} {COMMUNE_A}&nbsp;;
+        les autres sont dans les communes voisines suivies.
+        {:else}Aucune station n'est {COMMUNE_A}&nbsp;: toutes sont dans les
+        communes voisines suivies, et leurs mesures décrivent le bassin, pas la
+        commune.{/if}
+      </p>
+    {/if}
 
     <!-- ── L'eau du robinet ─────────────────────────────────────────── -->
     {#if eauPotable.length}
@@ -423,6 +445,9 @@
          color: var(--gris); font-size: .8rem; max-width: 72ch; }
 
   @media (max-width: 700px) {
+    /* Le tableau des installations classées (« En exploitation avec titre »,
+       noms d'exploitants) dépassait de 11 px à 390 px : il se coupe. */
+    th, td { padding: .4rem .3rem; overflow-wrap: anywhere; hyphens: auto; }
     .row { grid-template-columns: 1fr; }
     .rlabel { padding-bottom: .2rem; }
     .risques li { grid-template-columns: 1fr; }

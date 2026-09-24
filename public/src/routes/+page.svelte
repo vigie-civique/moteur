@@ -177,17 +177,20 @@
   <a class="porte" href="/acteurs-publics">
     <span class="porte-titre"><Icon name="acteurs" size={18} />Qui agit&nbsp;?</span>
     <p>Entreprises, associations, services publics et lieux de la commune — et, au choix, ceux de l'intercommunalité.</p>
-    <!-- 327 + 966 ne fait pas 1 807 : les services publics, lieux et personnes
-         complètent le total. Annoncer « parmi » évite au lecteur de tenter
-         l'addition et de conclure qu'il manque des acteurs. -->
+    <!-- Le total et TOUTES ses parts, pour que l'addition tombe juste : « 246
+         associations et 357 entreprises » sous « 713 acteurs » laissait le
+         lecteur chercher les 110 manquants (services, lieux, et 19 personnes
+         que l'annuaire ne compte pas). -->
     <!-- « 294 associations et 744 entreprises » comptait 37 associations
          dissoutes, 388 entreprises cessées et 112 sociétés dont l'activité
          déclarée est la gestion immobilière. Le chiffre unique décrivait un
          tissu économique qui n'existe pas. -->
     <span class="porte-n">
-      en activité, dont&nbsp;: {nombre(chiffres.associations)} associations,
-      {nombre(chiffres.entreprisesProductives)} entreprises{#if chiffres.entreprisesPatrimoniales}
-      et {nombre(chiffres.entreprisesPatrimoniales)} sociétés de patrimoine{/if}
+      {nombre(chiffres.acteurs)} en activité&nbsp;: {nombre(chiffres.associations)} associations,
+      {nombre(chiffres.entreprisesProductives)} entreprises{#if chiffres.entreprisesPatrimoniales},
+      {nombre(chiffres.entreprisesPatrimoniales)} sociétés de patrimoine{/if}{#if chiffres.services},
+      {nombre(chiffres.services)} services publics{/if}{#if chiffres.lieux}{' '}et
+      {nombre(chiffres.lieux)} lieux{/if}
     </span>
   </a>
 </section>

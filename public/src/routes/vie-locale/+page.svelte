@@ -60,7 +60,7 @@
   {/if}
 
   <div class="filters" class:masque={source.etat === 'absente'}>
-    <input placeholder="Rechercher un événement…" bind:value={q} />
+    <input type="search" placeholder="Rechercher un événement…" aria-label="Rechercher un événement de l'agenda" bind:value={q} />
     <!-- Le compteur s'affichait à 0 pendant le chargement : le visiteur lisait
          « aucun événement » alors que la page en avait 1 320 à venir. -->
     <span class="count">{filtered.length}</span>
@@ -116,8 +116,14 @@
                border-bottom: 1px solid var(--trait-pale); }
   .events.upcoming li { background: var(--papier); border-radius: 6px; margin-bottom: .25rem; }
   .date { color: var(--ardoise); font-size: .85rem; white-space: nowrap; min-width: 12rem; }
-  .title { flex: 1; }
-  .events a { font-size: .8rem; color: var(--gris); }
+  .title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .events a { font-size: .8rem; color: var(--gris); white-space: nowrap; }
+  /* À 390 px, la date (12rem) plus un titre long poussaient la ligne à
+     437 px : la date passe au-dessus du titre (audit du 24/09/2026). */
+  @media (max-width: 600px) {
+    .events li { flex-wrap: wrap; gap: .15rem .6rem; }
+    .date { min-width: 0; flex-basis: 100%; }
+  }
   .empty { color: var(--gris); }
   h1.avec-icone { display: flex; align-items: center; gap: .6rem; }
   h1.avec-icone :global(.icon) { color: var(--ardoise); }

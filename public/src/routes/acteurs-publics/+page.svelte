@@ -27,6 +27,13 @@
   $: comptePortee = scoped.reduce(
     (a, e) => { a[e.portee] = (a[e.portee] || 0) + 1; return a }, {})
   $: dansPortee = portee === 'tout' ? scoped : scoped.filter(e => e.portee === portee)
+  // Le répertoire décomposé, pour que son total se relie à celui de l'accueil
+  // (la commune, en activité) sans que le lecteur ait à cliquer cinq filtres.
+  $: repertoire = all.reduce((a, e) => {
+    a[e.portee] = (a[e.portee] || 0) + 1
+    if (e.portee === 'commune' && e.actif !== false) a.communeVivante++
+    return a
+  }, { communeVivante: 0 })
 
   // ── En activité, ou plus ────────────────────────────────────────────────
   // L'annuaire alignait 388 entreprises cessées et 37 associations dissoutes
@@ -103,6 +110,13 @@
         Acteurs nommés dans au moins une délibération, un flux financier, un marché ou un mandat.
       {:else}
         Répertoire complet, entreprises SIRENE comprises — la plupart n'apparaissent dans aucun acte public.
+        Ses {all.length.toLocaleString('fr-FR')} fiches, en activité ou fermées&nbsp;:
+        {(repertoire.commune || 0).toLocaleString('fr-FR')} à {COMMUNE}{#if repertoire.intercommunalite},
+        {repertoire.intercommunalite.toLocaleString('fr-FR')} dans le reste de la {EPCI}{/if}{#if repertoire.territoire},
+        {repertoire.territoire.toLocaleString('fr-FR')} au-delà{/if}. Les
+        {repertoire.communeVivante.toLocaleString('fr-FR')} de {COMMUNE} en activité
+        sont le chiffre de l'accueil&nbsp;; les personnes (élus, agents) ont leurs
+        propres pages et ne sont pas comptées ici.
       {/if}
     </p>
 
@@ -160,7 +174,7 @@
   {/if}
 
   <div class="filters">
-    <input placeholder="Rechercher…" bind:value={q} />
+    <input type="search" placeholder="Rechercher un acteur par son nom…" aria-label="Rechercher un acteur de l'annuaire par son nom" bind:value={q} />
     <span class="count">{filtered.length} résultat{filtered.length > 1 ? 's' : ''}</span>
   </div>
 

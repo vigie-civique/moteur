@@ -163,7 +163,9 @@
     const m = serieDe(agregat)
     const av = m.get(depuis), ap = m.get(year)
     if (av == null || ap == null || !av) return null
-    return Math.round(100 * (ap - av) / av)
+    // Une décimale : +0,4 % arrondi à l'entier s'affichait « Recettes 0 % »,
+    // qui se lit comme une valeur absente plutôt qu'une quasi-stabilité.
+    return Math.round(1000 * (ap - av) / av) / 10
   }
   $: anneesOfgl = [...new Set(ofgl.map((r) => r.year))].sort((a, b) => a - b)
   $: premiereAnnee = anneesOfgl[0] ?? null
@@ -181,7 +183,8 @@
     ? detteFacteur.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
     : null
 
-  const signe = (n) => (n == null ? '' : (n > 0 ? '+' : '') + n + ' %')
+  const signe = (n) => (n == null ? '' : (n > 0 ? '+' : n < 0 ? '−' : '')
+    + Math.abs(n).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %')
   const pct = (n, total) => total ? Math.round(100 * n / total) + ' %' : ''
 </script>
 
@@ -287,8 +290,9 @@
          stable depuis dix ans. -->
     {#if evolRec1 != null || evolDette1 != null}
       <p class="evolution">
-        {#if evolRec1 != null}Recettes <b>{signe(evolRec1)}</b> sur un an{/if}
-        {#if evolDep1 != null} · dépenses <b>{signe(evolDep1)}</b>{/if}
+        Par rapport à {year - 1}&nbsp;:
+        {#if evolRec1 != null}recettes de fonctionnement <b>{signe(evolRec1)}</b>{/if}
+        {#if evolDep1 != null} · dépenses de fonctionnement <b>{signe(evolDep1)}</b>{/if}
         {#if evolDette1 != null} · dette <b>{signe(evolDette1)}</b>{/if}
         <!-- Cette phrase ne regardait que la trajectoire longue, et ignorait
              l'exercice affiché juste avant elle : sur 2025, la page écrivait

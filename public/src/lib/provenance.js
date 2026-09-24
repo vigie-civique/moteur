@@ -22,8 +22,8 @@ export const PROVENANCE = {
 
 export const DOCUMENT = {
   acte: {
-    court: 'Acte consultable',
-    long: "Le document de l'acte lui-même est accessible.",
+    court: 'Document consultable',
+    long: "Un PDF est accessible : la pièce de l'acte, ou — le plus souvent — le recueil ou le compte rendu de la séance qui le contient. Le lien dit lequel.",
   },
   page_source: {
     court: 'Page source',

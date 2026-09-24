@@ -139,31 +139,40 @@
   <meta name="description" content="Carte des entreprises, associations, services publics et lieux {COMMUNE_DE}, à partir des données publiques." /></svelte:head>
 
 <div class="carte">
-  <div class="map" bind:this={mapEl}></div>
+  <!-- Les repères Leaflet ne se parcourent ni au clavier ni au lecteur
+       d'écran : la carte le dit, et désigne l'annuaire comme sa version
+       textuelle — les mêmes acteurs, filtrables, un lien par fiche. -->
+  <div class="map" bind:this={mapEl} role="region"
+       aria-label="Carte des acteurs. Pour les parcourir au clavier ou avec un lecteur d'écran, utilisez l'annuaire, qui liste les mêmes acteurs."></div>
 
   <!-- La carte ne porte que les acteurs localisés : le retour vers l'annuaire
        complet doit rester visible, sinon elle passe pour l'inventaire entier. -->
   <a class="vers-annuaire" href="/acteurs-publics">
-    <Icon name="fleche" size={15} />Annuaire complet
+    <Icon name="fleche" size={15} />Annuaire complet (liste)
   </a>
 
   {#if data.source && data.source.etat !== 'servie'}
     <SourceAbsente etat={data.source.etat} sources={data.source.sources}
                    dernier={data.source.dernier} quoi="Les lieux de la carte" />
   {/if}
-  {#if data.surCarte && data.total}
-    <p class="perimetre">
-      <b>{data.surCarte.toLocaleString('fr-FR')}</b> des
-      {data.total.toLocaleString('fr-FR')} acteurs recensés
-      <span class="pourquoi">
-        Seuls apparaissent ici les acteurs disposant d'une localisation publique
-        suffisamment fiable.
-        {#if data.sansLocalisation}{data.sansLocalisation} n'ont aucune adresse exploitable ;{/if}
-        {#if data.domicileMasque}{data.domicileMasque} sont des entrepreneurs individuels dont l'adresse déclarée est le domicile — elle n'est pas cartographiée ;{/if}
-        {#if data.personneMasquee}{data.personneMasquee} sont des personnes physiques, jamais localisées.{/if}
-      </span>
-    </p>
-  {/if}
+  <!-- La page n'avait aucun titre de niveau 1 (audit du 24/09/2026) : il
+       prend place dans l'encart du dénominateur, qui existe déjà en surimpression. -->
+  <div class="perimetre">
+    <h1>La carte des acteurs</h1>
+    {#if data.surCarte && data.total}
+      <p>
+        <b>{data.surCarte.toLocaleString('fr-FR')}</b> des
+        {data.total.toLocaleString('fr-FR')} acteurs recensés
+        <span class="pourquoi">
+          Seuls apparaissent ici les acteurs disposant d'une localisation publique
+          suffisamment fiable.
+          {#if data.sansLocalisation}{data.sansLocalisation} n'ont aucune adresse exploitable ;{/if}
+          {#if data.domicileMasque}{data.domicileMasque} sont des entrepreneurs individuels dont l'adresse déclarée est le domicile — elle n'est pas cartographiée ;{/if}
+          {#if data.personneMasquee}{data.personneMasquee} sont des personnes physiques, jamais localisées.{/if}
+        </span>
+      </p>
+    {/if}
+  </div>
 
   {#if error}<div class="toast err">Erreur de chargement : {error}</div>{/if}
   {#if fondAbsent}<p class="sans-fond">Le fond de carte n'a pas pu être chargé —
@@ -239,6 +248,8 @@
     border-radius: var(--rayon); box-shadow: var(--ombre);
     font-size: .82rem; color: var(--gris); line-height: 1.4;
   }
+  .perimetre h1 { margin: 0 0 .15rem; font-size: .95rem; color: var(--encre); }
+  .perimetre p { margin: 0; }
   .perimetre b { color: var(--encre); }
   .pourquoi { display: block; margin-top: .25rem; font-size: .74rem; color: var(--gris-clair); }
   @media (max-width: 680px) { .perimetre { max-width: calc(100% - 2rem); } }

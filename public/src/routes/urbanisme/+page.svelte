@@ -64,7 +64,13 @@
   const matches = (t, re) => re.test(t.nature_bien || '')
   $: maisons = dvf.filter(t => matches(t, /maison/i))
   $: apparts = dvf.filter(t => matches(t, /appartement/i))
-  $: terrains = dvf.filter(t => matches(t, /terrain/i))
+  // Les 339 mutations, décomposées de façon que la somme tombe juste. La tuile
+  // « Terrains · appartements 6 · 52 » ne comptait que les « terrains à
+  // bâtir » : les 142 autres parcelles nues (sols, bois, jardins, terres)
+  // n'apparaissaient nulle part, et 339 ne se recomposait pas.
+  $: dependances = dvf.filter(t => matches(t, /d[ée]pendance/i))
+  $: locaux = dvf.filter(t => matches(t, /local/i))
+  $: nonBati = dvf.length - maisons.length - apparts.length - dependances.length - locaux.length
   $: years = dvf.map(t => (t.date || '').slice(0, 4)).filter(Boolean).sort()
   $: periode = years.length ? `${years[0]}–${years[years.length - 1]}` : '—'
   $: medMaison = median(maisons.map(t => t.price))
@@ -226,11 +232,19 @@
         <span class="tsub">maisons &amp; appartements</span>
       </div>
       <div class="tile">
-        <span class="tlabel">Terrains &amp; appartements</span>
-        <span class="tval">{terrains.length} · {apparts.length}</span>
-        <span class="tsub">terrains · appartements</span>
+        <span class="tlabel">Ventes d'appartements</span>
+        <span class="tval">{apparts.length}</span>
+        <span class="tsub">comptées dans le prix médian bâti</span>
       </div>
     </div>
+    <p class="hint composition">
+      Une mutation est une ligne DVF&nbsp;: un bien vendu, pas un acte. Les
+      {dvf.length.toLocaleString('fr-FR')} de {periode}&nbsp;: {maisons.length} maisons,
+      {apparts.length} appartements{#if dependances.length}, {dependances.length} dépendances
+      (garages, remises){/if}{#if locaux.length}, {locaux.length} locaux d'activité{/if}{#if nonBati > 0}{' '}et
+      {nonBati} parcelles non bâties (terrains, bois, jardins, terres agricoles){/if}.
+      Seules les maisons et les appartements entrent dans les prix médians.
+    </p>
   {/if}
 
   <div class="map" bind:this={mapEl}></div>
@@ -311,6 +325,7 @@
   h1 { margin: 0 0 .25rem; } h2 { color: var(--encre); margin: 1.5rem 0 .5rem; font-size: 1.1rem; }
   .sub { color: var(--gris); margin: 0 0 1rem; }
   .hint { color: var(--gris); font-size: .85rem; margin: 0 0 .75rem; }
+  .composition { margin-top: -.5rem; max-width: 74ch; }
 
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-bottom: 1.25rem; }
   .tile { background: #fff; border: 1px solid var(--trait); border-top: 3px solid #f97316; border-radius: 8px; padding: .8rem .9rem; display: flex; flex-direction: column; gap: .15rem; }

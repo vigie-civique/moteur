@@ -435,6 +435,10 @@
   /* Vue annualisée reçu / versé */
   .yr2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: .5rem; }
   .yr2.seul { grid-template-columns: 1fr; }
+  /* Un élément de grille ne descend pas sous son contenu (`min-width: auto`) :
+     le défilement de .yrbars ne jouait jamais, et c'est la PAGE qui défilait,
+     jusqu'à 630 px sur un écran de 390 (audit du 24/09/2026). */
+  .yrblock { min-width: 0; }
   .yrhead { display: block; font-size: .8rem; font-weight: 700; margin-bottom: .4rem; }
   .yrhead.in { color: var(--recette); } .yrhead.out { color: var(--ardoise-fonce); }
   /* 130 px moins la valeur, l'année et les marges laissaient 82 px de barre :

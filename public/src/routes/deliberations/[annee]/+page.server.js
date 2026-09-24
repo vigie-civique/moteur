@@ -32,9 +32,15 @@ export function entries() {
 
 export function load({ params }) {
   const actes = lireActes()
+  // Combien d'actes renvoient au même PDF : à Lasalle, 2 381 délibérations sur
+  // 2 466 partagent le recueil ou le compte rendu de leur séance. Un lien vers
+  // ce document n'ouvre pas « l'acte » — il ouvre la séance entière.
+  const parPdf = new Map()
+  for (const e of actes) if (e.pdf_url) parPdf.set(e.pdf_url, (parPdf.get(e.pdf_url) || 0) + 1)
   const items = actes
     .filter((e) => anneeDe(e) === params.annee)
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .map((e) => (e.pdf_url ? { ...e, pdf_partage: parPdf.get(e.pdf_url) } : e))
 
   if (!items.length) throw error(404, 'Aucun acte pour cette année.')
 

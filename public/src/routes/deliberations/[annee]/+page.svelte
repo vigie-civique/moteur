@@ -38,6 +38,14 @@
   })
 
   const inst = (e) => instanceDe(e)
+  // Un lien dit ce qu'il ouvre : l'acte isolé, ou la séance entière où il faut
+  // chercher le passage (axe `document` du snapshot). « PDF ↗ » et « source ↗ »
+  // ne le disaient pas, et « Lire la délibération » dépliait un texte extrait
+  // sans dire qu'il en était un (audit du 24/09/2026).
+  const libelleDoc = (e, url) =>
+    url !== e.pdf_url ? 'page source'
+    : e.pdf_partage > 1 ? `document de la séance (${e.pdf_partage} actes)`
+    : "PDF de l'acte"
   $: filtered = items
     .filter((e) => instance === 'all' || inst(e) === instance)
     .filter((e) => !q || (e.title || '').toLowerCase().includes(q.toLowerCase()))
@@ -69,7 +77,7 @@
   </nav>
 
   <div class="filters">
-    <input placeholder="Rechercher dans les titres de {libelleAnnee(annee)}…" bind:value={q} />
+    <input type="search" placeholder="Rechercher dans les titres de {libelleAnnee(annee)}…" aria-label="Rechercher dans les titres des actes de {libelleAnnee(annee)}" bind:value={q} />
     <div class="seg">
       {#each [['all', 'Tout'], ['CM', 'Municipal'], ['CC', 'Intercommunal']] as [v, l]}
         <button class:on={instance === v} on:click={() => instance = v}>{l}</button>
@@ -107,8 +115,8 @@
               {/if}
             </span>
           {/if}
-          {#if e.source_url}<a href={e.source_url} target="_blank" rel="noopener">source ↗</a>{/if}
-          {#if e.pdf_url && e.pdf_url !== e.source_url}<a href={e.pdf_url} target="_blank" rel="noopener">PDF ↗</a>{/if}
+          {#if e.source_url}<a href={e.source_url} target="_blank" rel="noopener">{libelleDoc(e, e.source_url)} ↗</a>{/if}
+          {#if e.pdf_url && e.pdf_url !== e.source_url}<a href={e.pdf_url} target="_blank" rel="noopener">{libelleDoc(e, e.pdf_url)} ↗</a>{/if}
         </span>
 
         <!-- Les trois axes portés par l'acte lui-même, pas renvoyés dans une
@@ -122,7 +130,7 @@
 
         {#if e.extrait}
           <details class="extrait" on:toggle={(ev) => deplier(ev, e.id)}>
-            <summary>Lire la délibération</summary>
+            <summary>Lire le texte de l'acte, extrait du document</summary>
             {#if extraits[e.id]?.etat === 'pret'}
               <pre>{extraits[e.id].texte}</pre>
               <p class="lecture">
@@ -218,7 +226,11 @@
   .cat { display: inline-block; font-size: .68rem; color: var(--gris); background: var(--trait-pale);
          border-radius: 99px; padding: .05rem .5rem; margin-left: .4rem; white-space: nowrap; }
   .cat.arch { background: var(--ambre-pale); color: var(--ambre); }
-  .meta { display: flex; gap: .6rem; font-size: .8rem; align-items: baseline; white-space: nowrap; }
+  /* Chaque élément tient sur une ligne, mais la rangée passe à la ligne :
+     « document de la séance (24 actes) ↗ » ne tient pas à côté du vote sur
+     un écran de 390 px. */
+  .meta { display: flex; flex-wrap: wrap; gap: .1rem .6rem; font-size: .8rem; align-items: baseline; }
+  .meta > * { white-space: nowrap; }
   .meta a { color: var(--ardoise); }
   .montant { color: var(--encre); font-variant-numeric: tabular-nums; }
   .vote { font-size: .75rem; color: var(--gris); }

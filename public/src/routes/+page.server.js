@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
 import { estAttribue } from '$lib/marches.js'
+import { TYPES_ACTEURS } from '$lib/actes.js'
 
 export const prerender = true
 
@@ -86,7 +87,10 @@ export function load() {
   const parTypeCommune = {}
   let acteursCommune = 0
   let cesseesCommune = 0
-  for (const e of index.entities || []) {
+  // Le même ensemble que l'annuaire : sans les personnes. L'accueil comptait
+  // 19 élus et agents dans ses « 713 acteurs », que /acteurs-publics ne
+  // montre pas — le lecteur qui refaisait le chemin trouvait 694.
+  for (const e of (index.entities || []).filter((e) => TYPES_ACTEURS.includes(e.t))) {
     parType[e.t] = (parType[e.t] || 0) + 1
     if (!e.p || e.p === 'commune') {
       if (vivant(e)) {
@@ -149,6 +153,7 @@ export function load() {
       associations: portees ? (parTypeCommune.association ?? 0) : (parType.association ?? null),
       entreprises: portees ? (parTypeCommune.business ?? 0) : (parType.business ?? null),
       services: portees ? (parTypeCommune.service ?? 0) : (parType.service ?? null),
+      lieux: portees ? (parTypeCommune.place ?? 0) : (parType.place ?? null),
       // Ce que le chiffre unique cachait : la part qui produit, la part qui
       // détient, et ce qui a fermé.
       entreprisesProductives: (parNature.societe || 0) + (parNature.individuelle || 0),

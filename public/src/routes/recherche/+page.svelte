@@ -100,7 +100,7 @@
       type="search"
       bind:value={q}
       placeholder="Nom d'une association, d'une entreprise, d'un lieu…"
-      aria-label="Rechercher un acteur"
+      aria-label="Rechercher un acteur, un acte, un montant ou une année"
       autocomplete="off" />
     <select bind:value={categorie} aria-label="Filtrer par catégorie">
       <option value="">Tout</option>

@@ -79,8 +79,9 @@
 
       <dt>Pouvez-vous consulter la pièce&nbsp;?</dt>
       <dd>
-        <strong>Acte consultable</strong> — le document lui-même est
-        accessible&nbsp;: {data.provenance.document?.acte ?? '—'}.
+        <strong>Document consultable</strong> — un PDF est accessible, la
+        pièce de l'acte ou, le plus souvent, le recueil ou le compte rendu de
+        sa séance (le lien de chaque acte dit lequel)&nbsp;: {data.provenance.document?.acte ?? '—'}.
         <strong>Page source</strong> — le lien mène à la page qui contient
         l'acte, le plus souvent le compte rendu entier et non la délibération
         isolée&nbsp;: {data.provenance.document?.page_source ?? '—'}. C'est notre
