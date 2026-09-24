@@ -312,3 +312,35 @@ def test_renvoi_sans_entities_ne_crie_pas(vs, tmp_path):
     rep = vs.Report()
     vs.check_renvois_sortants(base, rep)
     assert rep.errors == {}
+
+
+# ── Le sens des flux, relu sur les noms ──────────────────────────────────────
+
+def _flux(dossier: Path, flows: list[dict]) -> Path:
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / "flows.json").write_text(json.dumps(flows), encoding="utf-8")
+    return dossier
+
+
+def test_sens_conforme_passe(vs, tmp_path, monkeypatch):
+    monkeypatch.setitem(vs.RULES, "project", {"commune": "Testonville"})
+    rep = vs.Report()
+    vs.check_sens_flux(_flux(tmp_path / "ok", [
+        {"id": 1, "from_name": "COMMUNE DE TESTONVILLE", "to_name": "Club", "sens": "sortant"},
+        {"id": 2, "from_name": "État français", "to_name": "Commune de Testonville", "sens": "entrant"},
+        {"id": 3, "from_name": "Région", "to_name": "Club", "sens": "tiers"},
+    ]), rep)
+    assert rep.errors == {}
+
+
+def test_commune_introuvable_bloque(vs, tmp_path, monkeypatch):
+    """Le 24/09/2026 : commune non résolue, tout sortait `tiers`, et les flux
+    déliés `entrant` — « 0 € versé » sur trois sites."""
+    monkeypatch.setitem(vs.RULES, "project", {"commune": "Testonville"})
+    rep = vs.Report()
+    vs.check_sens_flux(_flux(tmp_path / "ko", [
+        {"id": 1, "from_name": "COMMUNE DE TESTONVILLE", "to_name": "Club", "sens": "tiers"},
+        {"id": 2, "from_name": "COMMUNE DE TESTONVILLE", "to_name": "APE", "sens": "entrant"},
+    ]), rep)
+    detail = " ".join(sum(rep.errors.values(), []))
+    assert "2 flux attendus « sortant »" in detail

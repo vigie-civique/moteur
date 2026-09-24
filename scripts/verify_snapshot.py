@@ -522,6 +522,55 @@ def check_renvois_sortants(base, rep):
             f"— ex. {sorted(ids)[:5]}")
 
 
+def _nom_cle(nom):
+    """Casse, accents et ponctuation retirés — recopié, pas importé."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", nom or "").encode("ascii", "ignore").decode()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s.lower()).split())
+
+
+def check_sens_flux(base, rep):
+    """Le `sens` d'un flux doit s'accorder avec les NOMS de ses extrémités.
+
+    Le générateur trouvait la commune par son nom exact ; SIRENE l'écrit en
+    capitales. Il ne la trouvait pas, et sur les trois instances aucun flux ne
+    sortait `sortant` : `/finances` affichait « 0 € versé » pour chaque année
+    pendant que les fiches publiaient les subventions. Les flux déliés, eux,
+    sortaient « entrant » (`None == None`). Rien ne le signalait. Relevé par un
+    audit externe le 24/09/2026.
+
+    Le contrôle relit les noms plutôt que les identifiants, que le générateur
+    résout lui-même : ce qui a échoué une fois ne se contrôle pas par lui-même.
+    """
+    fp = base / "flows.json"
+    commune = (RULES.get("project") or {}).get("commune")
+    if not fp.is_file() or not commune:
+        return
+    try:
+        d = json.loads(fp.read_text())
+    except json.JSONDecodeError:
+        return  # déjà signalé par check_file
+    flows = d if isinstance(d, list) else d.get("flows") or []
+    cle = _nom_cle(f"Commune de {commune}")
+
+    faux = {}   # attendu → [ids]
+    for f in flows:
+        de, vers = _nom_cle(f.get("from_name")), _nom_cle(f.get("to_name"))
+        if de == cle and vers != cle:
+            attendu = "sortant"
+        elif vers == cle and de != cle:
+            attendu = "entrant"
+        else:
+            attendu = "tiers"
+        if f.get("sens") != attendu:
+            faux.setdefault(attendu, []).append(f.get("id"))
+
+    for attendu, ids in sorted(faux.items()):
+        rep.error(
+            "sens de flux contraire aux noms de ses extrémités",
+            f"{fp.name}: {len(ids)} flux attendus « {attendu} » — ex. {ids[:5]}")
+
+
 def check_dir(base, rep):
     for fp in sorted(base.rglob("*")):
         if not fp.is_file():
@@ -539,6 +588,7 @@ def check_dir(base, rep):
     check_statut(base, rep)
     check_fiches_orphelines(base, rep)
     check_renvois_sortants(base, rep)
+    check_sens_flux(base, rep)
 
 
 def main(argv):

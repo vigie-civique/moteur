@@ -1961,11 +1961,20 @@ def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
 
 
 def _commune_entity_id(conn) -> int | None:
-    """Id de l'entité « Commune de … », ou None si elle n'est pas en base."""
+    """Id de l'entité « Commune de … », ou None si elle n'est pas en base.
+
+    Cherchée par nom NORMALISÉ, comme le fait `upsert_entity` : SIRENE l'écrit
+    « COMMUNE DE LASALLE », et l'égalité exacte de SQLite respecte la casse.
+    Le nom exact ne trouvait donc rien, sur les trois instances : aucun flux ne
+    sortait `sortant`, `/finances` affichait « 0 € versé » pour chaque année
+    alors que les fiches publiaient les subventions (audit du 24/09/2026).
+    """
     from collectors.config import COMMUNE_NAME
+    from collectors.nom_normalise import normaliser
     row = conn.execute(
-        "SELECT id FROM entities WHERE type='service' AND name=? LIMIT 1",
-        (f"Commune de {COMMUNE_NAME}",)).fetchone()
+        "SELECT id FROM entities WHERE type='service' AND name_norm=? "
+        "ORDER BY (commune=?) DESC, id LIMIT 1",
+        (normaliser(f"Commune de {COMMUNE_NAME}"), COMMUNE_NAME)).fetchone()
     return row["id"] if row else None
 
 
@@ -2740,6 +2749,11 @@ def build_snapshot(out: Path) -> dict:
         # entité quelconque, et le filtre des cessions privées laisse alors
         # passer ce qu'il devait écarter — silencieusement.
         COMMUNE_ID = _commune_entity_id(conn)
+        if COMMUNE_ID is None and flow_rows:
+            # Sans elle, aucun flux n'a de sens et toute cession passe pour
+            # privée : le dire, plutôt que publier des zéros.
+            print("⚠ entité « Commune de … » introuvable : sens des flux non "
+                  "déterminé, cessions communales écartées", file=sys.stderr)
         before = len(public_flows)
         public_flows = [
             f for f in public_flows
@@ -2790,9 +2804,13 @@ def build_snapshot(out: Path) -> dict:
         # `sens` : la DGF encaissée par la commune (489 690 €) et la subvention
         # versée au Comité des fêtes (4 400 €) sortaient avec la même mise en
         # forme. Sans le sens du flux, la page se lit à contresens.
+        # Un flux délié a perdu son identifiant (`None`) : tant que COMMUNE_ID
+        # valait `None` lui aussi, il sortait « entrant ».
         for f in public_flows:
             f["description"] = redige(f.get("description"))
-            if f.get("to_id") == COMMUNE_ID and f.get("from_id") != COMMUNE_ID:
+            if COMMUNE_ID is None:
+                f["sens"] = "tiers"
+            elif f.get("to_id") == COMMUNE_ID and f.get("from_id") != COMMUNE_ID:
                 f["sens"] = "entrant"
             elif f.get("from_id") == COMMUNE_ID:
                 f["sens"] = "sortant"

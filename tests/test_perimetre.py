@@ -95,3 +95,22 @@ def test_base_classee_passe_et_compte_les_trous(base, entite):
     # Une entité non classée n'interrompt pas la publication : elle est écartée,
     # et comptée pour que la lacune se voie.
     assert bps.exiger_perimetre_classe(base) == 1
+
+
+# ── La commune, retrouvée malgré la casse de SIRENE ─────────────────────────
+
+def test_commune_trouvee_en_capitales(monkeypatch):
+    """Le nom exact manquait « COMMUNE DE LASALLE » : `/finances` affichait
+    « 0 € versé » sur les trois instances (audit du 24/09/2026)."""
+    import sqlite3
+    import collectors.config as config
+    from collectors.nom_normalise import normaliser
+    monkeypatch.setattr(config, "COMMUNE_NAME", "Testonville")
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE entities (id, type, name, name_norm, commune)")
+    for id_, nom, commune in [(7, "COMMUNE DE TESTONVILLE", "Testonville"),
+                              (8, "COMMUNE DE VOISINBOURG", "Voisinbourg")]:
+        conn.execute("INSERT INTO entities VALUES (?, 'service', ?, ?, ?)",
+                     (id_, nom, normaliser(nom), commune))
+    assert bps._commune_entity_id(conn) == 7
