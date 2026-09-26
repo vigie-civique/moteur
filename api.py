@@ -809,6 +809,7 @@ def synthesis(entity_id: int = FPath(..., ge=1)):
 #   IA_MODELE     identifiant du modèle, tel que le fournisseur l'attend
 #   IA_CLE        jeton d'authentification — VIDE pour un modèle local
 #   IA_PROTOCOLE  « openai » (défaut) ou « anthropic »
+#   IA_DELAI      délai d'un appel en secondes (défaut 1800)
 #
 # Le protocole « openai » n'engage pas OpenAI : c'est le format de requête que
 # parlent aussi Ollama, llama.cpp, vLLM, LM Studio, Groq, Mistral, DeepSeek et
@@ -822,6 +823,10 @@ _IA_URL       = os.environ.get("IA_URL", "").strip().rstrip("/")
 _IA_MODELE    = os.environ.get("IA_MODELE", "").strip()
 _IA_CLE       = os.environ.get("IA_CLE", "").strip()
 _IA_PROTOCOLE = os.environ.get("IA_PROTOCOLE", "openai").strip().lower()
+# Délai d'un appel, en secondes. 600 ne laissaient pas de marge : au banc du
+# 25/09/2026, qwen3.8:27b raisonnait jusqu'à ~5 min sur une seule tranche de PV.
+# Un modèle local lent n'est pas en panne — l'abandonner perd la tranche.
+_IA_DELAI     = int(os.environ.get("IA_DELAI") or 1800)
 
 _IA_PROTOCOLES = ("openai", "anthropic")
 
@@ -951,7 +956,7 @@ def _appel_openai(user_msg: str, system: str = SYSTEM_PROMPT,
         # Une extraction n'a pas à être créative : elle recopie ce qu'elle lit.
         charge["temperature"] = 0
     r = _rq.post(f"{_IA_URL}/chat/completions", headers=entetes, json=charge,
-                 timeout=600)   # un modèle local sur CPU est lent, pas en panne
+                 timeout=_IA_DELAI)
     r.raise_for_status()
     # Pas `["content"]` directement : un modèle à raisonnement rend un contenu
     # VIDE avec un HTTP 200 quand son budget de tokens est épuisé. Ce lecteur
@@ -975,7 +980,8 @@ def _appel_anthropic(user_msg: str, system: str = SYSTEM_PROMPT,
     }
     if json_strict:
         charge["temperature"] = 0
-    r = _rq.post(f"{_IA_URL}/messages", headers=entetes, json=charge, timeout=600)
+    r = _rq.post(f"{_IA_URL}/messages", headers=entetes, json=charge,
+                 timeout=_IA_DELAI)
     r.raise_for_status()
     return r.json()["content"][0]["text"]
 

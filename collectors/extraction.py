@@ -68,11 +68,19 @@ GABARITS = {
     ),
     "budget_vote": (
         '{"budget_vote": [{"year": 2026, "agregat": "intitulé de la ligne", '
-        '"value": 2459773.03, "scope": "principal ou budget annexe", '
+        '"value": 2459773.03, '
+        '"scope": "principal, ou le NOM du budget annexe (ex. eau et assainissement)", '
         '"citation": "phrase exacte"}]}',
-        "les montants du budget primitif voté",
+        "les montants du budget primitif voté, chacun rattaché au budget "
+        "dont il relève",
     ),
 }
+
+# `scope` nommait la catégorie, pas le budget : au banc du 25/09/2026, qwen3.8
+# rendait « budget annexe » pour tous les annexes — deux « TOTAL DEPENSES »
+# de deux régies devenaient indiscernables —, et gemma4:26b versait le
+# chapitre 012 du budget principal dans un annexe. Même forme que
+# `budgets_votes.nom_de_budget` : « principal », ou le nom de l'annexe.
 
 # ─── Taille des tranches ──────────────────────────────────────────────────────
 # Mesuré au banc d'essai le 21/08/2026, et c'est un piège coûteux.
