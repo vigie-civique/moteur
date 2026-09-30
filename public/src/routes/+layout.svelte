@@ -295,9 +295,9 @@
      burger et les grands écrans, l'en-tête se resserre au lieu de rogner le
      champ de recherche. */
   @media (max-width: 1200px) and (min-width: 1081px) {
-    header { gap: 1rem; }
-    .principale { gap: .85rem; }
-    .recherche input { width: 6.5rem; }
+    header { gap: .8rem; }
+    .principale { gap: .7rem; }
+    .recherche input { width: 10.5rem; }
   }
   @media (max-width: 1080px) {
     header { gap: .8rem; padding: .6rem 1rem; }
