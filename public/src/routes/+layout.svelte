@@ -24,6 +24,9 @@
 
   // Public organisé par QUESTION citoyenne (modèle CivLab), pas par table.
   //
+  // 30/09/2026 : sixième entrée, « Conseil en clair », à côté de « Qui décide »
+  // — décidé par Julien. Une séance lue et relue est une question de départ,
+  // pas une page de contexte.
   // Réduit de huit entrées à cinq le 11/08/2026 : huit portes de même poids ne
   // se retiennent pas, et le header passait sur trois lignes sous 860 px faute
   // de règle @media. « Le territoire », « Environnement » et « Vie locale »
@@ -35,6 +38,7 @@
   const nav = [
     { href: '/nouveautes',      label: 'Récent',         icone: 'recent', titre: 'Ce qui a changé' },
     { href: '/qui-decide',      label: 'Qui décide',     icone: 'decide' },
+    { href: '/conseils',        label: 'Conseil en clair', icone: 'conseil', titre: 'Le conseil en clair' },
     { href: '/argent',          label: "Où va l'argent", icone: 'argent' },
     { href: '/acteurs-publics', label: 'Qui agit',       icone: 'acteurs', titre: 'Qui agit ?',
       aussi: ['/carte', '/entite'] },
@@ -147,7 +151,6 @@
       <a href="/territoire">Le territoire</a>
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
-      <a href="/conseils">Le conseil en clair</a>
       <a href="/dossiers">Dossiers</a>
       <a href="/methode">Méthode &amp; sources</a>
       <a href="/corrections">Corrections</a>
@@ -288,7 +291,15 @@
   .fnav { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
   footer a { color: #cfdadd; }
 
-  @media (max-width: 900px) {
+  /* Six entrées depuis le 30/09/2026 (« Conseil en clair ») : entre le menu
+     burger et les grands écrans, l'en-tête se resserre au lieu de rogner le
+     champ de recherche. */
+  @media (max-width: 1200px) and (min-width: 1081px) {
+    header { gap: 1rem; }
+    .principale { gap: .85rem; }
+    .recherche input { width: 6.5rem; }
+  }
+  @media (max-width: 1080px) {
     header { gap: .8rem; padding: .6rem 1rem; }
     .principale, .recherche:not(.mobile) { display: none; }
     .burger { display: flex; }
