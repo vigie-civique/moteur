@@ -142,6 +142,9 @@ CONTRIB = {"id": 2, "email": "c@fictiville.invalid", "role": "contributor"}
 
 @pytest.fixture
 def atelier(tmp_path, monkeypatch, schema_sql, instance):
+    # Le job « tests » de la CI n'installe que pytest : l'API y est sautée, et
+    # jouée par « tests-deps », qui refuse le moindre test sauté.
+    pytest.importorskip("fastapi", reason="job « tests-deps » : pip install -r requirements.txt")
     from fastapi.testclient import TestClient
     chemin = tmp_path / "instance.db"
     conn = sqlite3.connect(chemin)
