@@ -2330,6 +2330,64 @@ def mesurer_replicabilite() -> dict:
     }
 
 
+# ── Le conseil en clair : ce que l'atelier a RETENU, et rien d'autre ─────────
+#
+# Une feuille « en clair » est un texte rédigé sur une séance — souvent par un
+# LLM sur le poste de l'opérateur —, pas un fait collecté. Elle suit donc la
+# règle inverse des lignes importées (`collectors/verdict.py`,
+# OBJETS_A_RETENIR) : publiée seulement si un validateur l'a retenue, ET si le
+# vérificateur ne lui trouve aucune faute au moment de publier. Une source
+# corrigée depuis la relecture peut rendre fausse une feuille retenue : elle
+# sort alors du site jusqu'à nouvelle relecture, et le compte-rendu le dit.
+
+def export_en_clair(conn, out: Path, root: Path) -> dict:
+    from collectors.en_clair.rendu import document, feuilles, page_erreurs
+    from collectors.en_clair.seances import nom_de_fichier, releves, seance_id
+    from collectors.en_clair.verifier import verifier
+    from collectors.verdict import publiable_si_retenu
+
+    dossier = out / "conseils"
+    dossier.mkdir(parents=True, exist_ok=True)
+    for f in dossier.glob("*.html"):         # miroir : une feuille retirée sort
+        f.unlink()
+    index, ecartes = [], {"non_retenus": 0, "en_faute": [], "sans_seance": []}
+    for chemin, r in releves(root):
+        sid = seance_id(conn, r)
+        if sid is None:
+            ecartes["sans_seance"].append(chemin.parent.name)
+            continue
+        a = row(conn, "SELECT review_status, reviewed_at FROM annotations "
+                      "WHERE object_type='en_clair' AND object_id=?", (sid,))
+        if not a or not publiable_si_retenu(a["review_status"]):
+            ecartes["non_retenus"] += 1
+            continue
+        if verifier(chemin):
+            ecartes["en_faute"].append(chemin.parent.name)
+            continue
+        # La mention publique ne porte pas l'adresse du relecteur : une date suffit
+        # à dire que quelqu'un a regardé et l'assume.
+        relu = f"relu à l'atelier le {(a['reviewed_at'] or '')[:10]}"
+        nom = nom_de_fichier(r)
+        s = r["seance"]
+        (dossier / f"{nom}.html").write_text(document(
+            f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
+            feuilles(r, relu=relu) + page_erreurs(r)), encoding="utf-8")
+        ap = r["en_clair"]["apres"]
+        index.append({
+            "date": s["date"],
+            "assemblee": s["assemblee_court"],
+            "code": r.get("code"),
+            "titre": ap.get("titre") if ap.get("statut") != "non_publie" else "Actes non publiés",
+            "actes": len(r.get("actes", [])),
+            "unanimite": sum(1 for x in r.get("actes", []) if (x.get("vote") or {}).get("unanimite")),
+            "fichier": f"conseils/{nom}.html",
+            "relu_le": (a["reviewed_at"] or "")[:10],
+        })
+    index.sort(key=lambda x: (x["date"], x["code"] or ""))
+    write_json(out / "conseils.json", {"seances": index, "total": len(index)})
+    return {"publiees": len(index), **ecartes}
+
+
 def synchroniser_site_public(src: Path, root: Path) -> dict:
     """Recopie le snapshot là où le site public le lit.
 
@@ -2366,20 +2424,23 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
         copied.append(f"layers/{f.name}")
 
     retirees: dict[str, list[str]] = {}
-    for dossier in ("entite", "extrait"):
+    # `conseils/` porte les feuilles « en clair » retenues, en HTML : même
+    # miroir, une feuille qui n'est plus retenue doit quitter le site.
+    for dossier, motif in (("entite", "*.json"), ("extrait", "*.json"), ("conseils", "*.html")):
         (dest / dossier).mkdir(parents=True, exist_ok=True)
-        attendus = {f.name for f in (src / dossier).glob("*.json")}
-        for f in sorted((src / dossier).glob("*.json")):
+        attendus = {f.name for f in (src / dossier).glob(motif)}
+        for f in sorted((src / dossier).glob(motif)):
             shutil.copy2(f, dest / dossier / f.name)
             copied.append(f"{dossier}/{f.name}")
         retirees[dossier] = []
-        for f in sorted((dest / dossier).glob("*.json")):
+        for f in sorted((dest / dossier).glob(motif)):
             if f.name not in attendus:
                 f.unlink()
                 retirees[dossier].append(f.name)
     return {"dest": str(dest), "files": copied, "count": len(copied),
             "fiches_retirees": retirees["entite"],
-            "extraits_retires": retirees["extrait"]}
+            "extraits_retires": retirees["extrait"],
+            "conseils_retires": retirees["conseils"]}
 
 
 # Les indicateurs INSEE publiables — TOUS SAUF `DS_BPE`.
@@ -3866,6 +3927,7 @@ def build_snapshot(out: Path) -> dict:
         corrections = export_corrections(public_events, public_flows, marches_data,
                                          lire_journal_corrections())
         write_json(out / "corrections.json", corrections)
+        stats["conseils_en_clair"] = export_en_clair(conn, out, ROOT)
         stats["corrections_site"] = len(corrections["site"])
         stats["actualite_items"] = min(len(actualite), 400)
         stats["actualite_a_venir"] = len(a_venir)

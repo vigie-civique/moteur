@@ -60,6 +60,20 @@ LIBELLES = {
 #: manqué à `validation_status` pendant treize mois.
 OBJETS = ("entity", "relation", "deliberation", "flow", "marche")
 
+#: Les objets que la publication ne montre QUE s'ils sont RETENUS — la règle
+#: inverse de `OBJETS`. Décidé par Julien le 30/09/2026 pour « le conseil en
+#: clair » : une feuille rédigée (à la main ou par un LLM) sur une séance n'est
+#: pas un fait collecté, c'est un texte qui engage le dispositif ; elle sort
+#: relue ou elle ne sort pas. `jamais_relu` et `a_revoir` la gardent donc hors du
+#: site, `ecarte` aussi. L'identifiant est celui de la SÉANCE en base
+#: (`events`, type conseil_municipal ou conseil_communautaire).
+OBJETS_A_RETENIR = ("en_clair",)
+
+
+def publiable_si_retenu(statut: str | None) -> bool:
+    """Un objet de `OBJETS_A_RETENIR` sort-il ? Seulement s'il est retenu."""
+    return verdict_de(statut) == RETENU
+
 # Les anciens mots, et ce qu'ils voulaient dire. Deux vocabulaires ont coexisté :
 # `annotations.review_status` (pending / validated / rejected) et
 # `entities.validation_status` (six états, dont `published`, qui ne publiait

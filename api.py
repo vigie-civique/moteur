@@ -38,7 +38,7 @@ from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
-from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, VERDICTS,
+from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, OBJETS_A_RETENIR, RETENU, VERDICTS,
                                 geste_de, note_du_geste, verdict_de)
 from collectors.files import (GEO_A_FAIRE, GEO_DEPUIS, GEO_ETAT,
                               RESERVATION_MINUTES, a_trancher, geo_params,
@@ -2168,7 +2168,9 @@ DONNEES_TYPES = ("deliberation", "flow", "marche")
 #: Les objets qui portent un verdict sans passer par `/atelier/donnees` : la
 #: fiche et la relation. L'annotation n'a pas de clé étrangère — on vérifie ici
 #: qu'on ne décide pas d'un objet qui n'existe pas.
-TABLE_DE_DECISION = {"entity": "entities", "relation": "relations"}
+TABLE_DE_DECISION = {"entity": "entities", "relation": "relations",
+                     # La séance dont une feuille « en clair » rend compte.
+                     "en_clair": "events"}
 
 #: Table portant chaque type d'objet annotable. Sert à lire son `origine` avant
 #: d'autoriser une rectification — cf. `_verifier_origine_modifiable`.
@@ -2458,6 +2460,23 @@ def atelier_annotate(
     return _decider(object_type, object_id, req, user)
 
 
+def _exiger_releve_conforme(seance: int) -> None:
+    """Retenir une feuille dont le vérificateur trouve une faute : refusé."""
+    from collectors.en_clair.seances import releves, seance_id
+    from collectors.en_clair.verifier import verifier
+    conn = get_db()
+    try:
+        trouves = [(p, r) for p, r in releves(RACINE) if seance_id(conn, r) == seance]
+    finally:
+        conn.close()
+    if not trouves:
+        raise HTTPException(404, f"Aucun relevé ne décrit la séance {seance}.")
+    for p, _ in trouves:
+        if fautes := verifier(p):
+            raise HTTPException(409, "Relevé non conforme, il ne peut pas être retenu : "
+                                     + " ; ".join(fautes[:3]))
+
+
 def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
              statut_lu: Optional[str] = None) -> dict:
     """Le SEUL écrivain des décisions de l'atelier — cf. `collectors/verdict.py`.
@@ -2469,8 +2488,12 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
     propre historique. Deux chemins pour écrire la même chose, c'est deux
     vérités.
     """
-    if object_type not in OBJETS:
-        raise HTTPException(400, f"object_type invalide — valeurs: {', '.join(OBJETS)}")
+    if object_type not in OBJETS + OBJETS_A_RETENIR:
+        raise HTTPException(400, "object_type invalide — valeurs: "
+                                 f"{', '.join(OBJETS + OBJETS_A_RETENIR)}")
+    if object_type == "en_clair" and req.review_status and \
+            _verdict_requis(req.review_status) == RETENU:
+        _exiger_releve_conforme(object_id)
     demande = _verdict_requis(req.review_status) if req.review_status else None
     fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
     table_fiche = TABLE_DE_DECISION.get(object_type)
@@ -2591,6 +2614,67 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
                 "reviewed_at": apres["reviewed_at"] if apres else None}
     finally:
         conn.close()
+
+# ─── Le conseil en clair ─────────────────────────────────────────────────────
+#
+# Les feuilles « avant / après / documents » d'une séance, relevées hors de la
+# chaîne automatique (`collectors/en_clair`). L'atelier les montre, un
+# validateur les RETIENT ou les écarte (`_decider`, type `en_clair`, identifiant
+# = la séance) ; la publication ne sort que les retenues.
+
+def _en_clair_ligne(conn, chemin, releve) -> dict:
+    from collectors.en_clair.verifier import verifier
+    from collectors.en_clair.rendu import erreurs
+    from collectors.en_clair.seances import seance_id
+
+    sid = seance_id(conn, releve)
+    fautes = verifier(chemin)
+    a = row(conn, "SELECT review_status, note, reviewed_by, reviewed_at FROM annotations "
+                  "WHERE object_type='en_clair' AND object_id=?", (sid,)) if sid else None
+    apres = releve["en_clair"]["apres"]
+    return {
+        "releve": chemin.parent.name,
+        "seance_id": sid,
+        "date": releve["seance"]["date"],
+        "assemblee": releve["seance"]["assemblee_court"],
+        "code": releve.get("code"),
+        "titre": apres.get("titre"),
+        "actes": len(releve.get("actes", [])),
+        "erreurs_documents": len(erreurs(releve)),
+        # Ce que le vérificateur reproche au relevé : une seule faute et la
+        # feuille ne peut pas être retenue — l'API le refuse, pas seulement l'écran.
+        "fautes": fautes,
+        "verdict": (verdict_de(a["review_status"]) if a else None) or JAMAIS_RELU,
+        "note": (a["note"] or "") if a else "",
+        "reviewed_by": a["reviewed_by"] if a else None,
+        "reviewed_at": a["reviewed_at"] if a else None,
+    }
+
+
+@app.get("/api/atelier/en-clair")
+def atelier_en_clair(user=Depends(require_auth)):
+    """La file des séances relevées, avec leur vérification et leur verdict."""
+    from collectors.en_clair.seances import releves
+    conn = get_db()
+    try:
+        return [_en_clair_ligne(conn, p, r) for p, r in releves(RACINE)]
+    finally:
+        conn.close()
+
+
+@app.get("/api/atelier/en-clair/{nom}/apercu")
+def atelier_en_clair_apercu(nom: str = FPath(..., pattern=r"^\d{4}-\d{2}-\d{2}-(cm|cc)$"),
+                            user=Depends(require_auth)):
+    """Les trois feuilles telles qu'elles seraient publiées, tampon compris."""
+    from fastapi.responses import HTMLResponse
+    from collectors.en_clair.rendu import document, feuilles, page_erreurs
+    from collectors.en_clair.seances import dossier
+    chemin = dossier(RACINE) / nom / "releve.json"
+    if not chemin.exists():
+        raise HTTPException(404, f"Aucun relevé « {nom} ».")
+    releve = json.loads(chemin.read_text())
+    return HTMLResponse(document(f"Aperçu · {nom}", feuilles(releve) + page_erreurs(releve)))
+
 
 # ─── Saisie manuelle ──────────────────────────────────────────────────────────
 #

@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""Rend « le conseil en clair » d'une séance en A4 : feuille avant, feuille après.
+
+    python -m collectors.en_clair.rendu data/conseils/2026-03-04-cc/releve.json
+
+Écrit `en-clair.html` et `en-clair.pdf` à côté du relevé. Le PDF est imprimé
+par Chrome en mode headless : aucune dépendance Python à installer, et les
+polices sont celles du Mac (pas de réseau). `scripts/resume_conseils.py`
+réutilise `feuilles()` pour assembler toutes les séances en un document.
+
+Garde-fous :
+  - le relevé passe d'abord par `collectors/en_clair/verifier.py` ; à la première
+    faute, rien n'est rendu ;
+  - tant que `origine.relu_par` est vide, chaque feuille porte « À RELIRE » ;
+  - une feuille qui déborde continue sur la page suivante : rien n'est coupé
+    en silence (le premier gabarit, à hauteur fixe, masquait le surplus).
+
+Variantes, déclarées dans le relevé :
+  en_clair.avant.statut = "non_publie"  pas de convocation publiée avant la
+      séance : la feuille le dit, et l'ordre du jour est donné comme
+      RECONSTITUÉ depuis les actes ;
+  en_clair.apres.statut = "non_publie"  les actes ne sont pas encore en ligne.
+"""
+from __future__ import annotations
+
+import html
+import json
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+from .verifier import verifier
+
+CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+        "septembre", "octobre", "novembre", "décembre"]
+
+CSS = """
+@page { size: A4; margin: 11mm 12mm; }
+:root { --ink:#17232b; --muted:#56646c; --rule:#c9d0d0; --accent:#1f5a73;
+  --accent-soft:#dbe8ee; --ok:#2e6b47; --ok-soft:#e1efe5; --split:#8a5a12;
+  --split-soft:#f6ead3; --warn:#8a2c1f; --warn-soft:#f7e3de;
+  --display:"Avenir Next Condensed","Arial Narrow",sans-serif;
+  --body:"Charter","Iowan Old Style",Georgia,serif; --mono:Menlo,monospace; }
+* { box-sizing:border-box; }
+html { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+body { margin:0; color:var(--ink); background:#fff; font:9.6pt/1.4 var(--body); }
+a { color:var(--accent); }
+.sheet { position:relative; min-height:275mm; display:flex; flex-direction:column;
+  gap:3.2mm; break-after:page; }
+.sheet:last-child { break-after:auto; }
+.label { font:600 7pt/1 var(--display); letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); display:flex; justify-content:space-between; gap:4mm; }
+.mast { border-bottom:2.2pt solid var(--ink); padding-bottom:2.4mm; display:grid; gap:1.2mm; }
+.name { font:700 9pt/1 var(--display); letter-spacing:.1em; text-transform:uppercase; }
+h1 { font:700 23pt/1.02 var(--display); margin:0; }
+.meta { color:var(--muted); font-size:9pt; }
+.box { background:var(--accent-soft); padding:2.6mm 3.2mm; }
+.box.warn { background:var(--warn-soft); }
+.box b { font-family:var(--display); font-size:10pt; }
+ol.agenda { list-style:none; margin:0; padding:0; counter-reset:pt; }
+ol.agenda li { display:grid; grid-template-columns:7mm 1fr; padding:1.7mm 0;
+  border-bottom:.5pt dotted var(--rule); break-inside:avoid; }
+ol.agenda li::before { counter-increment:pt; content:counter(pt, decimal-leading-zero);
+  font:8pt/1.5 var(--mono); color:var(--accent); }
+ol.agenda b { font:600 10.5pt/1.2 var(--display); }
+ol.agenda p { grid-column:2; margin:.6mm 0 0; font-size:8.8pt; color:var(--muted); }
+.odj h3, .aussi h3 { font:700 8pt/1 var(--display); letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted); margin:1mm 0 1.4mm; }
+.odj ol { columns:2; column-gap:7mm; font-size:8.2pt; line-height:1.35; color:var(--muted);
+  margin:0; padding-left:6mm; }
+.odj li { break-inside:avoid; }
+.facts { display:grid; grid-template-columns:repeat(4,1fr); border:.6pt solid var(--rule); }
+.facts div { padding:1.8mm 2.2mm; border-right:.6pt solid var(--rule); }
+.facts div:last-child { border-right:0; }
+.facts b { display:block; font:700 17pt/1 var(--display); font-variant-numeric:tabular-nums; }
+.facts span { font-size:8pt; color:var(--muted); }
+.cols { columns:2; column-gap:6mm; column-rule:.5pt solid var(--rule); column-fill:balance; }
+.item { break-inside:avoid; padding-bottom:2mm; margin-bottom:2mm;
+  border-bottom:.5pt dotted var(--rule); }
+.item h2 { font:700 11pt/1.15 var(--display); margin:0 0 .8mm; }
+.item.une h2 { font-size:12.5pt; }
+.item p { margin:0; font-size:8.9pt; }
+.row { display:flex; flex-wrap:wrap; gap:1.5mm; align-items:center; margin-top:1.2mm; }
+.acte { font:7.2pt var(--mono); color:var(--muted); }
+.vote { font:600 7pt/1 var(--display); letter-spacing:.05em; text-transform:uppercase;
+  padding:.8mm 1.4mm; border-radius:1pt; }
+.vote.ok { background:var(--ok-soft); color:var(--ok); }
+.vote.split { background:var(--split-soft); color:var(--split); }
+.aussi ul { margin:0; padding-left:4mm; font-size:8.6pt; }
+.foot { border-top:.8pt solid var(--ink); padding-top:1.6mm; font-size:7.4pt;
+  color:var(--muted); display:grid; gap:.6mm; margin-top:auto; }
+.foot .src { word-break:break-all; }
+ul.err { margin:0; padding-left:5mm; font-size:10pt; line-height:1.5; display:grid; gap:2.2mm; }
+.tampon { position:absolute; bottom:24mm; right:4mm; transform:rotate(-8deg);
+  font:700 26pt/1 var(--display); letter-spacing:.12em; color:rgba(160,40,30,.28);
+  border:3pt solid rgba(160,40,30,.28); padding:2mm 5mm; pointer-events:none; }
+"""
+
+
+def e(t) -> str:
+    """Échappe, et colle ce que la typographie française ne coupe pas :
+    les groupes de chiffres (« 2 226 964,89 ») et l'espace avant : ; % €."""
+    t = html.escape(str(t))
+    while re.search(r"(\d) (\d{3})", t):
+        t = re.sub(r"(\d) (\d{3})", "\\1\u202f\\2", t)
+    return re.sub(r" ([:;%€])", "\u202f\\1", t)
+
+
+def date_longue(iso: str) -> str:
+    a, m, j = map(int, iso.split("-"))
+    return f"{'1er' if j == 1 else j} {MOIS[m - 1]} {a}"
+
+
+def _vote(actes: dict, numeros: list[int]) -> str:
+    """Le vote d'un paragraphe, lu dans ses actes — jamais écrit à la main."""
+    if not numeros:
+        return ""               # une déclaration n'est pas un vote
+    divises, muets = [], []
+    for n in numeros:
+        v = actes[n].get("vote")
+        if v is None:
+            muets.append(n)
+        elif not v.get("unanimite"):
+            parts = [f"{v[k]} {k.rstrip('s') if v[k] == 1 else k}"
+                     for k in ("pour", "contre", "abstentions") if v.get(k)]
+            divises.append(f"n°{n} : " + " · ".join(parts))
+    puces = [f'<span class="vote split">{e(d)}</span>' for d in divises]
+    if muets:
+        puces.append(f'<span class="vote split">vote non indiqué (n°'
+                     f'{", ".join(map(str, muets))})</span>')
+    if not puces:
+        puces.append('<span class="vote ok">Unanimité</span>')
+    return "".join(puces)
+
+
+def _sources(releve: dict) -> str:
+    """Les pièces, avec leur adresse : le lecteur doit pouvoir remonter à tout."""
+    libelles = releve.get("sources_libelles", {})
+    lignes = [f'<div class="src">{e(libelles.get(k, k))} : '
+              f'<a href="{html.escape(u)}">{html.escape(u)}</a></div>'
+              for k, u in releve.get("sources_url", {}).items()]
+    return "".join(lignes)
+
+
+def feuilles(releve: dict, relu: str | None = None) -> str:
+    """Les deux feuilles d'une séance, en <section> — sans l'enveloppe HTML."""
+    s, ec = releve["seance"], releve["en_clair"]
+    actes = {a["n"]: a for a in releve["actes"]}
+    # `relu` : la mention que pose la PUBLICATION quand l'atelier a retenu la
+    # séance (« relu à l'atelier le … »). Elle prime sur le relevé, qu'elle ne
+    # modifie pas, et ne porte jamais l'adresse du relecteur.
+    relu = relu or releve["origine"].get("relu_par")
+    tampon = "" if relu else '<div class="tampon">À RELIRE</div>'
+    nom = f"{e(s['assemblee_court'])} · le conseil en clair"
+    av, ap = ec["avant"], ec["apres"]
+    sources = _sources(releve)
+    ancre = f'id="seance-{s["date"]}-{releve.get("code", "")}"'
+
+    # ── avant ──
+    if av.get("statut") == "non_publie":
+        intro = (f'<div class="box warn"><b>Pas de convocation publiée.</b> '
+                 f'{e(av["avertissement"])}</div>')
+        label_d = "ordre du jour reconstitué après la séance"
+    else:
+        intro = ""
+        label_d = "à diffuser dès la convocation"
+    if av.get("encadre"):
+        tete, _, reste = av["encadre"].partition(". ")
+        intro += f'<div class="box"><b>{e(tete)}.</b> {e(reste)}</div>'
+    points = "".join(f"<li><b>{e(p['titre'])}</b><p>{e(p['contexte'])}</p></li>"
+                     for p in av.get("points", []))
+    odj = ""
+    if av.get("ordre_du_jour"):
+        odj = (f'<div class="odj"><h3>{e(av.get("titre_odj", "L’ordre du jour complet"))}'
+               f' · {len(av["ordre_du_jour"])} points</h3><ol>'
+               + "".join(f"<li>{e(x)}</li>" for x in av["ordre_du_jour"]) + "</ol></div>")
+    avant = f"""
+<section class="sheet" {ancre}>{tampon}
+  <div class="label"><span>Feuille 1 · avant la séance</span><span>{label_d}</span></div>
+  <div class="mast"><div class="name">{nom}</div><h1>{e(av['titre'])}</h1>
+    <div class="meta">{e(av['chapeau'])}</div></div>
+  {intro}
+  {'<ol class="agenda">' + points + '</ol>' if points else ''}
+  {odj}
+  <div class="foot"><div>{e(av['pied'])}</div>{sources}</div>
+</section>"""
+
+    # ── après ──
+    if ap.get("statut") == "non_publie":
+        corps = f'<div class="box warn"><b>Actes non publiés.</b> {e(ap["texte"])}</div>'
+    else:
+        faits = "".join(f"<div><b>{e(c['valeur'])}</b><span>{e(c['dit'])}</span></div>"
+                        for c in ap["chiffres"])
+        items = ""
+        for it in sorted(ap["items"], key=lambda i: not i.get("une")):
+            ns = it["actes"]
+            items += (f'<div class="item{" une" if it.get("une") else ""}">'
+                      f"<h2>{e(it['titre'])}</h2><p>{e(it['texte'])}</p>"
+                      f'<div class="row">{_vote(actes, ns)}'
+                      f'<span class="acte">{"n°" + " · ".join(map(str, ns)) if ns else ""}'
+                      f'</span></div></div>')
+        aussi = "".join(f"<li>{e(a['texte'])} {_vote(actes, a['actes'])}</li>"
+                        for a in ap.get("aussi", []))
+        corps = (f'<div class="facts">{faits}</div><div class="cols">{items}'
+                 + (f'<div class="aussi"><h3>Et aussi</h3><ul>{aussi}</ul></div>' if aussi else "")
+                 + "</div>")
+    verif = (f"Relevé de {len(releve['actes'])} actes vérifié le "
+             f"{date_longue(date.today().isoformat())} : chaque citation, montant et "
+             f"chiffre est retrouvé dans les documents sources.") if releve["actes"] else ""
+    apres = f"""
+<section class="sheet">{tampon}
+  <div class="label"><span>Feuille 2 · après la séance</span><span>séance du {date_longue(s['date'])}</span></div>
+  <div class="mast"><div class="name">{nom}</div><h1>{e(ap['titre'])}</h1>
+    <div class="meta">{e(ap['chapeau'])}</div></div>
+  {corps}
+  <div class="foot"><div>{e(ap['pied'])}</div>{'<div>' + e(verif) + '</div>' if verif else ''}
+    <div>Relevé : {e(releve['origine']['releve'])}{', ' + e(relu) if relu and relu.startswith('relu') else (', relu par ' + e(relu) if relu else ', non relu')}.
+    Une erreur ? Signalez-la : chaque correction est publiée.</div>{sources}</div>
+</section>"""
+    return avant + apres
+
+
+def erreurs(releve: dict) -> list[str]:
+    """Ce que les documents publics de la séance ont de faux ou d'incomplet."""
+    return list(releve.get("anomalies_seance", [])) + [
+        f"Délibération n°{a['n']} : {a['anomalie']}" for a in releve["actes"] if a.get("anomalie")]
+
+
+def page_erreurs(releve: dict) -> str:
+    """Troisième feuille d'une séance : les défauts relevés dans ses pièces."""
+    s = releve["seance"]
+    liste = erreurs(releve)
+    corps = ("<ul class=\"err\">" + "".join(f"<li>{e(x)}</li>" for x in liste) + "</ul>"
+             if liste else "<p>Aucune erreur ni lacune relevée dans les pièces de cette séance.</p>")
+    return f"""
+<section class="sheet">
+  <div class="label"><span>Feuille 3 · les documents</span><span>séance du {date_longue(s['date'])}</span></div>
+  <div class="mast"><div class="name">{e(s['assemblee_court'])} · le conseil en clair</div>
+    <h1>Ce que les documents publics ont de faux ou d’incomplet</h1>
+    <div class="meta">Relevé par Vigie Civique en confrontant les pièces de la séance entre elles
+    et avec les séances voisines. Ces constats portent sur les documents, pas sur les décisions.</div></div>
+  {corps}
+  <div class="foot"><div>Une erreur dans ce relevé ? Signalez-la : chaque correction est publiée.</div>{_sources(releve)}</div>
+</section>"""
+
+
+def document(titre: str, corps: str) -> str:
+    return (f'<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+            f"<title>{e(titre)}</title><style>{CSS}</style></head>"
+            f"<body>{corps}</body></html>")
+
+
+def chrome_disponible() -> bool:
+    return Path(CHROME).exists()
+
+
+def imprimer(html_path: Path) -> Path:
+    """HTML → PDF par Chrome headless. Absent (un serveur, par exemple), on s'en
+    passe : la page HTML porte sa propre mise en page A4 et s'imprime telle quelle."""
+    pdf = html_path.with_suffix(".pdf")
+    subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+                    f"--print-to-pdf={pdf}", html_path.as_uri()],
+                   check=True, capture_output=True)
+    return pdf
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print(__doc__)
+        return 2
+    chemin = Path(sys.argv[1]).expanduser().resolve()
+    if fautes := verifier(chemin):
+        print("Relevé non conforme — rien n'est rendu :")
+        for f in fautes:
+            print(f"  ✗ {f}")
+        return 1
+    releve = json.loads(chemin.read_text())
+    s = releve["seance"]
+    sortie = chemin.with_name("en-clair.html")
+    sortie.write_text(document(
+        f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
+        feuilles(releve) + page_erreurs(releve)))
+    print(f"{sortie}\n{imprimer(sortie)}")
+    if not releve["origine"].get("relu_par"):
+        print("⚠ Non relu : les feuilles portent « À RELIRE ».")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
