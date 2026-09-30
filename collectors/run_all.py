@@ -139,6 +139,7 @@ from collectors.budgets_votes  import run as run_budgets_votes
 from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.sispea         import run_sispea
+from collectors.eau_potable    import run as run_eau_potable
 from collectors.urbanisme      import run as run_urbanisme
 from collectors.saisies        import import_saisies
 from collectors.detect_links   import run as run_detect_links
@@ -326,6 +327,12 @@ STEPS = {
     # et deux titres qui le disent — c'est le constat JOU-5 de la contre-visite
     # du 30/08, à l'échelle d'une instance.
     "sispea":   ("Prix et performance de l'eau potable",  run_sispea),
+    # Le robinet encore, mais ce qui en SORT : les réseaux (UDI) qui desservent
+    # la commune et le contrôle sanitaire de l'ARS sur chacun. `sispea` donne un
+    # taux de conformité par an ; celui-ci donne chaque prélèvement, son
+    # maître d'ouvrage et son exploitant.
+    "eau_potable": ("Qualité de l'eau du robinet (Hub'Eau, contrôle ARS)",
+                    lambda: run_eau_potable(None)),
     # Le document d'urbanisme tel que le GPU le connaît — le registre où il se
     # dépose, et où ce dépôt le rend opposable. À ne pas confondre avec
     # `urbanisme` juste dessous, qui relit les séances : celui-ci constate,

@@ -173,6 +173,7 @@ PROFONDEUR_STEP = {
     "education":   "fond",          # écoles, collèges, lycées
     "eau":         "fond",          # stations et analyses des cours d'eau
     "sispea":      "fond",          # prix et performance de l'eau potable
+    "eau_potable": "fond",          # réseaux et contrôle sanitaire du robinet
     "plu":         "fond",          # document d'urbanisme déposé au GPU
     "equipements": "fond",          # commerces, santé, écoles (BPE)
     "dpe":         "fond",          # état énergétique du parc de logements
@@ -415,6 +416,9 @@ STEP_META = {
     # 365 jours : l'OFB publie UN exercice par an, vers la mi-année. Réclamer
     # plus frais ferait rougir un indicateur que rien ne peut rafraîchir.
     "sispea":     (365, 26, "sispea_indicateurs", ""),
+    # L'ARS verse ses prélèvements au fil de l'eau, Hub'Eau les republie chaque
+    # mois : 30 jours suffisent à voir la source se taire.
+    "eau_potable":(30,  26, "eau_potable_prelevements", ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
     # Ce qu'on compte est le RELEVÉ, pas la trouvaille : une commune au RNU n'a
     # aucun document, et c'est le cas ordinaire. Compter `urbanisme_documents`
