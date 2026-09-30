@@ -140,6 +140,7 @@ from collectors.commissions    import run as run_commissions
 from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.sispea         import run_sispea
 from collectors.eau_potable    import run as run_eau_potable
+from collectors.telecoms       import run as run_telecoms
 from collectors.urbanisme      import run as run_urbanisme
 from collectors.saisies        import import_saisies
 from collectors.detect_links   import run as run_detect_links
@@ -333,6 +334,9 @@ STEPS = {
     # maître d'ouvrage et son exploitant.
     "eau_potable": ("Qualité de l'eau du robinet (Hub'Eau, contrôle ARS)",
                     lambda: run_eau_potable(None)),
+    # Internet et téléphone : éligibilité par technologie, opérateur du réseau
+    # fibre et sa qualité, sites mobiles alentour et leurs pannes déclarées.
+    "telecoms": ("Fibre, mobile et pannes déclarées (ARCEP)", run_telecoms),
     # Le document d'urbanisme tel que le GPU le connaît — le registre où il se
     # dépose, et où ce dépôt le rend opposable. À ne pas confondre avec
     # `urbanisme` juste dessous, qui relit les séances : celui-ci constate,

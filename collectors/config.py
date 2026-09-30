@@ -174,6 +174,7 @@ PROFONDEUR_STEP = {
     "eau":         "fond",          # stations et analyses des cours d'eau
     "sispea":      "fond",          # prix et performance de l'eau potable
     "eau_potable": "fond",          # réseaux et contrôle sanitaire du robinet
+    "telecoms":    "fond",          # fibre, sites mobiles, pannes déclarées
     "plu":         "fond",          # document d'urbanisme déposé au GPU
     "equipements": "fond",          # commerces, santé, écoles (BPE)
     "dpe":         "fond",          # état énergétique du parc de logements
@@ -364,6 +365,10 @@ if EAU_COURS_EAU:
             "config/instance.json : collecte.cours_eau suppose un « centroid » "
             "[lat, lon] autour duquel borner le rayon")
 
+# Les sites mobiles se cherchent autour de la commune, pas dedans : celui qui la
+# dessert est souvent sur une crête voisine. 10 km par défaut.
+TELECOMS_RAYON_KM = float((_COLLECTE.get("telecoms") or {}).get("rayon_km", 10))
+
 # Suivi de fraîcheur par collecteur : (ttl_jours, priorité, table, where).
 # Source unique de vérité, consommée par `run_all.run_step` (journal
 # collector_runs), `scripts/collect_loop` (relance des sources périmées) et
@@ -437,6 +442,9 @@ STEP_META = {
     # L'ARS verse ses prélèvements au fil de l'eau, Hub'Eau les republie chaque
     # mois : 30 jours suffisent à voir la source se taire.
     "eau_potable":(30,  26, "eau_potable_prelevements", ""),
+    # Les pannes mobiles se publient chaque jour et ne restent lisibles qu'un
+    # temps : une semaine de retard se rattrape, pas un semestre.
+    "telecoms":   (7,   26, "telecoms_indispo_jours", ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
     # Ce qu'on compte est le RELEVÉ, pas la trouvaille : une commune au RNU n'a
     # aucun document, et c'est le cas ordinaire. Compter `urbanisme_documents`
