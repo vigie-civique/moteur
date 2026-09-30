@@ -34,6 +34,10 @@ config/seed_local.json
 # des personnes physiques. Ils n'étaient couverts par aucune règle : une
 # instance qui en rédigeait un le versionnait sans que rien ne l'en avertisse.
 config/dossiers_locaux.json
+# Les dossiers d'une instance, un markdown chacun (public/src/lib/dossiers.server.js) :
+# même règle, même raison. Barre de tête : `dossiers/` seul viserait aussi
+# public/src/routes/dossiers/, la page qui les affiche.
+/dossiers/
 # Les saisies de l'atelier : du travail humain, qui peut nommer des personnes
 # physiques (un acquéreur, un locataire de la commune). Elles se partagent par
 # l'export de décisions vers un dépôt PRIVÉ, jamais par le dépôt du moteur.

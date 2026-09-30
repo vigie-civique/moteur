@@ -124,6 +124,7 @@
       <div class="separateur"></div>
       <a href="/territoire"><Icon name="territoire" size={18} />Le territoire</a>
       <a href="/environnement"><Icon name="environnement" size={18} />Environnement</a>
+      <a href="/dossiers"><Icon name="environnement" size={18} />Dossiers</a>
       <a href="/vie-locale"><Icon name="vie" size={18} />Vie locale</a>
       <form class="recherche mobile" on:submit={chercher} role="search">
         <Icon name="recherche" size={15} />
@@ -147,6 +148,7 @@
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
       <a href="/conseils">Le conseil en clair</a>
+      <a href="/dossiers">Dossiers</a>
       <a href="/methode">Méthode &amp; sources</a>
       <a href="/corrections">Corrections</a>
       <a href="/repliquer">Répliquer</a>
