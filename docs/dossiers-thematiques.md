@@ -119,7 +119,7 @@ hameaux en bout de réseau.
   (2016-2022) ; syndicat, physico-chimie 60 % en 2013, 100 % depuis 2020.
 - **Collecteur écrit** : `collectors/eau_potable.py` (step `eau_potable`),
   joué le 30/09 sur une copie de la base : 3 réseaux, 11 243 résultats
-  depuis 2016. Réseau du bourg : 126 prélèvements, **15 hors limites
+  depuis 2016. Réseau du bourg : 126 prélèvements, **14 hors limites
   bactériologiques** (dont 3 en mai-juin 2026) et 2 physico-chimiques ;
   réseau Thoiras (syndicat, Veolia Gard-Lozère) : 119 prélèvements, 1 et 4.
 - ⚠️ Maître d'ouvrage et exploitant publiés par prélèvement ne suivent pas
