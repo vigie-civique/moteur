@@ -1,24 +1,35 @@
 """
 qualite_eau.py — Qualité des cours d'eau (Hub'Eau, API qualité rivières).
 
-Stations physico-chimiques des communes suivies en profondeur : stations →
-table eau_stations, analyses → table eau_analyses (clé naturelle code_analyse,
-INSERT OR IGNORE — jamais d'écrasement). Collecte incrémentale : repart de la
-dernière date de prélèvement connue par station.
+Stations physico-chimiques du BASSIN suivi : les cours d'eau que l'instance
+déclare (`collecte.cours_eau`), dans un rayon autour de la commune — à défaut,
+les stations des communes de fond. Stations → table eau_stations, analyses →
+table eau_analyses (clé naturelle code_analyse, INSERT OR IGNORE — jamais
+d'écrasement). Collecte incrémentale : repart de la dernière date de
+prélèvement connue par station.
+
+Une station sortie de la sélection est PURGÉE avec ses analyses. Le 30/09/2026,
+les trois instances publiaient des stations collectées à leur création, quand
+le step visait toute l'intercommunalité : 28 sur 28 hors de Lasalle, 29 sur 29
+hors de Brassac, 11 sur 12 hors de Saillans — des mesures de la Dourbie
+présentées comme celles de la Salindrenque. Réduire la sélection sans purger
+ne retire rien de ce qui est publié.
 
 Usage :
   python3 -m collectors.qualite_eau                    # collecte incrémentale
   python3 -m collectors.qualite_eau --since 2015-01-01 # historique complet
   python3 -m collectors.qualite_eau --stats            # état des stations
   python3 -m collectors.qualite_eau --report           # synthèse paramètres clés (Markdown)
+  python3 -m collectors.qualite_eau --proposer [km]     # cours d'eau candidats autour de la commune
 """
 import argparse
+import datetime as dt
 import json
 import time
 import urllib.parse
 import urllib.request
 
-from .config import HEADERS, communes_du_step
+from .config import CENTROID, EAU_COURS_EAU, HEADERS, communes_du_step
 from .db import get_conn
 
 API = "https://hubeau.eaufrance.fr/api/v2/qualite_rivieres"
@@ -77,25 +88,56 @@ def _get_json(url: str, timeout: int = 120, retries: int = 3) -> dict:
             req = urllib.request.Request(url, headers=HEADERS)
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.load(r)
-        except (TimeoutError, urllib.error.URLError):
+        # ValueError : Hub'Eau rend parfois un corps vide avec un statut 200 —
+        # trois fois le 30/09/2026 en une soirée. Un nouvel essai suffit.
+        except (TimeoutError, ConnectionError, urllib.error.URLError, ValueError) as e:
+            # Un refus (4xx) ne change pas en réessayant : c'est à l'appelant
+            # de reformuler — cf. le découpage par mois de fetch_analyses.
+            if isinstance(e, urllib.error.HTTPError) and e.code < 500:
+                raise
             if attempt == retries - 1:
                 raise
             time.sleep(5 * (attempt + 1))
 
 
+def selection_stations(cours_eau: dict, centroid: tuple, communes: list[str]) -> dict:
+    """Paramètres `station_pc` : le bassin déclaré, sinon les communes de fond."""
+    if cours_eau:
+        return {"code_cours_eau": ",".join(cours_eau["codes"]),
+                "latitude": centroid[0], "longitude": centroid[1],
+                "distance": cours_eau.get("rayon_km", 20)}
+    return {"code_commune": ",".join(communes)}
+
+
+def purger_hors_selection(conn, gardees: list[str]) -> int:
+    """Retire les stations (et leurs analyses) que la sélection ne retient plus."""
+    marques = ",".join("?" * len(gardees)) or "''"
+    sortantes = [r[0] for r in conn.execute(
+        f"SELECT code_station FROM eau_stations WHERE code_station NOT IN ({marques})",
+        gardees)]
+    for code in sortantes:
+        conn.execute("DELETE FROM eau_analyses WHERE code_station=?", (code,))
+        conn.execute("DELETE FROM eau_stations WHERE code_station=?", (code,))
+    conn.commit()
+    return len(sortantes)
+
+
 def fetch_stations(conn) -> list[str]:
-    cibles = communes_du_step("eau")
-    url = (f"{API}/station_pc?code_commune={','.join(cibles)}"
-           f"&size=200&format=json")
+    params = selection_stations(EAU_COURS_EAU, CENTROID, communes_du_step("eau"))
+    url = f"{API}/station_pc?{urllib.parse.urlencode({**params, 'size': 200, 'format': 'json'})}"
     data = _get_json(url)
     codes = []
     for s in data.get("data", []):
+        # v2 de l'API : `nom_cours_eau`. L'ancien `libelle_cours_eau` n'existe
+        # plus, et la colonne restait vide sans que rien ne le signale.
         conn.execute(
-            "INSERT OR IGNORE INTO eau_stations"
+            "INSERT INTO eau_stations"
             " (code_station, libelle, code_commune, cours_eau, latitude, longitude)"
-            " VALUES (?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?) ON CONFLICT(code_station) DO UPDATE SET"
+            " cours_eau=COALESCE(excluded.cours_eau, eau_stations.cours_eau)",
             (s["code_station"], s.get("libelle_station"), s.get("code_commune"),
-             s.get("libelle_cours_eau"), s.get("latitude"), s.get("longitude"))
+             s.get("nom_cours_eau") or s.get("libelle_cours_eau"),
+             s.get("latitude"), s.get("longitude"))
         )
         codes.append(s["code_station"])
     conn.commit()
@@ -109,9 +151,31 @@ def fetch_analyses(conn, code_station: str, since: str | None) -> int:
             "SELECT MAX(date_prelevement) FROM eau_analyses WHERE code_station=?",
             (code_station,)).fetchone()
         since = row[0] or "2010-01-01"
-    params = {"code_station": code_station, "date_debut_prelevement": since,
-              "size": PAGE_SIZE, "format": "json"}
-    url = f"{API}/analyse_pc?{urllib.parse.urlencode(params)}"
+    inserted = 0
+    # Une requête par année, et par mois si l'année refuse : Hub'Eau répond
+    # HTTP 400 au-delà de 20 000 résultats paginés, et la station du Gardon de
+    # Saint-Jean à Thoiras dépasse ce plafond sur une seule année.
+    for annee in range(int(since[:4]), dt.date.today().year + 1):
+        debut = since[:10] if annee == int(since[:4]) else f"{annee}-01-01"
+        try:
+            inserted += _fetch_periode(conn, code_station, debut, f"{annee}-12-31")
+        except urllib.error.HTTPError as e:
+            if e.code != 400:
+                raise
+            for mois in range(int(debut[5:7]), 13):
+                fin = (dt.date(annee + mois // 12, mois % 12 + 1, 1) - dt.timedelta(days=1))
+                d = debut if mois == int(debut[5:7]) else f"{annee}-{mois:02d}-01"
+                inserted += _fetch_periode(conn, code_station, d, fin.isoformat())
+    return inserted
+
+
+def _fetch_periode(conn, code_station: str, debut: str, fin: str) -> int:
+    params = {"code_station": code_station, "date_debut_prelevement": debut,
+              "date_fin_prelevement": fin, "size": PAGE_SIZE, "format": "json"}
+    return _fetch_pages(conn, f"{API}/analyse_pc?{urllib.parse.urlencode(params)}")
+
+
+def _fetch_pages(conn, url: str) -> int:
     inserted = 0
     while url:
         data = _get_json(url)
@@ -139,8 +203,16 @@ def run(since: str | None):
     conn = get_conn()
     ensure_tables(conn)
     codes = fetch_stations(conn)
-    print(f"[eau] {len(codes)} station(s) sur "
-          f"{len(communes_du_step('eau'))} commune(s) en profondeur")
+    if EAU_COURS_EAU:
+        print(f"[eau] {len(codes)} station(s) sur {len(EAU_COURS_EAU['codes'])} cours "
+              f"d'eau, à moins de {EAU_COURS_EAU.get('rayon_km', 20)} km")
+    else:
+        print(f"[eau] {len(codes)} station(s) sur "
+              f"{len(communes_du_step('eau'))} commune(s) en profondeur"
+              " — aucun cours d'eau déclaré (collecte.cours_eau)")
+    purgees = purger_hors_selection(conn, codes)
+    if purgees:
+        print(f"[eau] {purgees} station(s) hors sélection purgée(s), analyses comprises")
     total = 0
     for code in codes:
         lib = conn.execute("SELECT libelle FROM eau_stations WHERE code_station=?",
@@ -194,14 +266,39 @@ def show_report():
     conn.close()
 
 
+def proposer(rayon_km: float):
+    """Cours d'eau surveillés autour de la commune, pour remplir collecte.cours_eau."""
+    if len(CENTROID) != 2:
+        raise SystemExit("config/instance.json : pas de « centroid »")
+    params = {"latitude": CENTROID[0], "longitude": CENTROID[1], "distance": rayon_km,
+              "size": 500, "format": "json",
+              "fields": "code_station,libelle_station,code_cours_eau,nom_cours_eau,date_arret"}
+    data = _get_json(f"{API}/station_pc?{urllib.parse.urlencode(params)}")
+    par_cours = {}
+    for s in data.get("data", []):
+        if s.get("code_cours_eau"):
+            par_cours.setdefault((s["code_cours_eau"], s.get("nom_cours_eau")), []).append(s)
+    print(f"Cours d'eau surveillés à moins de {rayon_km} km :\n")
+    for (code, nom), stations in sorted(par_cours.items(), key=lambda kv: -len(kv[1])):
+        actives = sum(1 for s in stations if not s.get("date_arret"))
+        print(f"  {code:10} {nom or '—':32} {len(stations):>2} station(s), {actives} active(s)")
+        for s in stations[:4]:
+            print(f"               · {s['libelle_station'].strip()}")
+    print('\nÀ déclarer : "collecte": {"cours_eau": {"codes": [...], "rayon_km": 20}}')
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Hub'Eau — qualité des rivières du vallon")
     ap.add_argument("--since", default=None,
                     help="date plancher AAAA-MM-JJ (défaut : incrémental)")
     ap.add_argument("--stats", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--proposer", nargs="?", type=float, const=15.0, default=None,
+                    metavar="KM")
     args = ap.parse_args()
-    if args.stats:
+    if args.proposer is not None:
+        proposer(args.proposer)
+    elif args.stats:
         show_stats()
     elif args.report:
         show_report()

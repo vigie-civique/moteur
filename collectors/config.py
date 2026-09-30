@@ -346,6 +346,24 @@ PREFECTURE_RAA_PATH = _I.get("prefecture_raa_path", "")
 BBOX     = tuple(_I.get("bbox", []))       # (sud, ouest, nord, est) — Overpass
 CENTROID = tuple(_I.get("centroid", []))
 
+# Les rivières se suivent par BASSIN, pas par commune : une commune sans station
+# n'a pas une eau sans histoire, elle a une station en aval. `collecte.cours_eau`
+# nomme les cours d'eau (codes SANDRE, « V7130640 ») et le rayon autour du
+# centroïde dans lequel en retenir les stations — une rivière longue, la Drôme,
+# en compte sur cent kilomètres. Sans déclaration, le step `eau` s'en tient aux
+# stations des communes de fond. `python3 -m collectors.qualite_eau --proposer`
+# liste les candidats.
+EAU_COURS_EAU = _COLLECTE.get("cours_eau") or {}
+if EAU_COURS_EAU:
+    if not EAU_COURS_EAU.get("codes") or not isinstance(EAU_COURS_EAU["codes"], list):
+        raise SystemExit(
+            "config/instance.json : collecte.cours_eau doit porter une liste "
+            "« codes » de cours d'eau SANDRE — cf. qualite_eau --proposer")
+    if len(CENTROID) != 2:
+        raise SystemExit(
+            "config/instance.json : collecte.cours_eau suppose un « centroid » "
+            "[lat, lon] autour duquel borner le rayon")
+
 # Suivi de fraîcheur par collecteur : (ttl_jours, priorité, table, where).
 # Source unique de vérité, consommée par `run_all.run_step` (journal
 # collector_runs), `scripts/collect_loop` (relance des sources périmées) et

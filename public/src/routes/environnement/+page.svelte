@@ -85,6 +85,10 @@
        : `${anneesAnalyses[0]}–${anneesAnalyses.at(-1)}`) : ''
   $: communesStations = new Set(stations.map(s => s.code_commune).filter(Boolean))
   $: stationsIci = stations.filter(s => s.code_commune === INSEE).length
+  // Les stations sont celles du BASSIN déclaré par l'instance — les cours d'eau
+  // qui traversent la commune ou la reçoivent en aval —, pas celles des
+  // communes voisines prises au hasard du périmètre administratif.
+  $: coursSuivis = [...new Set(stations.map(s => (s.cours_eau || '').trim()).filter(Boolean))]
   $: catnatRecents = catnat.slice(0, 8)
 
   const fmtDate = (d) => d
@@ -123,11 +127,11 @@
         Les analyses sont celles des stations de surveillance des rivières et
         des captages (Naïades), pas celles de l'eau distribuée au robinet —
         qui a sa propre section ci-dessous.
+        {#if coursSuivis.length}Cours d'eau suivis&nbsp;: {coursSuivis.join(', ')}.{/if}
         {#if stationsIci}{stationsIci} station{stationsIci > 1 ? 's sont' : ' est'} {COMMUNE_A}&nbsp;;
-        les autres sont dans les communes voisines suivies.
-        {:else}Aucune station n'est {COMMUNE_A}&nbsp;: toutes sont dans les
-        communes voisines suivies, et leurs mesures décrivent le bassin, pas la
-        commune.{/if}
+        les autres sont en amont ou en aval.
+        {:else}Aucune station n'est {COMMUNE_A}&nbsp;: toutes sont en amont
+        ou en aval, et leurs mesures décrivent le bassin, pas la commune.{/if}
       </p>
     {/if}
 
