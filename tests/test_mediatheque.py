@@ -139,3 +139,39 @@ def test_le_meme_numero_la_meme_annee_retrouve_sa_fiche(base):
     assert a == b
     assert base.execute("SELECT date FROM events WHERE id=?", (a,)).fetchone()[0] \
         == "2026-06-25"
+
+
+# ── une pièce de médiathèque doit attester sa date ───────────────────────────
+
+PV_DU_3_JUIN = ("PROCÈS VERBAL\nL’an deux mille vingt-six et le trois juin à 09h30, le Conseil "
+                "de la Communauté de communes s’est réuni...\nConvocation envoyée le 26 mai 2026\n")
+
+
+def test_la_date_du_nom_doit_se_lire_dans_len_tete():
+    pytest.importorskip("pdfplumber",
+                        reason="job « tests-deps » : pip install -r requirements.txt")
+    from collectors.conseils import date_attestee
+
+    # « delibs-09.07.26.pdf » contenait le PV du 3 juin (30/09/2026).
+    assert not date_attestee(PV_DU_3_JUIN, "2026-07-09")
+    assert date_attestee(PV_DU_3_JUIN, "2026-06-03")
+    assert date_attestee("SEANCE DU 4 MARS 2026", "2026-03-04")
+    assert date_attestee("Délibérations du 09.07.26", "2026-07-09")
+    assert date_attestee("réunion du 1er septembre 2026", "2026-09-01")
+
+
+def test_une_piece_mal_nommee_nest_pas_lue(base, monkeypatch):
+    pytest.importorskip("pdfplumber",
+                        reason="job « tests-deps » : pip install -r requirements.txt")
+    from collectors import conseils
+
+    monkeypatch.setattr(conseils, "lire_document",
+                        lambda doc, avec_ocr=False: (PV_DU_3_JUIN * 20, "pdf", False))
+    doc = DocumentPublie(date="2026-07-09", url=f"{UP}/2026/07/delibs-09.07.26.pdf",
+                         source="cc.exemple.invalid",
+                         meta={"depuis_mediatheque": True, "depose_le": "2026-07-23"})
+
+    r = conseils.traiter(base, doc, "epci", verbose=False)
+
+    assert r == {"statut": "date_non_attestee", "delibs": 0}
+    assert base.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0

@@ -438,6 +438,50 @@ def date_de_seance(texte: str, doc, portee: str) -> tuple[str, str, dict]:
     return doc.date, "teletransmission", controle
 
 
+# ── Une pièce de médiathèque doit attester sa date ───────────────────────────
+#
+# La date d'une pièce trouvée dans la médiathèque WordPress vient de son NOM DE
+# FICHIER, et un nom de fichier n'est pas une preuve. Relevé le 30/09/2026 sur
+# le site de l'intercommunalité du premier portage : « delibs-09.07.26.pdf »
+# contient le procès-verbal du 3 juin, et « Deliberations-du-4-mars-2026.pdf »
+# le dossier de séance du 4 mars. Le premier, cru sur son nom, a fabriqué seize
+# délibérations au 9 juillet. La pièce n'est donc lue que si la date de son nom
+# se retrouve dans son en-tête, en chiffres ou en lettres.
+
+_JOURS_EN_LETTRES = (
+    "premier", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
+    "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept",
+    "dix-huit", "dix-neuf", "vingt", "vingt et un", "vingt-deux", "vingt-trois",
+    "vingt-quatre", "vingt-cinq", "vingt-six", "vingt-sept", "vingt-huit",
+    "vingt-neuf", "trente", "trente et un")
+
+
+def date_attestee(texte: str, iso: str, portee_caracteres: int = 4000) -> bool:
+    """La date `iso` figure-t-elle dans l'en-tête du texte ?"""
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", iso or "")
+    if not m:
+        return False
+    a, mo, j = m.group(1), int(m.group(2)), int(m.group(3))
+    tete = re.sub(r"\s+", " ", texte[:portee_caracteres]).lower()
+    mois = MOIS_FR[mo - 1]
+    jours = {str(j), f"{j:02d}", _JOURS_EN_LETTRES[j - 1]} | ({"1er", "un"} if j == 1 else set())
+    formes = [rf"\b{re.escape(x)} {mois}\b" for x in jours]
+    formes += [rf"(?<!\d){j:0{n}d}\s*[/.-]\s*{mo:02d}\s*[/.-]\s*(?:{a}|{a[2:]})(?!\d)"
+               for n in (1, 2)]
+    formes += [rf"(?<!\d){j:0{n}d}\s*[/.-]\s*{mo}\s*[/.-]\s*(?:{a}|{a[2:]})(?!\d)"
+               for n in (1, 2)]
+    return any(re.search(f, tete) for f in formes)
+
+
+def _date_de_mediatheque_refusee(doc, texte: str, verbose: bool) -> bool:
+    if not (doc.meta or {}).get("depuis_mediatheque") or date_attestee(texte, doc.date):
+        return False
+    if verbose:
+        print(f"  [wp] {doc.url.rsplit('/', 1)[-1]} : la date {doc.date}, lue dans le "
+              f"nom du fichier, n'est pas dans son en-tête — pièce écartée")
+    return True
+
+
 def traiter_acte(conn, doc, portee: str, verbose: bool = True,
                  avec_ocr: bool = False) -> dict:
     """Enregistre une pièce qui EST une délibération, sans rien découper.
@@ -455,6 +499,8 @@ def traiter_acte(conn, doc, portee: str, verbose: bool = True,
     if lu is None:
         return {"statut": "inaccessible", "delibs": 0}
     texte, format_, ocrise = lu
+    if _date_de_mediatheque_refusee(doc, texte, verbose):
+        return {"statut": "date_non_attestee", "delibs": 0}
 
     if len(texte) < MIN_TEXT_CHARS:
         # Le portail donne l'objet et le numéro, mais pas le texte : enregistrer
@@ -513,6 +559,8 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
     if lu is None:
         return {"statut": "inaccessible", "delibs": 0}
     texte, format_, ocrise = lu
+    if _date_de_mediatheque_refusee(doc, texte, verbose):
+        return {"statut": "date_non_attestee", "delibs": 0}
 
     if len(texte) < MIN_TEXT_CHARS:
         # Sans reconnaissance optique, le signaler vaut mieux que produire une
@@ -623,7 +671,10 @@ def collecter(portee: str = "commune", depuis: str | None = None,
     print(f"\n[conseils] {resume['ok']} documents lus, {resume['delibs']} "
           f"délibérations, {reste} sans couche texte"
           + ("" if avec_ocr else " (relancer avec --ocr)")
-          + f", {resume['inaccessible']} inaccessibles")
+          + f", {resume['inaccessible']} inaccessibles"
+          + (f", {resume['date_non_attestee']} pièce(s) de médiathèque écartée(s) : "
+             f"date du nom de fichier absente du texte"
+             if resume.get("date_non_attestee") else ""))
 
 
 def collecter_archives(portee: str = "commune", limit: int = 0,
