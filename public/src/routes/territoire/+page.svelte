@@ -19,6 +19,16 @@
   $: mouvements = equipements.mouvements || {}
   $: mobilite = data.mobilite || {}
   $: dispositifs = data.dispositifs || []
+  $: telecoms = data.telecoms
+  $: fixe = telecoms?.fixe
+  $: reseau = telecoms?.reseau
+  $: qualite = reseau?.qualite
+  $: mobile = telecoms?.mobile
+  $: pannes = telecoms?.pannes
+  // Le nombre de locaux recensés bouge d'un trimestre à l'autre (la base
+  // d'adresses se nettoie) : la courbe trace la PART fibrée, jamais le compte.
+  $: locauxMin = fixe ? Math.min(...fixe.serie.map(s => s.locaux)) : 0
+  $: locauxMax = fixe ? Math.max(...fixe.serie.map(s => s.locaux)) : 0
 
   // Le collecteur ne renseigne pas tous les libellés : on complète les codes
   // qui portent le propos, plutôt que d'afficher « EMP_1_Y15T64 » au lecteur.
@@ -126,6 +136,18 @@
   const eur = (v) => v == null ? '—'
     : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v)
   const pct = (v) => v == null ? '—' : `${v.toFixed(1).replace('.', ',')} %`
+  const taux = (v) => v == null ? '—' : `${(v * 100).toFixed(2).replace('.', ',')} %`
+  const jour = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
+  const trimestre = (t) => {
+    const [a, q] = (t || '').split('_T')
+    return `${q === '1' ? '1ᵉʳ' : q + 'ᵉ'} trimestre ${a}`
+  }
+  const ZONES = { zipu: "zone d'initiative publique", zipri: "zone d'initiative privée" }
+  const QUALITE = [
+    ['abonnes_avec_panne', 'Abonnés ayant subi au moins une panne', 'département'],
+    ['pannes', 'Taux de pannes', 'réseau entier'],
+    ['echecs_raccordement', 'Échecs de raccordement', 'réseau entier'],
+  ]
 </script>
 
 <svelte:head>
@@ -419,6 +441,168 @@
         {#each dispositifs as d}<li>{d.libelle || d.code}<span class="muted"> — {d.reference}</span></li>{/each}
       </ul>
     {/if}
+  {/if}
+
+  {#if fixe}
+    <h2 id="telecoms">Internet et téléphone</h2>
+    <Niveau type="calcul" base="les statistiques communales de l'ARCEP (Ma connexion internet), {trimestre(fixe.dernier.trimestre)}">
+      Au {jour(fixe.dernier.date)}, <b>{nb(fixe.dernier.fibre)}</b> des
+      {nb(fixe.dernier.locaux)} locaux recensés sont éligibles à la fibre&nbsp;:
+      <b>{pct(fixe.dernier.part)}</b>.
+      {#if fixe.ouverture}La fibre est ouverte à la commercialisation depuis le
+        {trimestre(fixe.ouverture.trimestre)}.{:else}Aucun local n'y est encore éligible.{/if}
+      {#if fixe.dernier.sans_fibre > 0 && fixe.dernier.mt_4gf != null}
+        Pour les {nb(fixe.dernier.sans_fibre)} autres, la meilleure solution
+        disponible est la 4G fixe ({nb(fixe.dernier.mt_4gf)}) ou le satellite
+        ({nb(fixe.dernier.mt_sat)}){#if fixe.dernier.mt_autre}, une autre
+        technologie pour {nb(fixe.dernier.mt_autre)}{/if}.
+      {/if}
+    </Niveau>
+
+    <p class="note">Part des locaux éligibles à la fibre, trimestre par trimestre.
+      Survolez une barre pour le détail.</p>
+    <div class="chart-wrap">
+      <div class="chart pop">
+        {#each fixe.serie as s, i}
+          <div class="slot" title="{jour(s.date)} : {nb(s.fibre)} locaux éligibles sur {nb(s.locaux)} ({pct(s.part)})">
+            <div class="bar" style="height:{s.part ?? 0}%"></div>
+            <span class="year">{i === 0 || s.trimestre.slice(0, 4) !== fixe.serie[i - 1].trimestre.slice(0, 4) ? s.trimestre.slice(0, 4) : ''}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+    {#if locauxMax > locauxMin}
+      <p class="lecture">
+        <b>Pourquoi une part plutôt qu'un nombre.</b> Le nombre de locaux que
+        recense l'ARCEP a varié de {nb(locauxMin)} à {nb(locauxMax)} sur la
+        période&nbsp;: la base d'adresses se corrige d'un trimestre à l'autre. Un
+        nombre de locaux fibrés se lit donc rapporté au total du même trimestre.
+      </p>
+    {/if}
+    {#if fixe.cuivre_a_zero}
+      <p class="lecture">
+        <b>Le cuivre n'a pas été coupé.</b> L'ARCEP ne compte plus aucun local
+        éligible à l'ADSL depuis le {jour(fixe.cuivre_a_zero.date)}, contre
+        {nb(fixe.cuivre_a_zero.avant)} au {jour(fixe.cuivre_a_zero.date_avant)}.
+        C'est un changement de méthode de l'ARCEP, appliqué à toute la France au
+        même moment&nbsp;: le même zéro apparaît dans des dizaines de milliers de
+        communes. Ce n'est pas une fermeture du réseau téléphonique.
+      </p>
+    {/if}
+
+    {#if reseau}
+      <h3>Le réseau fibre et ses pannes</h3>
+      <Niveau type="fait" source="ARCEP — déploiements de la fibre">
+        La commune est en <b>{ZONES[reseau.zone] || reseau.zone}</b>. Le réseau
+        fibre y est exploité par <b>{qualite?.oi || reseau.nom || reseau.oi}</b>{#if qualite?.maison_mere}
+        (groupe {qualite.maison_mere.replace(/\s*\(.*\)\s*$/, '')}){/if}, l'opérateur d'infrastructure&nbsp;: c'est lui
+        qui répond des pannes du réseau.
+      </Niveau>
+      {#if qualite}
+        <p class="note">Aucune source ouverte ne publie les pannes de la fibre
+          commune par commune. L'ARCEP mesure chaque <b>réseau</b> sur six mois
+          glissants&nbsp;: ces chiffres valent pour tout le réseau de cet opérateur,
+          pas pour {COMMUNE} seule. Période&nbsp;: {qualite.periode}.</p>
+        <div class="chart-wrap">
+          <table>
+            <thead><tr><th>Indicateur</th><th>Périmètre</th><th class="r">Ce réseau</th>
+              <th class="r">Médiane des réseaux</th><th class="r">Rang</th></tr></thead>
+            <tbody>
+              {#each QUALITE as [cle, libelle, perimetre]}
+                {@const q = qualite[cle]}
+                {#if q}
+                  <tr>
+                    <td>{libelle}</td><td class="muted">{perimetre}</td>
+                    <td class="r"><b>{taux(q.taux)}</b></td>
+                    <td class="r">{taux(q.mediane)}</td>
+                    <td class="r">{q.rang}ᵉ sur {q.sur}</td>
+                  </tr>
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Rang : du meilleur au moins bon, parmi les réseaux mesurés
+          sur la même période et au même périmètre.</p>
+      {/if}
+    {/if}
+
+    {#if mobile}
+      <h3>Le mobile</h3>
+      <Niveau type="fait" source="ARCEP — sites mobiles, {trimestre(mobile.trimestre)}">
+        {#if mobile.dans_la_commune.length === 0}
+          <b>Aucun site mobile</b> n'est implanté dans la commune.
+        {:else if mobile.dans_la_commune.length === 1}
+          {@const s = mobile.dans_la_commune[0]}
+          Un seul site mobile est implanté dans la commune, à
+          {nb(s.distance_km, 1)} km de son point central.
+          {#if s.operateurs.length > 1}Il héberge <b>{s.operateurs.length} opérateurs</b>
+            sur un même support{:else}Il n'héberge que {s.operateurs[0].nom}{/if}{#if s.zones_blanches}&nbsp;;
+            il relève du programme <b>zones blanches – centres-bourgs</b>, pour les
+            communes qui n'avaient aucune couverture{/if}{#if s.couverture_ciblee}&nbsp;;
+            il relève du dispositif de couverture ciblée (New Deal mobile){/if}.
+        {:else}
+          <b>{mobile.dans_la_commune.length} sites mobiles</b> sont implantés dans la commune.
+        {/if}
+      </Niveau>
+      {#if mobile.dans_la_commune.length}
+        <div class="chart-wrap">
+          <table>
+            <thead><tr><th>Site</th><th>Opérateur</th><th class="r">Distance</th>
+              <th>2G</th><th>3G</th><th>4G</th><th>5G</th></tr></thead>
+            <tbody>
+              {#each mobile.dans_la_commune as s}
+                {#each s.operateurs as o, i}
+                  <tr>
+                    <td class="muted">{i === 0 ? s.site : ''}{#if i === 0 && s.zones_blanches} · zones blanches{/if}{#if i === 0 && s.couverture_ciblee} · couverture ciblée{/if}</td>
+                    <td>{o.nom}</td>
+                    <td class="r">{i === 0 ? `${nb(s.distance_km, 1)} km` : ''}</td>
+                    {#each ['2g', '3g', '4g', '5g'] as t}<td>{o[t] ? 'oui' : '—'}</td>{/each}
+                  </tr>
+                {/each}
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <p class="note">Distance au point central de la commune.</p>
+      {/if}
+      <p class="note">
+        Dans un rayon de {nb(mobile.rayon_km)} km&nbsp;: {mobile.sites} sites
+        (un site compté une fois, quel que soit le nombre d'opérateurs qu'il
+        héberge), dont {mobile.zones_blanches} du programme zones blanches et
+        {mobile.couverture_ciblee} du dispositif de couverture ciblée.
+        {#if mobile.plus_proche_5g}La 5G la plus proche&nbsp;:
+          {mobile.plus_proche_5g.operateurs.filter(o => o['5g']).map(o => o.nom).join(', ')}
+          à {mobile.plus_proche_5g.commune} ({nb(mobile.plus_proche_5g.distance_km, 1)} km).
+        {:else}Aucun site 5G dans ce rayon.{/if}
+      </p>
+    {/if}
+
+    {#if pannes}
+      <Niveau type="fait" source="ARCEP — sites mobiles indisponibles, relevé quotidien">
+        Les opérateurs déclarent chaque jour leurs sites hors service. Sur
+        <b>{nb(pannes.jours)} jours lus</b>, du {jour(pannes.du)} au {jour(pannes.au)},
+        {#if pannes.declarees === 0}<b>aucune indisponibilité</b> n'a été déclarée
+        {:else}<b>{nb(pannes.declarees)}</b> indisponibilité(s) ont été déclarées{/if}
+        pour un site de la commune.
+      </Niveau>
+    {:else if mobile}
+      <p class="note">Les indisponibilités déclarées par les opérateurs n'ont pas
+        encore été relevées pour cette commune.</p>
+    {/if}
+    <p class="lecture">
+      <b>Ce que ces chiffres ne mesurent pas.</b> La qualité réelle du signal dans
+      les écarts, les coupures de la fibre à l'échelle de la commune, ni celles de
+      l'électricité, dont dépend désormais aussi le téléphone fixe&nbsp;: il passe
+      par la box.
+    </p>
+    <p class="src">
+      Source : ARCEP, <a href="https://data.arcep.fr/" rel="noopener">data.arcep.fr</a> —
+      Ma connexion internet (éligibilité par technologie, par trimestre),
+      déploiements de la fibre (zone et opérateur d'infrastructure), qualité des
+      réseaux en fibre optique (indicateurs par réseau, six mois glissants), sites
+      mobiles et sites indisponibles (relevé quotidien).
+    </p>
   {/if}
 </section>
 

@@ -130,5 +130,8 @@ export function load() {
     mobilite: { aom, arrets: arrets.length, reseaux,
                 horsCommune: fichier.mobilite_arrets_hors_commune ?? 0 },
     dispositifs,
+    // Qualifié au build (`export_telecoms`) : rupture du cuivre, rangs à
+    // période égale, site physique, jours lus. La page n'a rien à décider.
+    telecoms: fichier.telecoms || null,
   }
 }

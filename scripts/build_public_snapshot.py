@@ -39,6 +39,8 @@ from collectors.config import (  # noqa: E402
     EPCI_COMMUNES as COMMUNES_EPCI,
     EPCI_NOM as EPCI_NOM_C2,
     EPCI_SIREN as EPCI_SIREN_C2,
+    DEPARTEMENT,
+    TELECOMS_RAYON_KM,
 )
 from collectors.config import DB_PATH   # nommée dans la config
 # Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
@@ -2330,6 +2332,163 @@ def mesurer_replicabilite() -> dict:
     }
 
 
+# ── Internet et téléphone (ARCEP, `collectors/telecoms.py`) ──────────────────
+#
+# Cinq relevés, cinq façons de se tromper en les affichant — chacune qualifiée
+# ici, pour que la page n'ait rien à décider :
+#   - le nombre de LOCAUX varie d'un trimestre à l'autre (le plan d'adressage
+#     nettoie la base) : on publie la PART fibrée, jamais le seul compte ;
+#   - l'éligibilité au cuivre tombe à zéro au 2ᵉ trimestre 2026 dans 25 805
+#     communes à la fois : une rupture de méthode, pas une fermeture ;
+#   - la qualité de la fibre n'existe que PAR RÉSEAU (tout un département hors
+#     villes) : elle se dit comme telle, et ne se classe qu'à période et
+#     périmètre égaux ;
+#   - un site mobile est une ligne par opérateur : le site physique est
+#     `id_site_partage` (sinon `num_site`) ;
+#   - « 0 panne » ne vaut que sur des jours LUS : sans jour lu, rien n'est dit.
+
+def _fin_de_periode(periode: str) -> tuple:
+    """« 10/25 - 03/26 » → (26, 3) : une période se trie par sa fin."""
+    m = re.search(r"(\d{2})/(\d{2})\s*$", periode or "")
+    return (int(m.group(2)), int(m.group(1))) if m else (0, 0)
+
+
+def _situer(conn, periode: str, perimetre: str, colonne: str, valeur) -> dict | None:
+    """Rang (du meilleur au moins bon) et médiane parmi les réseaux de même
+    période et même périmètre."""
+    if valeur is None:
+        return None
+    autres = sorted(r[0] for r in conn.execute(
+        f"SELECT {colonne} FROM telecoms_qualite_ftth WHERE periode=? AND perimetre=? "
+        f"AND {colonne} IS NOT NULL", (periode, perimetre)))
+    if not autres:
+        return None
+    n = len(autres)
+    mediane = autres[n // 2] if n % 2 else (autres[n // 2 - 1] + autres[n // 2]) / 2
+    return {"taux": valeur, "rang": sum(1 for x in autres if x < valeur) + 1,
+            "sur": n, "mediane": round(mediane, 6)}
+
+
+#: Les trimestres où l'ARCEP a changé de méthode pour le cuivre (le zéro y
+#: apparaît dans des dizaines de milliers de communes, selon leur calendrier de
+#: mise à jour). Un zéro apparu HORS de cette fenêtre n'est pas qualifié : la
+#: page n'en dit rien plutôt que de l'expliquer à tort.
+RUPTURE_CUIVRE = ("2026_T1", "2026_T2")
+
+
+def _cuivre_a_zero(serie: list[dict]) -> dict | None:
+    """Le trimestre où l'éligibilité au cuivre tombe à zéro, s'il est dans la
+    fenêtre de rupture et le reste depuis."""
+    for avant, apres in zip(serie, serie[1:]):
+        if avant["cuivre"] and apres["cuivre"] == 0:
+            if apres["trimestre"] in RUPTURE_CUIVRE and serie[-1]["cuivre"] == 0:
+                return {"trimestre": apres["trimestre"], "date": apres["date"],
+                        "avant": avant["cuivre"], "date_avant": avant["date"]}
+    return None
+
+
+def export_telecoms(conn, insee: str, departement: str, rayon_km: float) -> dict | None:
+    if not table_exists(conn, "telecoms_fixe"):
+        return None
+    serie = rows(conn, """
+        SELECT trimestre, date, locaux, elig_ftth AS fibre, elig_cu AS cuivre,
+               mt_ftth, mt_4gf, mt_sat, mt_autre
+          FROM telecoms_fixe WHERE insee=? ORDER BY trimestre
+    """, (insee,))
+    if not serie:
+        return None
+    for s in serie:
+        s["part"] = round(100 * s["fibre"] / s["locaux"], 1) \
+            if s["locaux"] and s["fibre"] is not None else None
+    dernier = serie[-1]
+    ouverture = next((s for s in serie if s["fibre"]), None)
+    fixe = {
+        "serie": [{k: s[k] for k in ("trimestre", "date", "locaux", "fibre", "part")}
+                  for s in serie],
+        "dernier": {**dernier, "sans_fibre": (dernier["locaux"] or 0) - (dernier["fibre"] or 0)},
+        "ouverture": ouverture and {k: ouverture[k] for k in ("trimestre", "date", "fibre")},
+        "cuivre_a_zero": _cuivre_a_zero(serie),
+    }
+
+    reseau = None
+    if table_exists(conn, "telecoms_fixe_oi"):
+        oi = row(conn, """
+            SELECT f.trimestre, f.zone, f.oi, o.nom, f.locaux, f.ftth
+              FROM telecoms_fixe_oi f LEFT JOIN telecoms_operateurs o ON o.code = f.oi
+             WHERE f.insee=? ORDER BY f.trimestre DESC LIMIT 1
+        """, (insee,))
+        if oi:
+            reseau = {**oi, "qualite": None}
+            nom = oi.get("nom")
+            if nom and table_exists(conn, "telecoms_qualite_ftth"):
+                # L'ARCEP nomme le même opérateur « Wigard » ici, « Wigard
+                # Fibre » là : la jointure se fait par préfixe.
+                lignes = rows(conn, "SELECT * FROM telecoms_qualite_ftth WHERE oi LIKE ?",
+                              (nom + "%",))
+                periodes = sorted({r["periode"] for r in lignes}, key=_fin_de_periode)
+                if periodes:
+                    p = periodes[-1]
+                    res = next((r for r in lignes if r["periode"] == p
+                                and r["perimetre"] == "reseau"), None)
+                    dep = next((r for r in lignes if r["periode"] == p
+                                and r["perimetre"] == "departement"
+                                and r["dep_code"] == departement), None)
+                    reseau["qualite"] = {
+                        "periode": p, "oi": (res or dep or {}).get("oi"),
+                        "maison_mere": (res or dep or {}).get("maison_mere"),
+                        "pannes": res and _situer(conn, p, "reseau", "taux_pannes",
+                                                  res["taux_pannes"]),
+                        "echecs_raccordement": res and _situer(
+                            conn, p, "reseau", "taux_echecs_raccordement",
+                            res["taux_echecs_raccordement"]),
+                        # Publié au seul périmètre départemental par l'ARCEP.
+                        "abonnes_avec_panne": dep and _situer(
+                            conn, p, "departement", "taux_abonnes_avec_panne",
+                            dep["taux_abonnes_avec_panne"]),
+                    }
+
+    mobile = None
+    if table_exists(conn, "telecoms_sites_mobiles"):
+        lignes = rows(conn, """
+            SELECT *, COALESCE(id_site_partage, num_site) AS site FROM telecoms_sites_mobiles
+             WHERE trimestre=(SELECT MAX(trimestre) FROM telecoms_sites_mobiles)
+             ORDER BY distance_km, nom_op
+        """)
+        if lignes:
+            sites: dict[str, dict] = {}
+            for l in lignes:
+                s = sites.setdefault(l["site"], {
+                    "site": l["site"], "commune": l["nom_com"], "insee": l["insee_com"],
+                    "distance_km": l["distance_km"], "zones_blanches": False,
+                    "couverture_ciblee": False, "cinq_g": False, "operateurs": []})
+                s["zones_blanches"] |= bool(l["site_zb"])
+                s["couverture_ciblee"] |= bool(l["site_dcc"])
+                s["cinq_g"] |= bool(l["site_5g"])
+                s["operateurs"].append({"nom": l["nom_op"], **{
+                    t: bool(l[f"site_{t}"]) for t in ("2g", "3g", "4g", "5g")}})
+            tous = list(sites.values())
+            cinq_g = [s for s in tous if s["cinq_g"]]
+            mobile = {
+                "trimestre": lignes[0]["trimestre"], "rayon_km": rayon_km,
+                "sites": len(tous),
+                "dans_la_commune": [s for s in tous if s["insee"] == insee],
+                "plus_proche_5g": cinq_g[0] if cinq_g else None,
+                "zones_blanches": sum(1 for s in tous if s["zones_blanches"]),
+                "couverture_ciblee": sum(1 for s in tous if s["couverture_ciblee"]),
+            }
+
+    pannes = None
+    if table_exists(conn, "telecoms_indispo_jours"):
+        j = row(conn, "SELECT COUNT(*) AS jours, MIN(jour) AS du, MAX(jour) AS au "
+                      "FROM telecoms_indispo_jours")
+        if j and j["jours"]:
+            pannes = {**j, "declarees": conn.execute(
+                "SELECT COUNT(*) FROM telecoms_indisponibilites WHERE code_insee=? "
+                "AND jour BETWEEN ? AND ?", (insee, j["du"], j["au"])).fetchone()[0]}
+
+    return {"insee": insee, "fixe": fixe, "reseau": reseau, "mobile": mobile, "pannes": pannes}
+
+
 # ── Le conseil en clair : ce que l'atelier a RETENU, et rien d'autre ─────────
 #
 # Une feuille « en clair » est un texte rédigé sur une séance — souvent par un
@@ -3408,6 +3567,7 @@ def build_snapshot(out: Path) -> dict:
             "mobilite_arrets_hors_commune": arrets_hors_commune,
             "dispositifs_etat": dispositifs,
             "cadastre": cadastre_resume,
+            "telecoms": export_telecoms(conn, INSEE_C1, DEPARTEMENT, TELECOMS_RAYON_KM),
         })
 
         # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
