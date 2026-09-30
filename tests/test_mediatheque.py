@@ -33,6 +33,9 @@ MEDIAS = [
     _media("2026/04/Rapport-activite-2025.pdf", "2026-04-02"),
     # Rend compte, ne délibère pas.
     _media("2026/07/Compte-Rendu-COPIL-26.06.2026.pdf", "2026-07-01"),
+    # Une autre assemblée, et une procédure qui n'est pas un conseil.
+    _media("2022/07/SIRPMMM-Deliberations-conseil-syndical-12-07-2022.pdf", "2022-07-20"),
+    _media("2023/10/PV_EXAMEN_CONJOINT_DPMEC_PLUI_12_10_2023.pdf", "2023-10-20"),
     # Le titre réécrit à la main a perdu la date ; le nom de fichier la garde.
     _media("2026/05/PV-du-16.04.2026-tampon.pdf", "2026-05-07", "PV tampon"),
     _media("2022/10/Delib-N%C2%B044-du-5-avril-2017-Tarif-redevance-SPANC-2017.pdf",
@@ -60,6 +63,7 @@ def test_une_annee_courte_nest_crue_que_si_le_depot_la_confirme():
     # Le libellé a perdu ses tirets, ou colle la date au mot qui précède.
     assert wp._date_de_piece("PV 28 05 2014", "2022-10-05") == "2014-05-28"
     assert wp._date_de_piece("PV du8.02.2023", "2023-03-24") == "2023-02-08"
+    assert wp._date_de_piece("pv27032026signée", "2026-04-02") == "2026-03-27"
     # Rien ne permet de trancher : la pièce reste non datée.
     assert wp._date_de_piece("DELIB N°128 DU 29 11 17", "2022-10-07") is None
     assert wp._date_de_piece("delibs 09.07.26", "2031-02-01") is None

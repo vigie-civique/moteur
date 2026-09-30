@@ -179,10 +179,14 @@ _PIECE_DE_CONSEIL = re.compile(
 # jour précèdent la séance, la « liste des délibérations » ne donne que des
 # intitulés. Les lire comme des procès-verbaux fabriquait des délibérations.
 # Un comité de pilotage ou une commission rend compte, mais ne délibère pas :
-# le premier essai réel en ramenait six comptes rendus de COPIL.
+# le premier essai réel en ramenait six comptes rendus de COPIL. Un syndicat
+# délibère, mais ce n'est pas l'assemblée de la portée : ses actes déposés sur
+# le site de l'intercommunalité lui seraient attribués (même leçon que « un acte
+# de l'intercommunalité n'est pas un acte de la commune »).
 _HORS_CATALOGUE = re.compile(
     r"convocation|ordre[\s-]*du[\s-]*jour|liste[\s-]*des[\s-]*d[ée]lib"
-    r"|copil|comit[ée]|commission|r[ée]union[\s-]*publique", re.I)
+    r"|copil|comit[ée]|commission|r[ée]union[\s-]*publique"
+    r"|examen[\s-]*conjoint|syndica[lt]", re.I)
 # « Deliberation-N°41-du-4-mars-2026-… » : une pièce qui EST un acte, publiée
 # seule. Elle passe par `conseils.traiter_acte`, qui ne découpe rien.
 _ACTE_SEUL = re.compile(
@@ -191,6 +195,9 @@ _ACTE_SEUL = re.compile(
 # a perdu ses tirets (« PV 28 05 2014 »), et un nom de fichier colle parfois la
 # date au mot qui précède (« PV du8.02.2023 »).
 _DATE_NUMERIQUE = re.compile(r"(?<!\d)(\d{1,2})[ .-](\d{1,2})[ .-](\d{4}|\d{2})(?!\d)")
+# « pv27032026signée » : huit chiffres collés, jour-mois-année, et seulement
+# avec une année en 20xx — sans séparateur, rien d'autre n'est lisible sûrement.
+_DATE_COMPACTE = re.compile(r"(?<!\d)(\d{2})(\d{2})(20\d{2})(?!\d)")
 
 
 def _libelles(media: dict) -> tuple[str, str]:
@@ -218,7 +225,7 @@ def _date_de_piece(libelle: str, depose_le: str) -> str | None:
     """
     if date := date_fr(libelle):
         return date
-    for m in _DATE_NUMERIQUE.finditer(libelle):
+    for m in (*_DATE_NUMERIQUE.finditer(libelle), *_DATE_COMPACTE.finditer(libelle)):
         jour, mois, an = int(m.group(1)), int(m.group(2)), m.group(3)
         if not (1 <= jour <= 31 and 1 <= mois <= 12):
             continue
