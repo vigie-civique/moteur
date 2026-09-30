@@ -34,6 +34,7 @@ catalogue vide, ce qui est une lacune à publier, pas une erreur à masquer.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -147,6 +148,133 @@ class Site:
     def categories(self) -> dict[str, dict]:
         data, _ = self._get("categories", {"per_page": PER_PAGE})
         return {c["slug"]: c for c in (data or [])}
+
+    def pdf_deposes(self):
+        """Tous les PDF de la médiathèque, du plus récent au plus ancien."""
+        return self._paginer("media", {"mime_type": "application/pdf",
+                                       "orderby": "date", "order": "desc"})
+
+
+# ── La médiathèque ───────────────────────────────────────────────────────────
+#
+# Une page « conseil » ne liste que ce que la collectivité a pensé à y lier. Sa
+# médiathèque garde TOUT ce qui a été déposé. Relevé le 30/09/2026 sur le site
+# de l'intercommunalité du premier portage : la page des procès-verbaux ne liait
+# ni les recueils de février, du 3 juin et du 9 juillet 2026, ni les deux seules
+# délibérations signées de la séance du 4 mars — dont celle qui porte la grille
+# des tarifs de l'eau, absente du procès-verbal.
+#
+# Ce qui s'ajoute ainsi est un COMPLÉMENT : une pièce déjà cataloguée par la
+# page n'est pas reprise, et la séance reste identifiée par sa date
+# (`conseils.enregistrer_seance`), donc une pièce de plus ne fait pas une séance
+# de plus.
+
+# Ce qui rapporte une décision. Le nom de fichier est tout ce que la
+# médiathèque sait d'une pièce : on le lit, faute de mieux, mais on ne lui fait
+# dire que sa nature et sa date.
+_PIECE_DE_CONSEIL = re.compile(
+    r"d[ée]lib|proc[eè]s[\s-]*verbal|(?<![a-z])pv(?![a-z])"
+    r"|compte[\s-]*rendu.{0,40}conseil", re.I)
+# Ce qui l'annonce ou la résume sans la rapporter : la convocation et l'ordre du
+# jour précèdent la séance, la « liste des délibérations » ne donne que des
+# intitulés. Les lire comme des procès-verbaux fabriquait des délibérations.
+# Un comité de pilotage ou une commission rend compte, mais ne délibère pas :
+# le premier essai réel en ramenait six comptes rendus de COPIL.
+_HORS_CATALOGUE = re.compile(
+    r"convocation|ordre[\s-]*du[\s-]*jour|liste[\s-]*des[\s-]*d[ée]lib"
+    r"|copil|comit[ée]|commission|r[ée]union[\s-]*publique", re.I)
+# « Deliberation-N°41-du-4-mars-2026-… » : une pièce qui EST un acte, publiée
+# seule. Elle passe par `conseils.traiter_acte`, qui ne découpe rien.
+_ACTE_SEUL = re.compile(
+    r"d[ée]lib(?:[ée]ration)?[\s.-]*n\s*[°o]?\s*(\d{1,4})\b", re.I)
+# Jour, mois, année séparés par un point, un tiret ou une ESPACE : le libellé
+# a perdu ses tirets (« PV 28 05 2014 »), et un nom de fichier colle parfois la
+# date au mot qui précède (« PV du8.02.2023 »).
+_DATE_NUMERIQUE = re.compile(r"(?<!\d)(\d{1,2})[ .-](\d{1,2})[ .-](\d{4}|\d{2})(?!\d)")
+
+
+def _libelles(media: dict) -> tuple[str, str]:
+    """Le titre donné dans la médiathèque, et le nom du fichier déposé.
+
+    Les deux se lisent : le titre est souvent réécrit à la main (« PV tampon »)
+    et perd la date que le nom de fichier portait encore.
+    """
+    def propre(t: str) -> str:
+        return re.sub(r"[_-]+", " ", t).strip()
+    titre = texte_brut((media.get("title") or {}).get("rendered", ""))
+    nom = urllib.parse.unquote(urllib.parse.urlparse(
+        media.get("source_url", "")).path.rsplit("/", 1)[-1]).rsplit(".", 1)[0]
+    return propre(titre or nom), propre(nom)
+
+
+def _date_de_piece(libelle: str, depose_le: str) -> str | None:
+    """La date de la séance lue dans le libellé.
+
+    `date_fr` refuse une année à deux chiffres, et il a raison en général. Ici,
+    le dépôt donne un témoin : « 09.07.26 » déposé en juillet 2026 ne peut être
+    que 2026. L'année courte n'est acceptée que si elle est celle du dépôt, ou
+    la précédente (une séance de décembre publiée en janvier) — sinon la pièce
+    reste non datée, et elle est annoncée comme telle.
+    """
+    if date := date_fr(libelle):
+        return date
+    for m in _DATE_NUMERIQUE.finditer(libelle):
+        jour, mois, an = int(m.group(1)), int(m.group(2)), m.group(3)
+        if not (1 <= jour <= 31 and 1 <= mois <= 12):
+            continue
+        if len(an) == 2:
+            if not depose_le[:4].isdigit():
+                continue
+            annee = 2000 + int(an)
+            if annee not in (int(depose_le[:4]), int(depose_le[:4]) - 1):
+                continue
+        else:
+            annee = int(an)
+        return f"{annee}-{mois:02d}-{jour:02d}"
+    return None
+
+
+def catalogue_mediatheque(base: str, deja: set[str]) -> list[DocumentPublie]:
+    """Les pièces de conseil déposées sur un site WordPress, hors celles de `deja`.
+
+    Déclaré par portée dans `config/instance.json`, indépendamment du connecteur
+    qui lit les pages — un site WordPress peut être lu en HTML (`drupal_html`)
+    et exposer quand même sa médiathèque :
+
+        "pages": {"epci": {"conseil": "/pv/", "mediatheque": true}}
+    """
+    site = Site(base, _domaine(base))
+    if not site:
+        return []
+    vus = {urllib.parse.unquote(u) for u in deja}
+    documents, non_dates = [], []
+    for media in site.pdf_deposes():
+        url = media.get("source_url") or ""
+        libelle, nom = _libelles(media)
+        lu = f"{libelle} {nom}"
+        if (not url or urllib.parse.unquote(url) in vus
+                or not _PIECE_DE_CONSEIL.search(lu)
+                or _HORS_CATALOGUE.search(lu)):
+            continue
+        vus.add(urllib.parse.unquote(url))
+        depose = media.get("date") or ""
+        date = _date_de_piece(libelle, depose) or _date_de_piece(nom, depose)
+        if not date:
+            non_dates.append(libelle)
+            continue
+        acte = None
+        if m := _ACTE_SEUL.search(lu):
+            acte = {"numero": m.group(1), "objet": libelle,
+                    "type": "Délibération", "date_teletransmission": ""}
+        documents.append(DocumentPublie(
+            date=date, url=url, libelle=libelle, source=site.source,
+            meta={"depuis_mediatheque": True,
+                  "depose_le": (media.get("date") or "")[:10]},
+            acte=acte))
+    if non_dates:
+        print(f"  [wp] médiathèque : {len(non_dates)} pièce(s) sans date lisible, "
+              f"non reprises — {'; '.join(non_dates[:3])}")
+    return documents
 
 
 class ConnecteurWordPress(Connecteur):

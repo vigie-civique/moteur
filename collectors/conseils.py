@@ -300,10 +300,19 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> 
 def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     """Une délibération = un événement.
 
-    Identité : le numéro d'acte quand le document en porte un — il est unique et
-    vient du document lui-même ; sinon le couple (date, numéro de séance) ;
-    sinon (date, titre). Le titre seul ne peut pas servir de clé : « Questions
-    diverses » revient à chaque séance.
+    Identité : le numéro d'acte DANS SON ANNÉE quand le document en porte un ;
+    sinon le couple (date, numéro de séance) ; sinon (date, titre). Le titre
+    seul ne peut pas servir de clé : « Questions diverses » revient à chaque
+    séance.
+
+    🔴 Un numéro d'acte n'est unique que dans l'année : une intercommunalité
+    numérote « n°41/2026 » et reprend à 1 en janvier. La clé nue faisait
+    ÉCRASER la délibération n°41 d'une année par celle d'une autre, sans un
+    message — relevé le 30/09/2026 sur la base de Lasalle, 222 délibérations
+    communautaires numérotées portant 222 numéros distincts de 1 à 227 pour
+    quatre années de séances. L'année, et non la date : un portail d'actes
+    affiche la date de télétransmission avant que la date de séance ne soit
+    lue, et le même acte doit retrouver sa fiche quand elle change.
     """
     p = PORTEES[portee]
     meta = {k: delib[k] for k in ("categorie", "tags", "vote", "montants",
@@ -320,8 +329,9 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     if delib.get("numero_acte"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=?"
-            " AND json_extract(metadata,'$.numero_acte')=?",
-            (p["delib"], delib["numero_acte"])).fetchone()
+            " AND json_extract(metadata,'$.numero_acte')=?"
+            " AND substr(date, 1, 4)=?",
+            (p["delib"], delib["numero_acte"], (doc.date or "")[:4])).fetchone()
     elif delib.get("numero_seance"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=? AND date=?"
@@ -543,6 +553,25 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
 
 # ── Point d'entrée ───────────────────────────────────────────────────────────
 
+def complement_mediatheque(portee: str, documents: list) -> list:
+    """Les pièces déposées dans la médiathèque WordPress que la page n'a pas liées.
+
+    Déclaré par portée (`pages.<portée>.mediatheque`), jamais deviné : la
+    médiathèque est une propriété du SITE, pas du connecteur qui en lit les
+    pages — l'intercommunalité du premier portage est un WordPress lu en HTML.
+    """
+    from .config import COMMUNE_URL, EPCI_URL, PAGES
+    if not (PAGES.get(portee) or {}).get("mediatheque"):
+        return []
+    from .connecteurs.wordpress_rest import catalogue_mediatheque
+    base = COMMUNE_URL if portee == "commune" else EPCI_URL
+    ajout = catalogue_mediatheque(base, {d.url for d in documents})
+    print(f"  [wp] médiathèque : {len(ajout)} pièce(s) que la page ne liait pas"
+          + (f", dont {sum(1 for d in ajout if d.acte)} acte(s) publiés seuls"
+             if ajout else ""))
+    return ajout
+
+
 def collecter(portee: str = "commune", depuis: str | None = None,
               limit: int = 0, commit: bool = True,
               catalogue_seul: bool = False, avec_ocr: bool = False) -> None:
@@ -550,6 +579,8 @@ def collecter(portee: str = "commune", depuis: str | None = None,
     print(f"\n[conseils] {instance} — catalogue des procès-verbaux")
 
     documents = charger(portee=portee).catalogue_pv(portee)
+    documents += complement_mediatheque(portee, documents)
+    documents.sort(key=lambda d: d.date, reverse=True)
     print(f"  {len(documents)} procès-verbaux catalogués"
           + (f" ({documents[-1].date} → {documents[0].date})" if documents else ""))
     if depuis:
