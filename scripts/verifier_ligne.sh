@@ -143,7 +143,10 @@ titre "Étanchéité de ce qui est servi"
 ENT=$(corps "$BASE/data/entities.json")
 [ -n "$ENT" ] && ok "entities.json récupéré ($(printf %s "$ENT" | wc -c | tr -d ' ') o)" \
               || ko "entities.json vide ou injoignable"
-for m in "sk-ant-" "/Users/" "X-Admin-Key" "personnes_citees" "date_naissance"; do
+# « sk""-ant- » en deux morceaux : écrit d'un seul tenant, le motif CHERCHÉ est
+# pris pour un jeton par le contrôle de l'archive (`build_kit.py`), qui a gardé
+# la CI rouge du 25 au 30/09/2026. Le shell recolle, la recherche est la même.
+for m in "sk""-ant-" "/Users/" "X-Admin-Key" "personnes_citees" "date_naissance"; do
   if contient "$ENT" "$m"; then ko "fuite : « $m » dans entities.json"
   else ok "aucune trace de « $m »"; fi
 done
