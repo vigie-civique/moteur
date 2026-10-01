@@ -21,6 +21,13 @@ Distinction à ne jamais perdre à l'affichage :
   - `taux_global_*` = ce que paie le contribuable, EPCI et syndicats inclus
 Attribuer le taux global au conseil municipal serait une erreur factuelle.
 
+**Situer un taux.** « 19,92 % » ne dit rien seul. Pour les indicateurs de
+`REPERES`, la même API rend la médiane des communes qui lèvent la taxe et le
+nombre de celles dont le taux est au moins aussi élevé — en France et dans le
+département — pour chaque commune suivie en profondeur (`fiscalite_reperes`).
+Une commune sans taux (la redevance remplace alors la taxe) n'a pas de repère :
+l'absence de ligne n'est pas un rang.
+
 Usage :
   python3 -m collectors.fiscalite
   python3 -m collectors.fiscalite --insee 30140
@@ -33,7 +40,7 @@ import json
 import urllib.parse
 
 from .archive import fetch_json
-from .config import COMMUNES, COMMUNES_INSEE
+from .config import COMMUNES, COMMUNES_FOND_INSEE, COMMUNES_INSEE
 from .db import get_conn
 
 ODS_BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
@@ -55,6 +62,11 @@ INDICATEURS = [
 
 DATASETS = sorted({d for d, *_ in INDICATEURS})
 
+# Les indicateurs qu'on situe parmi les autres communes. La taxe d'enlèvement
+# des ordures ménagères d'abord : c'est le seul taux de la page qu'aucune part
+# communale n'explique, et le premier qu'un habitant compare.
+REPERES = ("TEOM",)
+
 
 def ensure_table(conn):
     conn.execute("""
@@ -75,6 +87,20 @@ def ensure_table(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_fisc_insee"
                  " ON fiscalite_taux(insee, annee)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS fiscalite_reperes (
+            insee           TEXT NOT NULL,
+            annee           INTEGER NOT NULL,
+            indicateur      TEXT NOT NULL,
+            portee          TEXT NOT NULL,   -- france | departement
+            code            TEXT NOT NULL DEFAULT '',
+            taux            REAL NOT NULL,   -- celui de la commune, tel que comparé
+            communes        INTEGER,         -- celles qui lèvent la taxe (taux > 0)
+            mediane         REAL,
+            au_moins_autant INTEGER,         -- dont le taux est ≥ celui de la commune
+            PRIMARY KEY (insee, annee, indicateur, portee)
+        )
+    """)
     conn.commit()
 
 
@@ -112,6 +138,44 @@ def import_records(conn, dataset: str, records: list[dict]) -> int:
     return inserted
 
 
+def _agregat(dataset: str, select: str, where: str) -> dict:
+    url = f"{ODS_BASE}/{dataset}/records?" + urllib.parse.urlencode(
+        {"select": select, "where": where})
+    return (fetch_json(url, source="data.economie-fiscalite", timeout=60)
+            .get("results") or [{}])[0]
+
+
+def releve_reperes(conn, communes: list[str]) -> int:
+    """Situe le dernier taux connu de chaque commune parmi celles qui lèvent la
+    même taxe, la même année. Se joue après `import_records` : il lit la base."""
+    # Tout lire, puis écrire : `fetch_json` archive chaque réponse par sa propre
+    # connexion, et une écriture laissée ouverte ici la ferait renoncer.
+    reperes = []
+    for indicateur in REPERES:
+        dataset, colonne = next((d, c) for d, c, ind, *_ in INDICATEURS if ind == indicateur)
+        for insee in communes:
+            r = conn.execute(
+                "SELECT annee, taux FROM fiscalite_taux WHERE insee=? AND indicateur=?"
+                " AND taux > 0 ORDER BY annee DESC LIMIT 1", (insee, indicateur)).fetchone()
+            if not r:
+                continue
+            annee, taux = r["annee"], r["taux"]
+            base = f"{colonne}>0 and exercice='{annee}'"
+            for portee, code, filtre in (("france", "", ""),
+                                         ("departement", insee[:2], f" and dep='{insee[:2]}'")):
+                a = _agregat(dataset, f"count(*) as communes, median({colonne}) as mediane",
+                             base + filtre)
+                autant = _agregat(dataset, "count(*) as n", f"{base}{filtre} and {colonne}>={taux}")
+                if not a.get("communes"):
+                    continue
+                reperes.append((insee, annee, indicateur, portee, code, taux, a["communes"],
+                                a.get("mediane"), autant.get("n")))
+    conn.executemany("INSERT OR REPLACE INTO fiscalite_reperes VALUES (?,?,?,?,?,?,?,?,?)",
+                     reperes)
+    conn.commit()
+    return len(reperes)
+
+
 def run(insee_list: list[str] | None = None) -> int:
     conn = get_conn()
     ensure_table(conn)
@@ -129,6 +193,11 @@ def run(insee_list: list[str] | None = None) -> int:
             annees = sorted({r.get("exercice") for r in records if r.get("exercice")})
             print(f"  [fiscalite] {dataset}: {len(records)} enregistrements → "
                   f"{n} taux ({annees[0] if annees else '?'}–{annees[-1] if annees else '?'})")
+        try:
+            n = releve_reperes(conn, [c for c in COMMUNES_FOND_INSEE if c in cibles])
+            print(f"  [fiscalite] {n} repère(s) : {', '.join(REPERES)}")
+        except Exception as e:
+            print(f"  [fiscalite] repères : erreur — {e}")
         print(f"[fiscalite] {total} taux en base")
     finally:
         conn.close()

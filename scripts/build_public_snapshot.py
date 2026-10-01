@@ -2502,6 +2502,218 @@ def export_telecoms(conn, insee: str, departement: str, rayon_km: float) -> dict
     return {"insee": insee, "fixe": fixe, "reseau": reseau, "mobile": mobile, "pannes": pannes}
 
 
+# ── Ce que les dossiers thématiques ont fait collecter, sur les pages ────────
+#
+# Un dossier (`/dossiers`) est un texte relu ; ses chiffres, eux, viennent de
+# collecteurs (`eau_potable`, `dechets`, `incendie`, `enfance`, les repères de
+# `fiscalite`). Ils sortent ici en données, pour les pages qu'ils concernent.
+# Chaque export qualifie ce qu'il rend, pour que la page n'ait rien à décider :
+#   - une MAILLE qui n'est pas la commune (la collectivité qui collecte les
+#     déchets, l'intercommunalité pour la CAF, l'école pour les élèves) est
+#     nommée dans la donnée ;
+#   - un ZÉRO ne sort que s'il a été mesuré : un réseau d'eau sans prélèvement
+#     publié n'est pas un réseau conforme, « aucun feu » ne vaut que sur une
+#     période lue ;
+#   - une COMPARAISON ne se fait qu'à année égale.
+
+def export_eau_potable(conn, insee: str) -> dict | None:
+    """Le contrôle sanitaire de l'ARS, par réseau desservant la commune.
+
+    Les réseaux sont ceux de la DERNIÈRE année de desserte publiée : la base
+    porte aussi des réseaux voisins, arrivés par un prélèvement partagé."""
+    if not table_exists(conn, "eau_potable_udi"):
+        return None
+    annee = conn.execute("SELECT MAX(annee) FROM eau_potable_udi WHERE code_commune=?",
+                         (insee,)).fetchone()[0]
+    if not annee:
+        return None
+    reseaux = []
+    for u in rows(conn, """
+            SELECT code_reseau, MAX(nom_reseau) AS nom,
+                   group_concat(DISTINCT NULLIF(NULLIF(nom_quartier, ''), '-')) AS quartiers
+              FROM eau_potable_udi WHERE code_commune=? AND annee=?
+             GROUP BY code_reseau ORDER BY code_reseau""", (insee, annee)):
+        depuis = ("FROM eau_potable_prelevement_reseaux r JOIN eau_potable_prelevements p"
+                  " USING (code_prelevement) WHERE r.code_reseau=?")
+        t = row(conn, f"""
+            SELECT COUNT(*) AS prelevements, substr(MIN(p.date_prelevement), 1, 10) AS du,
+                   substr(MAX(p.date_prelevement), 1, 10) AS au,
+                   COALESCE(SUM(p.limites_bact = 'N'), 0) AS bacteriologie,
+                   COALESCE(SUM(p.limites_pc = 'N'), 0) AS chimie,
+                   COALESCE(SUM(p.references_bact = 'N' OR p.references_pc = 'N'), 0) AS hors_references
+              {depuis}""", (u["code_reseau"],))
+        qui = row(conn, f"""
+            SELECT p.nom_moa AS maitre_ouvrage, p.nom_distributeur AS exploitant {depuis}
+               AND p.nom_moa IS NOT NULL ORDER BY p.date_prelevement DESC LIMIT 1""",
+                  (u["code_reseau"],)) or {}
+        reseaux.append({
+            "code": u["code_reseau"], "nom": u["nom"],
+            "quartiers": sorted(q for q in (u["quartiers"] or "").split(",") if q),
+            **qui, **t,
+            "par_annee": rows(conn, f"""
+                SELECT substr(p.date_prelevement, 1, 4) AS annee, COUNT(*) AS prelevements,
+                       SUM(p.limites_bact = 'N') AS bacteriologie, SUM(p.limites_pc = 'N') AS chimie
+                  {depuis} GROUP BY annee ORDER BY annee""", (u["code_reseau"],)),
+            "hors_limites": rows(conn, f"""
+                SELECT substr(p.date_prelevement, 1, 10) AS date,
+                       p.limites_bact = 'N' AS bacteriologie, p.limites_pc = 'N' AS chimie
+                  {depuis} AND (p.limites_bact = 'N' OR p.limites_pc = 'N')
+                 ORDER BY p.date_prelevement DESC""", (u["code_reseau"],)),
+        })
+    return {"annee_desserte": annee, "reseaux": reseaux}
+
+
+DECHETS_INDICATEURS = ("omr", "tri", "verre", "decheterie", "total")
+
+
+def _quart(valeur, r: dict | None) -> int | None:
+    """Dans quel quart des collectivités tombe la valeur (1 = le plus bas)."""
+    if valeur is None or not r or None in (r["p25"], r["p50"], r["p75"]):
+        return None
+    return 1 + sum(valeur > r[k] for k in ("p25", "p50", "p75"))
+
+
+def export_dechets(conn, insee: str) -> dict | None:
+    """Les déchets ménagers, à la maille de la collectivité qui les collecte."""
+    if not table_exists(conn, "dechets_desserte"):
+        return None
+    annee = conn.execute("SELECT MAX(annee) FROM dechets_desserte WHERE insee=?",
+                         (insee,)).fetchone()[0]
+    if not annee:
+        return None
+    acteurs = []
+    for a in rows(conn, """
+            SELECT code_acteur AS code, MAX(acteur) AS nom FROM dechets_desserte
+             WHERE insee=? AND annee=? GROUP BY code_acteur ORDER BY code_acteur""",
+                  (insee, annee)):
+        serie = rows(conn, """
+            SELECT annee, population, typologie, omr, tri, verre, decheterie, total,
+                   total_gravats FROM dechets_performance WHERE code_acteur=? ORDER BY annee""",
+                     (a["code"],))
+        situer = None
+        if serie:
+            dernier = serie[-1]
+            reperes = {(r["indicateur"], r["portee"]): r for r in rows(
+                conn, "SELECT * FROM dechets_reperes WHERE annee=?", (dernier["annee"],))}
+            situer = [{
+                "indicateur": i, "valeur": dernier[i],
+                "france": reperes.get((i, "france")),
+                "departement": reperes.get((i, "departement")),
+                "quart": _quart(dernier[i], reperes.get((i, "france"))),
+            } for i in DECHETS_INDICATEURS if dernier[i] is not None]
+        tonnes = lambda axe: rows(conn, """
+            SELECT libelle, tonnes FROM dechets_tonnes
+             WHERE code_acteur=? AND axe=? AND tonnes > 0
+               AND annee=(SELECT MAX(annee) FROM dechets_tonnes WHERE code_acteur=? AND axe=?)
+             ORDER BY tonnes DESC""", (a["code"], axe, a["code"], axe))
+        annee_tonnes = lambda axe: conn.execute(
+            "SELECT MAX(annee) FROM dechets_tonnes WHERE code_acteur=? AND axe=?",
+            (a["code"], axe)).fetchone()[0]
+        acteurs.append({
+            **a,
+            "services": [r["service"] for r in rows(conn, """
+                SELECT service FROM dechets_desserte WHERE insee=? AND annee=? AND code_acteur=?
+                 ORDER BY service""", (insee, annee, a["code"]))],
+            "serie": serie, "situer": situer,
+            "destinations": {"annee": annee_tonnes("destination"), "lignes": tonnes("destination")},
+            "types": {"annee": annee_tonnes("dechet"), "lignes": tonnes("dechet")},
+            "decheteries": rows(conn, """
+                SELECT nom, insee, commune, lieu, ouverte_le, gestion FROM dechets_decheteries
+                 WHERE code_acteur=? AND annee=(SELECT MAX(annee) FROM dechets_decheteries
+                                                 WHERE code_acteur=?)
+                 ORDER BY (insee = ?) DESC, commune""", (a["code"], a["code"], insee)),
+        })
+    return {"insee": insee, "annee_desserte": annee, "acteurs": acteurs}
+
+
+def export_incendie(conn, insee: str) -> dict | None:
+    """Forêt, feux et débroussaillement. Chaque partie ne sort que si son relevé
+    a abouti (`incendie_suivi`) : une liste vide est alors un zéro mesuré."""
+    if not table_exists(conn, "incendie_suivi"):
+        return None
+    suivi = {r["releve"]: r for r in rows(
+        conn, "SELECT * FROM incendie_suivi WHERE insee=?", (insee,))}
+    if not suivi:
+        return None
+    feux = None
+    if "feux" in suivi:
+        liste = rows(conn, "SELECT alerte, surface_ha, foret_ha, cause FROM feux"
+                           " WHERE insee=? ORDER BY alerte", (insee,))
+        feux = {"debut": suivi["feux"]["debut"], "fin": suivi["feux"]["fin"],
+                "nombre": len(liste),
+                "surface_ha": round(sum(f["surface_ha"] or 0 for f in liste), 4),
+                "plus_grand": max(liste, key=lambda f: f["surface_ha"] or 0) if liste else None,
+                "liste": liste}
+    return {
+        "insee": insee,
+        "boisement": row(conn, "SELECT * FROM foret_boisement WHERE insee=?", (insee,))
+        if "boisement" in suivi else None,
+        "forets_publiques": rows(conn, "SELECT nom, nature FROM foret_publique WHERE insee=?"
+                                       " ORDER BY nom", (insee,))
+        if "forets_publiques" in suivi else None,
+        "debroussaillement": row(conn, "SELECT * FROM debroussaillement WHERE insee=?", (insee,))
+        if "debroussaillement" in suivi else None,
+        "feux": feux,
+    }
+
+
+def export_enfance(conn, insee: str, epci: str, departement: str) -> dict | None:
+    """Les écoles de la commune, rentrée par rentrée, et l'accueil des moins de
+    trois ans dans l'intercommunalité."""
+    ecoles = []
+    if table_exists(conn, "ecoles_effectifs") and table_exists(conn, "etablissements_scolaires"):
+        for e in rows(conn, """
+                -- Le nom de l'ANNUAIRE, pas celui de la fiche : la fiche a pu être
+                -- adoptée d'une autre source (« École élémentaire »), alors que
+                -- les effectifs sont ceux de l'école entière, maternelle comprise.
+                SELECT s.uai, json_extract(s.raw_data, '$.nom_etablissement') AS nom,
+                       s.secteur, s.etat
+                  FROM etablissements_scolaires s
+                 WHERE json_extract(s.raw_data, '$.code_commune') = ?
+                   AND s.uai IN (SELECT uai FROM ecoles_effectifs) ORDER BY s.uai""", (insee,)):
+            ecoles.append({
+                **e,
+                "serie": rows(conn, "SELECT rentree, eleves, maternelle, classes"
+                                    " FROM ecoles_effectifs WHERE uai=? ORDER BY rentree", (e["uai"],)),
+                "ips": rows(conn, """
+                    SELECT rentree, ips, ips_france_public AS france_public,
+                           ips_departement_public AS departement_public
+                      FROM ecoles_ips WHERE uai=? AND ips IS NOT NULL ORDER BY rentree""",
+                            (e["uai"],)) if table_exists(conn, "ecoles_ips") else [],
+            })
+    accueil = None
+    if epci and table_exists(conn, "accueil_petite_enfance"):
+        serie = rows(conn, """
+            SELECT annee, creche, assistantes, domicile, ecole, total, taux
+              FROM accueil_petite_enfance WHERE portee='epci' AND code=? ORDER BY annee""", (epci,))
+        if serie:
+            # Les repères ne valent qu'à ANNÉE ÉGALE : la CAF publie le
+            # département et la France sur moins d'années que l'intercommunalité.
+            repere = lambda portee, code, annee: (row(conn, """
+                SELECT taux FROM accueil_petite_enfance WHERE portee=? AND code=? AND annee=?""",
+                                                      (portee, code, annee)) or {}).get("taux")
+            for s in serie:
+                s["departement"] = repere("departement", departement, s["annee"])
+                s["france"] = repere("france", "", s["annee"])
+            accueil = {"serie": serie, "dernier": serie[-1]}
+    if not ecoles and not accueil:
+        return None
+    return {"insee": insee, "ecoles": ecoles, "accueil": accueil}
+
+
+def export_reperes_fiscaux(conn) -> list[dict]:
+    """Où se place un taux parmi les communes qui lèvent la même taxe."""
+    if not table_exists(conn, "fiscalite_reperes"):
+        return []
+    reperes = rows(conn, """
+        SELECT insee, annee, indicateur, portee, code, taux, communes, mediane, au_moins_autant
+          FROM fiscalite_reperes ORDER BY insee, indicateur, annee, portee DESC""")
+    for r in reperes:
+        r["part_au_moins_autant"] = (round(100 * r["au_moins_autant"] / r["communes"], 1)
+                                     if r["communes"] and r["au_moins_autant"] is not None else None)
+    return reperes
+
+
 # ── Le conseil en clair : ce que l'atelier a RETENU, et rien d'autre ─────────
 #
 # Une feuille « en clair » est un texte rédigé sur une séance — souvent par un
@@ -3602,6 +3814,9 @@ def build_snapshot(out: Path) -> dict:
             "risques": risques,
             "icpe": icpe,
             "catnat": catnat,
+            "eau_controle": export_eau_potable(conn, INSEE_C1),
+            "dechets": export_dechets(conn, INSEE_C1),
+            "incendie": export_incendie(conn, INSEE_C1),
         })
         write_json(out / "territoire.json", {
             "insee": insee_data,
@@ -3613,6 +3828,7 @@ def build_snapshot(out: Path) -> dict:
             "dispositifs_etat": dispositifs,
             "cadastre": cadastre_resume,
             "telecoms": export_telecoms(conn, INSEE_C1, DEPARTEMENT, TELECOMS_RAYON_KM),
+            "enfance": export_enfance(conn, INSEE_C1, EPCI_SIREN_C2, DEPARTEMENT),
         })
 
         # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
@@ -3665,7 +3881,8 @@ def build_snapshot(out: Path) -> dict:
             SELECT insee, commune, annee, indicateur, libelle, portee, taux, epci
             FROM fiscalite_taux ORDER BY annee DESC, commune, indicateur
         """) if table_exists(conn, "fiscalite_taux") else []
-        write_json(out / "fiscalite.json", {"taux": fiscalite, "total": len(fiscalite)})
+        write_json(out / "fiscalite.json", {"taux": fiscalite, "total": len(fiscalite),
+                                            "reperes": export_reperes_fiscaux(conn)})
 
         # ── L'intercommunalité (périmètre C2) ────────────────────────────────
         # Réponse publique à « qu'est-ce qui ne se décide plus à la mairie ? ».
@@ -4315,13 +4532,14 @@ def build_snapshot(out: Path) -> dict:
             "Élus) | `elus` |",
             "| `elections.json` | Résultats des municipales par commune | "
             "`resultats` |",
-            "| `fiscalite.json` · `impots` | Taux d'imposition comparés | "
-            "`taux` |",
+            "| `fiscalite.json` · `impots` | Taux d'imposition comparés, et "
+            "leur rang parmi les communes | `taux`, `reperes` |",
             "| `dvf.json` | Transactions immobilières (DVF) | `dvf` |",
             "| `urbanisme.json` | Autorisations d'urbanisme | `autorisations` |",
-            "| `environnement.json` | Eau, risques, ICPE, catastrophes "
-            "naturelles | racine |",
-            "| `territoire.json` | Indicateurs INSEE | `insee` |",
+            "| `environnement.json` | Eau (prix, contrôle sanitaire), déchets, "
+            "forêt et feux, risques, ICPE, catastrophes naturelles | racine |",
+            "| `territoire.json` | Indicateurs INSEE, équipements, télécoms, "
+            "écoles et accueil du jeune enfant | racine |",
             "| `conflits.json` | Cas de conflits d'intérêts potentiels | "
             "`cas` |",
             "| `stats.json` | Compteurs et paramètres de publication | racine |",

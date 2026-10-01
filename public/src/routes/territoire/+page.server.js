@@ -133,5 +133,8 @@ export function load() {
     // Qualifié au build (`export_telecoms`) : rupture du cuivre, rangs à
     // période égale, site physique, jours lus. La page n'a rien à décider.
     telecoms: fichier.telecoms || null,
+    // Qualifié au build (`export_enfance`) : effectifs par ÉCOLE, accueil des
+    // moins de 3 ans par INTERCOMMUNALITÉ, repères à année égale.
+    enfance: fichier.enfance || null,
   }
 }

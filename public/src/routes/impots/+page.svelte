@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE, COMMUNE_A, COMMUNE_DE, EPCI, SITE_NOM } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
+  import Niveau from '$lib/components/Niveau.svelte'
 
   // « De combien sont mes impôts locaux, et comment on se situe ? » est la
   // première question d'un habitant. La base avait le budget et les comparatifs
@@ -9,6 +10,7 @@
   export let data
   $: taux = data.taux
   $: annee = data.annee
+  $: teom = data.teom
   let annee = null
 
   // Distinction non négociable : la commune ne vote qu'une PART du taux.
@@ -100,6 +102,30 @@
           </tbody>
         </table>
       </div>
+      {#if ligne.global === 'TEOM' && teom}
+        {@const f = teom.france}
+        {@const dep = teom.departement}
+        <Niveau type="calcul" base="les taux {teom.annee} de toutes les communes qui lèvent cette taxe (direction générale des finances publiques)">
+          À <b>{pct(f.taux)}</b>, le taux appliqué {COMMUNE_A} est
+          {f.taux > f.mediane ? 'au-dessus' : f.taux < f.mediane ? 'au-dessous' : 'au niveau'}
+          de la médiane des {f.communes.toLocaleString('fr-FR')} communes de France
+          qui lèvent cette taxe ({pct(f.mediane)}).
+          <b>{f.au_moins_autant.toLocaleString('fr-FR')}</b> d'entre elles, elle
+          comprise, ont un taux au moins aussi élevé{#if f.part_au_moins_autant != null},
+          soit {f.part_au_moins_autant.toLocaleString('fr-FR')}&nbsp;%{/if}.
+          {#if dep}Dans le département&nbsp;: médiane à {pct(dep.mediane)},
+            {dep.au_moins_autant} commune{dep.au_moins_autant > 1 ? 's' : ''} sur
+            {dep.communes} au moins aussi haut.{/if}
+        </Niveau>
+        <p class="aide">
+          Les collectivités qui financent la collecte par une redevance, facturée
+          à l'usager, ne lèvent pas cette taxe&nbsp;: elles ne sont pas dans la
+          comparaison. Et un taux n'est pas un montant&nbsp;: il s'applique à la
+          valeur locative du logement, qui varie d'une commune à l'autre.
+          Ce que la collecte ramasse, et où ça part&nbsp;:
+          <a href="/environnement#dechets">Les déchets ménagers</a>.
+        </p>
+      {/if}
     {/each}
 
     <div class="note">

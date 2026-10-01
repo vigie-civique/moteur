@@ -1,4 +1,4 @@
-// Eau du robinet, cours d'eau, risques, ICPE, catastrophes naturelles.
+// Eau du robinet, cours d'eau, risques, forêt et feux, ICPE, déchets.
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -53,5 +53,11 @@ export function load() {
     // Le parc de logements, vu par les diagnostics de performance énergétique.
     // Des agrégats : aucune adresse n'a été collectée, donc aucune n'est ici.
     dpe: dpeLu(d),
+    // Qualifiés au build (`export_eau_potable`, `export_dechets`,
+    // `export_incendie`) : réseaux de la dernière desserte, maille de la
+    // collectivité, zéros mesurés. La page n'a rien à décider.
+    controleEau: d.eau_controle?.reseaux?.length ? d.eau_controle : null,
+    dechets: d.dechets?.acteurs?.length ? d.dechets : null,
+    incendie: d.incendie || null,
   }
 }

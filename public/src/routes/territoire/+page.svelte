@@ -1,5 +1,5 @@
 <script>
-  import { COMMUNE, COMMUNE_A, INSEE, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_A, COMMUNE_DE, INSEE, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
   import Icon from '$lib/components/Icon.svelte'
 
@@ -25,6 +25,8 @@
   $: qualite = reseau?.qualite
   $: mobile = telecoms?.mobile
   $: pannes = telecoms?.pannes
+  $: enfance = data.enfance
+  $: accueil = enfance?.accueil
   // Le nombre de locaux recensés bouge d'un trimestre à l'autre (la base
   // d'adresses se nettoie) : la courbe trace la PART fibrée, jamais le compte.
   $: locauxMin = fixe ? Math.min(...fixe.serie.map(s => s.locaux)) : 0
@@ -375,6 +377,92 @@
     </p>
   {:else}
     <p class="muted">Aucun indicateur disponible.</p>
+  {/if}
+
+  {#if enfance}
+    <h2 id="enfance">L'école et les tout-petits</h2>
+    {#each enfance.ecoles.filter(e => e.serie.length) as e}
+      {@const d = e.serie.at(-1)}
+      {@const p = e.serie[0]}
+      {@const elevesMax = Math.max(...e.serie.map(s => s.eleves || 0), 1)}
+      <Niveau type="fait" source="Ministère de l'éducation nationale — effectifs d'élèves et nombre de classes par école, constat de rentrée">
+        À la rentrée {d.rentree}, <b>{e.nom}</b>{#if e.secteur}{' '}(secteur {e.secteur.toLowerCase()}){/if}
+        compte <b>{nb(d.eleves)} élèves</b>{#if d.maternelle}, dont {nb(d.maternelle)} en maternelle{/if}{#if d.classes},
+        dans {d.classes} classe{d.classes > 1 ? 's' : ''}{/if}.
+        {#if p.rentree !== d.rentree}Ils étaient {nb(p.eleves)} à la rentrée {p.rentree}.{/if}
+      </Niveau>
+      {#if e.serie.length > 1}
+        <p class="note">Élèves à chaque rentrée. Survolez une barre pour le détail.</p>
+        <div class="chart-wrap">
+          <div class="chart pop">
+            {#each e.serie as s}
+              <div class="slot" title="Rentrée {s.rentree} : {s.eleves} élèves{s.maternelle != null ? `, dont ${s.maternelle} en maternelle` : ''}{s.classes ? `, ${s.classes} classes` : ''}">
+                <div class="bar" style="height:{((s.eleves || 0) / elevesMax) * 100}%"></div>
+                <span class="year">{String(s.rentree).slice(2)}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if e.ips.length}
+        {@const i = e.ips.at(-1)}
+        <p class="note">
+          <b>Indice de position sociale</b> ({i.rentree})&nbsp;: {nb(i.ips, 1)}{#if i.france_public != null},
+          pour {nb(i.france_public, 1)} en moyenne dans les écoles publiques de
+          France{#if i.departement_public != null}{' '}et {nb(i.departement_public, 1)} dans celles du
+          département{/if}{/if}. Le ministère le calcule d'après la profession
+          des parents&nbsp;: plus il est élevé, plus les familles des élèves sont
+          favorisées. Il décrit les élèves de l'école, pas ses résultats.
+        </p>
+      {/if}
+    {/each}
+    {#if enfance.ecoles.some(e => e.serie.length)}
+      <p class="lecture">
+        <b>Une école n'est pas une commune.</b> Elle accueille aussi des enfants
+        des communes voisines, et des enfants d'ici sont scolarisés ailleurs. Le
+        ministère ne publie pas les élèves par commune de résidence&nbsp;: ces
+        chiffres comptent les élèves de l'école, pas les enfants {COMMUNE_DE}.
+      </p>
+    {/if}
+
+    {#if accueil}
+      {@const a = accueil.dernier}
+      <h3>Avant l'école : l'accueil des moins de trois ans</h3>
+      <Niveau type="fait" source="Caisse nationale des allocations familiales — capacité théorique d'accueil du jeune enfant">
+        🔴 Ces chiffres ne sont <b>pas communaux</b>&nbsp;: la CAF ne les publie,
+        pour les petites communes, qu'à l'échelle de l'intercommunalité. En
+        {a.annee}, celle-ci compte <b>{nb(a.total)} places</b> d'accueil pour les
+        enfants de moins de trois ans{#if a.taux != null}, soit <b>{nb(a.taux)} places
+        pour 100 enfants</b>{#if a.france != null}, pour {nb(a.france)} en
+        France{#if a.departement != null}{' '}et {nb(a.departement)} dans le département{/if}{/if}{/if}.
+      </Niveau>
+      <div class="chart-wrap">
+        <table>
+          <thead><tr><th>Année</th><th class="r">Crèches</th><th class="r">Assistantes maternelles</th>
+            <th class="r">Garde à domicile</th><th class="r">École avant 3 ans</th>
+            <th class="r">Total</th><th class="r">Pour 100 enfants</th></tr></thead>
+          <tbody>
+            {#each accueil.serie as s}
+              <tr><td>{s.annee}</td><td class="r">{nb(s.creche)}</td><td class="r">{nb(s.assistantes)}</td>
+                <td class="r">{nb(s.domicile)}</td><td class="r">{nb(s.ecole)}</td>
+                <td class="r">{nb(s.total)}</td><td class="r"><b>{nb(s.taux)}</b></td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Places «&nbsp;théoriques&nbsp;»&nbsp;: celles qui existent, pas celles qui sont
+        occupées ni celles qui manquent. Une place chez une assistante maternelle
+        compte autant qu'une place en crèche. Le département et la France ne sont
+        comparés qu'à année égale.
+      </p>
+    {/if}
+    <p class="src">
+      Sources : ministère de l'éducation nationale
+      (<a href="https://data.education.gouv.fr/" rel="noopener">data.education.gouv.fr</a>),
+      Caisse nationale des allocations familiales
+      (<a href="https://data.caf.fr/" rel="noopener">data.caf.fr</a>).
+    </p>
   {/if}
 
   {#if equipements.etat?.length}

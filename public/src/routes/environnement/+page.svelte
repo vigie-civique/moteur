@@ -11,6 +11,33 @@
   $: ({ stations, series, couverture, risques, icpe, catnat,
         servicesEau, indicateursEau } = data)
   $: dpe = data.dpe
+  $: controleEau = data.controleEau
+  $: dechets = data.dechets
+  $: incendie = data.incendie
+
+  // ── Les déchets ────────────────────────────────────────────────────────────
+  const DECHETS = {
+    omr: 'Ordures ménagères (la poubelle ordinaire)', tri: 'Emballages et papiers triés',
+    verre: 'Verre', decheterie: 'Apports en déchèterie', total: 'Total',
+  }
+  // Le rang se dit en quarts, pas en « bon » ou « mauvais » : beaucoup de tri
+  // est une bonne nouvelle, beaucoup d'ordures résiduelles non. La page situe,
+  // elle ne note pas.
+  const QUARTS = ['', 'dans le quart le plus bas', 'sous la médiane',
+                  'au-dessus de la médiane', 'dans le quart le plus élevé']
+  const kg = (v) => v == null ? '—' : `${Math.round(v)} kg`
+  const tonnes = (v) => `${nb(Math.round(v))} t`
+  const part = (v, lignes) => {
+    const total = lignes.reduce((s, l) => s + l.tonnes, 0)
+    return total ? `${Math.round(100 * v / total)} %` : ''
+  }
+
+  // ── La forêt et le feu ─────────────────────────────────────────────────────
+  // Un feu de 12 m² et un feu de 50 ha ne se lisent pas dans la même unité :
+  // « 0,0012 ha » ne dit rien à personne.
+  const surface = (ha) => ha == null ? '—'
+    : ha < 1 ? `${nb(Math.round(ha * 10000))} m²` : `${nb(ha)} ha`
+  const fmtAlerte = (a) => a ? fmtDate(a.slice(0, 10)) : '—'
   let parametre = 'Nitrates'
 
   // ── L'eau du robinet ───────────────────────────────────────────────────────
@@ -99,20 +126,22 @@
 
 <svelte:head>
   <title>Environnement — {SITE_NOM}</title>
-  <meta name="description" content="Prix de l'eau potable, qualité des cours d'eau, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
+  <meta name="description" content="Prix et contrôle sanitaire de l'eau potable, qualité des cours d'eau, forêt et feux, déchets ménagers, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
 <section>
   <h1 class="avec-icone"><Icon name="environnement" size={26} />Environnement</h1>
   <p class="sub">
-    Prix et performance de l'eau potable, qualité des cours d'eau, risques naturels
-    recensés et installations classées. Données issues des registres publics
-    (SISPEA, Naïades / Hub'Eau, Géorisques).
+    Prix et contrôle sanitaire de l'eau potable, qualité des cours d'eau,
+    risques naturels recensés, forêt et feux, installations classées, déchets
+    ménagers. Données issues des registres publics (SISPEA, Hub'Eau,
+    Géorisques, IGN, ADEME).
   </p>
 
 
 
-  {#if stations.length || risques.length || icpe.length || eauPotable.length}
+  {#if stations.length || risques.length || icpe.length || eauPotable.length
+       || controleEau || dechets || incendie}
     <div class="tiles">
       <div class="tile"><span class="tval">{nb(totalAnalyses)}</span><span class="tlabel">analyses de cours d'eau et captages{#if periodeAnalyses}, {periodeAnalyses}{/if}</span></div>
       <div class="tile"><span class="tval">{stations.length}</span><span class="tlabel">stations de mesure, dans {communesStations.size} commune{communesStations.size > 1 ? 's' : ''}</span></div>
@@ -136,8 +165,10 @@
     {/if}
 
     <!-- ── L'eau du robinet ─────────────────────────────────────────── -->
+    {#if eauPotable.length || controleEau}
+      <h2 id="eau-du-robinet">L'eau du robinet</h2>
+    {/if}
     {#if eauPotable.length}
-      <h2>L'eau du robinet</h2>
       <p class="note">
         Ce que coûte le mètre cube, et l'état du réseau qui l'apporte. Ces chiffres
         viennent de l'observatoire national des services d'eau (SISPEA), alimenté
@@ -224,6 +255,74 @@
           {/each}
         </ul>
       {/if}
+    {/if}
+
+    <!-- ── Le contrôle sanitaire (ARS) ──────────────────────────────── -->
+    {#if controleEau}
+      <h3 id="controle-sanitaire">Ce qui sort du robinet : le contrôle sanitaire</h3>
+      <Niveau type="fait" source="Agence régionale de santé, via Hub'Eau — qualité de l'eau potable">
+        {#if controleEau.reseaux.length > 1}
+          L'eau n'arrive pas partout par le même réseau&nbsp;:
+          <b>{controleEau.reseaux.length} réseaux</b> desservent {COMMUNE} en
+          {controleEau.annee_desserte}, chacun avec son responsable. L'agence
+          régionale de santé prélève sur chacun.
+        {:else}
+          Un réseau dessert {COMMUNE} en {controleEau.annee_desserte}. L'agence
+          régionale de santé y prélève tout au long de l'année.
+        {/if}
+      </Niveau>
+      <table>
+        <thead>
+          <tr><th>Réseau</th><th class="r">Prélèvements</th>
+            <th class="r">Hors limites<br>bactériologie</th>
+            <th class="r">Hors limites<br>chimie</th><th>Dernier hors limites</th></tr>
+        </thead>
+        <tbody>
+          {#each controleEau.reseaux as r}
+            <tr>
+              <td>
+                <strong>{r.nom || `Réseau ${r.code}`}</strong>
+                {#if r.quartiers.length}<span class="sub2">{r.quartiers.join(', ')}</span>{/if}
+                {#if r.maitre_ouvrage}<span class="sub2">Responsable&nbsp;: {r.maitre_ouvrage}{#if r.exploitant && r.exploitant !== r.maitre_ouvrage}{' '}· exploitant&nbsp;: {r.exploitant}{/if}</span>{/if}
+              </td>
+              {#if r.prelevements}
+                <td class="r">{r.prelevements}<span class="sub2">{r.du.slice(0, 4)}–{r.au.slice(0, 4)}</span></td>
+                <td class="r">{r.bacteriologie}</td>
+                <td class="r">{r.chimie}</td>
+                <td>{r.hors_limites.length ? fmtDate(r.hors_limites[0].date) : 'aucun'}</td>
+              {:else}
+                <!-- Un réseau sans prélèvement publié n'est pas un réseau conforme. -->
+                <td colspan="4" class="muted">Aucun prélèvement publié pour ce réseau — ce qui ne dit rien de son eau.</td>
+              {/if}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      <p class="note">
+        «&nbsp;Hors limites&nbsp;»&nbsp;: le prélèvement dépasse une <b>limite de
+        qualité</b>, le seuil que l'eau doit respecter (bactéries d'origine
+        fécale, nitrates, pesticides…). Un dépassement ne vaut pas interdiction de
+        boire&nbsp;: c'est l'agence régionale de santé qui en juge, cas par cas.
+        Les écarts aux <b>références de qualité</b> — des témoins du bon
+        fonctionnement des installations, sans effet direct sur la santé — ne
+        sont pas comptés dans ce tableau. Un même prélèvement peut valoir pour
+        plusieurs réseaux&nbsp;: les colonnes ne s'additionnent pas.
+      </p>
+      {#each controleEau.reseaux.filter(r => r.hors_limites.length) as r}
+        <details class="plus">
+          <summary>{r.nom || r.code}&nbsp;: année par année</summary>
+          <table>
+            <thead><tr><th>Année</th><th class="r">Prélèvements</th>
+              <th class="r">Hors limites bactériologie</th><th class="r">Hors limites chimie</th></tr></thead>
+            <tbody>
+              {#each r.par_annee as a}
+                <tr><td>{a.annee}</td><td class="r">{a.prelevements}</td>
+                  <td class="r">{a.bacteriologie || '—'}</td><td class="r">{a.chimie || '—'}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        </details>
+      {/each}
     {/if}
 
     <!-- ── Qualité de l'eau ─────────────────────────────────────────── -->
@@ -323,6 +422,82 @@
       {/if}
     {/if}
 
+    <!-- ── La forêt et le feu ───────────────────────────────────────── -->
+    {#if incendie}
+      <h2 id="foret-et-feu">La forêt et le feu</h2>
+      {#if incendie.boisement}
+        {@const b = incendie.boisement}
+        <Niveau type="fait" source="IGN — Observatoire des forêts, prises de vue de {b.annee_pva}">
+          La forêt couvre <b>{nb(b.surface_foret)} des {nb(b.surface_commune)} hectares</b>
+          de la commune, soit <b>{nb(b.taux_boisement)}&nbsp;%</b>&nbsp;:
+          {nb(b.feuillus)}&nbsp;ha de feuillus, {nb(b.coniferes)}&nbsp;ha de
+          conifères, {nb(b.mixtes)}&nbsp;ha de peuplements mêlés.
+          {#if incendie.forets_publiques}
+            {#if incendie.forets_publiques.length}
+              Forêts publiques&nbsp;: {incendie.forets_publiques.map(f => f.nom).join(', ')}.
+            {:else}
+              Aucune forêt publique n'y est recensée par la BD TOPO.
+            {/if}
+          {/if}
+        </Niveau>
+      {/if}
+
+      {#if incendie.debroussaillement}
+        {@const d = incendie.debroussaillement}
+        <h3>Qui doit débroussailler</h3>
+        <Niveau type="calcul" base="les adresses de la Base adresse nationale, placées sur le zonage des obligations légales de débroussaillement (Géoplateforme)">
+          {#if d.polygones === 0}
+            Aucun zonage d'obligation de débroussaillement n'est publié dans
+            l'emprise de la commune.
+          {:else if d.dans_zonage === d.adresses}
+            <b>Les {nb(d.adresses)} adresses</b> de la commune sont toutes dans
+            le périmètre où la loi impose de débroussailler autour des constructions.
+          {:else}
+            <b>{nb(d.dans_zonage)} des {nb(d.adresses)} adresses</b> de la commune
+            sont dans le périmètre où la loi impose de débroussailler autour
+            des constructions.
+          {/if}
+          {#if d.arrete}Zonage arrêté par le préfet le {d.arrete}.{/if}
+        </Niveau>
+        <p class="note">
+          L'obligation pèse sur le propriétaire de la construction, pas sur la
+          commune&nbsp;; le maire est chargé de la faire respecter. Ce calcul
+          dit où tombent les adresses, pas si les terrains sont débroussaillés.
+          {#if d.url}<a href={d.url} target="_blank" rel="noopener">La règle dans le département ↗</a>{/if}
+        </p>
+      {/if}
+
+      {#if incendie.feux}
+        {@const f = incendie.feux}
+        <h3>Ce qui a brûlé</h3>
+        <Niveau type="fait" source="Base de données sur les incendies de forêts en France (BDIFF), {f.debut}–{f.fin}">
+          {#if f.nombre === 0}
+            <b>Aucun feu</b> n'est recensé dans la commune de {f.debut} à {f.fin}.
+          {:else}
+            <b>{f.nombre} feu{f.nombre > 1 ? 'x' : ''}</b> recensé{f.nombre > 1 ? 's' : ''}
+            dans la commune de {f.debut} à {f.fin}, pour <b>{surface(f.surface_ha)}</b>
+            au total{#if f.nombre > 1}. Le plus grand, le {fmtAlerte(f.plus_grand.alerte)},
+            a couvert {surface(f.plus_grand.surface_ha)}{/if}.
+          {/if}
+        </Niveau>
+        {#if f.liste.length}
+          <table>
+            <thead><tr><th>Alerte</th><th class="r">Surface</th><th class="r">dont forêt</th><th>Cause retenue</th></tr></thead>
+            <tbody>
+              {#each [...f.liste].reverse() as feu}
+                <tr><td>{fmtAlerte(feu.alerte)}</td><td class="r">{surface(feu.surface_ha)}</td>
+                  <td class="r">{surface(feu.foret_ha)}</td><td>{feu.cause || 'non renseignée'}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+        {/if}
+        <p class="note">
+          La BDIFF recense les feux que les services de l'État et les pompiers y
+          versent&nbsp;; l'année en cours n'y figure qu'après la saison.
+        </p>
+      {/if}
+    {/if}
+
     <!-- ── ICPE ─────────────────────────────────────────────────────── -->
     {#if icpe.length}
       <h2>Installations classées (ICPE)</h2>
@@ -339,6 +514,97 @@
           {/each}
         </tbody>
       </table>
+    {/if}
+
+    <!-- ── Les déchets ménagers ─────────────────────────────────────── -->
+    {#if dechets}
+      <h2 id="dechets">Les déchets ménagers</h2>
+      {#each dechets.acteurs as a}
+        {@const dernier = a.serie.at(-1)}
+        <Niveau type="fait" source="ADEME — SINOE®, enquête sur la collecte des déchets">
+          Ici, les déchets sont collectés par <b>{a.nom}</b>.
+          {#if dernier}Tous les chiffres qui suivent portent sur <b>l'ensemble
+          de son territoire</b>{#if dernier.population}{' '}({nb(dernier.population)}
+          habitants en {dernier.annee}){/if}, pas sur {COMMUNE} seule&nbsp;:
+          l'enquête ne descend pas à la commune.{/if}
+        </Niveau>
+
+        {#if a.situer?.length}
+          <h3>Combien par habitant ({dernier.annee})</h3>
+          <table>
+            <thead><tr><th>Par habitant et par an</th><th class="r">Ici</th>
+              <th class="r">Médiane<br>France</th><th class="r">Médiane<br>département</th>
+              <th>Parmi les collectivités de France</th></tr></thead>
+            <tbody>
+              {#each a.situer as s}
+                <tr>
+                  <td>{DECHETS[s.indicateur]}</td>
+                  <td class="r"><strong>{kg(s.valeur)}</strong></td>
+                  <td class="r">{kg(s.france?.p50)}</td>
+                  <td class="r">{kg(s.departement?.p50)}</td>
+                  <td class="muted">{QUARTS[s.quart] || '—'}{#if s.france?.p95 != null && s.valeur > s.france.p95}, au-delà de 19 collectivités sur 20{/if}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+          <p class="note">
+            Hors gravats. La médiane est celle des collectivités qui déclarent ce
+            service la même année{#if a.situer[0].france}{' '}({nb(a.situer[0].france.collectivites)} en
+            France{#if a.situer[0].departement}, {a.situer[0].departement.collectivites} dans le
+            département{/if}){/if}.
+            {#if /touristique/i.test(dernier.typologie || '')}
+              L'ADEME classe ce territoire «&nbsp;{dernier.typologie.toLowerCase()}&nbsp;»&nbsp;:
+              les kilos sont divisés par le nombre d'habitants à l'année, alors
+              que les déchets des visiteurs et des résidences secondaires y sont
+              comptés.
+            {/if}
+          </p>
+        {/if}
+
+        {#if a.serie.length > 1}
+          <h3>D'une enquête à l'autre</h3>
+          <table>
+            <thead><tr><th>Année</th><th class="r">Ordures ménagères</th><th class="r">Tri</th>
+              <th class="r">Verre</th><th class="r">Déchèterie</th><th class="r">Total</th></tr></thead>
+            <tbody>
+              {#each a.serie as s}
+                <tr><td>{s.annee}</td><td class="r">{kg(s.omr)}</td><td class="r">{kg(s.tri)}</td>
+                  <td class="r">{kg(s.verre)}</td><td class="r">{kg(s.decheterie)}</td>
+                  <td class="r">{kg(s.total)}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+          <p class="note">
+            Kilos par habitant et par an, hors gravats. L'ADEME n'enquête pas
+            tous les ans&nbsp;: une année absente n'est pas une année sans déchets.
+          </p>
+        {/if}
+
+        {#if a.destinations.lignes.length}
+          <h3>Où ils partent ({a.destinations.annee})</h3>
+          <ul class="plain">
+            {#each a.destinations.lignes as l}
+              <li><strong>{tonnes(l.tonnes)}</strong> — {l.libelle}
+                <span class="muted">({part(l.tonnes, a.destinations.lignes)})</span></li>
+            {/each}
+          </ul>
+          <p class="note">Tonnes déclarées par la collectivité, gravats compris.</p>
+        {/if}
+
+        {#if a.decheteries.length}
+          <h3>Les déchèteries</h3>
+          <ul class="plain">
+            {#each a.decheteries as d}
+              <li><strong>{d.nom}</strong>{#if d.lieu}{' '}— {d.lieu}{/if}
+                <span class="muted">{#if d.ouverte_le}ouverte en {d.ouverte_le.slice(0, 4)}{/if}{#if d.gestion}{' '}· {d.gestion.toLowerCase().replace('regie', 'en régie')}{/if}</span></li>
+            {/each}
+          </ul>
+        {/if}
+      {/each}
+      <p class="note">
+        Ce que la collecte coûte aux habitants est sur la page
+        <a href="/impots">Impôts locaux</a> (taxe d'enlèvement des ordures ménagères).
+      </p>
     {/if}
 
     {#if dpe}
@@ -375,9 +641,12 @@
     {/if}
 
     <p class="src">
-      Sources : SISPEA (prix et performance de l'eau potable),
+      Sources : SISPEA (prix et performance de l'eau potable), agences
+      régionales de santé via Hub'Eau (contrôle sanitaire de l'eau distribuée),
       Naïades / Hub'Eau (qualité des cours d'eau), Géorisques (risques,
-      ICPE, arrêtés CatNat), ADEME (diagnostics de performance énergétique,
+      ICPE, arrêtés CatNat), IGN (boisement, forêts publiques, zonage du
+      débroussaillement), BDIFF (feux de forêt), ADEME (SINOE® pour les
+      déchets ; diagnostics de performance énergétique,
       agrégés à la commune — aucune adresse n'est collectée). Aucune donnée n'est produite par ce site : tout
       provient des réseaux publics de mesure et de recensement.
     </p>
@@ -385,6 +654,9 @@
 </section>
 
 <style>
+  details.plus { margin: .4rem 0 1rem; font-size: .88rem; }
+  details.plus summary { cursor: pointer; color: var(--ardoise-fonce); }
+
   .dpe { display: flex; align-items: flex-end; gap: .5rem; height: 150px;
          margin: .8rem 0 .4rem; max-width: 460px; }
   .dpe-col { flex: 1; height: 100%; display: flex; flex-direction: column;

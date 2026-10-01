@@ -1,4 +1,4 @@
-import { EPCI } from '$lib/instance.js'
+import { EPCI, INSEE } from '$lib/instance.js'
 // Taux de fiscalité locale, comparés entre communes de l'EPCI.
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'
@@ -16,5 +16,14 @@ export function load() {
   const d = lire('fiscalite.json', { taux: [] })
   const taux = d.taux || []
   const annee = taux.length ? Math.max(...taux.map((t) => t.annee)) : null
-  return { taux, annee }
+  // Où se place le taux de la commune parmi celles qui lèvent la même taxe —
+  // calculé à la collecte (`fiscalite_reperes`), pour le dernier exercice connu.
+  const reperes = (d.reperes || []).filter((r) => r.insee === INSEE)
+  const situer = (indicateur) => {
+    const lignes = reperes.filter((r) => r.indicateur === indicateur)
+    const an = lignes.length ? Math.max(...lignes.map((r) => r.annee)) : null
+    const de = (portee) => lignes.find((r) => r.annee === an && r.portee === portee) || null
+    return de('france') ? { annee: an, france: de('france'), departement: de('departement') } : null
+  }
+  return { taux, annee, teom: situer('TEOM') }
 }

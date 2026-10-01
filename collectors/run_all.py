@@ -141,6 +141,9 @@ from collectors.qualite_eau    import run as run_qualite_eau
 from collectors.sispea         import run_sispea
 from collectors.eau_potable    import run as run_eau_potable
 from collectors.telecoms       import run as run_telecoms
+from collectors.dechets        import run as run_dechets
+from collectors.enfance        import run as run_enfance
+from collectors.incendie       import run as run_incendie
 from collectors.urbanisme      import run as run_urbanisme
 from collectors.saisies        import import_saisies
 from collectors.detect_links   import run as run_detect_links
@@ -248,6 +251,11 @@ STEPS = {
     # délibération portant sur le groupe scolaire ne pouvait se rattacher à
     # rien. Passe AVANT `origine` et `perimetre`, qui classent ce qui existe.
     "education": ("Établissements scolaires (Éducation nationale)", run_education),
+    # Ce que l'annuaire ne dit pas : combien d'élèves, rentrée après rentrée,
+    # et où garder un enfant avant l'école. Lit les écoles que `education`
+    # vient de recenser — il passe donc après lui.
+    "enfance":  ("Élèves par école et accueil des moins de 3 ans (ministère, CAF)",
+                 run_enfance),
     "raa":      ("RAA de la préfecture (année courante, incrémental)",
                  lambda: run_raa(__import__("datetime").date.today().year)),
     # L'audit officiel d'une collectivité, quand il existe : contradictoire,
@@ -337,6 +345,11 @@ STEPS = {
     # Internet et téléphone : éligibilité par technologie, opérateur du réseau
     # fibre et sa qualité, sites mobiles alentour et leurs pannes déclarées.
     "telecoms": ("Fibre, mobile et pannes déclarées (ARCEP)", run_telecoms),
+    # Les déchets ménagers, à la maille de la collectivité qui les collecte :
+    # kilos par habitant, destinations, déchèteries, et de quoi les situer.
+    "dechets":  ("Déchets ménagers : collecte et destinations (SINOE, ADEME)", run_dechets),
+    # La forêt, ce qui y a brûlé, et les adresses tenues de débroussailler.
+    "incendie": ("Forêt, feux recensés et débroussaillement (IGN, BDIFF)", run_incendie),
     # Le document d'urbanisme tel que le GPU le connaît — le registre où il se
     # dépose, et où ce dépôt le rend opposable. À ne pas confondre avec
     # `urbanisme` juste dessous, qui relit les séances : celui-ci constate,

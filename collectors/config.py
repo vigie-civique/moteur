@@ -175,6 +175,9 @@ PROFONDEUR_STEP = {
     "sispea":      "fond",          # prix et performance de l'eau potable
     "eau_potable": "fond",          # réseaux et contrôle sanitaire du robinet
     "telecoms":    "fond",          # fibre, sites mobiles, pannes déclarées
+    "dechets":     "fond",          # collecte, kilos par habitant, destinations
+    "enfance":     "fond",          # élèves par école, accueil des moins de 3 ans
+    "incendie":    "fond",          # forêt, feux recensés, débroussaillement
     "plu":         "fond",          # document d'urbanisme déposé au GPU
     "equipements": "fond",          # commerces, santé, écoles (BPE)
     "dpe":         "fond",          # état énergétique du parc de logements
@@ -445,6 +448,13 @@ STEP_META = {
     # Les pannes mobiles se publient chaque jour et ne restent lisibles qu'un
     # temps : une semaine de retard se rattrape, pas un semestre.
     "telecoms":   (7,   26, "telecoms_indispo_jours", ""),
+    # L'ADEME n'enquête pas tous les ans, et verse l'année close tard.
+    "dechets":    (365, 26, "dechets_performance", ""),
+    # Un constat de rentrée par an, à l'automne ; la CAF, une année par an.
+    "enfance":    (180, 16, "ecoles_effectifs",  ""),
+    # La BDIFF verse une saison de feux après sa clôture ; le boisement et le
+    # zonage se révisent en années.
+    "incendie":   (180, 26, "incendie_suivi",    ""),
     "urbanisme":  (90,  27, "events",            "type='urbanisme'"),
     # Ce qu'on compte est le RELEVÉ, pas la trouvaille : une commune au RNU n'a
     # aucun document, et c'est le cas ordinaire. Compter `urbanisme_documents`

@@ -115,3 +115,47 @@ def test_trois_fractions_d_un_meme_parametre_sont_trois_resultats(base):
     page = [dict(_resultat(param="5489"), libelle_parametre=f"Microcystine-YR {f}")
             for f in ("totale", "dissoute", "dans la biomasse")]
     assert enregistrer_resultats(base, page, "030000476") == 3
+
+
+# ── La publication (`export_eau_potable`) ────────────────────────────────────
+# Ce que ces tests protègent : un réseau voisin, arrivé par un prélèvement
+# partagé, publié comme desservant la commune ; un réseau sans prélèvement
+# présenté comme conforme.
+
+def _desserte(base, annee, commune, reseau, quartier="le village"):
+    base.execute("INSERT INTO eau_potable_udi (annee, code_commune, nom_quartier, code_reseau,"
+                 " nom_reseau) VALUES (?,?,?,?,?)", (annee, commune, quartier, reseau, f"Réseau {reseau}"))
+
+
+def test_la_publication_ne_retient_que_les_reseaux_de_la_derniere_desserte(base):
+    from scripts.build_public_snapshot import export_eau_potable
+    ensure_tables(base)
+    _desserte(base, "2025", "99001", "ANCIEN")
+    _desserte(base, "2026", "99001", "BOURG")
+    _desserte(base, "2026", "99001", "MUET", quartier="-")
+    _desserte(base, "2026", "99002", "VOISIN")
+    for prel, date, bact in (("P1", "2025-03-01T10:00:00Z", "C"), ("P2", "2026-06-25T10:00:00Z", "N")):
+        r = _resultat(prel=prel, reseaux=("BOURG", "VOISIN"), date=date)
+        r["conformite_limites_bact_prelevement"] = bact
+        enregistrer_resultats(base, [r], "BOURG")
+    base.commit()
+
+    e = export_eau_potable(base, "99001")
+
+    assert e["annee_desserte"] == "2026"
+    bourg, muet = e["reseaux"]
+    assert (bourg["code"], bourg["quartiers"], bourg["prelevements"]) == ("BOURG", ["le village"], 2)
+    assert (bourg["bacteriologie"], bourg["chimie"]) == (1, 0)
+    assert bourg["hors_limites"] == [{"date": "2026-06-25", "bacteriologie": 1, "chimie": 0}]
+    assert bourg["maitre_ouvrage"] == "SYNDICAT DE LASALLE"
+    assert [a["annee"] for a in bourg["par_annee"]] == ["2025", "2026"]
+    # Desservi, jamais prélevé : zéro prélèvement, et surtout pas « conforme ».
+    assert (muet["prelevements"], muet["quartiers"], muet["hors_limites"]) == (0, [], [])
+    assert muet["du"] is None
+
+
+def test_une_commune_sans_desserte_connue_ne_publie_rien(base):
+    from scripts.build_public_snapshot import export_eau_potable
+    assert export_eau_potable(base, "99001") is None, "table absente"
+    ensure_tables(base)
+    assert export_eau_potable(base, "99001") is None
