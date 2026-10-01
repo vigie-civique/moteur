@@ -7,7 +7,7 @@
   // ni ce qu'on peut y chercher. La carte devient /carte ; l'accueil annonce,
   // oriente, puis montre ce qui vient de bouger.
   export let data
-  $: ({ chiffres, budget, recents, agenda, arreteLe, interco } = data)
+  $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -54,6 +54,8 @@
   }
   const dateLongue = (d) =>
     d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+  const dateDuJour = (d) =>
+    d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : ''
 </script>
 
 <svelte:head>
@@ -195,6 +197,31 @@
   </a>
 </section>
 
+{#if prochains?.length}
+  <!-- Le prochain conseil, tel que sa convocation l'annonce : avant la séance,
+       c'est la seule chose qu'un habitant peut en savoir. -->
+  <section class="prochain">
+    {#each prochains as s}
+      <article>
+        <p class="quand">
+          <span class="etiquette">Prochain conseil</span>
+          <strong>{assemblee(s.titre)}</strong> — {dateDuJour(s.date)}{#if s.convocation?.heure}, {s.convocation.heure}{/if}{#if s.convocation?.lieu}, {s.convocation.lieu}{/if}
+        </p>
+        {#if s.convocation?.ordre_du_jour?.length}
+          <details>
+            <summary>L'ordre du jour : {s.convocation.ordre_du_jour.length} point{s.convocation.ordre_du_jour.length > 1 ? 's' : ''}</summary>
+            <ol>{#each s.convocation.ordre_du_jour as point}<li>{point}</li>{/each}</ol>
+            <p class="source">Lu dans la convocation{#if s.convocation.convoque_le}{' '}du {dateLongue(s.convocation.convoque_le)}{/if}{#if s.convocation.url}{' '}— <a href={s.convocation.url} target="_blank" rel="noopener">la lire</a>{/if}.
+              Séance publique : chacun peut y assister.</p>
+          </details>
+        {:else if s.convocation?.url}
+          <p class="source"><a href={s.convocation.url} target="_blank" rel="noopener">La convocation</a></p>
+        {/if}
+      </article>
+    {/each}
+  </section>
+{/if}
+
 {#if recents.length}
   <section class="flux">
     <header>
@@ -296,6 +323,26 @@
   /* L'agenda est volontairement plus discret que le fil des décisions : même
      structure, moins de poids. */
   .flux.agenda { margin-top: 1.25rem; }
+
+  /* Le prochain conseil : un bandeau, pas une carte de plus. Il se lit en une
+     ligne ; l'ordre du jour se déplie pour qui veut savoir de quoi on parlera. */
+  .prochain { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.6rem; }
+  .prochain article {
+    border: 1px solid var(--trait); border-left: 4px solid var(--ardoise);
+    border-radius: var(--rayon); background: var(--blanc); padding: .8rem 1rem;
+  }
+  .prochain .quand { margin: 0; font-size: .98rem; line-height: 1.5; }
+  .prochain .etiquette {
+    display: inline-block; margin-right: .5rem; font-size: .68rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--ardoise-fonce);
+    background: var(--ardoise-pale); border-radius: .5rem; padding: .1rem .5rem;
+  }
+  .prochain details { margin-top: .5rem; }
+  .prochain summary { cursor: pointer; color: var(--ardoise); font-size: .9rem; }
+  .prochain ol { margin: .5rem 0 .4rem; padding-left: 1.4rem; font-size: .9rem; line-height: 1.5; }
+  .prochain li { margin-bottom: .2rem; }
+  .prochain .source { margin: .3rem 0 0; font-size: .8rem; color: var(--gris); }
+  .prochain .source a { color: var(--ardoise); }
   .flux.agenda h2 { font-size: 1rem; color: var(--gris); }
 
   section { max-width: 1080px; margin: 0 auto; padding: 0 1.4rem; }

@@ -75,6 +75,18 @@ export function load() {
     .filter((i) => i.nb_actes == null || i.nb_actes > 0)
     .slice(0, 6)
   const agenda = passes.filter((i) => i.genre === 'vie').filter(communal).slice(0, 4)
+
+  // ── Le prochain conseil ────────────────────────────────────────────────
+  // Annoncé par sa convocation (heure, lieu, ordre du jour — cf.
+  // collectors/convocation.py). La commune ne publie pas les siennes ; la
+  // communauté de communes, si. Les deux assemblées sont montrées, nommées :
+  // la séance de la CC engage aussi la commune. Le site est reconstruit chaque
+  // jour : « à venir » est relu à chaque publication.
+  const SEANCES = new Set(['conseil_municipal', 'conseil_communautaire'])
+  const prochains = (actualite.items || [])
+    .filter((i) => SEANCES.has(i.type) && i.date && i.date >= aujourdhui)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 2)
   const ailleurs = passes.filter(
     (i) => GOUVERNANCE.has(i.genre) && i.portee === 'intercommunalite').length
 
@@ -140,6 +152,7 @@ export function load() {
     : null
 
   return {
+    prochains,
     chiffres: {
       acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,

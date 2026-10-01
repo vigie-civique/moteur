@@ -160,8 +160,14 @@
                 </p>
                 <p class="meta">
                   <span class="badge">{typeLabel(i.type)}</span>
-                  <span class="quand">{dateLongue(i.date)}</span>
+                  <span class="quand">{dateLongue(i.date)}{#if i.convocation?.heure}, {i.convocation.heure}{/if}{#if i.convocation?.lieu}, {i.convocation.lieu}{/if}</span>
                 </p>
+                {#if i.convocation?.ordre_du_jour?.length}
+                  <details class="odj">
+                    <summary>Ordre du jour ({i.convocation.ordre_du_jour.length} points)</summary>
+                    <ol>{#each i.convocation.ordre_du_jour as point}<li>{point}</li>{/each}</ol>
+                  </details>
+                {/if}
               </div>
             </li>
           {/each}
@@ -323,4 +329,8 @@
   .statut.engage { background: #e0e7ff; color: var(--ardoise-fonce); }
   h1.avec-icone { display: flex; align-items: center; gap: .6rem; }
   h1.avec-icone :global(.icon) { color: var(--ardoise); }
+  /* L'ordre du jour d'une séance à venir, lu dans sa convocation. */
+  .odj { margin-top: .3rem; font-size: .85rem; }
+  .odj summary { cursor: pointer; color: var(--ardoise); }
+  .odj ol { margin: .3rem 0 0; padding-left: 1.3rem; line-height: 1.45; }
 </style>

@@ -47,6 +47,7 @@ from .cm_ocr import OPTIONS_OCRMYPDF
 from .cm_parser import link_persons_to_event
 from .connecteurs import charger
 from .connecteurs.base import date_fr
+from .convocation import est_convocation, lire as lire_convocation
 from .db import transaction, upsert_entity
 from .pv_parsers import (acte_unique, deliberations, presences,
                          reference_actes)
@@ -238,7 +239,8 @@ def lire_document(doc, avec_ocr: bool = False) -> tuple[str, str, bool] | None:
 
 # ── Écriture ─────────────────────────────────────────────────────────────────
 
-def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> int:
+def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None,
+                       annonce: bool = False) -> int:
     """Événement ombrelle d'une séance. Idempotent sur (assemblée, DATE).
 
     ⚖️ Une séance est identifiée par sa date et son assemblée, JAMAIS par le
@@ -258,6 +260,10 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> 
     plus probante, et les métadonnées FUSIONNENT : le procès-verbal porte les
     présents et les pouvoirs, le registre le nombre d'actes — remplacer, c'est
     perdre ce que la pièce précédente avait lu.
+
+    `annonce` : la pièce ANNONCE la séance (une convocation). Elle ne nomme
+    alors pas la source d'une fiche qui existe déjà — sans quoi la dernière
+    pièce lue, la moins probante, devenait celle qui la décrit.
     """
     p = PORTEES[portee]
     piece = {"nature": nature_de_piece(doc.libelle),
@@ -271,6 +277,8 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None) -> 
         (p["seance"], doc.date)).fetchone()
     if row:
         ancien = json.loads(row["metadata"] or "{}")
+        if annonce:
+            meta.pop("libelle_source")
         pieces = _avec_piece(ancien.get("pieces") or [], piece)
         fusion = {**ancien, **meta, "pieces": pieces}
         # Un portail d'actes publie la séance à son adresse à lui : elle vaut
@@ -549,6 +557,53 @@ def traiter_acte(conn, doc, portee: str, verbose: bool = True,
     return {"statut": "ok", "delibs": 1}
 
 
+#: Ce qui pointe vers un événement sans suppression en cascade (db/schema.sql).
+_REFERENCES_EVENEMENT = (("financial_flows", "event_id"), ("marches_publics", "event_id"),
+                         ("approbations_projets", "event_id"),
+                         ("budget_annexe", "source_event_id"))
+
+
+def _a_la_colonne(conn, table: str, colonne: str) -> bool:
+    return colonne in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def retirer_fiches_de_la_piece(conn, doc, portee: str) -> int:
+    """Les « délibérations » qu'une convocation avait fabriquées (avant le
+    01/10/2026, elle était lue comme un procès-verbal).
+
+    Seules partent les fiches de collecte nées de CETTE pièce, sans décision de
+    l'atelier ni ligne qui s'y rattache : une fiche qu'un humain a regardée ou
+    qu'un flux cite n'est pas effacée en silence, elle reste et se voit.
+    """
+    p = PORTEES[portee]
+    gardes = "".join(f" AND NOT EXISTS (SELECT 1 FROM {t} WHERE {c} = e.id)"
+                     for t, c in _REFERENCES_EVENEMENT if _a_la_colonne(conn, t, c))
+    ids = [r[0] for r in conn.execute(
+        "SELECT e.id FROM events e WHERE e.type = ? AND e.source_url = ?"
+        " AND COALESCE(e.origine, '') != 'atelier'"
+        " AND NOT EXISTS (SELECT 1 FROM annotations a"
+        "                 WHERE a.object_type = 'deliberation' AND a.object_id = e.id)"
+        + gardes, (p["delib"], doc.url))]
+    for i in ids:
+        conn.execute("DELETE FROM event_entities WHERE event_id = ?", (i,))
+        conn.execute("DELETE FROM events WHERE id = ?", (i,))
+    return len(ids)
+
+
+def traiter_convocation(conn, doc, portee: str, texte: str, verbose: bool = True) -> dict:
+    """Une convocation ANNONCE la séance : son ordre du jour, son heure, son
+    lieu entrent dans la fiche de séance, et rien d'autre. Cf. convocation.py."""
+    lu = lire_convocation(texte)
+    enregistrer_seance(conn, doc, portee, {"convocation": {**lu, "url": doc.url}},
+                       annonce=True)
+    retirees = retirer_fiches_de_la_piece(conn, doc, portee)
+    if verbose:
+        print(f"  [convocation] {doc.date} — {len(lu.get('ordre_du_jour', []))} point(s) "
+              "à l'ordre du jour" + (f", {retirees} fiche(s) fabriquée(s) retirée(s)"
+                                     if retirees else ""))
+    return {"statut": "convocation", "delibs": 0, "retirees": retirees}
+
+
 def traiter(conn, doc, portee: str, verbose: bool = True,
             avec_ocr: bool = False) -> dict:
     """Télécharge, lit et enregistre un procès-verbal, quel que soit son format."""
@@ -561,6 +616,12 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
     texte, format_, ocrise = lu
     if _date_de_mediatheque_refusee(doc, texte, verbose):
         return {"statut": "date_non_attestee", "delibs": 0}
+
+    # Une convocation n'est pas un procès-verbal : elle annonce, elle ne
+    # rapporte rien. Lue comme un PV, elle fabriquait des délibérations avec
+    # ses lignes en capitales et écrasait les présents du vrai PV.
+    if est_convocation(nature_de_piece(doc.libelle), texte):
+        return traiter_convocation(conn, doc, portee, texte, verbose)
 
     if len(texte) < MIN_TEXT_CHARS:
         # Sans reconnaissance optique, le signaler vaut mieux que produire une

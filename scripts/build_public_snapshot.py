@@ -1266,6 +1266,19 @@ def _nomme_une_personne_publique(avant: str, noms_publics: set[str]) -> bool:
                for i in range(len(mots)) for j in range(i + 2, len(mots) + 1))
 
 
+def convocation_publique(c: dict, jour: str | None, noms_publics, masquages) -> dict:
+    """Ce qu'une convocation annonce, tel qu'il peut sortir."""
+    sortie = {k: c[k] for k in ("heure", "lieu", "convoque_le") if c.get(k)}
+    url = safe_url(c.get("url"))
+    if url and url.lower().startswith(("http://", "https://")):
+        sortie["url"] = url
+    points = [masquer_donnees_personnelles(p, jour, noms_publics, masquages)
+              for p in c.get("ordre_du_jour") or []]
+    if points:
+        sortie["ordre_du_jour"] = points
+    return sortie
+
+
 def masquer_donnees_personnelles(texte: str, jour: str | None,
                                  noms_publics: set[str], compteur: Counter) -> str:
     """Masque domicile, date et lieu de naissance ; garde les noms."""
@@ -2966,6 +2979,13 @@ def build_snapshot(out: Path) -> dict:
                     for p in (metadata.get("pieces") or [])
                     if safe_url(p.get("url"))
                 ] or None,
+                # Ce que la convocation annonce (collectors/convocation.py) :
+                # l'heure, le lieu, l'ordre du jour. C'est ce qui permet
+                # d'annoncer un conseil AVANT qu'il ait lieu. Les points passent
+                # par le même masquage que les titres d'actes.
+                **({"convocation": convocation_publique(
+                        metadata["convocation"], event["date"], noms_publics, masquages)}
+                   if event_type in TYPES_SEANCE and metadata.get("convocation") else {}),
                 "pdf_url": safe_url(metadata.get("pdf_url")) or (
                     safe_url(event["source_url"])
                     if ".pdf" in (event["source_url"] or "").lower() else None
@@ -4034,7 +4054,8 @@ def build_snapshot(out: Path) -> dict:
                 # annoncerait plus d'actes qu'elle n'en donne à lire.
                 **({"nb_actes": actes_par_seance.get(
                         (e["date"], e.get("portee")), 0),
-                    "pieces": e.get("pieces")}
+                    "pieces": e.get("pieces"),
+                    "convocation": e.get("convocation")}
                    if e.get("type") in TYPES_SEANCE else {}),
             })
 
