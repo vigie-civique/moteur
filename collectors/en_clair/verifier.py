@@ -240,15 +240,18 @@ def verifier(chemin: Path) -> list[str]:
                                   f"{lieu} : « {texte[:60]} »")
     # 7. Dits — une parole rapportée l'est mot pour mot, et dans son acte :
     # c'est la phrase qu'on prêterait à quelqu'un, la faute la plus grave.
-    # Quand la marque OUVRE l'acte (« Délibération n°… », « EXTRAIT DU
-    # REGISTRE »), l'acte va de sa marque à la suivante, et la borne est
-    # stricte. Quand elle le FERME (« après en avoir délibéré »), le débat la
-    # précède et la frontière avec l'acte voisin n'est pas lisible : la
-    # portée large s'applique, et la borne ne vaut que ce qu'elle vaut.
-    ferme = "avoir" in (releve.get("marque_acte_ordinale") or "")
+    # La borne n'est stricte que là où la marque OUVRE à coup sûr un acte
+    # entier : la tête répétée d'un recueil d'extraits (« EXTRAIT DU
+    # REGISTRE »), où l'exposé suit la marque. Partout ailleurs la parole peut
+    # précéder la marque — le débat d'un PV de conseil communautaire vient
+    # avant « Délibération n°1/2026 », celui d'un PV municipal avant « après
+    # en avoir délibéré » — et la frontière avec l'acte voisin n'est pas
+    # lisible : la portée large s'applique.
+    ordinale = releve.get("marque_acte_ordinale") or ""
+    stricte = bool(ordinale) and "avoir" not in ordinale
 
     def acte_seul(n: int) -> str:
-        if n not in marques or ferme:
+        if n not in marques or not stricte:
             return portee(n)
         debut = marques[n]
         return pv[debut: next((p for p in positions if p > debut), len(pv))]

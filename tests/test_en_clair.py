@@ -107,6 +107,35 @@ def test_une_parole_inventee_est_refusee(instance):
     assert any(f.startswith("DIT") and "introuvable" in f for f in verifier(_chemin(instance)))
 
 
+def test_une_parole_qui_precede_sa_deliberation_est_admise(tmp_path):
+    """Dans un PV de conseil communautaire, le débat vient AVANT « Délibération
+    n°1/2026 » : la borne stricte le refuserait à tort."""
+    racine = tmp_path / "cc"
+    (racine / "collectors").mkdir(parents=True)
+    (racine / "data").mkdir()
+    (racine / "data" / "pv.txt").write_text(
+        "PV du conseil communautaire. Présents : 3. Votants : 3.\n"
+        "I. Pacte. M. X propose de différer le vote.\n"
+        "Délibération n°1/2026 Le Conseil, après en avoir délibéré à l'unanimité, APPROUVE le pacte.\n"
+        "II. Tourisme. Délibération n°2/2026 Le Conseil APPROUVE le choix.\n")
+    r = _releve()
+    r.pop("marque_acte_ordinale")
+    r["marque_acte"] = "Délibération n°{n}/2026"
+    r["actes"] = [{"n": 1, "objet": "Pacte", "vote": {"unanimite": True}, "citation": "APPROUVE le pacte."},
+                  {"n": 2, "objet": "Tourisme", "vote": {"unanimite": True}, "citation": "APPROUVE le choix."}]
+    r["calculs"] = []
+    r["en_clair"]["apres"]["chiffres"] = []
+    r["en_clair"]["apres"]["items"] = [{"titre": "Le pacte", "texte": "Approuvé.", "actes": [1]}]
+    r["en_clair"]["apres"]["aussi"] = []
+    r["en_clair"]["comprendre"] = {"debats": [
+        {"titre": "Différer ?", "texte": "Un élu propose d'attendre.",
+         "citation": "M. X propose de différer le vote.", "actes": [1]}]}
+    d = racine / "data" / "conseils" / "2026-01-10-cc"
+    d.mkdir(parents=True)
+    (d / "releve.json").write_text(json.dumps(r, ensure_ascii=False))
+    assert verifier(d / "releve.json") == []
+
+
 def test_la_feuille_comprendre_est_rendue_et_les_documents_deviennent_la_quatrieme(instance):
     from collectors.en_clair.rendu import feuilles, page_erreurs
     r = _avec_dit(instance, "APPROUVE le règlement du cimetière.", [2])
