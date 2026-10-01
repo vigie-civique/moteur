@@ -27,6 +27,19 @@
   $: pannes = telecoms?.pannes
   $: enfance = data.enfance
   $: accueil = enfance?.accueil
+  // Une élémentaire et une maternelle portent souvent le même nom : c'est alors
+  // leur nature qui les distingue. Ailleurs elle n'apprend rien, et trompe —
+  // l'annuaire classe « niveau élémentaire » une école primaire qui a sa
+  // maternelle.
+  const NATURES = { 'ECOLE MATERNELLE': 'école maternelle',
+                    'ECOLE DE NIVEAU ELEMENTAIRE': 'école élémentaire' }
+  const cle = (nom) => (nom || '').trim().toLowerCase()
+  $: homonymes = new Set((enfance?.ecoles || []).map(e => cle(e.nom))
+    .filter((n, i, tous) => tous.indexOf(n) !== i))
+  const precision = (e, homonymes) => [
+    homonymes.has(cle(e.nom)) ? (NATURES[e.nature] || (e.nature || '').toLowerCase()) : '',
+    e.secteur ? `secteur ${e.secteur.toLowerCase()}` : '',
+  ].filter(Boolean).join(', ')
   // Le nombre de locaux recensés bouge d'un trimestre à l'autre (la base
   // d'adresses se nettoie) : la courbe trace la PART fibrée, jamais le compte.
   $: locauxMin = fixe ? Math.min(...fixe.serie.map(s => s.locaux)) : 0
@@ -386,7 +399,7 @@
       {@const p = e.serie[0]}
       {@const elevesMax = Math.max(...e.serie.map(s => s.eleves || 0), 1)}
       <Niveau type="fait" source="Ministère de l'éducation nationale — effectifs d'élèves et nombre de classes par école, constat de rentrée">
-        À la rentrée {d.rentree}, <b>{e.nom}</b>{#if e.secteur}{' '}(secteur {e.secteur.toLowerCase()}){/if}
+        À la rentrée {d.rentree}, <b>{e.nom}</b>{#if precision(e, homonymes)}{' '}({precision(e, homonymes)}){/if}
         compte <b>{nb(d.eleves)} élèves</b>{#if d.maternelle}, dont {nb(d.maternelle)} en maternelle{/if}{#if d.classes},
         dans {d.classes} classe{d.classes > 1 ? 's' : ''}{/if}.
         {#if p.rentree !== d.rentree}Ils étaient {nb(p.eleves)} à la rentrée {p.rentree}.{/if}

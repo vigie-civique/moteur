@@ -2563,7 +2563,7 @@ def export_eau_potable(conn, insee: str) -> dict | None:
     return {"annee_desserte": annee, "reseaux": reseaux}
 
 
-DECHETS_INDICATEURS = ("omr", "tri", "verre", "decheterie", "total")
+DECHETS_INDICATEURS = ("omr", "tri", "papier", "verre", "decheterie", "total")
 
 
 def _quart(valeur, r: dict | None) -> int | None:
@@ -2586,8 +2586,12 @@ def export_dechets(conn, insee: str) -> dict | None:
             SELECT code_acteur AS code, MAX(acteur) AS nom FROM dechets_desserte
              WHERE insee=? AND annee=? GROUP BY code_acteur ORDER BY code_acteur""",
                   (insee, annee)):
-        serie = rows(conn, """
-            SELECT annee, population, typologie, omr, tri, verre, decheterie, total,
+        # `papier` est arrivé après les autres : une base pas encore recollectée
+        # n'a pas la colonne, et la page s'en passe.
+        papier = "papier" if "papier" in {r[1] for r in conn.execute(
+            "PRAGMA table_info(dechets_performance)")} else "NULL AS papier"
+        serie = rows(conn, f"""
+            SELECT annee, population, typologie, omr, tri, {papier}, verre, decheterie, total,
                    total_gravats FROM dechets_performance WHERE code_acteur=? ORDER BY annee""",
                      (a["code"],))
         # Un zéro n'est pas une collecte nulle : c'est un service que CETTE
@@ -2681,7 +2685,7 @@ def export_enfance(conn, insee: str, epci: str, departement: str) -> dict | None
                 -- adoptée d'une autre source (« École élémentaire »), alors que
                 -- les effectifs sont ceux de l'école entière, maternelle comprise.
                 SELECT s.uai, json_extract(s.raw_data, '$.nom_etablissement') AS nom,
-                       s.secteur, s.etat
+                       s.nature, s.secteur, s.etat
                   FROM etablissements_scolaires s
                  WHERE json_extract(s.raw_data, '$.code_commune') = ?
                    AND s.uai IN (SELECT uai FROM ecoles_effectifs) ORDER BY s.uai""", (insee,)):

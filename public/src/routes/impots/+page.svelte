@@ -86,7 +86,7 @@
               {@const v = ligne.vote ? val(c, ligne.vote) : null}
               {@const g = val(c, ligne.global)}
               {@const ev = ligne.vote === 'TFB_VOTE' ? evolution(c) : null}
-              <tr class:phare={c === '{COMMUNE}'}>
+              <tr class:phare={c === COMMUNE}>
                 <td>{c}</td>
                 {#if ligne.vote}<td class="num">{pct(v)}</td>{/if}
                 <td class="num">{pct(g)}</td>

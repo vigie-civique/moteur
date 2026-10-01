@@ -52,6 +52,10 @@ PAGE = 200
 PERFORMANCES = (("omr", "perf_omr_hg"), ("tri", "perf_cs_men_hg"),
                 ("verre", "perf_verre_hg"), ("decheterie", "perf_dech_hg"),
                 ("total", "perf_dma_hg"))
+# Les emballages et papiers SEULS. La « collecte séparée » (`tri`) les compte
+# avec le verre, les biodéchets et le reste : affichée seule au-dessus d'une
+# ligne « verre », elle faisait compter le verre deux fois (01/10/2026).
+PAPIER = ("papier", "perf_papier_hg")
 QUARTILES = (25, 50, 75, 95)
 
 
@@ -77,6 +81,7 @@ def ensure_tables(conn):
             decheterie    REAL,
             total         REAL,
             total_gravats REAL,
+            papier        REAL,      -- emballages et papiers seuls, compris dans `tri`
             PRIMARY KEY (code_acteur, annee)
         );
         CREATE TABLE IF NOT EXISTS dechets_tonnes (
@@ -109,6 +114,9 @@ def ensure_tables(conn):
             PRIMARY KEY (annee, indicateur, portee, code)
         );
     """)
+    # Une base créée avant le 01/10/2026 au soir n'a pas la colonne.
+    if "papier" not in {r[1] for r in conn.execute("PRAGMA table_info(dechets_performance)")}:
+        conn.execute("ALTER TABLE dechets_performance ADD COLUMN papier REAL")
     conn.commit()
 
 
@@ -139,7 +147,8 @@ def lignes_performance(code: str, perf: list[dict], acteur: list[dict]) -> list[
     pop = {int(a["annee"]): a for a in acteur}
     return [(code, int(p["annee"]), pop.get(int(p["annee"]), {}).get("pop_adh_coll"),
              pop.get(int(p["annee"]), {}).get("typa1"),
-             *(p.get(champ) for _, champ in PERFORMANCES), p.get("perf_dma_ag"))
+             *(p.get(champ) for _, champ in PERFORMANCES), p.get("perf_dma_ag"),
+             p.get(PAPIER[1]))
             for p in perf]
 
 
@@ -177,7 +186,7 @@ def releve_reperes(conn, annee: int, departement: str) -> int:
     cette année-là. Une collectivité à zéro (elle n'exerce pas ce service) ne
     compte pas : elle tirerait le quartile vers une collecte qui n'existe pas."""
     reperes = []
-    for indicateur, champ in PERFORMANCES:
+    for indicateur, champ in (*PERFORMANCES, PAPIER):
         for portee, code, filtre in (("france", "", ""),
                                      ("departement", departement,
                                       f" AND code_departement:{departement}")):
@@ -208,8 +217,9 @@ def releve_commune(conn, insee: str) -> str:
     for code in acteurs:
         qs = f"code_acteur:{code}"
         perf = lignes_performance(code, lignes("performance", qs=qs), lignes("acteur", qs=qs))
-        _ecrire(conn, "INSERT OR REPLACE INTO dechets_performance VALUES (?,?,?,?,?,?,?,?,?,?)",
-                perf)
+        _ecrire(conn, "INSERT OR REPLACE INTO dechets_performance (code_acteur, annee,"
+                      " population, typologie, omr, tri, verre, decheterie, total, total_gravats,"
+                      " papier) VALUES (?,?,?,?,?,?,?,?,?,?,?)", perf)
         annees |= {p[1] for p in perf}
         for axe, jeu in (("dechet", "tonnages"), ("destination", "destinations")):
             _ecrire(conn, "INSERT OR REPLACE INTO dechets_tonnes VALUES (?,?,?,?,?)",

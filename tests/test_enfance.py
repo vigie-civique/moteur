@@ -89,6 +89,7 @@ def test_la_publication_ne_compare_qu_a_annee_egale(base, entite):
 
     [ecole] = e["ecoles"]
     assert (ecole["uai"], ecole["nom"]) == ("0990001A", "Ecole primaire")
+    assert "nature" in ecole, "ce qui distingue deux écoles de même nom"
     assert [s["rentree"] for s in ecole["serie"]] == [2024, 2025]
     assert ecole["ips"][0]["france_public"] == 103.1
     a2021, a2023 = e["accueil"]["serie"]

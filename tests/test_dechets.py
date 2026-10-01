@@ -29,6 +29,34 @@ def test_une_annee_sans_population_garde_ses_kilos():
     assert [(l[1], l[2], l[4]) for l in lignes] == [(2023, None, 286.1), (2024, 5521, 271.1)]
 
 
+def test_les_emballages_et_papiers_seuls_sont_releves():
+    perf = {**_perf(2024, 271.1), "perf_papier_hg": 57.3}
+    [ligne] = lignes_performance("53700", [perf], [])
+    assert (ligne[5], ligne[-1]) == (100.0, 57.3), "collecte séparée, puis papier en dernière colonne"
+
+
+def test_une_base_d_avant_la_colonne_papier_est_rattrapee(base):
+    base.execute("CREATE TABLE dechets_performance (code_acteur TEXT, annee INTEGER,"
+                 " population INTEGER, typologie TEXT, omr REAL, tri REAL, verre REAL,"
+                 " decheterie REAL, total REAL, total_gravats REAL,"
+                 " PRIMARY KEY (code_acteur, annee))")
+    base.execute("INSERT INTO dechets_performance VALUES ('7', 2024, 5200, 'RURAL',"
+                 " 250.0, 100.0, 35.0, 180.0, 530.0, 600.0)")
+    from scripts.build_public_snapshot import export_dechets
+    base.executescript("CREATE TABLE dechets_desserte (annee, insee, code_acteur, acteur, service);"
+                       "INSERT INTO dechets_desserte VALUES (2024, '99001', '7', 'CC', 'Collecte');"
+                       "CREATE TABLE dechets_reperes (annee, indicateur, portee, code, collectivites,"
+                       " p25, p50, p75, p95);"
+                       "CREATE TABLE dechets_tonnes (code_acteur, annee, axe, libelle, tonnes);"
+                       "CREATE TABLE dechets_decheteries (code_acteur, annee, nom, insee, commune,"
+                       " lieu, ouverte_le, gestion, accepte);")
+    # Avant la recollecte : la publication s'en passe, sans erreur.
+    assert export_dechets(base, "99001")["acteurs"][0]["serie"][0]["papier"] is None
+    ensure_tables(base)
+    base.execute("UPDATE dechets_performance SET papier = 57.3")
+    assert export_dechets(base, "99001")["acteurs"][0]["serie"][0]["papier"] == 57.3
+
+
 def test_les_tonnes_d_un_meme_regroupement_s_additionnent():
     lignes = lignes_tonnes("53700", "destination", [
         {"annee": 2024, "libelle_regroupement_service_destination": "Stockage", "dma4_ag": 200.0},
@@ -59,9 +87,9 @@ def _base_dechets(base):
         (2023, "99001", "7", "Ancien nom", "Collecte des ordures"),
         (2024, "99001", "7", "CC du Test", "Collecte des ordures"),
         (2024, "99001", "7", "CC du Test", "Déchèterie de Fictiville")])
-    base.executemany("INSERT INTO dechets_performance VALUES (?,?,?,?,?,?,?,?,?,?)", [
-        ("7", 2021, 5000, "RURAL", 300.0, 90.0, 30.0, 150.0, 570.0, 700.0),
-        ("7", 2024, 5200, "RURAL", 250.0, 100.0, 35.0, 180.0, 565.0, 690.0)])
+    base.executemany("INSERT INTO dechets_performance VALUES (?,?,?,?,?,?,?,?,?,?,?)", [
+        ("7", 2021, 5000, "RURAL", 300.0, 90.0, 30.0, 150.0, 570.0, 700.0, 55.0),
+        ("7", 2024, 5200, "RURAL", 250.0, 100.0, 35.0, 180.0, 565.0, 690.0, 60.0)])
     base.executemany("INSERT INTO dechets_reperes VALUES (?,?,?,?,?,?,?,?,?)", [
         (2024, "omr", "france", "", 900, 150.0, 190.0, 240.0, 350.0),
         (2024, "omr", "departement", "99", 12, 200.0, 220.0, 260.0, 400.0),
