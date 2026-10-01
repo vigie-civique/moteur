@@ -72,8 +72,8 @@ def ensure_tables(conn):
             population    INTEGER,   -- celle que l'ADEME a retenue pour diviser
             typologie     TEXT,      -- rural, touristique… : ce qui rend comparable
             omr           REAL,      -- ordures ménagères résiduelles
-            tri           REAL,      -- emballages et papiers
-            verre         REAL,
+            tri           REAL,      -- collecte séparée : emballages, papiers ET verre
+            verre         REAL,      -- déjà compté dans `tri`
             decheterie    REAL,
             total         REAL,
             total_gravats REAL,

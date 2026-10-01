@@ -17,8 +17,11 @@
 
   // ── Les déchets ────────────────────────────────────────────────────────────
   const DECHETS = {
-    omr: 'Ordures ménagères (la poubelle ordinaire)', tri: 'Emballages et papiers triés',
-    verre: 'Verre', decheterie: 'Apports en déchèterie', total: 'Total',
+    omr: 'Ordures ménagères (la poubelle ordinaire)',
+    // SINOE compte le verre DANS la collecte séparée : les deux lignes ne
+    // s'ajoutent pas, et le total est ordures + collecte séparée + déchèterie.
+    tri: 'Collecte séparée (emballages, papiers et verre)',
+    verre: '— dont verre', decheterie: 'Apports en déchèterie', total: 'Total',
   }
   // Le rang se dit en quarts, pas en « bon » ou « mauvais » : beaucoup de tri
   // est une bonne nouvelle, beaucoup d'ordures résiduelles non. La page situe,
@@ -579,8 +582,8 @@
         {#if a.serie.length > 1}
           <h3>D'une enquête à l'autre</h3>
           <table>
-            <thead><tr><th>Année</th><th class="r">Ordures ménagères</th><th class="r">Tri</th>
-              <th class="r">Verre</th><th class="r">Déchèterie</th><th class="r">Total</th></tr></thead>
+            <thead><tr><th>Année</th><th class="r">Ordures ménagères</th><th class="r">Collecte séparée</th>
+              <th class="r">dont verre</th><th class="r">Déchèterie</th><th class="r">Total</th></tr></thead>
             <tbody>
               {#each a.serie as s}
                 <tr><td>{s.annee}</td><td class="r">{kg(s.omr)}</td><td class="r">{kg(s.tri)}</td>

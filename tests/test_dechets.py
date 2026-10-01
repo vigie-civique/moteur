@@ -114,4 +114,7 @@ def test_un_service_non_exerce_n_est_pas_zero_kilo(base):
     [a] = export_dechets(base, "99001")["acteurs"]
 
     assert a["serie"][-1]["omr"] is None
-    assert "omr" not in [s["indicateur"] for s in a["situer"]]
+    situes = [s["indicateur"] for s in a["situer"]]
+    assert "omr" not in situes
+    # Sans les ordures, le total n'est plus qu'un total partiel : il n'est pas situé.
+    assert "total" not in situes and "tri" in situes

@@ -2609,6 +2609,12 @@ def export_dechets(conn, insee: str) -> dict | None:
                 "departement": reperes.get((i, "departement")),
                 "quart": _quart(dernier[i], reperes.get((i, "france"))),
             } for i in DECHETS_INDICATEURS if dernier[i] is not None]
+            # Le total additionne ordures, collecte séparée et déchèterie. Si
+            # la collectivité n'exerce pas l'un des trois, son total est
+            # PARTIEL : le comparer à la médiane des totaux la placerait « dans
+            # le quart le plus bas » pour une compétence qu'elle n'a pas.
+            if any(dernier[i] is None for i in ("omr", "tri", "decheterie")):
+                situer = [s for s in situer if s["indicateur"] != "total"]
         tonnes = lambda axe: rows(conn, """
             SELECT libelle, tonnes FROM dechets_tonnes
              WHERE code_acteur=? AND axe=? AND tonnes > 0
