@@ -1182,6 +1182,12 @@ def construire_apercu(cible: Path | None = None, build: Path | None = None) -> d
             "Le build s'est terminé sans écrire de page d'accueil.",
             {"journal": _fin_du_journal(40)})
 
+    # Les fichiers servis sous `/data/` sont ceux de `static/data` — ce qui est
+    # en ligne. L'aperçu doit montrer ce qui SERA publié : le brouillon les
+    # remplace, en miroir (01/10/2026 : les feuilles « en clair » retenues
+    # n'existaient que dans le brouillon, leurs liens menaient au 404).
+    miroir(cible, build / "data")
+
     pages = sum(1 for _ in build.rglob("*.html"))
     return {"repertoire": str(build), "pages": pages,
             "construit_le": maintenant(), "donnees": str(cible)}

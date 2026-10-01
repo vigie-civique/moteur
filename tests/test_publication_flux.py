@@ -1173,3 +1173,32 @@ def test_le_script_refuse_un_build_qui_porte_des_fichiers_caches():
 def test_le_script_est_du_bash_valide():
     import subprocess
     subprocess.run(["bash", "-n", str(ROOT / "deploy" / "publier-site.sh")], check=True)
+
+
+def test_lapercu_sert_les_donnees_du_brouillon(publication, emplacements, tmp_path,
+                                               monkeypatch):
+    """01/10/2026 : une feuille « en clair » retenue n'existait que dans le
+    brouillon ; l'aperçu servait `/data/` depuis ce qui est en ligne, et son
+    lien menait au 404. L'aperçu montre ce qui SERA publié."""
+    snapshot(emplacements["brouillon"], [1])
+    (emplacements["brouillon"] / "conseils").mkdir()
+    (emplacements["brouillon"] / "conseils" / "seance.html").write_text("feuille")
+    build = tmp_path / "apercu_build"
+
+    def npm_vert(cmd, cwd, env, stdout, stderr):
+        (build / "data").mkdir(parents=True)
+        (build / "index.html").write_text("<h1>aperçu</h1>")
+        (build / "data" / "en-ligne-seulement.json").write_text("{}")
+        return type("Fini", (), {"returncode": 0})()
+
+    faux_vite = tmp_path / "vite"
+    faux_vite.write_text("")
+    monkeypatch.setattr(publication, "_vite", lambda: faux_vite)
+    monkeypatch.setattr(publication, "APERCU_LOG", tmp_path / "apercu.log")
+    monkeypatch.setattr(publication, "VERROU_BUILD", tmp_path / "build.lock")
+    monkeypatch.setattr(publication.subprocess, "run", npm_vert)
+
+    publication.construire_apercu(build=build)
+
+    assert (build / "data" / "conseils" / "seance.html").read_text() == "feuille"
+    assert not (build / "data" / "en-ligne-seulement.json").exists()
