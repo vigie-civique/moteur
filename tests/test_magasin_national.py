@@ -317,3 +317,72 @@ def test_la_memoire_ne_suit_pas_la_taille_du_fichier(tmp_path, monkeypatch):
         f"pic de {pic / 1e6:.1f} Mo pour un fichier de {taille / 1e6:.1f} Mo : "
         "le consolidé est de nouveau chargé d'un bloc"
     )
+
+
+class ReponseCoupee(ReponseFactice):
+    """Une connexion coupée en route : lue par blocs, elle rend un bloc vide
+    comme une fin de fichier, et seul `Content-Length` dit qu'il en manque."""
+
+    def __init__(self, recu: bytes, annonce: int):
+        super().__init__(recu)
+        self.headers = {"Content-Length": str(annonce)}
+
+
+def test_un_transfert_coupe_n_entre_pas_au_magasin(tmp_path):
+    """Le 30/09/2026, deux consolidés sont entrés à 465 et 268 Mo au lieu de 699
+    et 586 : rien n'avait levé, et le cache les a tenus pour frais sept jours."""
+    from collectors.national_store import TransfertTronque, copier_atomiquement
+
+    cible = tmp_path / "decp" / "decp-2025.json"
+    with pytest.raises(TransfertTronque):
+        copier_atomiquement(cible, ReponseCoupee(b'{"marches":[{"id":"A"', 5000))
+    assert list(cible.parent.iterdir()) == [], "ni fichier tronqué, ni temporaire"
+
+    entier = b'{"marches":[]}'
+    assert copier_atomiquement(cible, ReponseCoupee(entier, len(entier)))
+    assert cible.read_bytes() == entier
+
+
+def test_decp_coupe_a_chaque_essai_finit_en_echec(tmp_path, monkeypatch):
+    pytest.importorskip("ijson", reason="job « tests-deps »")
+    from collectors import marches_publics as marches
+
+    monkeypatch.setattr(marches, "DECP_CACHE", tmp_path / "decp")
+    monkeypatch.setattr(marches, "_echecs_reseau", [])
+    monkeypatch.setattr(marches.time, "sleep", lambda s: None)
+    appels = []
+
+    def urlopen(*a, **k):
+        appels.append(1)
+        return ReponseCoupee(b'{"marches":[', 5000)
+
+    monkeypatch.setattr(marches.urllib.request, "urlopen", urlopen)
+    with marches._consolide_decp("https://example.test/decp", "decp-2025.json") as chemin:
+        assert chemin is None
+    assert len(appels) == marches.DECP_ESSAIS, "une coupure se réessaie"
+    assert not (tmp_path / "decp" / "decp-2025.json").exists()
+    with pytest.raises(RuntimeError):
+        marches._relever_echecs_reseau()
+
+
+def test_un_consolide_illisible_n_est_pas_un_consolide_vide(tmp_path, monkeypatch):
+    """Seconde barrière, pour le fichier tronqué DÉJÀ au magasin : le step
+    affichait « ✓ marches », 0 trouvé, sur les trois instances."""
+    pytest.importorskip("ijson", reason="job « tests-deps »")
+    from collectors import marches_publics as marches
+
+    cache = tmp_path / "decp"
+    cache.mkdir()
+    fichier = cache / "decp.json"
+    fichier.write_bytes(CONSOLIDE_TABLEAU[: CONSOLIDE_TABLEAU.index(b'"id": "B"')])
+    monkeypatch.setattr(marches, "DECP_CACHE", cache)
+    monkeypatch.setattr(marches, "_echecs_reseau", [])
+    monkeypatch.setattr(marches, "COMMUNE_SIREN", "213001407")
+    monkeypatch.setattr(marches, "CAC_SIREN", "200070316")
+    monkeypatch.setattr(marches, "ACHETEUR_JETONS", ())
+
+    trouves = marches.extract_marches_from_file("https://example.test/x", "decp.json")
+    assert [m["id"] for m in trouves] == ["A"], "ce qui a été lu avant la coupure est gardé"
+    assert not fichier.exists(), "resté au magasin, il serait relu sept jours"
+    with pytest.raises(RuntimeError):
+        marches._relever_echecs_reseau()

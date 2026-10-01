@@ -499,8 +499,19 @@ def extract_marches_from_file(url: str, nom: str = "") -> list[dict]:
                     if is_commune or is_epci or is_name:
                         found.append(m)
         except Exception as e:
+            # Un consolidé qui ne se lit pas jusqu'au bout est une source
+            # MANQUÉE, pas une source vide : le step doit finir en erreur. Et le
+            # fichier ne doit pas rester « frais » sept jours — retiré du
+            # magasin, la passe suivante le reprend à la source. Les marchés lus
+            # avant la coupure sont gardés, comme pour tout échec partiel.
             print(f"  [erreur lecture DECP] {e}")
-            return []
+            _echecs_reseau.append(f"{nom or url[:80]} illisible → {str(e).split(chr(10))[0]}")
+            if chemin.parent == DECP_CACHE:
+                try:
+                    chemin.unlink(missing_ok=True)
+                    print(f"    [magasin] {chemin.name} retiré : repris à la source à la prochaine passe")
+                except OSError:
+                    pass
 
     return found
 

@@ -72,6 +72,24 @@ def ecrire_atomiquement(path: Path, contenu: bytes) -> bool:
             pass
 
 
+class TransfertTronque(EOFError):
+    """La source a rendu moins d'octets qu'elle n'en annonçait.
+
+    Pas un ``OSError`` : ce n'est pas le magasin qui refuse, c'est la source qui
+    n'a pas tout donné — l'appelant doit réessayer, pas se passer du partage.
+    """
+
+
+def _taille_annoncee(source) -> int | None:
+    """Le ``Content-Length`` d'une réponse HTTP, ``None`` pour tout autre flux."""
+    entetes = getattr(source, "headers", None)
+    valeur = entetes.get("Content-Length") if entetes is not None else None
+    try:
+        return int(valeur) if valeur is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def copier_atomiquement(path: Path, source, taille_bloc: int = 1 << 20) -> bool:
     """Écrit un flux dans le magasin sans jamais le charger entièrement en mémoire.
 
@@ -79,6 +97,12 @@ def copier_atomiquement(path: Path, source, taille_bloc: int = 1 << 20) -> bool:
     un refus d'écriture rend ``False`` au lieu de lever. La différence est le
     plafond de mémoire : un consolidé DECP annuel pèse jusqu'à 950 Mo, et
     ``resp.read()`` en faisait autant de mémoire vive avant même le parsing.
+
+    Une seule chose lève, ``TransfertTronque`` : lue par blocs, une connexion
+    coupée en route rend un bloc vide comme une fin de fichier, sans erreur.
+    Le 30/09/2026 deux consolidés sont ainsi entrés au magasin à 465 et 268 Mo
+    au lieu de 699 et 586, « frais » pour sept jours. La taille reçue est donc
+    comparée à la taille annoncée AVANT le remplacement.
     """
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,10 +110,15 @@ def copier_atomiquement(path: Path, source, taille_bloc: int = 1 << 20) -> bool:
         _signaler_refus(path, e)
         return False
 
+    annoncee = _taille_annoncee(source)
     temporaire = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.part")
     try:
         with temporaire.open("wb") as sortie:
             shutil.copyfileobj(source, sortie, taille_bloc)
+        recue = temporaire.stat().st_size
+        if annoncee is not None and recue != annoncee:
+            raise TransfertTronque(
+                f"{path.name} : {recue} octets reçus sur {annoncee} annoncés")
         os.replace(temporaire, path)
         return True
     except OSError as e:
