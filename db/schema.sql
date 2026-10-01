@@ -385,12 +385,28 @@ CREATE TABLE IF NOT EXISTS annotations (
     -- colonne, corriger un chiffre dans l'atelier ne laissait aucune trace, en
     -- silence. Le garde reste, il protège les bases anciennes.
     corrections   TEXT,
+    -- Objets à retenir (feuilles « en clair », dossiers) : l'empreinte du texte
+    -- RELU au moment de retenir. Un texte qui ne la porte plus n'est pas
+    -- publié — cf. collectors/verdict.py::publiable_tel_quel. 01/10/2026.
+    empreinte     TEXT,
     created_at    TEXT DEFAULT (datetime('now')),
     updated_at    TEXT DEFAULT (datetime('now')),
     UNIQUE(object_type, object_id)
 );
 CREATE INDEX IF NOT EXISTS idx_annotations_obj ON annotations(object_type, object_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_status ON annotations(object_type, review_status);
+
+-- ----------------------------------------------------------------
+-- DOSSIERS — l'identité en base d'un dossier thématique (01/10/2026)
+-- Le texte vit dans `<instance>/dossiers/<slug>.md` ; la base ne lui donne
+-- qu'un identifiant entier, celui que porte son verdict dans `annotations`
+-- (object_type = 'dossier'). Cf. collectors/dossiers.py.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dossiers (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug     TEXT NOT NULL UNIQUE,
+    cree_le  TEXT DEFAULT (datetime('now'))
+);
 
 -- ----------------------------------------------------------------
 -- COLLECTOR_RUNS — journal de la loop de collecte auto-pilotée

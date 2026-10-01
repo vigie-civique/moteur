@@ -73,6 +73,7 @@
     { href: '/atelier/geo',                    label: 'Points sur la carte' },
     { href: '/atelier/donnees',                label: 'Chiffres à confirmer' },
     { href: '/atelier/conseils',               label: 'Conseils en clair' },
+    { href: '/atelier/dossiers',               label: 'Dossiers' },
     { href: '/atelier/fiches',                 label: 'Toutes les fiches' },
     { href: '/atelier/saisie',                 label: 'Saisir une donnée' },
     { href: '/atelier/analyses',               label: 'Analyses croisées', min: 'validator' },

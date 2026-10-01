@@ -53,7 +53,7 @@
     if (!s.seance_id) { avis = "Aucune séance en base ne correspond à ce relevé."; return }
     occupe = { ...occupe, [s.releve]: true }; avis = ''
     try {
-      const corps = { note: notes[s.releve] || '', lu_le: s.reviewed_at }
+      const corps = { note: notes[s.releve] || '', lu_le: s.reviewed_at, empreinte_vue: s.empreinte }
       if (review_status) corps.review_status = review_status
       const res = await authFetch(`/atelier/annotations/en_clair/${s.seance_id}`, {
         method: 'PATCH', body: JSON.stringify(corps),
@@ -87,7 +87,7 @@
       </p>
     </div>
     {#if !loading}
-      <p class="compte"><strong>{seances.filter(s => s.verdict !== 'retenu').length}</strong> à relire sur {seances.length}</p>
+      <p class="compte"><strong>{seances.filter(s => s.verdict !== 'retenu' || s.modifie).length}</strong> à relire sur {seances.length}</p>
     {/if}
   </header>
 
@@ -98,7 +98,7 @@
   {:else}
     <ul class="liens">
       {#each seances as s (s.releve)}
-        <li class="lien" class:retenu={s.verdict === 'retenu'} class:ecarte={s.verdict === 'ecarte'}>
+        <li class="lien" class:retenu={s.verdict === 'retenu' && !s.modifie} class:ecarte={s.verdict === 'ecarte'}>
           <p class="paire"><span class="tag" class:cc={s.code === 'cc'}>{s.code === 'cc' ? 'CC' : 'CM'}</span>
             {s.date} — {s.titre}</p>
           <p class="meta">
@@ -106,6 +106,7 @@
             {s.erreurs_documents} erreur{s.erreurs_documents > 1 ? 's' : ''} dans les documents ·
             <span class="verdict">{LIBELLE[s.verdict]}</span>
             {#if s.reviewed_at} par {s.reviewed_by}, {heureLocale(s.reviewed_at)}{/if}
+            {#if s.modifie}<span class="modifie">relevé modifié depuis la relecture — ne sort plus</span>{/if}
           </p>
           {#if s.fautes.length}
             <div class="fautes"><strong>Le vérificateur refuse ce relevé :</strong>
@@ -156,6 +157,7 @@
   .tag.cc { background: #3f2e12; color: #fde68a; }
   .meta { font-size: .85rem; color: #94a3b8; margin: 0; }
   .verdict { color: #e2e8f0; font-weight: 600; }
+  .modifie { margin-left: .4rem; font-size: .78rem; color: #fde68a; background: #3f2e12; border-radius: .3rem; padding: .05rem .4rem; }
   .ok { font-size: .85rem; color: #86efac; margin: 0; }
   .fautes { font-size: .85rem; color: #fca5a5; }
   .fautes ul { margin: .2rem 0 0; padding-left: 1.1rem; }

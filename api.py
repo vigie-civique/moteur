@@ -35,11 +35,13 @@ SYNTHESES_DIR = BASE_DIR / "dashboard" / "static" / "api" / "syntheses"
 # données que le site ne publie pas, et l'écart ne se verrait jamais.
 from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
                                DEPARTEMENT, EPCI_NOM)
+from collectors import dossiers as _dossiers
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
 from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, OBJETS_A_RETENIR, RETENU, VERDICTS,
-                                geste_de, note_du_geste, verdict_de)
+                                empreinte, geste_de, modifie_depuis_relecture, note_du_geste,
+                                verdict_de)
 from collectors.files import (GEO_A_FAIRE, GEO_DEPUIS, GEO_ETAT,
                               RESERVATION_MINUTES, a_trancher, geo_params,
                               premier_jour, relever)
@@ -2170,7 +2172,9 @@ DONNEES_TYPES = ("deliberation", "flow", "marche")
 #: qu'on ne décide pas d'un objet qui n'existe pas.
 TABLE_DE_DECISION = {"entity": "entities", "relation": "relations",
                      # La séance dont une feuille « en clair » rend compte.
-                     "en_clair": "events"}
+                     "en_clair": "events",
+                     # Un dossier thématique (`collectors/dossiers.py`).
+                     "dossier": "dossiers"}
 
 #: Table portant chaque type d'objet annotable. Sert à lire son `origine` avant
 #: d'autoriser une rectification — cf. `_verifier_origine_modifiable`.
@@ -2448,6 +2452,10 @@ class AnnotationUpdate(BaseModel):
     # `reviewed_at` tel que l'éditeur l'a lu (null : aucune annotation encore).
     # FOURNI, il devient une condition — quelqu'un a annoté entre-temps → 409.
     lu_le: Optional[str] = None
+    # Objets à retenir : l'empreinte du texte que le validateur a sous les yeux.
+    # FOURNIE, elle devient une condition — le texte a changé entre-temps → 409 :
+    # on ne retient pas une version qu'on n'a pas lue.
+    empreinte_vue: Optional[str] = None
 
 
 @app.patch("/api/atelier/annotations/{object_type}/{object_id}")
@@ -2477,6 +2485,24 @@ def _exiger_releve_conforme(seance: int) -> None:
                                      + " ; ".join(fautes[:3]))
 
 
+def _empreinte_objet(object_type: str, object_id: int) -> Optional[str]:
+    """L'empreinte du texte qu'un verdict sur un objet à retenir porte : le ou
+    les relevés d'une séance, ou le markdown d'un dossier. None si introuvable."""
+    from collectors.verdict import empreinte
+    conn = get_db()
+    try:
+        if object_type == "en_clair":
+            from collectors.en_clair.seances import releves, seance_id
+            chemins = sorted(p for p, r in releves(RACINE) if seance_id(conn, r) == object_id)
+            return empreinte(b"".join(c.read_bytes() for c in chemins)) if chemins else None
+        if object_type == "dossier":
+            slug = _dossiers.slug_de(conn, object_id)
+            return _dossiers.empreinte_de(_dossiers.chemin(RACINE, slug)) if slug else None
+    finally:
+        conn.close()
+    return None
+
+
 def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
              statut_lu: Optional[str] = None) -> dict:
     """Le SEUL écrivain des décisions de l'atelier — cf. `collectors/verdict.py`.
@@ -2494,6 +2520,18 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
     if object_type == "en_clair" and req.review_status and \
             _verdict_requis(req.review_status) == RETENU:
         _exiger_releve_conforme(object_id)
+    a_retenir = object_type in OBJETS_A_RETENIR
+    if a_retenir:
+        conn = get_db_rw()
+        try:
+            _dossiers.assurer_schema(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    actuelle = _empreinte_objet(object_type, object_id) if a_retenir else None
+    if a_retenir and req.empreinte_vue and req.empreinte_vue != actuelle:
+        raise HTTPException(409, "Le texte a changé depuis que vous l'avez ouvert : "
+                                 "rechargez-le et relisez-le avant de décider.")
     demande = _verdict_requis(req.review_status) if req.review_status else None
     fournis = req.model_fields_set if hasattr(req, "model_fields_set") else req.__fields_set__
     table_fiche = TABLE_DE_DECISION.get(object_type)
@@ -2588,6 +2626,13 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
         """, (object_type, object_id, new_status, confidence, note,
               json.dumps(corrections, ensure_ascii=False) if corrections else None,
               user["email"]))
+        # Retenir signe un texte précis : son empreinte. Tout autre verdict
+        # l'efface ; une simple note la laisse — elle ne relit rien.
+        if a_retenir and demande:
+            if demande == RETENU and actuelle is None:
+                raise HTTPException(404, "Le texte de cet objet est introuvable.")
+            conn.execute("UPDATE annotations SET empreinte=? WHERE object_type=? AND object_id=?",
+                         (actuelle if demande == RETENU else None, object_type, object_id))
         conn.execute("""
             INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
             VALUES(?,?,?,?,?,?,?)
@@ -2629,8 +2674,10 @@ def _en_clair_ligne(conn, chemin, releve) -> dict:
 
     sid = seance_id(conn, releve)
     fautes = verifier(chemin)
-    a = row(conn, "SELECT review_status, note, reviewed_by, reviewed_at FROM annotations "
+    emp = "empreinte" if _dossiers.a_la_colonne_empreinte(conn) else "NULL AS empreinte"
+    a = row(conn, f"SELECT review_status, note, reviewed_by, reviewed_at, {emp} FROM annotations "
                   "WHERE object_type='en_clair' AND object_id=?", (sid,)) if sid else None
+    actuelle = empreinte(chemin.read_bytes())
     apres = releve["en_clair"]["apres"]
     return {
         "releve": chemin.parent.name,
@@ -2648,6 +2695,11 @@ def _en_clair_ligne(conn, chemin, releve) -> dict:
         "note": (a["note"] or "") if a else "",
         "reviewed_by": a["reviewed_by"] if a else None,
         "reviewed_at": a["reviewed_at"] if a else None,
+        "empreinte": actuelle,
+        # Retenu, puis le relevé a changé : il ne sortira plus tant qu'il n'est
+        # pas retenu de nouveau.
+        "modifie": modifie_depuis_relecture(a["review_status"] if a else None,
+                                            a["empreinte"] if a else None, actuelle),
     }
 
 
@@ -2674,6 +2726,135 @@ def atelier_en_clair_apercu(nom: str = FPath(..., pattern=r"^\d{4}-\d{2}-\d{2}-(
         raise HTTPException(404, f"Aucun relevé « {nom} ».")
     releve = json.loads(chemin.read_text())
     return HTMLResponse(document(f"Aperçu · {nom}", feuilles(releve) + page_erreurs(releve)))
+
+
+# ─── Les dossiers thématiques ────────────────────────────────────────────────
+#
+# 01/10/2026. Un dossier était un markdown édité sur le disque et publié par une
+# ligne de son en-tête : ni relecture, ni historique, ni moyen pour un éditeur
+# non technicien d'y toucher. Ici on les lit, on les écrit (contributeur et
+# au-dessus : écrire PROPOSE, ça ne publie rien), et on les retient par le même
+# `_decider` que tout le reste (validateur). Ce qui sort est décidé par le
+# snapshot : retenu ET inchangé depuis la relecture.
+
+_SLUG_DOSSIER = r"^[a-z0-9][a-z0-9-]{0,60}$"
+
+
+class DossierEcriture(BaseModel):
+    texte: str
+    # L'empreinte du fichier quand l'éditeur l'a ouvert ; null pour CRÉER.
+    empreinte_lue: Optional[str] = None
+
+
+class DossierCreation(BaseModel):
+    slug: str
+    titre: str
+
+
+def _dossier_ligne(conn, slug: str, p: Path) -> dict:
+    meta, corps = _dossiers.entete(p.read_text(encoding="utf-8"))
+    # Un dossier posé sur le disque (à la main, par un script) reçoit ici son
+    # identifiant : sans lui, aucun verdict ne pourrait s'y attacher.
+    did = _dossiers.identifiant(conn, slug, creer=True)
+    v = _dossiers.verdict(conn, did)
+    actuelle = _dossiers.empreinte_de(p)
+    statut = v["review_status"] if v else None
+    return {
+        "slug": slug, "dossier_id": did,
+        "titre": meta.get("titre") or slug, "chapeau": meta.get("chapeau", ""),
+        "maj": meta.get("maj", ""), "a_developper": meta.get("statut") == "a_developper",
+        "mots": len(corps.split()), "empreinte": actuelle,
+        "verdict": (verdict_de(statut) if v else None) or JAMAIS_RELU,
+        "modifie": modifie_depuis_relecture(statut, v and v["empreinte"], actuelle),
+        "note": (v or {}).get("note") or "",
+        "reviewed_by": (v or {}).get("reviewed_by"),
+        "reviewed_at": (v or {}).get("reviewed_at"),
+    }
+
+
+@app.get("/api/atelier/dossiers")
+def atelier_dossiers(user=Depends(require_auth)):
+    """Les dossiers de l'instance, avec leur verdict et leur état de relecture."""
+    conn = get_db_rw()
+    try:
+        _dossiers.assurer_schema(conn)
+        lignes = [_dossier_ligne(conn, slug, p) for slug, p in _dossiers.lister(RACINE)]
+        conn.commit()   # les identifiants donnés aux dossiers posés sur le disque
+        return lignes
+    finally:
+        conn.close()
+
+
+@app.get("/api/atelier/dossiers/{slug}")
+def atelier_dossier(slug: str = FPath(..., pattern=_SLUG_DOSSIER), user=Depends(require_auth)):
+    p = _dossiers.chemin(RACINE, slug)
+    if not p.exists():
+        raise HTTPException(404, f"Aucun dossier « {slug} ».")
+    conn = get_db_rw()
+    try:
+        _dossiers.assurer_schema(conn)
+        ligne = {**_dossier_ligne(conn, slug, p), "texte": p.read_text(encoding="utf-8")}
+        conn.commit()
+        return ligne
+    finally:
+        conn.close()
+
+
+def _identifier_dossier(slug: str) -> int:
+    """Donne au dossier son identifiant en base — celui que porte son verdict."""
+    conn = get_db_rw()
+    try:
+        _dossiers.assurer_schema(conn)
+        did = _dossiers.identifiant(conn, slug, creer=True)
+        conn.commit()
+        return did
+    finally:
+        conn.close()
+
+
+@app.put("/api/atelier/dossiers/{slug}")
+def atelier_dossier_ecrire(req: DossierEcriture, slug: str = FPath(..., pattern=_SLUG_DOSSIER),
+                           user=Depends(require_auth)):
+    """Enregistre le texte. Un dossier retenu qui change ne sort plus tant
+    qu'un validateur ne l'a pas relu et retenu de nouveau."""
+    exiger(user, "contributor", "Modifier un dossier")
+    if not _dossiers.chemin(RACINE, slug).exists():
+        raise HTTPException(404, f"Aucun dossier « {slug} ».")
+    try:
+        nouvelle = _dossiers.ecrire(RACINE, slug, req.texte, req.empreinte_lue)
+    except _dossiers.Conflit as e:
+        raise HTTPException(409, str(e))
+    did = _identifier_dossier(slug)
+    _journaliser_dossier(user, did, "edit")
+    return {"ok": True, "slug": slug, "empreinte": nouvelle}
+
+
+@app.post("/api/atelier/dossiers")
+def atelier_dossier_creer(req: DossierCreation, user=Depends(require_auth)):
+    exiger(user, "contributor", "Créer un dossier")
+    try:
+        p = _dossiers.chemin(RACINE, req.slug)
+        if p.exists():
+            raise HTTPException(409, f"Le dossier « {req.slug} » existe déjà.")
+        nouvelle = _dossiers.ecrire(RACINE, req.slug, _dossiers.modele(req.titre.strip()), None)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except _dossiers.Conflit as e:
+        raise HTTPException(409, str(e))
+    did = _identifier_dossier(req.slug)
+    _journaliser_dossier(user, did, "create")
+    return {"ok": True, "slug": req.slug, "dossier_id": did, "empreinte": nouvelle}
+
+
+def _journaliser_dossier(user, dossier_id: int, action: str) -> None:
+    conn = get_db_rw()
+    try:
+        conn.execute("INSERT INTO audit_log(user_id, entity_id, table_name, action, field) "
+                     "VALUES(?,?,?,?,?)", (user.get("id"), None, "dossiers", action,
+                                           f"dossier/{dossier_id}"))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ─── Saisie manuelle ──────────────────────────────────────────────────────────

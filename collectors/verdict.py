@@ -67,12 +67,49 @@ OBJETS = ("entity", "relation", "deliberation", "flow", "marche")
 #: relue ou elle ne sort pas. `jamais_relu` et `a_revoir` la gardent donc hors du
 #: site, `ecarte` aussi. L'identifiant est celui de la SÉANCE en base
 #: (`events`, type conseil_municipal ou conseil_communautaire).
-OBJETS_A_RETENIR = ("en_clair",)
+#: Le 01/10/2026, les DOSSIERS thématiques entrent dans la même règle (décision
+#: Julien) : jusque-là une ligne `statut: publie` tapée dans le markdown suffisait
+#: à les mettre en ligne. L'identifiant est `dossiers.id` (cf. collectors/dossiers.py).
+OBJETS_A_RETENIR = ("en_clair", "dossier")
 
 
 def publiable_si_retenu(statut: str | None) -> bool:
     """Un objet de `OBJETS_A_RETENIR` sort-il ? Seulement s'il est retenu."""
     return verdict_de(statut) == RETENU
+
+
+# ─── L'empreinte de ce qui a été relu ────────────────────────────────────────
+# Constaté le 01/10/2026 : un relevé réécrit APRÈS avoir été retenu restait
+# retenu, et la publication suivante l'aurait mis en ligne avec « relu à
+# l'atelier le … » — une relecture qui n'avait pas eu lieu. Retenir pose donc
+# l'empreinte du texte relu (`annotations.empreinte`) ; un texte qui ne la porte
+# plus n'est pas publié, et l'atelier le montre « modifié depuis la relecture ».
+# Rien n'est réécrit dans la base quand le texte change : l'état se DÉDUIT de la
+# comparaison, il ne peut donc pas être oublié par celui qui modifie le fichier
+# à la main.
+
+def empreinte(octets: bytes) -> str:
+    """L'empreinte d'un texte relu : 16 caractères de SHA-256 suffisent ici."""
+    import hashlib
+    return hashlib.sha256(octets).hexdigest()[:16]
+
+
+def modifie_depuis_relecture(statut: str | None, retenue: str | None,
+                             actuelle: str | None) -> bool:
+    """Retenu, mais sur un autre texte que celui d'aujourd'hui ?"""
+    return verdict_de(statut) == RETENU and retenue != actuelle
+
+
+def publiable_tel_quel(statut: str | None, retenue: str | None,
+                       actuelle: str | None) -> bool:
+    """Un objet à retenir sort-il ? Retenu, ET sur le texte exact qui a été relu.
+
+    Une empreinte absente ne vaut jamais accord : un verdict posé avant le
+    01/10/2026 passe par `scripts/reprendre_empreintes.py`, qui la pose s'il
+    peut établir que le texte n'a pas bougé depuis.
+    """
+    return (verdict_de(statut) == RETENU and retenue is not None
+            and retenue == actuelle)
 
 # Les anciens mots, et ce qu'ils voulaient dire. Deux vocabulaires ont coexisté :
 # `annotations.review_status` (pending / validated / rejected) et

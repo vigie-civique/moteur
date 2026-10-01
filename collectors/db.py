@@ -60,6 +60,8 @@ _COLONNES_AJOUTEES = [
     ("entities", "y_l93",             "REAL"),
     ("entities", "geocode_score",     "REAL"),
     ("annotations", "corrections",    "TEXT"),
+    # 01/10/2026 — l'empreinte du texte relu (objets à retenir), cf. verdict.py.
+    ("annotations", "empreinte",      "TEXT"),
     ("businesses", "pappers_fetched_at", "TEXT"),
     ("businesses", "pappers_raw",     "TEXT"),
     ("associations", "siren",         "TEXT"),

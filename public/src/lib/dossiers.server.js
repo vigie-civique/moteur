@@ -3,15 +3,19 @@
 // Tout le reste est de la donnée transformée mécaniquement. Un dossier relie des
 // faits épars autour d'une question d'intérêt public ; il vit dans l'INSTANCE,
 // un fichier markdown par dossier (`dossiers/<slug>.md`), hors du dépôt du
-// moteur parce qu'il nomme des personnes (cf. .gitignore). Son en-tête dit s'il
-// se publie :
+// moteur parce qu'il nomme des personnes (cf. .gitignore).
 //
 //   ---
 //   titre: L'eau à Lasalle
 //   chapeau: Deux services d'eau dans une même commune…
-//   statut: publie          # brouillon | a_developper | publie
+//   statut: a_developper    # facultatif : annonce le sujet, sans le corps
 //   maj: 2026-09-30
 //   ---
+//
+// Ce qui se publie n'est PLUS décidé ici (01/10/2026). Un dossier sort RETENU à
+// l'atelier, et tel qu'il a été relu : c'est le snapshot qui l'établit
+// (`collectors/dossiers.py::publiables`) et qui écrit `dossiers.json`. Ce
+// fichier ne contient que ce qui sort ; le site ne lit plus `dossiers/`.
 //
 // Le grand écart : un dossier se lit par un habitant pressé ET par un
 // spécialiste. Trois conventions d'écriture, mises en forme ici, le servent :
@@ -23,16 +27,16 @@
 //
 // Chaque partie (`## …`) reçoit une ancre et entre au sommaire.
 //
-// `brouillon` ne sort jamais — sauf dans l'aperçu local, avec
-// VIGIE_DOSSIERS_BROUILLONS=1, qui marque chaque page d'un bandeau. Un dossier
+// Seule exception : l'aperçu local avec VIGIE_DOSSIERS_BROUILLONS=1 lit tout
+// le répertoire, sans verdict, et marque chaque page d'un bandeau. Un dossier
 // `a_developper` annonce son sujet et rien d'autre : ni faits, ni personne
 // nommée, donc rien à quoi répondre (le statut vient de la v1).
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { marked } from 'marked'
+import { lireJSON } from '$lib/donnees.server.js'
 
 const REPERTOIRE = resolve(process.env.VIGIE_DOSSIERS_DIR || join(process.cwd(), '..', 'dossiers'))
-const STATUTS = new Set(['brouillon', 'a_developper', 'publie'])
 const AVEC_BROUILLONS = process.env.VIGIE_DOSSIERS_BROUILLONS === '1'
 
 export function entete(texte) {
@@ -84,23 +88,24 @@ export function mettreEnForme(html) {
            replis: (html.match(/<details/g) || []).length }
 }
 
-function publiable(statut) {
-  return statut === 'publie' || statut === 'a_developper' || (AVEC_BROUILLONS && statut === 'brouillon')
-}
-
-export function lireDossiers() {
+/** Les textes à mettre en page : ceux du snapshot, ou tout le répertoire en aperçu local. */
+function sources() {
+  if (!AVEC_BROUILLONS) return (lireJSON('dossiers.json', { dossiers: [] }).dossiers || [])
   let fichiers = []
   try { fichiers = readdirSync(REPERTOIRE).filter((f) => /^[a-z0-9-]+\.md$/.test(f)) }
   catch { return [] }  // pas de répertoire : l'instance n'a pas de dossier
+  return fichiers.map((f) => ({ slug: f.slice(0, -3), texte: readFileSync(join(REPERTOIRE, f), 'utf8') }))
+}
+
+export function lireDossiers() {
   const dossiers = []
-  for (const f of fichiers) {
-    const { meta, corps } = entete(readFileSync(join(REPERTOIRE, f), 'utf8'))
-    // Un statut absent ou mal écrit vaut brouillon : on ne publie pas par défaut.
-    const statut = STATUTS.has(meta.statut) ? meta.statut : 'brouillon'
-    if (!publiable(statut)) continue
+  for (const { slug, texte } of sources()) {
+    const { meta, corps } = entete(texte)
+    const statut = meta.statut === 'a_developper' ? 'a_developper'
+      : AVEC_BROUILLONS ? 'brouillon' : 'publie'
     dossiers.push({
-      slug: f.slice(0, -3),
-      titre: meta.titre || f.slice(0, -3),
+      slug,
+      titre: meta.titre || slug,
       chapeau: meta.chapeau || '',
       maj: meta.maj || '',
       statut,

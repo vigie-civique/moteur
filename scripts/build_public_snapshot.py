@@ -2498,27 +2498,38 @@ def export_telecoms(conn, insee: str, departement: str, rayon_km: float) -> dict
 # vérificateur ne lui trouve aucune faute au moment de publier. Une source
 # corrigée depuis la relecture peut rendre fausse une feuille retenue : elle
 # sort alors du site jusqu'à nouvelle relecture, et le compte-rendu le dit.
+# Depuis le 01/10/2026, elle sort aussi telle qu'elle a été RELUE : un relevé
+# modifié après avoir été retenu ne porte plus l'empreinte retenue, et attend
+# une nouvelle relecture (`verdict.publiable_tel_quel`).
 
 def export_en_clair(conn, out: Path, root: Path) -> dict:
     from collectors.en_clair.rendu import document, feuilles, page_erreurs
     from collectors.en_clair.seances import nom_de_fichier, releves, seance_id
     from collectors.en_clair.verifier import verifier
-    from collectors.verdict import publiable_si_retenu
+    from collectors.dossiers import a_la_colonne_empreinte
+    from collectors.verdict import empreinte, publiable_si_retenu
 
     dossier = out / "conseils"
     dossier.mkdir(parents=True, exist_ok=True)
     for f in dossier.glob("*.html"):         # miroir : une feuille retirée sort
         f.unlink()
-    index, ecartes = [], {"non_retenus": 0, "en_faute": [], "sans_seance": []}
+    index, ecartes = [], {"non_retenus": 0, "en_faute": [], "sans_seance": [],
+                          "modifies": []}
+    emp = "empreinte" if a_la_colonne_empreinte(conn) else "NULL AS empreinte"
     for chemin, r in releves(root):
         sid = seance_id(conn, r)
         if sid is None:
             ecartes["sans_seance"].append(chemin.parent.name)
             continue
-        a = row(conn, "SELECT review_status, reviewed_at FROM annotations "
+        a = row(conn, f"SELECT review_status, reviewed_at, {emp} FROM annotations "
                       "WHERE object_type='en_clair' AND object_id=?", (sid,))
         if not a or not publiable_si_retenu(a["review_status"]):
             ecartes["non_retenus"] += 1
+            continue
+        if a["empreinte"] != empreinte(chemin.read_bytes()):
+            # Retenu sur un autre texte (ou avant que l'empreinte existe, et
+            # pas encore repris par scripts/reprendre_empreintes.py).
+            ecartes["modifies"].append(chemin.parent.name)
             continue
         if verifier(chemin):
             ecartes["en_faute"].append(chemin.parent.name)
@@ -2546,6 +2557,19 @@ def export_en_clair(conn, out: Path, root: Path) -> dict:
     index.sort(key=lambda x: (x["date"], x["code"] or ""))
     write_json(out / "conseils.json", {"seances": index, "total": len(index)})
     return {"publiees": len(index), **ecartes}
+
+
+# Les dossiers thématiques suivent la même règle depuis le 01/10/2026 : publiés
+# RETENUS à l'atelier, et tels qu'ils ont été relus. Le site ne lit plus le
+# répertoire `dossiers/` de l'instance : il lit `dossiers.json`, écrit ici, qui
+# ne contient que ce qui sort. Un dossier écarté ou en cours de réécriture n'y
+# figure pas — il n'a ni page ni URL.
+
+def export_dossiers(conn, out: Path, root: Path) -> dict:
+    from collectors.dossiers import publiables
+    sortis, ecartes = publiables(conn, root)
+    write_json(out / "dossiers.json", {"dossiers": sortis, "total": len(sortis)})
+    return {"publies": len(sortis), **ecartes}
 
 
 def synchroniser_site_public(src: Path, root: Path) -> dict:
@@ -4089,6 +4113,7 @@ def build_snapshot(out: Path) -> dict:
                                          lire_journal_corrections())
         write_json(out / "corrections.json", corrections)
         stats["conseils_en_clair"] = export_en_clair(conn, out, ROOT)
+        stats["dossiers"] = export_dossiers(conn, out, ROOT)
         stats["corrections_site"] = len(corrections["site"])
         stats["actualite_items"] = min(len(actualite), 400)
         stats["actualite_a_venir"] = len(a_venir)

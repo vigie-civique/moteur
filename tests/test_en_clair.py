@@ -154,10 +154,13 @@ def _seance(conn) -> int:
     return sid
 
 
-def _verdict(conn, sid, statut):
+def _verdict(conn, sid, statut, instance=None):
+    """Un verdict posé comme l'atelier le pose : retenir signe l'empreinte du relevé lu."""
+    from collectors.verdict import empreinte
+    emp = empreinte(_chemin(instance).read_bytes()) if instance and statut == "retenu" else None
     conn.execute("INSERT INTO annotations(object_type, object_id, review_status, reviewed_by, "
-                 "reviewed_at) VALUES('en_clair', ?, ?, 'relectrice@fictiville.invalid', "
-                 "'2026-01-12 10:00:00')", (sid, statut))
+                 "reviewed_at, empreinte) VALUES('en_clair', ?, ?, 'relectrice@fictiville.invalid', "
+                 "'2026-01-12 10:00:00', ?)", (sid, statut, emp))
     conn.commit()
 
 
@@ -167,7 +170,7 @@ def test_seule_une_feuille_retenue_est_publiee(base, instance, tmp_path, statut,
     from scripts.build_public_snapshot import export_en_clair
     sid = _seance(base)
     if statut:
-        _verdict(base, sid, statut)
+        _verdict(base, sid, statut, instance)
     out = tmp_path / "snapshot"
 
     r = export_en_clair(base, out, instance)
@@ -186,13 +189,34 @@ def test_seule_une_feuille_retenue_est_publiee(base, instance, tmp_path, statut,
 def test_une_feuille_retenue_devenue_fausse_sort_du_site(base, instance, tmp_path):
     """La source a changé depuis la relecture : la feuille n'est plus vraie."""
     from scripts.build_public_snapshot import export_en_clair
-    _verdict(base, _seance(base), "retenu")
+    _verdict(base, _seance(base), "retenu", instance)
     (instance / "data" / "pv.txt").write_text(PV.replace("1 200 €", "1 500 €"))
 
     r = export_en_clair(base, tmp_path / "snapshot", instance)
 
     assert r["publiees"] == 0
     assert r["en_faute"] == ["2026-01-10-cm"]
+
+
+def test_un_releve_reecrit_apres_relecture_ne_sort_plus(base, instance, tmp_path):
+    """Le défaut du 01/10/2026 : réécrit après avoir été retenu, un relevé
+    serait sorti signé « relu à l'atelier » sans que personne l'ait relu."""
+    from scripts.build_public_snapshot import export_en_clair
+    _verdict(base, _seance(base), "retenu", instance)
+    _chemin(instance).write_text(json.dumps(_releve("Le club reçoit 1 200 € cette année."),
+                                            ensure_ascii=False))
+    assert verifier(_chemin(instance)) == [], "le relevé réécrit reste conforme"
+
+    r = export_en_clair(base, tmp_path / "snapshot", instance)
+
+    assert (r["publiees"], r["modifies"]) == (0, ["2026-01-10-cm"])
+
+
+def test_un_verdict_sans_empreinte_ne_publie_pas(base, instance, tmp_path):
+    """Retenu avant l'empreinte et pas repris : on ne sait pas ce qui a été relu."""
+    from scripts.build_public_snapshot import export_en_clair
+    _verdict(base, _seance(base), "retenu")
+    assert export_en_clair(base, tmp_path / "snapshot", instance)["publiees"] == 0
 
 
 # ── l'atelier ────────────────────────────────────────────────────────────────
@@ -247,6 +271,22 @@ def test_seul_un_validateur_retient(atelier):
     r = atelier["en_tant_que"](VALIDEUR).patch(url, json={"review_status": "retenu", "note": "relu"})
     assert r.status_code == 200, r.text
     assert r.json()["review_status"] == "retenu"
+
+
+def test_retenir_signe_le_releve_lu_et_le_signale_quand_il_change(atelier):
+    client = atelier["en_tant_que"](VALIDEUR)
+    [s] = client.get("/api/atelier/en-clair").json()
+    url = f"/api/atelier/annotations/en_clair/{atelier['seance']}"
+    assert client.patch(url, json={"review_status": "retenu",
+                                   "empreinte_vue": s["empreinte"]}).status_code == 200
+    assert client.get("/api/atelier/en-clair").json()[0]["modifie"] is False
+
+    _chemin(atelier["instance"]).write_text(
+        json.dumps(_releve("Le club reçoit 1 200 € cette année."), ensure_ascii=False))
+    assert client.get("/api/atelier/en-clair").json()[0]["modifie"] is True
+    # Retenir la version qu'on a vue AVANT le changement : refusé.
+    r = client.patch(url, json={"review_status": "retenu", "empreinte_vue": s["empreinte"]})
+    assert r.status_code == 409
 
 
 def test_un_releve_en_faute_ne_peut_pas_etre_retenu(atelier):

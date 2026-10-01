@@ -12,7 +12,8 @@
   "dependencies": {
     "d3": "^7.9.0",
     "leaflet": "^1.9.4",
-    "leaflet.markercluster": "^1.5.3"
+    "leaflet.markercluster": "^1.5.3",
+    "marked": "18.0.14"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "3.0.10",
