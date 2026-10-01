@@ -30,6 +30,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from .verifier import verifier
 
@@ -122,6 +123,102 @@ dl.mots dd { display:inline; margin:0; }
 .tampon { position:absolute; bottom:24mm; right:4mm; transform:rotate(-8deg);
   font:700 26pt/1 var(--display); letter-spacing:.12em; color:rgba(160,40,30,.28);
   border:3pt solid rgba(160,40,30,.28); padding:2mm 5mm; pointer-events:none; }
+.ecran, .u-court { display:none; }
+
+/* À l'écran, la même page se lit comme le site : les feuilles deviennent des
+   cartes sur fond papier, au corps et aux jetons de la charte publique
+   (public/src/routes/+layout.svelte). Sans ce bloc, la page servait le gabarit
+   d'impression tel quel : 9 pt, collé aux bords, et 275 mm de hauteur forcée
+   qui laissait un vide d'une demi-page sous une feuille courte. */
+@media screen {
+  :root { --ink:#14202a; --muted:#5c6b72; --rule:#dde2df; --accent:#14556b;
+    --accent-soft:#eef3f5; --ok:#2c6e4f; --ok-soft:#e6f1ea; --split:#9a6b12;
+    --split-soft:#f7f1e4; --warn:#a4453a; --warn-soft:#f8ebe8;
+    --display:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+    --texte:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; }
+  body { background:#f6f7f5; font:16px/1.6 var(--texte); -webkit-font-smoothing:antialiased;
+    padding:0 1rem 3rem; }
+  a { text-underline-offset:2px; }
+  .ecran { display:flex; flex-wrap:wrap; gap:.4rem 1rem; align-items:center;
+    justify-content:space-between; max-width:820px; margin:0 auto; padding:1rem 0 .2rem;
+    font-size:.88rem; color:var(--muted); }
+  .ecran a { color:var(--accent); text-decoration:none; }
+  .ecran a:hover { text-decoration:underline; }
+  .ecran button { font:inherit; color:var(--accent); background:#fff; cursor:pointer;
+    border:1px solid var(--rule); border-radius:5px; padding:.3rem .8rem; }
+  .ecran button:hover { border-color:var(--accent); }
+  .sheet, .sheet.serre { min-height:0; max-width:820px; margin:1.2rem auto 0; gap:1.4rem;
+    background:#fff; border:1px solid var(--rule); border-radius:6px;
+    padding:2rem 2.6rem 1.6rem; overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,32,42,.05), 0 6px 18px rgba(20,32,42,.05); }
+  .label { font:600 .72rem/1.3 var(--texte); letter-spacing:.08em; flex-wrap:wrap; }
+  .label span:first-child { color:var(--accent); }
+  .mast { gap:.5rem; padding-bottom:1.1rem; border-bottom:2px solid var(--ink); }
+  .name { font:600 .78rem/1.3 var(--texte); letter-spacing:.08em; color:var(--muted); }
+  h1 { font:600 2rem/1.15 var(--display); letter-spacing:-.01em; }
+  .meta { font-size:1.02rem; line-height:1.55; }
+  .box { padding:.9rem 1.1rem; border-radius:5px; border-left:3px solid var(--accent);
+    font-size:.95rem; line-height:1.55; }
+  .box.warn { border-left-color:var(--warn); }
+  .box b { font:600 1rem var(--texte); }
+  ol.agenda li { grid-template-columns:2.4rem 1fr; padding:.8rem 0; }
+  ol.agenda li::before { font:.85rem/1.7 var(--mono); }
+  ol.agenda b { font:600 1.12rem/1.3 var(--display); }
+  ol.agenda p { margin-top:.25rem; font-size:.95rem; line-height:1.55; }
+  .odj h3, .aussi h3, .bloc h3 { font:600 .75rem/1.3 var(--texte); letter-spacing:.08em;
+    margin:0 0 .7rem; }
+  .bloc h3 { padding-bottom:.4rem; }
+  .odj ol { font-size:.95rem; line-height:1.5; column-gap:2.4rem; padding-left:1.6rem; }
+  .odj li { padding:.15rem 0; }
+  .facts { border-radius:5px; overflow:hidden; }
+  .facts div { padding:.9rem 1rem; }
+  .facts b { font:600 1.9rem/1.1 var(--display); }
+  .facts span { display:block; margin-top:.2rem; font-size:.85rem; line-height:1.4; }
+  .cols { column-gap:2.6rem; }
+  .item { padding-bottom:1rem; margin-bottom:1rem; border-bottom:1px solid var(--rule); }
+  .item h2 { font:600 1.2rem/1.3 var(--display); margin:0 0 .35rem; }
+  .item.une h2 { font-size:1.4rem; }
+  .item p { font-size:.97rem; line-height:1.6; }
+  .item p.pq { margin-top:.6rem; font-size:.93rem; padding:.1rem 0 .1rem .8rem; border-left-width:2px; }
+  .item p.pq b { display:block; font:600 .7rem/1.6 var(--texte); letter-spacing:.08em; }
+  .row { gap:.4rem .5rem; margin-top:.6rem; }
+  .acte { font-size:.78rem; }
+  .vote { font:600 .7rem/1 var(--texte); letter-spacing:.04em; padding:.3rem .5rem; border-radius:3px; }
+  .aussi ul { font-size:.95rem; line-height:1.6; padding-left:1.2rem; }
+  .aussi li { margin-bottom:.4rem; }
+  .aussi .vote { margin-left:.3rem; vertical-align:.1em; }
+  .dit { padding:.8rem 0 1rem; border-bottom:1px solid var(--rule); }
+  .dit h4 { font:600 1.1rem/1.3 var(--display); gap:.3rem .7rem; margin-bottom:.3rem; }
+  .dit p, .serre .dit p { font-size:.97rem; line-height:1.6; }
+  .dit blockquote, .serre .dit blockquote { margin-top:.5rem; padding:.1rem 0 .1rem .9rem;
+    border-left-width:2px; font-size:.95rem; line-height:1.55; }
+  ul.suivre, .serre ul.suivre { gap:.55rem; font-size:.97rem; line-height:1.55; }
+  ul.suivre li { grid-template-columns:1.6rem 1fr; }
+  ul.suivre li::before { font-size:1.05rem; line-height:1.4; }
+  dl.mots, .serre dl.mots { columns:2; column-gap:2.4rem; font-size:.93rem; line-height:1.55; }
+  dl.mots div { margin-bottom:.6rem; }
+  dl.mots dt { font:600 1rem/1.4 var(--display); }
+  ul.err { font-size:1rem; line-height:1.6; gap:.8rem; padding-left:1.3rem; }
+  .foot { border-top:1px solid var(--rule); padding-top:.9rem; font-size:.8rem; line-height:1.5;
+    gap:.3rem; }
+  .u-long { display:none; }
+  .u-court { display:inline; }
+  .foot .src { word-break:normal; overflow-wrap:anywhere; }
+  .tampon { bottom:5rem; right:1.4rem; font-size:1.8rem; }
+}
+@media screen and (max-width:720px) {
+  body { padding:0 .6rem 2rem; }
+  .sheet, .sheet.serre { padding:1.3rem 1.1rem 1.1rem; border-radius:4px; gap:1.1rem; }
+  h1 { font-size:1.55rem; }
+  .facts { grid-template-columns:repeat(2,1fr); }
+  .facts div:nth-child(2n) { border-right:0; }
+  .facts div:nth-child(-n+2) { border-bottom:.6pt solid var(--rule); }
+  .facts b { font-size:1.5rem; }
+  .cols, .odj ol, dl.mots, .serre dl.mots { columns:1; }
+  .label { flex-direction:column; gap:.2rem; }
+}
+@media print { .ecran { display:none; } }
 """
 
 
@@ -161,12 +258,21 @@ def _vote(actes: dict, numeros: list[int]) -> str:
     return "".join(puces)
 
 
+def _url_courte(u: str) -> str:
+    """« www.lasalle.fr › CM 28.05.26 DELIBERATIONS.pdf » : ce qu'on lit à
+    l'écran, où le lien se suit. Le papier garde l'adresse entière."""
+    p = urlsplit(u)
+    fichier = unquote(p.path.rstrip("/").rsplit("/", 1)[-1])
+    return f"{p.netloc} › {fichier}" if fichier else p.netloc or u
+
+
 def _sources(releve: dict, seule: str | None = None) -> str:
     """Les pièces, avec leur adresse : le lecteur doit pouvoir remonter à tout.
     `seule` : la seule pièce de la séance, quand la feuille ne cite qu'elle."""
     libelles = releve.get("sources_libelles", {})
     lignes = [f'<div class="src">{e(libelles.get(k, k))} : '
-              f'<a href="{html.escape(u)}">{html.escape(u)}</a></div>'
+              f'<a href="{html.escape(u)}"><span class="u-long">{html.escape(u)}</span>'
+              f'<span class="u-court">{html.escape(_url_courte(u))}</span></a></div>'
               for k, u in releve.get("sources_url", {}).items() if seule in (None, k)]
     return "".join(lignes)
 
@@ -321,10 +427,17 @@ def page_erreurs(releve: dict) -> str:
 </section>"""
 
 
-def document(titre: str, corps: str) -> str:
+def document(titre: str, corps: str, retour: tuple[str, str] | None = None) -> str:
+    """`retour` : (adresse, libellé) du lien de retour, montré à l'écran
+    seulement — la page publiée renvoie à la liste des séances."""
+    barre = ""
+    if retour:
+        barre = (f'<nav class="ecran"><a href="{html.escape(retour[0])}">← {e(retour[1])}</a>'
+                 f'<button type="button" onclick="window.print()">Imprimer · PDF</button></nav>')
     return (f'<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width, initial-scale=1">'
             f"<title>{e(titre)}</title><style>{CSS}</style></head>"
-            f"<body>{corps}</body></html>")
+            f"<body>{barre}{corps}</body></html>")
 
 
 def chrome_disponible() -> bool:

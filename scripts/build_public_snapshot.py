@@ -2530,7 +2530,8 @@ def export_en_clair(conn, out: Path, root: Path) -> dict:
         s = r["seance"]
         (dossier / f"{nom}.html").write_text(document(
             f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
-            feuilles(r, relu=relu) + page_erreurs(r)), encoding="utf-8")
+            feuilles(r, relu=relu) + page_erreurs(r),
+            retour=("/conseils", "Toutes les séances")), encoding="utf-8")
         ap = r["en_clair"]["apres"]
         index.append({
             "date": s["date"],
