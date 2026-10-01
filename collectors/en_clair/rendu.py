@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rend « le conseil en clair » d'une séance en A4 : feuille avant, feuille après.
+"""Rend « le conseil en clair » d'une séance en A4 : avant, après, comprendre, documents.
 
     python -m collectors.en_clair.rendu data/conseils/2026-03-04-cc/releve.json
 
@@ -94,6 +94,31 @@ ol.agenda p { grid-column:2; margin:.6mm 0 0; font-size:8.8pt; color:var(--muted
   color:var(--muted); display:grid; gap:.6mm; margin-top:auto; }
 .foot .src { word-break:break-all; }
 ul.err { margin:0; padding-left:5mm; font-size:10pt; line-height:1.5; display:grid; gap:2.2mm; }
+.item p.pq { margin-top:1mm; font-size:8.5pt; color:var(--ink); border-left:1.6pt solid var(--accent);
+  padding-left:2mm; }
+.item p.pq b { font:600 7.4pt/1 var(--display); letter-spacing:.06em; text-transform:uppercase;
+  color:var(--accent); }
+.bloc h3 { font:700 8.4pt/1 var(--display); letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 1.6mm; border-bottom:.6pt solid var(--rule); padding-bottom:1mm; }
+.sheet.serre { gap:2.2mm; }
+.serre .dit p { font-size:8.6pt; line-height:1.35; }
+.serre .dit blockquote { margin-top:.6mm; font-size:8.3pt; line-height:1.3; }
+.serre ul.suivre { gap:.9mm; font-size:8.6pt; }
+.serre dl.mots { font-size:8.1pt; line-height:1.3; }
+.dit { break-inside:avoid; padding:1.1mm 0 1.5mm; border-bottom:.5pt dotted var(--rule); }
+.dit h4 { font:700 10pt/1.15 var(--display); margin:0 0 .5mm; display:flex; flex-wrap:wrap;
+  align-items:baseline; gap:1.5mm 2.5mm; }
+.dit h4 .row { margin:0; }
+.dit p { margin:0; font-size:8.8pt; }
+.dit blockquote { margin:1mm 0 0; padding:.4mm 0 .4mm 2.4mm; border-left:1.6pt solid var(--rule);
+  font-style:italic; font-size:8.6pt; color:var(--muted); }
+ul.suivre { list-style:none; margin:0; padding:0; display:grid; gap:1.4mm; font-size:8.8pt; }
+ul.suivre li { display:grid; grid-template-columns:5mm 1fr; break-inside:avoid; }
+ul.suivre li::before { content:"□"; color:var(--accent); font-size:10pt; line-height:1.1; }
+dl.mots { columns:3; column-gap:5mm; margin:0; font-size:8.4pt; }
+dl.mots div { break-inside:avoid; margin-bottom:1.4mm; }
+dl.mots dt { font:700 8.8pt/1.2 var(--display); display:inline; }
+dl.mots dd { display:inline; margin:0; }
 .tampon { position:absolute; bottom:24mm; right:4mm; transform:rotate(-8deg);
   font:700 26pt/1 var(--display); letter-spacing:.12em; color:rgba(160,40,30,.28);
   border:3pt solid rgba(160,40,30,.28); padding:2mm 5mm; pointer-events:none; }
@@ -136,12 +161,13 @@ def _vote(actes: dict, numeros: list[int]) -> str:
     return "".join(puces)
 
 
-def _sources(releve: dict) -> str:
-    """Les pièces, avec leur adresse : le lecteur doit pouvoir remonter à tout."""
+def _sources(releve: dict, seule: str | None = None) -> str:
+    """Les pièces, avec leur adresse : le lecteur doit pouvoir remonter à tout.
+    `seule` : la seule pièce de la séance, quand la feuille ne cite qu'elle."""
     libelles = releve.get("sources_libelles", {})
     lignes = [f'<div class="src">{e(libelles.get(k, k))} : '
               f'<a href="{html.escape(u)}">{html.escape(u)}</a></div>'
-              for k, u in releve.get("sources_url", {}).items()]
+              for k, u in releve.get("sources_url", {}).items() if seule in (None, k)]
     return "".join(lignes)
 
 
@@ -199,7 +225,9 @@ def feuilles(releve: dict, relu: str | None = None) -> str:
             ns = it["actes"]
             items += (f'<div class="item{" une" if it.get("une") else ""}">'
                       f"<h2>{e(it['titre'])}</h2><p>{e(it['texte'])}</p>"
-                      f'<div class="row">{_vote(actes, ns)}'
+                      + (f'<p class="pq"><b>Pourquoi ça compte</b> {e(it["pourquoi"])}</p>'
+                         if it.get("pourquoi") else "")
+                      + f'<div class="row">{_vote(actes, ns)}'
                       f'<span class="acte">{"n°" + " · ".join(map(str, ns)) if ns else ""}'
                       f'</span></div></div>')
         aussi = "".join(f"<li>{e(a['texte'])} {_vote(actes, a['actes'])}</li>"
@@ -220,7 +248,53 @@ def feuilles(releve: dict, relu: str | None = None) -> str:
     <div>Relevé : {e(releve['origine']['releve'])}{', ' + e(relu) if relu and relu.startswith('relu') else (', relu par ' + e(relu) if relu else ', non relu')}.
     Une erreur ? Signalez-la : chaque correction est publiée.</div>{sources}</div>
 </section>"""
-    return avant + apres
+    return avant + apres + comprendre(releve, tampon)
+
+
+def _numeros(ns) -> str:
+    return f'<span class="acte">n°{" · ".join(map(str, ns))}</span>' if ns else ""
+
+
+def comprendre(releve: dict, tampon: str = "") -> str:
+    """Feuille 3 (facultative) : ce qui s'est dit, ce qui reste à suivre, les
+    mots de la séance. Absente du relevé, rien n'est rendu.
+
+    Chaque citation y est retrouvée mot pour mot DANS son acte par le
+    vérificateur, comme celles des actes : l'éditorial n'est pas la partie
+    du document où l'on cesse de contrôler."""
+    c = releve["en_clair"].get("comprendre")
+    if not c:
+        return ""
+    s = releve["seance"]
+    actes = {a["n"]: a for a in releve["actes"]}
+    blocs = []
+    if c.get("debats"):
+        dits = "".join(
+            f'<div class="dit"><h4>{e(d["titre"])}<span class="row">'
+            f'{_vote(actes, d.get("actes", []))}{_numeros(d.get("actes"))}</span></h4>'
+            f'<p>{e(d["texte"])}</p>'
+            + (f'<blockquote>« {e(d["citation"])} »</blockquote>' if d.get("citation") else "")
+            + "</div>"
+            for d in c["debats"])
+        intro = f'<div class="box warn">{e(c["avertissement"])}</div>' if c.get("avertissement") else ""
+        blocs.append(f'<div class="bloc"><h3>Ce qui s’est dit</h3>{intro}{dits}</div>')
+    if c.get("a_suivre"):
+        lis = "".join(f'<li><span>{e(x["texte"])} {_numeros(x.get("actes"))}</span></li>'
+                      for x in c["a_suivre"])
+        blocs.append(f'<div class="bloc"><h3>À suivre</h3><ul class="suivre">{lis}</ul></div>')
+    if c.get("lexique"):
+        mots = "".join(f'<div><dt>{e(m["terme"])}</dt> <dd>: {e(m["definition"])}</dd></div>'
+                       for m in c["lexique"])
+        blocs.append(f'<div class="bloc"><h3>Les mots de la séance</h3><dl class="mots">{mots}</dl></div>')
+    return f"""
+<section class="sheet serre">{tampon}
+  <div class="label"><span>Feuille 3 · comprendre la séance</span><span>séance du {date_longue(s['date'])}</span></div>
+  <div class="mast"><div class="name">{e(s['assemblee_court'])} · le conseil en clair</div>
+    <h1>{e(c.get('titre', 'Comprendre la séance'))}</h1>
+    {'<div class="meta">' + e(c['chapeau']) + '</div>' if c.get('chapeau') else ''}</div>
+  {''.join(blocs)}
+  <div class="foot"><div>{e(c.get('pied', ''))}</div>{_sources(releve, seule=releve.get('source_actes', 'pv'))}</div>
+</section>"""
 
 
 def erreurs(releve: dict) -> list[str]:
@@ -230,14 +304,14 @@ def erreurs(releve: dict) -> list[str]:
 
 
 def page_erreurs(releve: dict) -> str:
-    """Troisième feuille d'une séance : les défauts relevés dans ses pièces."""
+    """Dernière feuille d'une séance : les défauts relevés dans ses pièces."""
     s = releve["seance"]
     liste = erreurs(releve)
     corps = ("<ul class=\"err\">" + "".join(f"<li>{e(x)}</li>" for x in liste) + "</ul>"
              if liste else "<p>Aucune erreur ni lacune relevée dans les pièces de cette séance.</p>")
     return f"""
 <section class="sheet">
-  <div class="label"><span>Feuille 3 · les documents</span><span>séance du {date_longue(s['date'])}</span></div>
+  <div class="label"><span>Feuille {4 if releve['en_clair'].get('comprendre') else 3} · les documents</span><span>séance du {date_longue(s['date'])}</span></div>
   <div class="mast"><div class="name">{e(s['assemblee_court'])} · le conseil en clair</div>
     <h1>Ce que les documents publics ont de faux ou d’incomplet</h1>
     <div class="meta">Relevé par Vigie Civique en confrontant les pièces de la séance entre elles

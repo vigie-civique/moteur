@@ -15,9 +15,11 @@ l'un ni à l'autre. Il n'écrit rien. Il contrôle :
   3. MONTANTS    chaque montant déclaré existe dans une source ;
   4. VOTES       pour + contre + abstentions ≤ votants annoncés ;
   5. CALCULS     chaque chiffre dérivé (hausse en %, total) est recalculé ;
-  6. EN CLAIR    chaque nombre écrit dans les deux feuilles figure dans une
+  6. EN CLAIR    chaque nombre écrit dans les feuilles figure dans une
                  source ou dans un calcul vérifié. C'est le contrôle qui compte :
-                 la rédaction est l'étape où un chiffre s'invente.
+                 la rédaction est l'étape où un chiffre s'invente ;
+  7. DITS        chaque citation de la feuille « comprendre » est retrouvée mot
+                 pour mot dans la portée des actes qu'elle déclare.
 
 Code de sortie 0 si tout passe, 1 sinon — la feuille ne se publie pas en 1.
 """
@@ -236,8 +238,44 @@ def verifier(chemin: Path) -> list[str]:
                 if _cle_nombre(n) not in permis:
                     fautes.append(f"EN CLAIR ({feuille}) « {n} » introuvable dans "
                                   f"{lieu} : « {texte[:60]} »")
+    # 7. Dits — une parole rapportée l'est mot pour mot, et dans son acte :
+    # c'est la phrase qu'on prêterait à quelqu'un, la faute la plus grave.
+    # Quand la marque OUVRE l'acte (« Délibération n°… », « EXTRAIT DU
+    # REGISTRE »), l'acte va de sa marque à la suivante, et la borne est
+    # stricte. Quand elle le FERME (« après en avoir délibéré »), le débat la
+    # précède et la frontière avec l'acte voisin n'est pas lisible : la
+    # portée large s'applique, et la borne ne vaut que ce qu'elle vaut.
+    ferme = "avoir" in (releve.get("marque_acte_ordinale") or "")
+
+    def acte_seul(n: int) -> str:
+        if n not in marques or ferme:
+            return portee(n)
+        debut = marques[n]
+        return pv[debut: next((p for p in positions if p > debut), len(pv))]
+
+    for feuille, bloc in releve["en_clair"].items():
+        for d in _cites(bloc):
+            cit = _norm(d["citation"])
+            lieux = [acte_seul(n) for n in d.get("actes") or []] or [pv]
+            if not any(cit in lieu for lieu in lieux):
+                ou = "introuvable" if cit not in pv else "hors de ses actes"
+                fautes.append(f"DIT ({feuille}) citation {ou} : « {cit[:70]} »")
     verifier.avis = avis
     return fautes
+
+
+def _cites(bloc):
+    """Les paragraphes d'une feuille qui rapportent une citation."""
+    if isinstance(bloc, list):
+        for x in bloc:
+            yield from _cites(x)
+    elif isinstance(bloc, dict):
+        # Un renvoi porte aussi une citation, mais dans SA source : contrôlé
+        # plus haut, il n'est pas une parole de la séance.
+        if isinstance(bloc.get("citation"), str) and "source" not in bloc:
+            yield bloc
+        for x in bloc.values():
+            yield from _cites(x)
 
 
 def _paragraphes(bloc, cites=None, renvois=()):

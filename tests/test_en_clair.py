@@ -84,6 +84,38 @@ def test_un_chiffre_invente_est_refuse(instance):
     assert any("1 300" in f for f in fautes)
 
 
+def _avec_dit(instance, citation, actes):
+    r = _releve()
+    r["en_clair"]["comprendre"] = {
+        "titre": "Comprendre la séance",
+        "debats": [{"titre": "Le club", "texte": "Le maire explique la subvention.",
+                    "citation": citation, "actes": actes}],
+        "a_suivre": [{"texte": "Le versement au club.", "actes": [1]}],
+        "lexique": [{"terme": "Subvention", "definition": "une aide publique."}],
+    }
+    _chemin(instance).write_text(json.dumps(r, ensure_ascii=False))
+    return r
+
+
+def test_une_parole_rapportee_est_retrouvee_dans_son_acte(instance):
+    _avec_dit(instance, "DECIDE d’attribuer au club une subvention de 1 200 €.", [1])
+    assert verifier(_chemin(instance)) == []
+
+
+def test_une_parole_inventee_est_refusee(instance):
+    _avec_dit(instance, "DECIDE de ne rien attribuer au club.", [1])
+    assert any(f.startswith("DIT") and "introuvable" in f for f in verifier(_chemin(instance)))
+
+
+def test_la_feuille_comprendre_est_rendue_et_les_documents_deviennent_la_quatrieme(instance):
+    from collectors.en_clair.rendu import feuilles, page_erreurs
+    r = _avec_dit(instance, "APPROUVE le règlement du cimetière.", [2])
+    html = feuilles(r) + page_erreurs(r)
+    assert html.count('class="sheet') == 4
+    assert "Ce qui s’est dit" in html and "À suivre" in html and "Les mots de la séance" in html
+    assert "Feuille 4 · les documents" in html
+
+
 # ── la publication ───────────────────────────────────────────────────────────
 
 def _seance(conn) -> int:
