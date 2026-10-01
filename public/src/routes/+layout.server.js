@@ -9,6 +9,7 @@
 // `prerender` est déclaré dans +layout.js et vaut pour cette charge aussi :
 // rien n'est lu à l'exécution chez le lecteur.
 import { lireJSON } from '$lib/donnees.server.js'
+import { lireDossiers } from '$lib/dossiers.server.js'
 
 export function load() {
   const stats = lireJSON('stats.json', {}) || {}
@@ -17,5 +18,10 @@ export function load() {
   // doit pas se taire. Elle affiche l'état le plus modeste, sans date.
   return {
     derniereCollecte: statut.derniere_collecte || '',
+    // L'en-tête met en avant les séances relues et les dossiers — seulement
+    // s'il y en a : une instance qui n'a encore rien publié ne pousse pas le
+    // lecteur vers une page vide.
+    aConseils: ((lireJSON('conseils.json', {}) || {}).seances || []).length > 0,
+    aDossiers: lireDossiers().length > 0,
   }
 }

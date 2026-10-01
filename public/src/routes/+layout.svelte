@@ -35,19 +35,27 @@
   // « Qui agit ? » mène à l'annuaire, pas à la carte : la carte ne montre que
   // les 1 135 acteurs géolocalisés, l'annuaire les couvre tous. Un nom, un
   // périmètre, une page — et le même libellé que la porte de l'accueil.
-  const nav = [
+  //
+  // 01/10/2026 : « Conseils en clair » et « Dossiers thématiques » sont mis en
+  // avant (`fort`) — demandé par Julien. Ce sont les deux pages qui donnent
+  // accès à la décision et à ses enjeux, pas à de la donnée rangée. La mise en
+  // avant suit le contenu : sans séance relue, l'entrée reste ordinaire ; sans
+  // dossier publié, « Dossiers » ne monte pas dans l'en-tête et reste au pied
+  // de page.
+  $: nav = [
     { href: '/nouveautes',      label: 'Récent',         icone: 'recent', titre: 'Ce qui a changé' },
     { href: '/qui-decide',      label: 'Qui décide',     icone: 'decide' },
-    { href: '/conseils',        label: 'Conseil en clair', icone: 'conseil', titre: 'Le conseil en clair' },
+    { href: '/conseils',        label: 'Conseils en clair', icone: 'conseil', fort: data?.aConseils },
+    data?.aDossiers && { href: '/dossiers', label: 'Dossiers thématiques', icone: 'document', fort: true },
     { href: '/argent',          label: "Où va l'argent", icone: 'argent' },
     { href: '/acteurs-publics', label: 'Qui agit',       icone: 'acteurs', titre: 'Qui agit ?',
       aussi: ['/carte', '/entite'] },
     { href: '/comprendre',      label: 'Comprendre',     icone: 'comprendre' },
-  ]
+  ].filter(Boolean)
   $: path = $page.url.pathname
   // La carte et les fiches acteur appartiennent à « Qui agit ? » : sans ça,
   // aucun onglet n'était souligné une fois qu'on y arrivait.
-  const estActif = (n) =>
+  $: estActif = (n) =>
     n.href === '/' ? path === '/'
     : path.startsWith(n.href) || (n.aussi || []).some((p) => path.startsWith(p))
 
@@ -89,7 +97,7 @@
 
 <svelte:window on:keydown={(e) => { if (e.key === 'Escape') menuOuvert = false }} />
 
-<div class="app">
+<div class="app" class:sept={nav.length > 6}>
   <header>
     <a class="brand" href="/">
       <Icon name="decide" size={22} />
@@ -98,7 +106,7 @@
 
     <nav class="principale">
       {#each nav as n}
-        <a href={n.href} class:active={estActif(n)} title={n.titre || n.label}>
+        <a href={n.href} class:active={estActif(n)} class:fort={n.fort} title={n.titre || n.label}>
           <Icon name={n.icone} size={16} />{n.label}
         </a>
       {/each}
@@ -121,14 +129,14 @@
   {#if menuOuvert}
     <div class="menu-mobile" id="menu-mobile">
       {#each nav as n}
-        <a href={n.href} class:active={estActif(n)}>
+        <a href={n.href} class:active={estActif(n)} class:fort={n.fort}>
           <Icon name={n.icone} size={18} />{n.titre || n.label}
         </a>
       {/each}
       <div class="separateur"></div>
       <a href="/territoire"><Icon name="territoire" size={18} />Le territoire</a>
       <a href="/environnement"><Icon name="environnement" size={18} />Environnement</a>
-      <a href="/dossiers"><Icon name="environnement" size={18} />Dossiers</a>
+      {#if !data?.aDossiers}<a href="/dossiers"><Icon name="document" size={18} />Dossiers</a>{/if}
       <a href="/vie-locale"><Icon name="vie" size={18} />Vie locale</a>
       <form class="recherche mobile" on:submit={chercher} role="search">
         <Icon name="recherche" size={15} />
@@ -229,6 +237,16 @@
   }
   .principale a:hover { color: var(--encre); text-decoration: none; }
   .principale a.active { color: var(--ardoise); border-bottom-color: var(--ardoise); }
+  /* Les deux entrées mises en avant : une pastille, pleine quand on y est. */
+  .principale a.fort {
+    color: var(--ardoise-fonce); font-weight: 600;
+    padding: .28rem .7rem; border: 1px solid #c9dae0; border-radius: 999px;
+    background: var(--ardoise-pale);
+  }
+  .principale a.fort:hover { color: var(--ardoise-fonce); background: #e0eaee; }
+  .principale a.fort.active {
+    color: var(--blanc); background: var(--ardoise); border-color: var(--ardoise);
+  }
 
   .recherche {
     margin-left: auto; display: flex; align-items: center; gap: .4rem;
@@ -276,6 +294,8 @@
     box-shadow: inset 2px 0 0 var(--ardoise);
   }
   .menu-mobile a.active :global(.icon) { color: var(--ardoise); }
+  .menu-mobile a.fort { color: var(--ardoise-fonce); font-weight: 600; }
+  .menu-mobile a.fort :global(.icon) { color: var(--ardoise); }
   .menu-mobile .separateur { height: 1px; background: var(--trait-pale); margin: .4rem 1.4rem; }
   .recherche.mobile { margin: .6rem 1.4rem 0; }
   .recherche.mobile input { width: 100%; }
@@ -294,10 +314,27 @@
   /* Six entrées depuis le 30/09/2026 (« Conseil en clair ») : entre le menu
      burger et les grands écrans, l'en-tête se resserre au lieu de rogner le
      champ de recherche. */
-  @media (max-width: 1200px) and (min-width: 1081px) {
+  @media (max-width: 1260px) and (min-width: 1081px) {
     header { gap: .8rem; }
     .principale { gap: .7rem; }
     .recherche input { width: 10.5rem; }
+  }
+  /* Sept entrées quand l'instance publie des dossiers (01/10/2026) : mesuré à
+     1 440 px de large au naturel. L'en-tête se resserre, puis les entrées
+     ordinaires perdent leur icône, puis le menu burger prend le relais plus
+     tôt. Une instance à six entrées garde les seuils d'avant. */
+  @media (max-width: 1460px) and (min-width: 1216px) {
+    .sept header { gap: .8rem; }
+    .sept .principale { gap: .7rem; }
+    .sept .recherche input { width: 8rem; }
+  }
+  @media (max-width: 1330px) and (min-width: 1216px) {
+    .sept .principale a:not(.fort) :global(.icon) { display: none; }
+  }
+  @media (max-width: 1215px) and (min-width: 1081px) {
+    .sept .principale, .sept .recherche:not(.mobile) { display: none; }
+    .sept .burger { display: flex; }
+    .sept .menu-mobile { display: block; }
   }
   @media (max-width: 1080px) {
     header { gap: .8rem; padding: .6rem 1rem; }
