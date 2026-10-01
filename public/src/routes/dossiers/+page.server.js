@@ -4,5 +4,5 @@ import { lireDossiers } from '$lib/dossiers.server.js'
 export const prerender = true
 
 export function load() {
-  return { dossiers: lireDossiers().map(({ html, ...d }) => d) }
+  return { dossiers: lireDossiers().map(({ html, sommaire, ...d }) => d) }
 }
