@@ -2590,6 +2590,14 @@ def export_dechets(conn, insee: str) -> dict | None:
             SELECT annee, population, typologie, omr, tri, verre, decheterie, total,
                    total_gravats FROM dechets_performance WHERE code_acteur=? ORDER BY annee""",
                      (a["code"],))
+        # Un zéro n'est pas une collecte nulle : c'est un service que CETTE
+        # collectivité n'exerce pas (un syndicat de traitement ne ramasse pas
+        # les poubelles). Publié tel quel, il se lirait « 0 kg d'ordures par
+        # habitant » — et les repères, eux, écartent déjà les zéros.
+        for s in serie:
+            for i in DECHETS_INDICATEURS:
+                if s[i] == 0:
+                    s[i] = None
         situer = None
         if serie:
             dernier = serie[-1]

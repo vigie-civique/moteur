@@ -26,6 +26,9 @@
   const QUARTS = ['', 'dans le quart le plus bas', 'sous la médiane',
                   'au-dessus de la médiane', 'dans le quart le plus élevé']
   const kg = (v) => v == null ? '—' : `${Math.round(v)} kg`
+  // Un syndicat départemental en tient des dizaines : au-delà de ce seuil, la
+  // page ne nomme que celles de la commune et compte les autres.
+  const DECHETERIES_MAX = 8
   const tonnes = (v) => `${nb(Math.round(v))} t`
   const part = (v, lignes) => {
     const total = lignes.reduce((s, l) => s + l.tonnes, 0)
@@ -519,10 +522,22 @@
     <!-- ── Les déchets ménagers ─────────────────────────────────────── -->
     {#if dechets}
       <h2 id="dechets">Les déchets ménagers</h2>
+      {#if dechets.acteurs.length > 1}
+        <p class="note">
+          {dechets.acteurs.length} collectivités se partagent les déchets ici.
+          Chacune ne déclare que ce qu'elle prend en charge&nbsp;: un tiret
+          signale un service qu'elle n'exerce pas, et leurs totaux ne
+          s'additionnent pas — ils ne portent ni sur les mêmes déchets ni sur
+          les mêmes habitants.
+        </p>
+      {/if}
       {#each dechets.acteurs as a}
         {@const dernier = a.serie.at(-1)}
+        {@const ici = a.decheteries.filter(d => d.insee === INSEE)}
+        {@const montrees = a.decheteries.length > DECHETERIES_MAX ? ici : a.decheteries}
         <Niveau type="fait" source="ADEME — SINOE®, enquête sur la collecte des déchets">
-          Ici, les déchets sont collectés par <b>{a.nom}</b>.
+          {#if dechets.acteurs.length > 1}<b>{a.nom}</b> prend en charge une partie
+          des déchets ici.{:else}Ici, les déchets sont collectés par <b>{a.nom}</b>.{/if}
           {#if dernier}Tous les chiffres qui suivent portent sur <b>l'ensemble
           de son territoire</b>{#if dernier.population}{' '}({nb(dernier.population)}
           habitants en {dernier.annee}){/if}, pas sur {COMMUNE} seule&nbsp;:
@@ -593,8 +608,16 @@
 
         {#if a.decheteries.length}
           <h3>Les déchèteries</h3>
+          {#if montrees.length < a.decheteries.length}
+            <p class="note">
+              Cette collectivité tient {a.decheteries.length} déchèteries sur
+              son territoire{#if ici.length}&nbsp;; seule{ici.length > 1 ? 's' : ''}
+              celle{ici.length > 1 ? 's' : ''} {COMMUNE_A} figure{ici.length > 1 ? 'nt' : ''} ici{:else},
+              aucune {COMMUNE_A}{/if}.
+            </p>
+          {/if}
           <ul class="plain">
-            {#each a.decheteries as d}
+            {#each montrees as d}
               <li><strong>{d.nom}</strong>{#if d.lieu}{' '}— {d.lieu}{/if}
                 <span class="muted">{#if d.ouverte_le}ouverte en {d.ouverte_le.slice(0, 4)}{/if}{#if d.gestion}{' '}· {d.gestion.toLowerCase().replace('regie', 'en régie')}{/if}</span></li>
             {/each}

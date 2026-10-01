@@ -101,3 +101,17 @@ def test_une_commune_absente_de_sinoe_ne_publie_rien(base):
     assert export_dechets(base, "99001") is None, "table absente"
     _base_dechets(base)
     assert export_dechets(base, "99999") is None, "commune sans desserte"
+
+
+def test_un_service_non_exerce_n_est_pas_zero_kilo(base):
+    """Un syndicat de traitement déclare 0 kg d'ordures ménagères : il ne les
+    ramasse pas. Ni chiffre, ni rang « dans le quart le plus bas »."""
+    from scripts.build_public_snapshot import export_dechets
+    _base_dechets(base)
+    base.execute("UPDATE dechets_performance SET omr = 0 WHERE annee = 2024")
+    base.commit()
+
+    [a] = export_dechets(base, "99001")["acteurs"]
+
+    assert a["serie"][-1]["omr"] is None
+    assert "omr" not in [s["indicateur"] for s in a["situer"]]
