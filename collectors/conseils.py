@@ -43,7 +43,7 @@ import pdfplumber
 from .archive import archive_fetch
 from .config import (COMMUNE_NAME, COMMUNE_SIREN, EPCI_NOM, EPCI_SIREN,
                      HEADERS, ROOT)
-from .cm_ocr import OPTIONS_OCRMYPDF
+from .cm_ocr import OPTIONS_OCRMYPDF, garder_texte, texte_garde
 from .cm_parser import link_persons_to_event
 from .connecteurs import charger
 from .connecteurs.base import date_fr
@@ -377,8 +377,13 @@ def ocr(chemin: Path, langue: str = "fra") -> str:
     le dispositif y catalogue des documents qu'il ne sait pas lire.
     """
     cible = chemin.with_suffix(".ocr.pdf")
+    # Le texte gardé d'abord (`x.ocr.txt`, cf. `cm_ocr.texte_garde`) : la passe
+    # ne rouvre plus le PDF océrisé, et une machine qui n'a que les textes lit
+    # le corpus sans avoir à océriser.
+    if (garde := texte_garde(cible)) is not None:
+        return garde
     if cible.exists() and cible.stat().st_size > 0:
-        return texte_pdf(cible)
+        return garder_texte(cible, texte_pdf(cible))
     if not shutil.which("ocrmypdf"):
         print("  [ocr] ocrmypdf introuvable — `brew install ocrmypdf`")
         return ""
@@ -398,7 +403,7 @@ def ocr(chemin: Path, langue: str = "fra") -> str:
     except (subprocess.SubprocessError, OSError) as e:
         print(f"  [ocr][échec] {chemin.name} → {e}")
         return ""
-    return texte_pdf(cible)
+    return garder_texte(cible, texte_pdf(cible))
 
 
 # « Séance du 25 juin 2026 », dans l'en-tête d'un acte. Repli de deuxième rang :
