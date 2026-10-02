@@ -57,6 +57,14 @@ destination dans `config/instance.json` :
                 "rsync_path": "sudo -u www-data rsync"}
 ```
 
+ou, quand l'atelier tourne sur la machine même qui sert le site — une copie
+d'un répertoire à l'autre, sans ssh ni sudo ; le répertoire doit exister et
+appartenir au compte de l'atelier :
+
+```json
+"publication": {"cible": "local", "chemin": "/srv/www/macommune"}
+```
+
 ou, pour Cloudflare Pages (palier gratuit, téléversement direct) :
 
 ```json

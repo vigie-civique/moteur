@@ -934,8 +934,13 @@ CIBLES = {
     "rsync": {"hote": "VIGIE_CIBLE_HOTE", "chemin": "VIGIE_CIBLE_CHEMIN",
               "rsync_path": "VIGIE_CIBLE_RSYNC_PATH"},
     "cloudflare": {"projet": "CF_PROJECT"},
+    # Le site est servi par la MACHINE qui porte l'atelier : une copie d'un
+    # répertoire à l'autre. Ni ssh ni sudo — le compte de l'atelier n'a ni clé
+    # ni droit d'élévation, et il n'a pas à en avoir pour écrire à côté de lui.
+    "local": {"chemin": "VIGIE_CIBLE_CHEMIN"},
 }
-CHAMPS_EXIGES = {"rsync": ("hote", "chemin"), "cloudflare": ("projet",)}
+CHAMPS_EXIGES = {"rsync": ("hote", "chemin"), "cloudflare": ("projet",),
+                 "local": ("chemin",)}
 
 
 def destination() -> dict | None:
@@ -954,6 +959,7 @@ def destination() -> dict | None:
       2. le bloc `publication` de `config/instance.json` :
              {"cible": "rsync", "hote": "…", "chemin": "…", "rsync_path": "…"}
              {"cible": "cloudflare", "projet": "…"}
+             {"cible": "local", "chemin": "/srv/www/macommune"}
       3. l'ancienne clé `cf_project`, lue comme une cible Cloudflare.
 
     Rien de déclaré rend `None`. Une déclaration INCOMPLÈTE est refusée : la
@@ -996,9 +1002,16 @@ def destination() -> dict | None:
             raise PublicationRefusee(
                 f"Destination refusée : « {champ} » commence par un tiret.")
 
-    declaree["libelle"] = (
-        f"{declaree['hote']}:{declaree['chemin']}" if cible == "rsync"
-        else f"Cloudflare Pages « {declaree['projet']} »")
+    if cible == "local" and not str(declaree["chemin"]).startswith("/"):
+        raise PublicationRefusee(
+            f"Destination « local » refusée : « {declaree['chemin']} » n'est pas un "
+            "chemin absolu. Un chemin relatif publierait là où le script est lancé.")
+
+    declaree["libelle"] = {
+        "rsync": lambda d: f"{d['hote']}:{d['chemin']}",
+        "local": lambda d: f"ce serveur, {d['chemin']}",
+        "cloudflare": lambda d: f"Cloudflare Pages « {d['projet']} »",
+    }[cible](declaree)
     return declaree
 
 
@@ -1087,7 +1100,8 @@ def mettre_en_ligne(auteur: str | None = None, role: str | None = None) -> dict:
         raise PublicationRefusee(
             "Aucune destination déclarée pour le site public. Ajouter à "
             "config/instance.json un bloc `publication` — "
-            '{"cible": "rsync", "hote": "…", "chemin": "…"} ou '
+            '{"cible": "rsync", "hote": "…", "chemin": "…"}, '
+            '{"cible": "local", "chemin": "…"} ou '
             '{"cible": "cloudflare", "projet": "…"}. Sans lui, le déploiement '
             "irait au hasard.")
     if not (ROOT / "public" / "node_modules").is_dir():

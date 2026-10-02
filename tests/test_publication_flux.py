@@ -305,6 +305,49 @@ def test_rsync_n_envoie_jamais_les_rebuts_et_retire_ceux_du_serveur(tmp_path):
         == ["index.html"]
 
 
+def test_la_copie_locale_rend_le_site_lisible_par_un_autre_compte(tmp_path):
+    """Cible `local` : l'atelier sur serveur écrit avec un masque restrictif, et
+    le serveur web lit sous un autre compte. Sans `--chmod`, la copie réussit et
+    le site répond 403 partout. Les droits et les options sont relus dans le
+    script et joués, avec le rsync de la machine (celui de macOS n'est pas celui
+    du serveur)."""
+    import os
+    import shlex
+    import shutil
+    import subprocess
+
+    script = (ROOT / "deploy" / "publier-site.sh").read_text(encoding="utf-8")
+    appel = re.search(r"^\s*rsync (-rlpt.*?)\"\$ROOT/public/build/\"", script, re.S | re.M)
+    assert appel, "appel rsync de la cible locale introuvable dans publier-site.sh"
+    options = shlex.split(appel.group(1).replace("\\\n", " "))
+    assert "--delete-excluded" in options
+    droits = re.search(r"^\s*chmod -R (\S+) \"\$ROOT/public/build\"$", script, re.M)
+    assert droits, "les droits du build ne sont pas posés avant la copie locale"
+
+    if not shutil.which("rsync"):
+        pytest.skip("rsync absent")
+    src, dest = tmp_path / "build", tmp_path / "servi"
+    ancien = os.umask(0o027)
+    try:
+        (src / "data").mkdir(parents=True)
+        (src / "index.html").write_text("ok")
+        (src / "data" / "stats.json").write_text("{}")
+        (src / ".DS_Store").write_bytes(b"\0")
+    finally:
+        os.umask(ancien)
+    dest.mkdir()
+    (dest / "page-retiree.html").write_text("vieux")
+
+    assert (src / "index.html").stat().st_mode & 0o777 == 0o640     # le masque du service
+    subprocess.run(["chmod", "-R", droits.group(1), str(src)], check=True)
+    subprocess.run(["rsync", *options, f"{src}/", f"{dest}/"], check=True)
+
+    assert sorted(str(f.relative_to(dest)) for f in dest.rglob("*") if f.is_file()) \
+        == ["data/stats.json", "index.html"]
+    assert (dest / "index.html").stat().st_mode & 0o777 == 0o644
+    assert (dest / "data").stat().st_mode & 0o777 == 0o755
+
+
 def test_publier_sans_apercu_refuse(publication, emplacements):
     with pytest.raises(publication.PublicationRefusee) as refus:
         publication.publier(auteur="admin@exemple", role="admin")
@@ -1036,6 +1079,22 @@ def test_la_destination_se_lit_dans_linstance(publication, instance):
     assert declaree["cible"] == "rsync"
     assert declaree["libelle"] == "vps:/srv/sites/essai"
     assert "_doc" not in declaree
+
+
+def test_la_cible_locale_ne_demande_ni_hote_ni_ssh(publication, instance):
+    instance(publication={"cible": "local", "chemin": "/srv/sites/essai"})
+    declaree = publication.destination()
+    assert (declaree["cible"], declaree["chemin"]) == ("local", "/srv/sites/essai")
+    assert declaree["libelle"] == "ce serveur, /srv/sites/essai"
+    assert publication.destination_pour_le_shell(declaree) == (
+        "export VIGIE_CIBLE=local\nexport VIGIE_CIBLE_CHEMIN=/srv/sites/essai")
+
+
+def test_la_cible_locale_refuse_un_chemin_relatif(publication, instance):
+    instance(publication={"cible": "local", "chemin": "sites/essai"})
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.destination()
+    assert "absolu" in str(refus.value)
 
 
 def test_lenvironnement_reste_prioritaire(publication, instance, monkeypatch):

@@ -187,6 +187,32 @@ case "$VIGIE_CIBLE" in
       ${VIGIE_CIBLE_RSYNC_PATH:+--rsync-path="$VIGIE_CIBLE_RSYNC_PATH"} \
       "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/"
     ;;
+  local)
+    echo "4/5 — Mise en ligne locale ($VIGIE_CIBLE_CHEMIN)"
+
+    # L'atelier tourne sur la machine qui sert le site : une copie d'un
+    # répertoire à l'autre, sous le compte de l'atelier, sans ssh ni sudo.
+    #
+    # Le répertoire doit EXISTER. Le créer ici ferait d'une faute de frappe
+    # dans la destination une publication réussie… ailleurs, pendant que le
+    # site continue de servir l'ancienne version.
+    [ -d "$VIGIE_CIBLE_CHEMIN" ] || {
+      echo "✗ $VIGIE_CIBLE_CHEMIN n'existe pas : rien n'a été publié." >&2
+      exit 1
+    }
+    # Le compte de l'atelier écrit avec un masque restrictif (UMask=0027), et
+    # le serveur web lit sous un AUTRE compte : copié tel quel, le site répond
+    # 403 sur chaque page. Les droits sont posés sur le BUILD, avant la copie,
+    # qui les reporte (`-p`) — ainsi aucun fichier n'est servi, même un
+    # instant, avec des droits que le serveur web ne peut pas lire. Pas de
+    # `--chmod` : le rsync de macOS (openrsync) ne l'applique pas aux fichiers.
+    # Mêmes exclusions et même `--delete` que par ssh, pour les mêmes raisons.
+    chmod -R u=rwX,go=rX "$ROOT/public/build"
+    rsync -rlpt --delete --delete-excluded \
+      --exclude='_redirects' \
+      --exclude='.DS_Store' --exclude='._*' --exclude='Thumbs.db' \
+      "$ROOT/public/build/" "$VIGIE_CIBLE_CHEMIN/"
+    ;;
   cloudflare)
     echo "4/5 — Mise en ligne Cloudflare Pages ($CF_PROJECT)"
     # --branch=main force l'environnement Production : sans lui, wrangler
