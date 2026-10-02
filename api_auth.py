@@ -19,8 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 try:
@@ -65,7 +64,24 @@ _ACCESS_MINUTES  = 60
 _REFRESH_MINUTES = 60 * 24 * 7
 
 router  = APIRouter(prefix="/api/auth", tags=["auth"])
-_bearer = HTTPBearer(auto_error=False)
+
+# Le jeton de session voyage dans SON en-tête, et non plus seulement dans
+# `Authorization: Bearer`. Un atelier en ligne se place derrière un mur HTTP
+# (`auth_basic` de nginx), et ce mur parle par `Authorization` lui aussi : un
+# navigateur n'en envoie qu'un. Avec le jeton dans `Authorization`, nginx
+# refusait chaque appel de l'interface, mot de passe du mur pourtant donné.
+# `Authorization: Bearer` reste lu, pour les scripts et les ateliers sans mur.
+EN_TETE_SESSION = "x-atelier-session"
+
+
+def jeton_de(request: Request) -> Optional[str]:
+    jeton = (request.headers.get(EN_TETE_SESSION) or "").strip()
+    if jeton:
+        return jeton
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
 
 
 #: Bases dont les tables de comptes ont déjà été mises à niveau.
@@ -200,10 +216,10 @@ def utilisateur_du_jeton(jeton: str, kind: str = "access") -> dict:
     return user
 
 
-def require_auth(creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
-    if not creds:
+def require_auth(jeton: Optional[str] = Depends(jeton_de)):
+    if not jeton:
         raise HTTPException(401, "Token manquant")
-    return utilisateur_du_jeton(creds.credentials, "access")
+    return utilisateur_du_jeton(jeton, "access")
 
 
 def require_role(*roles):
@@ -290,14 +306,14 @@ def refresh_token(req: RefreshRequest):
 
 @router.post("/logout")
 def logout(req: Optional[LogoutRequest] = None,
-           creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
+           jeton_acces: Optional[str] = Depends(jeton_de)):
     """Révoque le jeton d'accès ET, s'il est fourni, celui de rafraîchissement.
 
     Seul le jeton d'accès (une heure) était révoqué. Celui de rafraîchissement
     (sept jours, gardé dans le navigateur) en refabriquait un neuf : après
     « Déconnexion », la session survivait une semaine — constaté le 17/09/2026.
     """
-    jetons = [creds.credentials] if creds else []
+    jetons = [jeton_acces] if jeton_acces else []
     if req and req.refresh_token:
         jetons.append(req.refresh_token)
     conn = _db()

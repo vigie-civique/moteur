@@ -30,18 +30,43 @@ EnvironmentFile=/opt/vigie/.env
 # --host 127.0.0.1 : l'API n'est JAMAIS exposée directement. nginx termine le
 # TLS et proxifie. Une API en 0.0.0.0 rend la base de travail accessible à qui
 # connaît le port, quel que soit le pare-feu qu'on croit avoir.
-ExecStart=/opt/vigie/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8765
+#
+# --proxy-headers / --forwarded-allow-ips : sans eux, l'application voit
+# 127.0.0.1 pour TOUT le monde — ses bornes de débit par adresse deviennent une
+# seule borne partagée, et son journal ne distingue personne. Seul nginx, sur
+# la boucle locale, est cru sur parole.
+ExecStart=/opt/vigie/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8765 \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=on-failure
 RestartSec=5
 
 # Durcissement
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-# Seul le répertoire de l'instance est accessible en écriture : la base, les
-# journaux et le snapshot y vivent.
-ReadWritePaths=/opt/vigie
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0027
+# En écriture : les DONNÉES, pas le code. Avec l'arbre entier inscriptible, une
+# faille de l'application lui laissait réécrire `api.py` — donc survivre au
+# redémarrage. Le service écrit la base, les documents, les aperçus et le
+# snapshot ; `public/` parce que la publication y construit le site ;
+# `dashboard/static/api` parce que les synthèses y sont déposées. Le reste est
+# lu, et appartient à un autre compte que celui du service.
+#
+# ⚠️ `config/` y est à regret : `saisies.json` s'y écrit (par un temporaire
+# renommé, donc le répertoire entier doit être inscriptible), à côté de
+# `publication_rules.json` — le filtre de publication. Tant que les saisies
+# vivent là, le service peut réécrire les règles qui le contiennent.
+ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public /opt/vigie/config
+ReadWritePaths=-/opt/vigie/public-data -/opt/vigie/decisions -/opt/vigie/dashboard/static/api
 
 [Install]
 WantedBy=multi-user.target

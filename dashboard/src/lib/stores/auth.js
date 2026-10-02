@@ -12,7 +12,7 @@ export async function authFetch(path, options = {}) {
     ...options,
     headers: {
       ...(options.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? { 'X-Atelier-Session': token } : {}),
       // Un FormData pose sa propre frontière multipart, que seul le navigateur
       // sait calculer. Lui coller « application/json » d'office — ce que faisait
       // cette ligne pour tout corps non typé — rend le dépôt de document
@@ -75,7 +75,7 @@ export async function logout() {
     await fetch('/api/auth/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json',
-                 ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                 ...(token ? { 'X-Atelier-Session': token } : {}) },
       body: JSON.stringify({ refresh_token: refresh }),
     }).catch(() => {})
   }

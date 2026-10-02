@@ -2,6 +2,7 @@
 Vigie Civique — API de l'atelier (FastAPI)
 Port 8765, proxié par Vite (:5173) en dev.
 """
+import html
 import json
 import os
 import re
@@ -62,7 +63,15 @@ COMMUNE_BBOX = {"lat_min": BBOX[0], "lng_min": BBOX[1],
 # RAG_ENABLED=1 dans .env sur la machine qui a Ollama.
 RAG_ENABLED = os.environ.get("RAG_ENABLED", "0").strip().lower() not in ("0", "false", "no")
 
-app = FastAPI(title=f"Vigie Civique — atelier {COMMUNE_NAME}")
+# `/docs`, `/redoc` et `/openapi.json` ne commencent pas par `/api/` : le verrou
+# global ne les voit pas, et FastAPI les sert à qui les demande. Éteints sauf
+# demande explicite (`VIGIE_API_DOCS=1`, en développement).
+_DOCS = os.environ.get("VIGIE_API_DOCS", "0").strip().lower() not in ("0", "false", "no", "")
+
+app = FastAPI(title=f"Vigie Civique — atelier {COMMUNE_NAME}",
+              docs_url="/docs" if _DOCS else None,
+              redoc_url="/redoc" if _DOCS else None,
+              openapi_url="/openapi.json" if _DOCS else None)
 
 # ─── Verrou global API (audit Phase A — session 22) ──────────────────────────
 # Toute requête /api/* exige un JWT access valide OU l'en-tête X-Admin-Key.
@@ -84,18 +93,21 @@ async def _api_auth_guard(request, call_next):
     # 1) Clé admin — fallback scripts CLI (sync_ia, generate_syntheses --push, deploy)
     admin_key = os.environ.get("ADMIN_KEY", "")
     provided  = request.headers.get("x-admin-key")
-    if admin_key and provided and _secrets.compare_digest(provided, admin_key):
+    # En octets : sur des chaînes, `compare_digest` lève une TypeError au premier
+    # caractère non ASCII, et un en-tête forgé rendait un 500 au lieu d'un 401.
+    if admin_key and provided and _secrets.compare_digest(provided.encode(),
+                                                          admin_key.encode()):
         return await call_next(request)
 
     # 2) JWT access valide — jugé par `api_auth.utilisateur_du_jeton`, le même
     #    contrôle que les routes : révocation, compte désactivé (effet à la
     #    requête suivante, pas à l'expiration du jeton), sessions closes par un
     #    changement de mot de passe.
-    auth = request.headers.get("authorization", "")
-    if auth.lower().startswith("bearer "):
+    from api_auth import jeton_de, utilisateur_du_jeton
+    jeton = jeton_de(request)
+    if jeton:
         try:
-            from api_auth import utilisateur_du_jeton
-            utilisateur_du_jeton(auth[7:].strip(), "access")
+            utilisateur_du_jeton(jeton, "access")
             return await call_next(request)
         except Exception:
             pass
@@ -124,9 +136,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Auth JWT — atelier
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from api_auth import (router as auth_router, comptes as comptes_router, au_moins,  # noqa: E402
-                      exiger, require_au_moins, require_auth, require_role)
+                      exiger, jeton_de, require_au_moins, require_auth, require_role)
 app.include_router(auth_router)
 app.include_router(comptes_router)
 
@@ -625,7 +636,7 @@ def event_search(
             SELECT e.id, e.type, e.date, e.title,
                    substr(e.content, 1, 1200) AS content,
                    e.source, e.source_url, e.metadata,
-                   snippet(events_fts, 1, '<mark>', '</mark>', '…', 16) AS snippet
+                   snippet(events_fts, 1, char(2), char(3), '…', 16) AS snippet
             FROM events_fts
             JOIN events e ON e.id = events_fts.rowid
             WHERE {" AND ".join(filters)}
@@ -634,6 +645,13 @@ def event_search(
         """, params)
         for event in event_rows:
             event["metadata"] = parse_json_field(event.get("metadata"), {})
+            # L'extrait est affiché comme du HTML (le surlignage), et son texte
+            # vient d'un document COLLECTÉ : une balise écrite dans un PV ou une
+            # page de mairie s'exécutait dans l'atelier. Le surlignage voyage
+            # donc en caractères de contrôle, et les balises ne sont posées
+            # qu'APRÈS l'échappement du texte.
+            event["snippet"] = (html.escape(event.get("snippet") or "", quote=False)
+                                .replace("\x02", "<mark>").replace("\x03", "</mark>"))
         return event_rows
     finally:
         conn.close()
@@ -1156,14 +1174,13 @@ class ReviewRequest(BaseModel):
     action: str   # "accept" | "reject" | "ignore"
     note: str = ""
 
-_opt_bearer = HTTPBearer(auto_error=False)
 
-def optional_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(_opt_bearer)):
+def optional_user(jeton: Optional[str] = Depends(jeton_de)):
     """Utilisateur JWT si présent et valide, sinon None (pas d'erreur)."""
-    if not creds:
+    if not jeton:
         return None
     try:
-        return require_auth(creds)
+        return require_auth(jeton)
     except HTTPException:
         return None
 
@@ -1177,7 +1194,7 @@ def _check_admin(x_admin_key: Optional[str], user: Optional[dict] = None,
         return
     if not ADMIN_KEY:
         raise HTTPException(403, "Endpoint d'écriture désactivé — configurer ADMIN_KEY en production")
-    if x_admin_key != ADMIN_KEY:
+    if not _secrets.compare_digest((x_admin_key or "").encode(), ADMIN_KEY.encode()):
         raise HTTPException(403, "Réservé à l'admin (JWT rôle admin ou clé admin)")
 
 def _read_json_file(path: Path, default=None):
@@ -1381,7 +1398,8 @@ class ApercuServeurRequest(BaseModel):
 
 
 def _cle_admin_valide(x_admin_key: Optional[str]) -> bool:
-    return bool(ADMIN_KEY) and x_admin_key == ADMIN_KEY
+    return bool(ADMIN_KEY) and _secrets.compare_digest((x_admin_key or "").encode(),
+                                                       ADMIN_KEY.encode())
 
 
 def _role_effectif(x_admin_key: Optional[str], user: Optional[dict]) -> Optional[str]:
@@ -3158,13 +3176,22 @@ def atelier_document_fichier(doc_id: int = FPath(..., ge=1), user=Depends(requir
     # `local_path` vient de la base, mais la base est modifiable par d'autres
     # chemins que celui-ci : on résout et on vérifie l'appartenance à l'arbre du
     # projet plutôt que de faire confiance à une chaîne stockée.
+    # L'arbre du projet ne suffit pas : il contient aussi `.env` et la base. Un
+    # document archivé vit sous `data/`, nulle part ailleurs.
     chemin = (RACINE / doc["local_path"]).resolve()
-    if not chemin.is_file() or RACINE not in chemin.parents:
+    if not chemin.is_file() or (RACINE / "data") not in chemin.parents:
         raise HTTPException(404, "fichier absent du disque.")
-    types = {"pdf": "application/pdf", "html": "text/html; charset=utf-8",
-             "json": "application/json", "csv": "text/csv"}
-    return FileResponse(chemin, media_type=types.get(doc["doc_type"],
-                                                    "application/octet-stream"))
+    # Un document vient d'un site tiers ou d'un dépôt : son contenu n'est PAS de
+    # confiance. Servi en `text/html`, il s'exécutait à l'adresse de l'atelier,
+    # où le navigateur garde le jeton de session de celui qui l'ouvre. Seul le
+    # PDF s'affiche ; tout le reste se télécharge, sans type deviné.
+    if doc["doc_type"] == "pdf":
+        return FileResponse(chemin, media_type="application/pdf",
+                            headers={"X-Content-Type-Options": "nosniff"})
+    return FileResponse(
+        chemin, media_type="application/octet-stream", filename=chemin.name,
+        headers={"X-Content-Type-Options": "nosniff",
+                 "Content-Security-Policy": "default-src 'none'; sandbox"})
 
 
 # ─── GET /api/atelier/entities/{id} — détail complet pour l'éditeur ───────────
@@ -3650,6 +3677,8 @@ def add_contact(
 ):
     if req.type not in CONTACT_TYPES:
         raise HTTPException(400, f"type invalide — valeurs: {', '.join(CONTACT_TYPES)}")
+    if req.type == "website":
+        req.value = _url_http(req.value, "site")
     conn = get_db_rw()
     try:
         if not row(conn, "SELECT 1 FROM entities WHERE id=?", (entity_id,)):
@@ -3763,6 +3792,13 @@ def update_relation(
         rel = row(conn, "SELECT * FROM relations WHERE id=?", (rel_id,))
         if not rel:
             raise HTTPException(404, "Relation introuvable")
+        # La création refusait un type ou une fiabilité inconnus ; la
+        # modification, non — on créait `membre`, puis on écrivait n'importe quoi.
+        if req.relation_type is not None and req.relation_type not in RELATION_TYPES:
+            raise HTTPException(400, "relation_type invalide")
+        if req.confidence is not None and req.confidence not in ("verified", "probable",
+                                                                 "hypothesis"):
+            raise HTTPException(400, "confidence invalide")
         if req.confidence is not None and req.confidence != rel.get("confidence"):
             exiger(user, "validator", "Changer la fiabilité d'une relation")
         updates, params = [], []
@@ -4010,8 +4046,18 @@ class WebsiteAdd(BaseModel):
     found_by: str = "manual"
     score: Optional[float] = 1.0
 
+
+def _url_http(valeur: str, champ: str = "url") -> str:
+    """Une adresse saisie devient un lien cliquable dans l'atelier ET sur le
+    site : `javascript:…` y serait un script, pas une adresse."""
+    s = (valeur or "").strip()
+    if not s.lower().startswith(("http://", "https://")) or any(c.isspace() for c in s):
+        raise HTTPException(400, f"{champ} : adresse http(s) attendue")
+    return s[:1000]
+
 @app.post("/api/atelier/entities/{entity_id}/websites")
 def add_website(entity_id: int = FPath(..., ge=1), req: WebsiteAdd = ..., user=Depends(require_auth)):
+    req.url = _url_http(req.url)
     conn = get_db_rw()
     try:
         if not row(conn, "SELECT 1 FROM entities WHERE id=?", (entity_id,)):

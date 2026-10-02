@@ -18,7 +18,7 @@
     const access = sessionStorage.getItem('atelier_access')
     if (access) {
       const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${access}` },
+        headers: { 'X-Atelier-Session': access },
       })
       if (res.ok) {
         currentUser.set(await res.json())
@@ -39,7 +39,7 @@
         const data = await rr.json()
         sessionStorage.setItem('atelier_access', data.access_token)
         const me = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${data.access_token}` },
+          headers: { 'X-Atelier-Session': data.access_token },
         })
         if (me.ok) {
           currentUser.set(await me.json())

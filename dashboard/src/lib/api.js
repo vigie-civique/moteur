@@ -189,6 +189,35 @@ export const api = {
 
   documentUrl: (id) => `${BASE}/atelier/documents/${id}/fichier`,
 
+  // Un lien ordinaire vers le document ne porte pas le jeton : il rendait 401.
+  // On le demande donc avec la session, puis on l'ouvre. Seul un PDF s'AFFICHE ;
+  // le reste se télécharge — un document collecté n'est pas de confiance, et une
+  // page HTML ouverte depuis l'atelier s'exécuterait à son adresse.
+  // L'onglet est ouvert AVANT la requête : après un `await`, le navigateur ne
+  // reconnaît plus le clic et bloque la fenêtre.
+  async ouvrirDocument(id) {
+    const onglet = window.open('', '_blank')
+    try {
+      const r = await authFetch(`/atelier/documents/${id}/fichier`)
+      if (!r.ok) throw await echec(r)
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      if (blob.type === 'application/pdf' && onglet) {
+        onglet.location = url
+      } else {
+        onglet?.close()
+        const nom = /filename="?([^";]+)"?/.exec(r.headers.get('Content-Disposition') || '')?.[1]
+        const a = Object.assign(document.createElement('a'),
+                                { href: url, download: nom || `document-${id}` })
+        a.click()
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      onglet?.close()
+      throw e
+    }
+  },
+
   // Extraction assistée : le modèle PROPOSE des lignes lues dans un document.
   // Rien n'est écrit — les propositions pré-remplissent le formulaire, et
   // chacune porte la phrase du texte qui la justifie, vérifiée côté serveur.

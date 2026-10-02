@@ -425,7 +425,8 @@
         {#if docChoisi}
           <p class="hint choisi">
             ↳ {docChoisi.title || docChoisi.url || `document #${docChoisi.id}`}
-            <a href={api.documentUrl(docChoisi.id)} target="_blank" rel="noopener">↗ relire</a>
+            <a href={api.documentUrl(docChoisi.id)}
+               on:click|preventDefault={() => api.ouvrirDocument(docChoisi.id)}>↗ relire</a>
             <button class="mini" on:click={() => (docChoisi = null)}>changer</button>
           </p>
         {:else}
@@ -494,7 +495,8 @@
                 {#if s.source?.sans_document_motif}
                   · <em class="sans-doc">sans document : {s.source.sans_document_motif}</em>
                 {:else if s.source?.raw_document_id}
-                  · <a href={api.documentUrl(s.source.raw_document_id)} target="_blank" rel="noopener">source</a>
+                  · <a href={api.documentUrl(s.source.raw_document_id)}
+                       on:click|preventDefault={() => api.ouvrirDocument(s.source.raw_document_id)}>source</a>
                 {/if}
               </p>
             </li>

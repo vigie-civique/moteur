@@ -287,8 +287,8 @@
             <a class="src-link" href={selected.source_url} target="_blank" rel="noopener">↗ source</a>
           {/if}
           {#if selected.document_id}
-            <a class="src-link" href={`/api/atelier/documents/${selected.document_id}/fichier`}
-               target="_blank" rel="noopener">↗ document archivé</a>
+            <a class="src-link" href={api.documentUrl(selected.document_id)}
+               on:click|preventDefault={() => api.ouvrirDocument(selected.document_id)}>↗ document archivé</a>
           {/if}
         </div>
 
