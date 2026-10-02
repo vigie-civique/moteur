@@ -178,6 +178,18 @@
         throw new Error((typeof d.detail === 'object' ? d.detail?.message : d.detail) || `${res.status}`)
       }
       const saved = await res.json()
+      // Fiche publiée, compte contributeur : rien n'est écrit, c'est une
+      // PROPOSITION (202). Le formulaire revient à ce que la fiche vaut
+      // vraiment — afficher la valeur proposée ferait croire qu'elle est posée.
+      if (saved.propose) {
+        const champs = (saved.proposes || []).map(c => LIBELLES[c] ?? c).join(', ')
+        form = { ...initial }
+        dirty = false
+        conflit = null
+        saveMsg = `Proposition envoyée (${champs}). Cette fiche est publiée : un `
+                + `validateur doit l'accepter avant que ce soit appliqué.`
+        return
+      }
       // Mettre à jour updated_at local pour le prochain save
       if (saved.updated_at) entity = { ...entity, updated_at: saved.updated_at }
       initial = { ...form }
@@ -310,6 +322,11 @@
         body: JSON.stringify({ lat, lng })
       })
       if (!res.ok) throw new Error(`${res.status}`)
+      if (res.status === 202) {
+        coordsMsg = 'Déplacement proposé : cette fiche est publiée, un validateur doit '
+                  + "l'accepter. Le point reviendra à sa place au rechargement."
+        return
+      }
       form.lat = lat; form.lng = lng
       coordsMsg = `Position sauvegardée (${lat.toFixed(5)}, ${lng.toFixed(5)})`
       setTimeout(() => coordsMsg = '', 3000)
@@ -429,6 +446,11 @@
       const res = await authFetch(`/atelier/relations/${relId}`, { method:'PUT', body:JSON.stringify(body) })
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail||`${res.status}`) }
       const updated = await res.json()
+      if (updated.propose) {
+        // Relation publiée, compte contributeur : la ligne garde sa valeur.
+        relError = updated.message
+        return
+      }
       relations = relations.map(r => r.id === relId ? updated : r)
       editingRelId = null
     } catch(e) { relError = e.message }

@@ -39,6 +39,7 @@
   let items = []
   let loading = false
   let error = ''
+  let avis = ''              // une correction PROPOSÉE (compte contributeur)
   let selected = null        // item en cours d'annotation
   let draft = { review_status: 'jamais_relu', confidence: '', note: '' }
   let saving = false
@@ -122,6 +123,12 @@
         lu_le: selected.annotation?.reviewed_at ?? null,
       })
       conflit = null
+      // Compte contributeur : la correction n'est pas posée, elle est PROPOSÉE.
+      // Les champs reviennent à ce qui est en place — le dire, sans quoi la
+      // valeur saisie disparaît de l'écran sans explication.
+      avis = res.propose
+        ? "Correction proposée : un validateur doit l'accepter avant qu'elle soit appliquée."
+        : ''
       corrections = { ...(res.corrections || {}) }
       selected.annotation = {
         ...selected.annotation,
@@ -214,6 +221,7 @@
   </div>
 
   {#if error}<div class="err">{error}</div>{/if}
+  {#if avis}<div class="avis">{avis} <a href="/atelier/propositions">Voir mes propositions</a></div>{/if}
 
   <div class="layout">
     <div class="table-wrap">
@@ -499,4 +507,6 @@
   }
 
   @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .avis { background: #3b2506; border: 1px solid #b45309; border-radius: 6px; color: #fde68a; padding: .5rem .75rem; }
+  .avis a { color: #fde68a; text-decoration: underline; }
 </style>

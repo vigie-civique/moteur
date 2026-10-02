@@ -37,6 +37,7 @@ SYNTHESES_DIR = BASE_DIR / "dashboard" / "static" / "api" / "syntheses"
 from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
                                DEPARTEMENT, EPCI_NOM)
 from collectors import dossiers as _dossiers
+from collectors import propositions as _propositions
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
@@ -1971,6 +1972,14 @@ def atelier_files(user=Depends(require_auth)):
     présente sans son bouton plutôt que de la cacher.
     """
     from collectors.config import CODE_POSTAL, COMMUNE_NAME
+    # Le relevé n'écrit rien ; une base d'avant le 02/10/2026 n'a pas la table
+    # des propositions, et sa carte s'afficherait « indisponible ».
+    conn = get_db_rw()
+    try:
+        _propositions.assurer_schema(conn)
+        conn.commit()
+    finally:
+        conn.close()
     conn = get_db()
     try:
         return {"files": relever(conn, COMMUNE_NAME, CODE_POSTAL),
@@ -2075,6 +2084,7 @@ LIBELLE_TABLE_JOURNAL = {
     "entities": "fiche", "annotations": "décision", "saisies": "saisie",
     "relations": "relation", "entity_websites": "site", "relation_candidates":
     "relation candidate", "users": "compte", "publication": "publication",
+    "propositions": "proposition",
 }
 
 
@@ -2087,6 +2097,12 @@ def atelier_journal(
     user=Depends(require_auth),
 ):
     filtres, params = [], []
+    # Qui a été invité, quel rôle a changé, quel compte est désactivé : cela ne
+    # sert à aucun geste d'édition, et nomme des personnes. Admin seul (Julien,
+    # 02/10/2026) — la page Comptes, elle, l'a toujours été.
+    comptes_visibles = au_moins(user, "admin")
+    if not comptes_visibles:
+        filtres.append("a.table_name <> 'users'")
     if qui:
         filtres.append("u.email = ?"); params.append(qui.strip().lower())
     if quoi:
@@ -2115,7 +2131,8 @@ def atelier_journal(
     for ligne in lignes:
         ligne["quoi_libelle"] = LIBELLE_TABLE_JOURNAL.get(ligne["quoi"], ligne["quoi"])
     return {"total": total, "lignes": lignes, "auteurs": auteurs,
-            "tables": LIBELLE_TABLE_JOURNAL}
+            "tables": {t: nom for t, nom in LIBELLE_TABLE_JOURNAL.items()
+                       if comptes_visibles or t != "users"}}
 
 
 # ─── Conflits d'édition ───────────────────────────────────────────────────────
@@ -2614,7 +2631,30 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
         # Une valeur vide retire la correction et rend la donnée d'origine.
         anciennes = parse_json_field(existing["corrections"], {}) if existing else {}
         corrections = dict(anciennes) if isinstance(anciennes, dict) else {}
-        if req.corrections is not None:
+        proposees: dict = {}
+        if req.corrections and not au_moins(user, "validator"):
+            # Une correction est appliquée à la publication : venant d'un
+            # contributeur, elle changeait le site sans que personne la relise.
+            # Elle devient une proposition ; la note, elle, s'écrit toujours.
+            if any(v not in (None, "") for v in req.corrections.values()):
+                _verifier_origine_modifiable(conn, object_type, object_id)
+            proposees = {champ: _valide_correction(object_type, champ, valeur)
+                         for champ, valeur in req.corrections.items()}
+            proposees = {c: v for c, v in proposees.items() if corrections.get(c) != v}
+            if proposees:
+                _propositions.assurer_schema(conn)
+                proposition = _propositions.proposer(
+                    conn, "correction", object_type, object_id, None, proposees,
+                    {c: corrections.get(c) for c in proposees}, user)
+            if not (fournis & {"note", "review_status", "confidence"}):
+                conn.commit()
+                return {"ok": True, "object_type": object_type, "object_id": object_id,
+                        "review_status": statut_avant, "corrections": corrections,
+                        "propose": bool(proposees),
+                        "proposition": proposition if proposees else None,
+                        "reviewed_by": existing["reviewed_by"] if existing else None,
+                        "reviewed_at": existing["reviewed_at"] if existing else None}
+        elif req.corrections is not None:
             # Une correction de VALEUR exige une ligne dont l'origine l'autorise.
             # Le test porte sur les corrections non vides seulement : annuler une
             # correction (valeur vide) doit rester possible même si la ligne a
@@ -2673,6 +2713,7 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
                           "WHERE object_type=? AND object_id=?", (object_type, object_id))
         return {"ok": True, "object_type": object_type, "object_id": object_id,
                 "review_status": new_status, "corrections": corrections,
+                "propose": bool(proposees),
                 "reviewed_by": user["email"],
                 "reviewed_at": apres["reviewed_at"] if apres else None}
     finally:
@@ -3040,6 +3081,25 @@ def atelier_saisie_creer(req: SaisieCreate, user=Depends(require_auth)):
     return {"ok": True, "saisie": saisie, "import": resultat}
 
 
+def _saisie_validee(saisie: dict) -> bool:
+    """Vraie si la saisie est publiable telle quelle, ou si un validateur a
+    retenu la ligne qu'elle a produite (`source = atelier:<id>`)."""
+    if saisie.get("confidence") in PUBLIABLES:
+        return True
+    table = (_saisies.CHAMPS_SAISIE.get(saisie.get("objet")) or {}).get("_table")
+    objet = next((t for t, nom in TABLE_DE_TYPE.items() if nom == table), None)
+    if not objet:
+        return False
+    conn = get_db()
+    try:
+        a = row(conn, f"SELECT a.review_status FROM annotations a JOIN {table} t "
+                      "ON t.id = a.object_id WHERE a.object_type = ? AND t.source = ?",
+                (objet, f"atelier:{saisie.get('id')}"))
+    finally:
+        conn.close()
+    return bool(a) and verdict_de(a["review_status"]) == RETENU
+
+
 @app.delete("/api/atelier/saisies/{saisie_id}")
 def atelier_saisie_retirer(saisie_id: str, user=Depends(require_auth)):
     """Retire une saisie — marquée retirée, pas effacée du fichier.
@@ -3056,6 +3116,11 @@ def atelier_saisie_retirer(saisie_id: str, user=Depends(require_auth)):
             raise HTTPException(404, f"saisie {saisie_id} introuvable.")
         if cible.get("saisi_par") != user["email"]:
             exiger(user, "validator", "Retirer la saisie de quelqu'un d'autre")
+        # Retirer une saisie EFFACE sa ligne : validée, elle est sur le site, et
+        # son auteur l'en sortait seul. Ce qu'un validateur a retenu ne se
+        # défait que par un validateur.
+        if _saisie_validee(cible):
+            exiger(user, "validator", "Retirer une saisie déjà validée")
         if cible.get("retire"):
             deja_retiree = True
         else:
@@ -3533,6 +3598,98 @@ _CHAMPS_FICHE = {
 }
 _CONFIANCES_FICHE = ("verified", "confirmed", "probable", "hypothesis")
 
+_FICHE_COURANTE = """
+    SELECT e.*, p.firstname, p.lastname, p.birth_year, p.birth_month, p.gender,
+           b.naf_code, b.naf_label, b.legal_form, b.status AS biz_status,
+           b.capital, b.employees_range, b.creation_date AS biz_creation, b.closing_date,
+           a.rna_id, a.object AS asso_object, a.status AS asso_status,
+           a.creation_date AS asso_creation, a.dissolution_date,
+           pl.osm_category, pl.osm_value,
+           s.category AS svc_category, s.operator, s.opening_hours
+    FROM entities e
+    LEFT JOIN persons      p  ON p.entity_id  = e.id
+    LEFT JOIN businesses   b  ON b.entity_id  = e.id
+    LEFT JOIN associations a  ON a.entity_id  = e.id
+    LEFT JOIN places       pl ON pl.entity_id = e.id
+    LEFT JOIN services     s  ON s.entity_id  = e.id
+    WHERE e.id = ?
+"""
+
+
+def _doit_proposer(user: dict, confidence: Optional[str]) -> bool:
+    """Un contributeur qui écrit sur un objet PUBLIÉ propose ; il n'écrit pas.
+
+    Arbitré par Julien le 02/10/2026 (cf. `collectors/propositions.py`). Sur un
+    objet que la publication ne sort pas, il écrit directement : rien n'en part
+    en ligne tant qu'un validateur ne l'a pas rendu publiable — et c'est ce
+    jour-là qu'il le relit.
+    """
+    return not au_moins(user, "validator") and confidence in PUBLIABLES
+
+
+def _propose(conn, nature: str, object_type: str, object_id: int,
+             entity_id: Optional[int], charge: dict, avant: dict, user: dict,
+             **reponse) -> _JSONResponse:
+    """Enregistre la proposition et répond 202 : reçue, pas appliquée."""
+    _propositions.assurer_schema(conn)
+    pid = _propositions.proposer(conn, nature, object_type, object_id, entity_id,
+                                 charge, avant, user)
+    conn.commit()
+    return _JSONResponse(status_code=202, content={
+        "ok": True, "propose": True, "proposition": pid,
+        "message": "Proposition enregistrée : elle sera appliquée quand un "
+                   "validateur l'aura acceptée.", **reponse})
+
+
+def _changements_fiche(current: dict, valeurs: dict, user: dict) -> list[tuple]:
+    """[(champ, ancien, nouveau)] : ce que `valeurs` change VRAIMENT à la fiche."""
+    changements = []
+    for champ, nouveau in valeurs.items():
+        if champ not in _CHAMPS_FICHE:
+            continue
+        _, _, types = _CHAMPS_FICHE[champ]
+        if types is not None and current["type"] not in types:
+            continue
+        if isinstance(nouveau, str):
+            nouveau = nouveau.strip() or None
+        if nouveau is None and champ in ("name", "confidence"):
+            raise HTTPException(400, f"« {champ} » ne peut pas être vidé.")
+        if champ == "confidence" and nouveau not in _CONFIANCES_FICHE:
+            raise HTTPException(400, f"confidence : valeurs admises — "
+                                     f"{', '.join(_CONFIANCES_FICHE)}")
+        ancien = current.get(champ)
+        if str("" if ancien is None else ancien) == str("" if nouveau is None else nouveau):
+            continue
+        if champ == "confidence":
+            exiger(user, "validator", "Trancher la fiabilité d'une fiche")
+        changements.append((champ, ancien, nouveau))
+    return changements
+
+
+def _ecrire_fiche(conn, entity_id: int, changements: list[tuple], user: dict) -> list[str]:
+    """Écrit et journalise. Le SEUL écrivain des champs d'une fiche : l'édition
+    d'un validateur et l'acceptation d'une proposition passent toutes deux ici."""
+    par_table: dict[str, dict] = {}
+    for champ, ancien, nouveau in changements:
+        table, colonne, _ = _CHAMPS_FICHE[champ]
+        _audit(conn, user["id"], entity_id, champ, ancien, nouveau)
+        par_table.setdefault(table, {})[colonne] = nouveau
+    for table, valeurs in par_table.items():
+        sets = ", ".join(f"{c}=?" for c in valeurs)
+        cle = "id" if table == "entities" else "entity_id"
+        if table != "entities":
+            # 160 fiches de Lasalle (17/09/2026) n'ont pas de ligne de détail :
+            # l'UPDATE n'atteignait aucune ligne, et l'objet corrigé d'une
+            # association disparaissait derrière « Sauvegardé ✓ ».
+            conn.execute(f"INSERT OR IGNORE INTO {table}(entity_id) VALUES(?)",
+                         (entity_id,))
+        conn.execute(f"UPDATE {table} SET {sets} WHERE {cle}=?",
+                     list(valeurs.values()) + [entity_id])
+    if par_table:
+        conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
+                     (entity_id,))
+    return sorted(c for champs in par_table.values() for c in champs)
+
 
 @app.patch("/api/atelier/entities/{entity_id}")
 def atelier_patch_entity(
@@ -3557,22 +3714,7 @@ def atelier_patch_entity(
         # Réserver l'écriture avant de lire : la condition et l'écriture forment
         # un seul geste, qu'aucune autre requête ne peut couper en deux.
         conn.execute("BEGIN IMMEDIATE")
-        current = row(conn, """
-            SELECT e.*, p.firstname, p.lastname, p.birth_year, p.birth_month, p.gender,
-                   b.naf_code, b.naf_label, b.legal_form, b.status AS biz_status,
-                   b.capital, b.employees_range, b.creation_date AS biz_creation, b.closing_date,
-                   a.rna_id, a.object AS asso_object, a.status AS asso_status,
-                   a.creation_date AS asso_creation, a.dissolution_date,
-                   pl.osm_category, pl.osm_value,
-                   s.category AS svc_category, s.operator, s.opening_hours
-            FROM entities e
-            LEFT JOIN persons      p  ON p.entity_id  = e.id
-            LEFT JOIN businesses   b  ON b.entity_id  = e.id
-            LEFT JOIN associations a  ON a.entity_id  = e.id
-            LEFT JOIN places       pl ON pl.entity_id = e.id
-            LEFT JOIN services     s  ON s.entity_id  = e.id
-            WHERE e.id = ?
-        """, (entity_id,))
+        current = row(conn, _FICHE_COURANTE, (entity_id,))
         if not current:
             raise HTTPException(404, "Entité introuvable")
 
@@ -3609,52 +3751,21 @@ def atelier_patch_entity(
                            "vous l'éditiez.", None, db_updated_at, champs=[],
                            updated_at=db_updated_at)
 
-        entity_type = current["type"]
         if "validation_status" in fournis:
             raise HTTPException(400, "Le verdict d'une fiche ne s'écrit plus dans le formulaire : c'est "
                                  "une décision, posée par les boutons Retenir / Écarter.")
-        par_table: dict[str, dict] = {}
-        for champ in fournis:
-            if champ not in _CHAMPS_FICHE:
-                continue
-            table, colonne, types = _CHAMPS_FICHE[champ]
-            if types is not None and entity_type not in types:
-                continue
-            nouveau = getattr(req, champ)
-            if isinstance(nouveau, str):
-                nouveau = nouveau.strip() or None
-            if nouveau is None and champ in ("name", "confidence"):
-                raise HTTPException(400, f"« {champ} » ne peut pas être vidé.")
-            if champ == "confidence" and nouveau not in _CONFIANCES_FICHE:
-                raise HTTPException(400, f"confidence : valeurs admises — "
-                                         f"{', '.join(_CONFIANCES_FICHE)}")
-            ancien = current.get(champ)
-            if str("" if ancien is None else ancien) == str("" if nouveau is None else nouveau):
-                continue
-            if champ == "confidence":
-                exiger(user, "validator", "Trancher la fiabilité d'une fiche")
-            _audit(conn, user["id"], entity_id, champ, ancien, nouveau)
-            par_table.setdefault(table, {})[colonne] = nouveau
-
-        for table, valeurs in par_table.items():
-            sets = ", ".join(f"{c}=?" for c in valeurs)
-            cle = "id" if table == "entities" else "entity_id"
-            if table != "entities":
-                # 160 fiches de Lasalle (17/09/2026) n'ont pas de ligne de détail :
-                # l'UPDATE n'atteignait aucune ligne, et l'objet corrigé d'une
-                # association disparaissait derrière « Sauvegardé ✓ ».
-                conn.execute(f"INSERT OR IGNORE INTO {table}(entity_id) VALUES(?)",
-                             (entity_id,))
-            conn.execute(f"UPDATE {table} SET {sets} WHERE {cle}=?",
-                         list(valeurs.values()) + [entity_id])
-        if par_table:
-            conn.execute("UPDATE entities SET updated_at=datetime('now') WHERE id=?",
-                         (entity_id,))
-
+        changements = _changements_fiche(current, {c: getattr(req, c) for c in fournis}, user)
+        if changements and _doit_proposer(user, current.get("confidence")):
+            return _propose(conn, "fiche", "entity", entity_id, entity_id,
+                            {c: n for c, _, n in changements},
+                            {c: a for c, a, _ in changements}, user,
+                            id=entity_id, modifies=[],
+                            proposes=sorted(c for c, _, _ in changements),
+                            updated_at=db_updated_at)
+        modifies = _ecrire_fiche(conn, entity_id, changements, user)
         conn.commit()
         updated = row(conn, "SELECT updated_at FROM entities WHERE id=?", (entity_id,))
-        return {"ok": True, "id": entity_id,
-                "modifies": sorted(c for champs in par_table.values() for c in champs),
+        return {"ok": True, "id": entity_id, "modifies": modifies,
                 "updated_at": updated["updated_at"] if updated else None}
     finally:
         conn.close()
@@ -3801,24 +3912,33 @@ def update_relation(
             raise HTTPException(400, "confidence invalide")
         if req.confidence is not None and req.confidence != rel.get("confidence"):
             exiger(user, "validator", "Changer la fiabilité d'une relation")
-        updates, params = [], []
-        for field in ("relation_type", "since", "until", "source", "confidence"):
-            val = getattr(req, field)
-            if val is not None:
-                old = rel.get(field)
-                if str(old or "") != str(val):
-                    conn.execute("""
-                        INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
-                        VALUES(?,?,'relations','update',?,?,?)
-                    """, (user["id"], rel["from_id"], field, str(old) if old else None, str(val)))
-                updates.append(f"{field}=?")
-                params.append(val)
-        if updates:
-            conn.execute(f"UPDATE relations SET {', '.join(updates)} WHERE id=?", params + [rel_id])
+        valeurs = {f: getattr(req, f) for f in _CHAMPS_RELATION if getattr(req, f) is not None}
+        changes = {f: v for f, v in valeurs.items() if str(rel.get(f) or "") != str(v)}
+        if changes and _doit_proposer(user, rel.get("confidence")):
+            return _propose(conn, "relation", "relation", rel_id, rel["from_id"], changes,
+                            {f: rel.get(f) for f in changes}, user,
+                            relation=_relation_enriched(conn, rel_id))
+        _ecrire_relation(conn, rel, valeurs, user)
         conn.commit()
         return _relation_enriched(conn, rel_id)
     finally:
         conn.close()
+
+
+_CHAMPS_RELATION = ("relation_type", "since", "until", "source", "confidence")
+
+
+def _ecrire_relation(conn, rel: dict, valeurs: dict, user: dict) -> None:
+    for field, val in valeurs.items():
+        old = rel.get(field)
+        if str(old or "") != str(val):
+            conn.execute("""
+                INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
+                VALUES(?,?,'relations','update',?,?,?)
+            """, (user["id"], rel["from_id"], field, str(old) if old else None, str(val)))
+    if valeurs:
+        conn.execute(f"UPDATE relations SET {', '.join(f'{f}=?' for f in valeurs)} WHERE id=?",
+                     list(valeurs.values()) + [rel["id"]])
 
 @app.delete("/api/atelier/relations/{rel_id}")
 def delete_relation(rel_id: int = FPath(..., ge=1), user=Depends(require_au_moins("validator", "Supprimer une relation"))):
@@ -3832,6 +3952,125 @@ def delete_relation(rel_id: int = FPath(..., ge=1), user=Depends(require_au_moin
             VALUES(?,?,'relations','delete','relation_id',?)
         """, (user["id"], rel["from_id"], str(rel_id)))
         conn.execute("DELETE FROM relations WHERE id=?", (rel_id,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+# ─── Propositions ─────────────────────────────────────────────────────────────
+# Ce qu'un contributeur a voulu écrire sur un objet publié (cf.
+# `collectors/propositions.py`). Accepter REJOUE la proposition par l'écrivain
+# ordinaire de l'objet, au nom du validateur qui accepte — il n'y a pas de
+# second chemin d'écriture, donc pas de seconde règle à tenir.
+
+class DecisionProposition(BaseModel):
+    accepter: bool
+    motif: str = ""
+
+
+def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
+    """Ce que valent AUJOURD'HUI les champs visés : entre la proposition et sa
+    relecture, la collecte ou un autre éditeur ont pu passer. None : l'objet
+    n'existe plus."""
+    champs = list(prop["charge"])
+    if prop["nature"] == "fiche":
+        ligne = row(conn, _FICHE_COURANTE, (prop["object_id"],))
+    elif prop["nature"] == "coords":
+        ligne = row(conn, "SELECT lat, lng FROM entities WHERE id=?", (prop["object_id"],))
+    elif prop["nature"] == "relation":
+        ligne = row(conn, "SELECT * FROM relations WHERE id=?", (prop["object_id"],))
+    else:
+        a = row(conn, "SELECT corrections FROM annotations WHERE object_type=? AND object_id=?",
+                (prop["object_type"], prop["object_id"]))
+        ligne = parse_json_field(a["corrections"], {}) if a else {}
+    if ligne is None:
+        return None
+    return {c: ligne.get(c) for c in champs}
+
+
+@app.get("/api/atelier/propositions")
+def atelier_propositions(etat: str = "en_attente", user=Depends(require_auth)):
+    """La file des propositions. Un contributeur n'y voit que les siennes."""
+    if etat not in _propositions.ETATS:
+        raise HTTPException(400, f"etat invalide — valeurs : {', '.join(_propositions.ETATS)}")
+    conn = get_db_rw()
+    try:
+        _propositions.assurer_schema(conn)
+        conn.commit()
+        lignes = _propositions.lister(
+            conn, etat, None if au_moins(user, "validator") else user["id"])
+        for p in lignes:
+            p["actuel"] = _valeurs_actuelles(conn, p) if etat == "en_attente" else None
+        return {"propositions": lignes, "peut_trancher": au_moins(user, "validator")}
+    finally:
+        conn.close()
+
+
+@app.post("/api/atelier/propositions/{proposition_id}/decision")
+def atelier_trancher_proposition(
+    proposition_id: int = FPath(..., ge=1),
+    req: DecisionProposition = ...,
+    user=Depends(require_au_moins("validator", "Accepter ou refuser une proposition")),
+):
+    if not req.accepter and not req.motif.strip():
+        raise HTTPException(400, "Refuser demande d'expliquer pourquoi : sans motif, la "
+                                 "personne qui a proposé ne saura pas quoi corriger.")
+    conn = get_db_rw()
+    try:
+        _propositions.assurer_schema(conn)
+        conn.commit()
+        prop = _propositions.lire(conn, proposition_id)
+        if not prop:
+            raise HTTPException(404, "Proposition introuvable.")
+        if prop["etat"] != "en_attente":
+            raise HTTPException(409, f"Cette proposition n'attend plus : {prop['etat']}"
+                                     + (f" par {prop['tranche_par']}." if prop["tranche_par"] else "."))
+        if req.accepter and prop["nature"] == "correction":
+            # `_decider` ouvre sa propre transaction : la correction est posée
+            # d'abord, la proposition close ensuite. Rejouer une correction déjà
+            # posée n'écrit rien de plus — l'ordre inverse perdrait la correction.
+            _decider(prop["object_type"], prop["object_id"],
+                     AnnotationUpdate(corrections=prop["charge"]), user)
+        conn.execute("BEGIN IMMEDIATE")
+        if req.accepter and prop["nature"] != "correction":
+            oid, charge = prop["object_id"], prop["charge"]
+            if prop["nature"] == "fiche":
+                current = row(conn, _FICHE_COURANTE, (oid,))
+                if not current:
+                    raise HTTPException(404, "La fiche visée n'existe plus.")
+                _ecrire_fiche(conn, oid, _changements_fiche(current, charge, user), user)
+            elif prop["nature"] == "coords":
+                old = row(conn, "SELECT lat, lng FROM entities WHERE id=?", (oid,))
+                if not old:
+                    raise HTTPException(404, "La fiche visée n'existe plus.")
+                _ecrire_coords(conn, oid, charge["lat"], charge["lng"], old, user)
+            else:
+                rel = row(conn, "SELECT * FROM relations WHERE id=?", (oid,))
+                if not rel:
+                    raise HTTPException(404, "La relation visée n'existe plus.")
+                _ecrire_relation(conn, rel, charge, user)
+        _propositions.clore(conn, proposition_id, "acceptee" if req.accepter else "refusee",
+                            user, req.motif)
+        conn.commit()
+        return _propositions.lire(conn, proposition_id)
+    finally:
+        conn.close()
+
+
+@app.delete("/api/atelier/propositions/{proposition_id}")
+def atelier_retirer_proposition(proposition_id: int = FPath(..., ge=1),
+                                user=Depends(require_auth)):
+    """Son auteur retire une proposition qui attend encore."""
+    conn = get_db_rw()
+    try:
+        _propositions.assurer_schema(conn)
+        prop = _propositions.lire(conn, proposition_id)
+        if not prop or prop["propose_par_id"] != user["id"]:
+            raise HTTPException(404, "Proposition introuvable.")
+        if prop["etat"] != "en_attente":
+            raise HTTPException(409, f"Cette proposition n'attend plus : {prop['etat']}.")
+        _propositions.clore(conn, proposition_id, "retiree", user)
         conn.commit()
         return {"ok": True}
     finally:
@@ -3950,30 +4189,42 @@ def update_coords(
     req: CoordsUpdate = ...,
     user=Depends(require_auth),
 ):
-    from collectors.geocoder import wgs84_to_l93
-    x_l93, y_l93 = wgs84_to_l93(req.lat, req.lng)
+    if not (-90 <= req.lat <= 90 and -180 <= req.lng <= 180):
+        raise HTTPException(400, "coordonnées hors du globe")
     conn = get_db_rw()
     try:
-        if not row(conn, "SELECT 1 FROM entities WHERE id=?", (entity_id,)):
+        conn.execute("BEGIN IMMEDIATE")
+        old = row(conn, "SELECT lat, lng, confidence FROM entities WHERE id=?", (entity_id,))
+        if not old:
             raise HTTPException(404, "Entité introuvable")
-        old = row(conn, "SELECT lat, lng FROM entities WHERE id=?", (entity_id,))
-        conn.execute("""
-            UPDATE entities
-            SET lat=?, lng=?, x_l93=?, y_l93=?,
-                geocode_source='manual', geocode_score=1.0,
-                updated_at=datetime('now')
-            WHERE id=?
-        """, (req.lat, req.lng, x_l93, y_l93, entity_id))
-        conn.execute("""
-            INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
-            VALUES(?,?,'entities','update','coords',?,?)
-        """, (user["id"], entity_id,
-              f"{old['lat']},{old['lng']}" if old else None,
-              f"{req.lat},{req.lng} (L93: {x_l93},{y_l93})"))
+        if _doit_proposer(user, old["confidence"]):
+            return _propose(conn, "coords", "entity", entity_id, entity_id,
+                            {"lat": req.lat, "lng": req.lng},
+                            {"lat": old["lat"], "lng": old["lng"]}, user,
+                            lat=old["lat"], lng=old["lng"])
+        x_l93, y_l93 = _ecrire_coords(conn, entity_id, req.lat, req.lng, old, user)
         conn.commit()
         return {"ok": True, "lat": req.lat, "lng": req.lng, "x_l93": x_l93, "y_l93": y_l93}
     finally:
         conn.close()
+
+
+def _ecrire_coords(conn, entity_id: int, lat: float, lng: float, old: dict, user: dict):
+    from collectors.geocoder import wgs84_to_l93
+    x_l93, y_l93 = wgs84_to_l93(lat, lng)
+    conn.execute("""
+        UPDATE entities
+        SET lat=?, lng=?, x_l93=?, y_l93=?,
+            geocode_source='manual', geocode_score=1.0,
+            updated_at=datetime('now')
+        WHERE id=?
+    """, (lat, lng, x_l93, y_l93, entity_id))
+    conn.execute("""
+        INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
+        VALUES(?,?,'entities','update','coords',?,?)
+    """, (user["id"], entity_id, f"{old['lat']},{old['lng']}",
+          f"{lat},{lng} (L93: {x_l93},{y_l93})"))
+    return x_l93, y_l93
 
 
 # ─── Notes ────────────────────────────────────────────────────────────────────

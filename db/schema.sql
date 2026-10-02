@@ -409,6 +409,28 @@ CREATE TABLE IF NOT EXISTS dossiers (
 );
 
 -- ----------------------------------------------------------------
+-- PROPOSITIONS — ce qu'un contributeur écrit sur un objet PUBLIÉ
+-- (collectors/propositions.py). Rien n'est appliqué tant qu'un
+-- validateur ne l'a pas accepté ; l'acceptation REJOUE `charge` par
+-- l'écrivain ordinaire de l'objet.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS propositions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    nature       TEXT NOT NULL,              -- fiche | coords | relation | correction
+    object_type  TEXT NOT NULL,              -- entity | relation | deliberation | flow | marche
+    object_id    INTEGER NOT NULL,
+    entity_id    INTEGER,                    -- la fiche dont l'historique reçoit la proposition
+    charge       TEXT NOT NULL,              -- JSON : ce que le contributeur voulait écrire
+    avant        TEXT,                       -- JSON : ce qu'il avait sous les yeux
+    propose_par  INTEGER REFERENCES users(id),
+    propose_le   TEXT DEFAULT (datetime('now')),
+    etat         TEXT NOT NULL DEFAULT 'en_attente',  -- en_attente | acceptee | refusee | retiree
+    tranche_par  INTEGER REFERENCES users(id),
+    tranche_le   TEXT,
+    motif        TEXT
+);
+
+-- ----------------------------------------------------------------
 -- COLLECTOR_RUNS — journal de la loop de collecte auto-pilotée
 -- (fraîcheur des sources : scripts/collect_loop.py)
 -- ----------------------------------------------------------------

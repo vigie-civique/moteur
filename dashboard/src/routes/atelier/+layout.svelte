@@ -72,6 +72,7 @@
     { href: '/atelier/queue/websites',         label: 'Adresses de sites' },
     { href: '/atelier/geo',                    label: 'Points sur la carte' },
     { href: '/atelier/donnees',                label: 'Chiffres à confirmer' },
+    { href: '/atelier/propositions',           label: 'Propositions' },
     { href: '/atelier/conseils',               label: 'Conseils en clair' },
     { href: '/atelier/dossiers',               label: 'Dossiers' },
     { href: '/atelier/fiches',                 label: 'Toutes les fiches' },

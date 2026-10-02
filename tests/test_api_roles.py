@@ -78,7 +78,9 @@ class TestContributeur:
         h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
         r = c.patch(f"/api/atelier/entities/{eid}", headers=h,
                     json={"updated_at": AVANT, "address": "1 rue Basse"})
-        assert r.status_code == 200
+        # 202 depuis le 02/10/2026 : la fiche est publiée (`verified` par
+        # défaut), la correction est une PROPOSITION — cf. test_api_propositions.
+        assert r.status_code == 202
         u = r.json()["updated_at"]
         r = c.patch(f"/api/atelier/entities/{eid}", headers=h,
                     json={"updated_at": u, "confidence": "probable"})
