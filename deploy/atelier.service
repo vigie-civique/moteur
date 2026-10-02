@@ -24,6 +24,11 @@ WorkingDirectory=/opt/vigie
 # Les secrets ne sont pas dans l'unité : un fichier d'unité est lisible par tous.
 # Ce fichier-là doit être en 0600 et appartenir à l'utilisateur du service.
 EnvironmentFile=/opt/vigie/.env
+# L'aperçu et la mise en ligne lancent `npm run build`, et npm écrit dans le
+# dossier personnel de qui le lance. Celui du compte de service n'existe pas ou
+# n'est pas inscriptible (`ProtectHome`) : on lui en donne un, dans ses données.
+#   install -d -o vigie -m 0750 /opt/vigie/audits/.home
+Environment=HOME=/opt/vigie/audits/.home
 # venv créé sur le serveur :
 #   python3 -m venv /opt/vigie/venv && /opt/vigie/venv/bin/pip install -r requirements.txt
 #
