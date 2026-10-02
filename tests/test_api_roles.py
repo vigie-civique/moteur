@@ -327,6 +327,17 @@ class TestApercuEtPublication:
         assert (flux.APERCUS / str(j["user"]["id"]) / "donnees" / "stats.json").is_file()
         assert not (flux.BROUILLON / "stats.json").exists()
 
+    def test_un_compte_ne_relance_pas_son_apercu_en_boucle(self, atelier, flux):
+        """Un aperçu reconstruit tout le snapshot sous le verrou de publication."""
+        c = atelier["client"]
+        h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        assert c.post("/api/admin/publication/apercu", headers=h).status_code == 200
+        r = c.post("/api/admin/publication/apercu", headers=h)
+        assert r.status_code == 429 and "attendre" in r.json()["detail"]
+        # Le délai est par compte : un autre n'attend pas.
+        h2, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        assert c.post("/api/admin/publication/apercu", headers=h2).status_code == 200
+
     def test_ni_contributeur_ni_validateur_ne_publient(self, atelier, flux):
         c = atelier["client"]
         for email, role in (("contrib@exemple.fr", "contributor"), ("valid@exemple.fr", "validator")):

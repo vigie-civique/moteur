@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 5174",
-    "build": "vite build && node scripts/verifier_build.mjs",
+    "build": "node scripts/verifier_markdown.mjs && vite build && node scripts/verifier_build.mjs",
     "preview": "vite preview --port 5174",
     "verifier": "node scripts/verifier_build.mjs",
     "verifier-hors-ligne": "node scripts/verifier_hors_ligne.mjs"

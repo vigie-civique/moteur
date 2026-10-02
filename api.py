@@ -1394,6 +1394,10 @@ def atelier_importer_decisions(req: ImportDecisionsRequest,
 # d'abord, et ce qui est rouge ne se publie pas.
 
 
+#: Délai minimal, en secondes, entre deux aperçus d'un même compte.
+APERCU_DELAI_S = 120
+
+
 class ApercuServeurRequest(BaseModel):
     action: str = "demarrer"      # demarrer | arreter
 
@@ -1500,6 +1504,19 @@ def publication_apercu(x_admin_key: Optional[str] = Header(default=None),
     """
     _check_admin(x_admin_key, user, role_min="contributor")
     from scripts.build_public_snapshot import PerimetreNonClasse
+    # Un aperçu reconstruit le snapshot ENTIER, sous le verrou de publication :
+    # relancé en boucle par un seul compte, il immobilise le serveur et la
+    # publication de tout le monde. Un par compte toutes les deux minutes.
+    if user:
+        dernier = pub.apercu_du_compte(user["id"]).get("genere_le")
+        try:
+            age = (datetime.now(timezone.utc) - datetime.fromisoformat(dernier)).total_seconds()
+        except (TypeError, ValueError):
+            age = None
+        if age is not None and age < APERCU_DELAI_S:
+            raise HTTPException(429, f"Votre aperçu vient d'être généré : attendre "
+                                     f"{int(APERCU_DELAI_S - age) + 1} s avant d'en "
+                                     f"demander un autre.")
     try:
         resume = (pub.generer_apercu_du_compte(user["id"], auteur=_auteur(user)) if user
                   else pub.generer_apercu(auteur=_auteur(user)))
