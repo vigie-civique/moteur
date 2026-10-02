@@ -15,7 +15,11 @@ import shutil
 
 import pytest
 
-from collectors import cm_ocr, conseils
+# Les deux collecteurs lisent des PDF : le job « tests », qui n'installe que
+# pytest, saute ce fichier ; « tests-deps » le joue et refuse qu'il soit sauté.
+pytest.importorskip("pdfplumber", reason="job « tests-deps » : pip install -r requirements.txt")
+
+from collectors import cm_ocr, conseils  # noqa: E402
 
 
 @pytest.fixture
