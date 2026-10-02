@@ -115,5 +115,9 @@ export function lireDossiers() {
         : mettreEnForme(marked.parse(corps.replace(/^# .*\n/, '')))),
     })
   }
-  return dossiers.sort((a, b) => (b.maj || '').localeCompare(a.maj || ''))
+  // Alphabétique, article initial ignoré (« L'eau » se range à E). Par date de
+  // mise à jour, le dernier dossier retouché prenait la tête de la liste : la
+  // place d'un sujet ne doit rien dire de son importance.
+  const cle = (d) => d.titre.replace(/^(?:(?:les|le|la)\s+|l['’])/i, '')
+  return dossiers.sort((a, b) => cle(a).localeCompare(cle(b), 'fr', { sensitivity: 'base' }))
 }
