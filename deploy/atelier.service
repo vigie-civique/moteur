@@ -67,6 +67,8 @@ UMask=0027
 # vivent là, le service peut réécrire les règles qui le contiennent.
 ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public /opt/vigie/config
 ReadWritePaths=-/opt/vigie/public-data -/opt/vigie/decisions -/opt/vigie/dashboard/static/api
+# Les dossiers thématiques s'écrivent depuis l'atelier (`dossiers/<slug>.md`).
+ReadWritePaths=-/opt/vigie/dossiers
 
 [Install]
 WantedBy=multi-user.target
