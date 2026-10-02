@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { currentUser, logout } from '$lib/stores/auth.js'
+  import { currentUser, logout, rafraichir } from '$lib/stores/auth.js'
   import { LIBELLE_ROLE, auMoins } from '$lib/roles.js'
 
   let ready = false
@@ -27,25 +27,15 @@
       }
     }
 
-    // Tenter le refresh
-    const refresh = localStorage.getItem('atelier_refresh')
-    if (refresh) {
-      const rr = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refresh }),
+    // Tenter le rafraîchissement (cookie HttpOnly, cf. stores/auth.js)
+    if (await rafraichir()) {
+      const me = await fetch('/api/auth/me', {
+        headers: { 'X-Atelier-Session': sessionStorage.getItem('atelier_access') },
       })
-      if (rr.ok) {
-        const data = await rr.json()
-        sessionStorage.setItem('atelier_access', data.access_token)
-        const me = await fetch('/api/auth/me', {
-          headers: { 'X-Atelier-Session': data.access_token },
-        })
-        if (me.ok) {
-          currentUser.set(await me.json())
-          ready = true
-          return
-        }
+      if (me.ok) {
+        currentUser.set(await me.json())
+        ready = true
+        return
       }
     }
 

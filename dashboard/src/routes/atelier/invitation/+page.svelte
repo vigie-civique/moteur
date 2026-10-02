@@ -56,7 +56,6 @@
       const d = await r.json()
       if (!r.ok) { erreur = messageErreur(d.detail); return }
       sessionStorage.setItem('atelier_access', d.access_token)
-      localStorage.setItem('atelier_refresh', d.refresh_token)
       currentUser.set(d.user)
       goto('/atelier')
     } catch {

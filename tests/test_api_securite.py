@@ -35,6 +35,7 @@ def atelier(tmp_path, monkeypatch, schema_sql):
     for module in (api, api_auth, db_mod):
         monkeypatch.setattr(module, "DB_PATH", chemin_db)
     monkeypatch.setattr(api, "RACINE", tmp_path)
+    monkeypatch.setattr(api_auth, "_echecs", {})
     monkeypatch.delenv("ADMIN_KEY", raising=False)
     monkeypatch.setattr(api, "ADMIN_KEY", "")
     client = TestClient(api.app)
@@ -180,3 +181,79 @@ class TestAdresseSaisie:
                                    json={"url": "https://exemple.fr/four"})
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "candidate"
+
+
+class TestSessionHorsDePorteeDesScripts:
+    """Le jeton de sept jours vit dans un cookie que la page ne peut pas lire."""
+
+    def _connecter(self, atelier):
+        atelier["compte"]("une@exemple.fr", "validator")
+        return atelier["client"].post("/api/auth/login",
+                                      json={"email": "une@exemple.fr", "password": MDP})
+
+    def test_la_connexion_pose_un_cookie_que_les_scripts_ne_lisent_pas(self, atelier):
+        cookie = self._connecter(atelier).headers["set-cookie"].lower()
+        assert cookie.startswith("atelier_refresh=")
+        assert "httponly" in cookie and "samesite=strict" in cookie
+        assert "path=/api/auth" in cookie
+
+    def test_le_cookie_suffit_a_rafraichir_et_la_deconnexion_le_revoque(self, atelier):
+        c = atelier["client"]
+        self._connecter(atelier)
+        r = c.post("/api/auth/refresh")                 # ni corps, ni en-tête
+        assert r.status_code == 200, r.text
+        acces = {"X-Atelier-Session": r.json()["access_token"]}
+        assert c.get("/api/atelier/stats", headers=acces).status_code == 200
+
+        ancien = c.cookies.get("atelier_refresh")
+        assert c.post("/api/auth/logout", headers=acces).status_code == 200
+        assert c.post("/api/auth/refresh").status_code == 401
+        # Le jeton lui-même est révoqué, pas seulement retiré du navigateur.
+        assert c.post("/api/auth/refresh", json={"refresh_token": ancien}).status_code == 401
+
+    def test_sans_cookie_ni_jeton_rien_ne_se_rafraichit(self, atelier):
+        assert atelier["client"].post("/api/auth/refresh").status_code == 401
+
+
+class TestEssaisRates:
+    """Celui qui se trompe est arrêté — pas celui qu'il vise."""
+
+    def test_cinq_essais_rates_arretent_cette_origine_pas_le_compte(self, atelier):
+        from fastapi.testclient import TestClient as Client
+        atelier["compte"]("admin@exemple.fr", "admin")
+        c = atelier["client"]
+        faux = {"email": "admin@exemple.fr", "password": "pas-le-bon-mot-de-passe"}
+        juste = {"email": "admin@exemple.fr", "password": MDP}
+        for _ in range(5):
+            assert c.post("/api/auth/login", json=faux).status_code == 401
+        # La même origine est arrêtée, même avec le bon mot de passe…
+        assert c.post("/api/auth/login", json=juste).status_code == 429
+        # …l'administrateur, lui, entre de chez lui.
+        ailleurs = Client(atelier["app"], client=("203.0.113.7", 50000))
+        assert ailleurs.post("/api/auth/login", json=juste).status_code == 200
+
+    def test_un_compte_inexistant_repond_comme_un_mauvais_mot_de_passe(self, atelier):
+        c = atelier["client"]
+        inconnu = {"email": "personne@exemple.fr", "password": "x" * 12}
+        for _ in range(5):
+            assert c.post("/api/auth/login", json=inconnu).status_code == 401
+        assert c.post("/api/auth/login", json=inconnu).status_code == 429
+
+
+class TestModeleDistant:
+    """Envoyer la base de travail hors de la machine se décide, ça ne s'obtient
+    pas en renseignant une adresse."""
+
+    @pytest.mark.parametrize("adresse, accepte, attendu", [
+        ("http://localhost:11434/v1", False, True),
+        ("http://127.0.0.1:11434/v1", False, True),
+        ("https://api.exemple.com/v1", False, False),
+        ("https://api.exemple.com/v1", True, True),
+        ("https://localhost.exemple.com/v1", False, False),     # pas une sous-chaîne
+    ])
+    def test_un_modele_distant_demande_une_decision(self, monkeypatch, adresse, accepte, attendu):
+        import api
+        monkeypatch.setattr(api, "_IA_URL", adresse)
+        monkeypatch.setattr(api, "_IA_MODELE", "un-modele")
+        monkeypatch.setattr(api, "_IA_HORS_MACHINE", accepte)
+        assert api._ia_configuree() is attendu

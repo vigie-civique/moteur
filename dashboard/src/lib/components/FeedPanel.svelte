@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { feedItems, selectedEntity, activeTab } from '$lib/stores/app.js'
   import { api } from '$lib/api.js'
 
@@ -48,7 +49,7 @@
             <div class="title">{ev.title || ev.type}</div>
             <div class="meta">
               {fmtDate(ev.date)}
-              {#if ev.source_url}<a href={ev.source_url} target="_blank">CR ↗</a>{/if}
+              {#if ev.source_url}<a href={lienSur(ev.source_url)} target="_blank">CR ↗</a>{/if}
             </div>
           </div>
         </li>

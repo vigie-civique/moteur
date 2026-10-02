@@ -852,11 +852,26 @@ _IA_DELAI     = int(os.environ.get("IA_DELAI") or 1800)
 _IA_PROTOCOLES = ("openai", "anthropic")
 
 
+def _ia_locale() -> bool:
+    """Le modèle tourne-t-il sur CETTE machine ? Jugé sur le nom d'hôte de
+    l'adresse, pas sur une sous-chaîne."""
+    from urllib.parse import urlsplit
+    return (urlsplit(_IA_URL).hostname or "") in ("localhost", "127.0.0.1", "::1")
+
+
+# Ces routes envoient au modèle des extraits de la base de travail — des noms
+# de personnes, des pistes non établies. Vers un modèle local, rien ne sort.
+# Vers un service distant, c'est une sortie de données non filtrées : elle se
+# DÉCIDE (`IA_HORS_MACHINE=1`), elle ne s'obtient pas en renseignant une adresse.
+_IA_HORS_MACHINE = os.environ.get("IA_HORS_MACHINE", "0").strip().lower() \
+    not in ("0", "false", "no", "")
+
+
 def _ia_configuree() -> bool:
     """Une URL et un modèle suffisent. La clé ne fait pas partie du minimum :
     un modèle local n'en demande pas, et l'exiger fermait la porte au seul
     fournisseur qui ne coûte rien et ne publie rien."""
-    return bool(_IA_URL and _IA_MODELE)
+    return bool(_IA_URL and _IA_MODELE) and (_ia_locale() or _IA_HORS_MACHINE)
 
 
 class SynthesizeRequest(BaseModel):
@@ -1009,6 +1024,10 @@ def _appel_anthropic(user_msg: str, system: str = SYSTEM_PROMPT,
 
 def _appel_modele(user_msg: str, **kw) -> str:
     """Le fournisseur réglé, quel qu'il soit. Un seul point d'appel."""
+    if _IA_URL and _IA_MODELE and not _ia_configuree():
+        raise HTTPException(503, "Le modèle réglé est un service DISTANT : lui envoyer des "
+                                 "extraits de la base de travail demande IA_HORS_MACHINE=1 "
+                                 "(cf. deploy/env.exemple).")
     if not _ia_configuree():
         raise HTTPException(503, "Aucun modèle configuré : régler IA_URL et IA_MODELE "
                                  "(cf. deploy/env.exemple).")
@@ -1038,8 +1057,7 @@ def ia_config(user=Depends(require_auth)):
         "configuree": _ia_configuree(),
         "modele":     _IA_MODELE or None,
         "protocole":  _IA_PROTOCOLE,
-        "locale":     bool(_IA_URL) and any(
-            h in _IA_URL for h in ("localhost", "127.0.0.1", "[::1]")),
+        "locale":     bool(_IA_URL) and _ia_locale(),
     }
 
 
@@ -1123,8 +1141,7 @@ def atelier_ia_extraire(request: StarletteRequest, req: ExtraireRequest,
     resultat["modele"] = _IA_MODELE
     # Le dire explicitement : quand on manipule des données de personnes, savoir
     # si le texte est sorti de la machine n'est pas un détail d'affichage.
-    resultat["locale"] = bool(_IA_URL) and any(
-        h in _IA_URL for h in ("localhost", "127.0.0.1", "[::1]"))
+    resultat["locale"] = bool(_IA_URL) and _ia_locale()
     return resultat
 
 # ─── /api/candidates ───────────────────────────────────────────────────────────

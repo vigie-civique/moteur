@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { onMount } from 'svelte'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
   import { auMoins } from '$lib/roles.js'
@@ -124,7 +125,7 @@
             <a href="/atelier/entite/{c.entity_id}" class="entity-link">{c.entity_name}</a>
             <span class="type-badge type-{c.entity_type}">{c.entity_type}</span>
           </div>
-          <a href={c.url} target="_blank" rel="noopener" class="cand-url">{c.url}</a>
+          <a href={lienSur(c.url)} target="_blank" rel="noopener" class="cand-url">{c.url}</a>
           <span class="cand-score" style="color:{scoreColor(c.score)}">
             {c.score != null ? c.score.toFixed(2) : '—'}
           </span>

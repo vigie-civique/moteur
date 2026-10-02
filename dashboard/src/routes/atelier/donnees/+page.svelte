@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   // Revue & annotation des données importées (délibs / flux / marchés).
   // Le manque central pointé par CARTE_PRODUIT §4 : ces données étaient
   // collectées mais ni éditables ni validables côté atelier.
@@ -292,7 +293,7 @@
             {#if selected.saisi_par}· {selected.saisi_par}{/if}
           </p>
           {#if selected.source_url}
-            <a class="src-link" href={selected.source_url} target="_blank" rel="noopener">↗ source</a>
+            <a class="src-link" href={lienSur(selected.source_url)} target="_blank" rel="noopener">↗ source</a>
           {/if}
           {#if selected.document_id}
             <a class="src-link" href={api.documentUrl(selected.document_id)}

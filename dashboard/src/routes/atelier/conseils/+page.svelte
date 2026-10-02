@@ -18,6 +18,7 @@
   let loading = true
   let error   = ''
   let avis    = ''
+  let feuilles = null     // { titre, html } : l'aperçu ouvert
   let occupe  = {}
   let notes   = {}
 
@@ -40,8 +41,10 @@
   async function apercu(s) {
     const res = await authFetch(`/atelier/en-clair/${s.releve}/apercu`)
     if (!res.ok) { avis = `Aperçu impossible (${res.status}).`; return }
-    const url = URL.createObjectURL(new Blob([await res.text()], { type: 'text/html' }))
-    window.open(url, '_blank')
+    // Dans un cadre SANS droits (`sandbox`), et non plus dans un onglet : un
+    // `blob:` ouvert depuis l'atelier s'exécute à son adresse, donc avec sa
+    // session. Les feuilles n'ont besoin d'aucun script pour se lire.
+    feuilles = { titre: `${s.assemblee}, ${s.date}`, html: await res.text() }
   }
 
   async function motif(res, defaut) {
@@ -135,6 +138,18 @@
   {/if}
 </div>
 
+{#if feuilles}
+  <div class="voile" role="dialog" aria-modal="true" aria-label="Aperçu des feuilles">
+    <div class="feuilles">
+      <header>
+        <strong>{feuilles.titre}</strong>
+        <button on:click={() => (feuilles = null)}>Fermer</button>
+      </header>
+      <iframe title="Les trois feuilles de la séance" sandbox="" srcdoc={feuilles.html}></iframe>
+    </div>
+  </div>
+{/if}
+
 <style>
   .page { padding: 1.2rem 1.4rem 2rem; max-width: 62rem; display: flex; flex-direction: column; gap: .9rem; }
   header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
@@ -170,4 +185,9 @@
   button.oui { border-color: #166534; background: #14291d; color: #bbf7d0; }
   button.non { border-color: #7f1d1d; background: #2a1414; color: #fecaca; }
   .aide { font-size: .8rem; color: #94a3b8; }
+  .voile { position: fixed; inset: 0; background: rgba(2, 6, 23, .8); z-index: 50; display: flex; padding: 1.5rem; }
+  .feuilles { flex: 1; display: flex; flex-direction: column; background: #1e293b; border: 1px solid #334155; border-radius: .4rem; overflow: hidden; }
+  .feuilles header { display: flex; justify-content: space-between; align-items: center; padding: .5rem .8rem; color: #e2e8f0; }
+  .feuilles header button { border: 1px solid #475569; border-radius: .3rem; padding: .3rem .7rem; color: #e2e8f0; }
+  .feuilles iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 </style>

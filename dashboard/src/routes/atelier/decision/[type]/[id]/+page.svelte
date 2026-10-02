@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   // L'écran d'une décision — lot C, 23/09/2026.
   //
   // Trois zones, et rien d'autre :
@@ -167,7 +168,7 @@
 
         {#if d.objet.source_url || d.acte?.source_url}
           <dt>La source</dt>
-          <dd><a href={d.objet.source_url || d.acte.source_url}
+          <dd><a href={lienSur(d.objet.source_url || d.acte.source_url)}
                  target="_blank" rel="noopener noreferrer">Ouvrir le document d'origine</a></dd>
         {/if}
       </dl>

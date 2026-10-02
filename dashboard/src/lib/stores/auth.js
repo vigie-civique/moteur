@@ -24,20 +24,8 @@ export async function authFetch(path, options = {}) {
     },
   })
 
-  if (res.status === 401) {
-    const refresh = localStorage.getItem('atelier_refresh')
-    if (refresh) {
-      const rr = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refresh }),
-      })
-      if (rr.ok) {
-        const data = await rr.json()
-        sessionStorage.setItem('atelier_access', data.access_token)
-        return authFetch(path, options)
-      }
-    }
+  if (res.status === 401 && !options._rejoue) {
+    if (await rafraichir()) return authFetch(path, { ...options, _rejoue: true })
     _clearSession()
     // Ne pas rediriger si on est déjà sur le login — sinon boucle de reload
     // infinie (le layout racine fetch /stats au mount, 401 → redirect → remount).
@@ -49,6 +37,19 @@ export async function authFetch(path, options = {}) {
   }
 
   return res
+}
+
+/**
+ * Demande un jeton d'accès neuf. Le jeton de rafraîchissement (sept jours) vit
+ * dans un cookie HttpOnly, posé par l'API à la connexion : le navigateur
+ * l'envoie de lui-même, et aucun script de la page — celui-ci compris — ne peut
+ * le lire. Il vivait dans `localStorage`, à la portée de la première injection.
+ */
+export async function rafraichir() {
+  const rr = await fetch('/api/auth/refresh', { method: 'POST' })
+  if (!rr.ok) return false
+  sessionStorage.setItem('atelier_access', (await rr.json()).access_token)
+  return true
 }
 
 /**
@@ -68,22 +69,19 @@ export async function initAuth() {
 
 export async function logout() {
   const token = sessionStorage.getItem('atelier_access')
-  const refresh = localStorage.getItem('atelier_refresh')
-  if (token || refresh) {
-    // Le jeton de rafraîchissement part aussi : c'est lui qui vit sept jours.
-    // Attendu avant d'effacer la session, pour que la révocation ait lieu.
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json',
-                 ...(token ? { 'X-Atelier-Session': token } : {}) },
-      body: JSON.stringify({ refresh_token: refresh }),
-    }).catch(() => {})
-  }
+  // Toujours appelé, même sans jeton d'accès : le cookie de rafraîchissement
+  // (sept jours) est révoqué et retiré par l'API, qui seule peut le lire.
+  // Attendu avant d'effacer la session, pour que la révocation ait lieu.
+  await fetch('/api/auth/logout', {
+    method: 'POST',
+    headers: token ? { 'X-Atelier-Session': token } : {},
+  }).catch(() => {})
   _clearSession()
 }
 
 function _clearSession() {
   sessionStorage.removeItem('atelier_access')
+  // Reliquat d'avant le 02/10/2026 : le jeton n'y est plus écrit, on l'en retire.
   localStorage.removeItem('atelier_refresh')
   currentUser.set(null)
 }

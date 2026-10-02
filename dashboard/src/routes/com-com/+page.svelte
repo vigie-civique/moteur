@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { COMMUNE, COMMUNE_DE, EPCI, EPCI_COURT, EPCI_NB_COMMUNES, L_EPCI, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
@@ -152,7 +153,7 @@
               <div class="tl-body">
                 <span class="tl-title">{d.title}</span>
                 {#if d.source_url}
-                  <a href={d.source_url} target="_blank" rel="noopener" class="tl-src">↗</a>
+                  <a href={lienSur(d.source_url)} target="_blank" rel="noopener" class="tl-src">↗</a>
                 {/if}
               </div>
             </div>

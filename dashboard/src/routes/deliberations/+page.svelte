@@ -1,5 +1,6 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
+  import { lienSur } from '$lib/liens.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
 
@@ -155,10 +156,10 @@
           {/if}
           <div class="links">
             {#if pdfUrl(ev)}
-              <a href={pdfUrl(ev)} target="_blank" rel="noopener">PDF</a>
+              <a href={lienSur(pdfUrl(ev))} target="_blank" rel="noopener">PDF</a>
             {/if}
             {#if pageUrl(ev)}
-              <a href={pageUrl(ev)} target="_blank" rel="noopener">Page mairie</a>
+              <a href={lienSur(pageUrl(ev))} target="_blank" rel="noopener">Page mairie</a>
             {/if}
           </div>
         </article>

@@ -365,6 +365,9 @@ def relever(conn, commune: str, code_postal: str) -> list[dict]:
             ligne.update(reste=None, fait=None, en_cours=[], premier=None,
                          indisponible=str(e))
         ligne["derniere_passe"] = _derniere_passe(conn, f.steps)
+        # Une file que n'alimente aucun collecteur (les propositions viennent
+        # des contributeurs) : son zéro est MESURÉ, il ne dit pas « jamais passé ».
+        ligne["sans_collecte"] = not f.steps
         releve.append(ligne)
     return releve
 

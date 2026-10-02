@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
@@ -721,7 +722,7 @@
                 <span class="contact-icon">{contactIcon(c.type)}</span>
                 <span class="contact-type">{c.type}</span>
                 {#if c.type === 'website'}
-                  <a href={c.value} target="_blank" rel="noopener" class="contact-value">{c.value}</a>
+                  <a href={lienSur(c.value)} target="_blank" rel="noopener" class="contact-value">{c.value}</a>
                 {:else}
                   <span class="contact-value">{c.value}</span>
                 {/if}
@@ -957,7 +958,7 @@
             {#each websites as w (w.id)}
               <li class="web-item" class:validated={w.status==='validated'} class:rejected={w.status==='rejected'}>
                 <span class="web-status-dot web-{w.status}" title={w.status}></span>
-                <a href={w.url} target="_blank" rel="noopener" class="web-url">{w.url}</a>
+                <a href={lienSur(w.url)} target="_blank" rel="noopener" class="web-url">{w.url}</a>
                 <span class="web-meta">{w.found_by} {w.score != null ? `(${w.score.toFixed(2)})` : ''}</span>
                 <div class="web-actions">
                   {#if tranche}
