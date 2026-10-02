@@ -25,6 +25,7 @@ Code de sortie 0 si tout passe, 1 sinon — la feuille ne se publie pas en 1.
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 import sys
@@ -50,6 +51,76 @@ def _nombres(texte: str) -> set[str]:
     sortie = {_cle_nombre(m) for m in _NOMBRE.findall(texte)}
     sortie |= {_cle_nombre(m) for m in re.findall(r"\d+(?:[,.]\d+)?", texte)}
     return sortie
+
+
+# ─── Les formules des relevés ─────────────────────────────────────────────────
+# « Calculs — recalculés, jamais crus » : chaque nombre calculé d'une feuille
+# porte sa formule, rejouée ici. Elle passait par `eval()` avec des `builtins`
+# réduits — ce qui n'enferme rien : `().__class__.__base__.__subclasses__()`
+# rend tout Python. Or un relevé est RÉDIGÉ à partir de documents que personne
+# ne maîtrise, souvent avec un modèle de langage : une phrase glissée dans un
+# procès-verbal pouvait devenir une formule, et cette fonction tourne dans
+# l'API de l'atelier à chaque affichage de la file.
+#
+# Une formule est donc LUE (arbre syntaxique) et n'est calculée que si elle ne
+# contient que ce dont une formule a besoin : nombres, opérations, comparaisons,
+# les six fonctions ci-dessous, la lecture d'un acte (`a['vote']`, `.get('pour')`)
+# et le parcours des actes. Rien d'autre n'atteint Python.
+
+class FormuleRefusee(ValueError):
+    pass
+
+
+_FONCTIONS = {"round": round, "sum": sum, "len": len, "min": min, "max": max}
+_NOEUDS = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.BoolOp, ast.Compare, ast.IfExp,
+           ast.Constant, ast.Name, ast.Load, ast.Store, ast.Call, ast.Attribute,
+           ast.Subscript, ast.Dict, ast.List, ast.Tuple, ast.GeneratorExp, ast.ListComp,
+           ast.comprehension,
+           ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.USub, ast.UAdd,
+           ast.Not, ast.And, ast.Or, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+           ast.In, ast.NotIn)
+
+
+def calculer(formule: str, valeurs: dict):
+    """La valeur d'une formule de relevé, ou `FormuleRefusee`."""
+    if len(formule) > 400:
+        raise FormuleRefusee("formule trop longue")
+    try:
+        arbre = ast.parse(formule, mode="eval")
+    except SyntaxError as e:
+        raise FormuleRefusee(f"formule illisible ({e.msg})")
+    fonctions = {**_FONCTIONS, **{n: v for n, v in valeurs.items() if callable(v)}}
+    parcours = [c for c in ast.walk(arbre) if isinstance(c, ast.comprehension)]
+    if len(parcours) > 2:
+        # Trente actes parcourus dix fois de suite, c'est 30^10 tours.
+        raise FormuleRefusee("trop de parcours imbriqués")
+    locaux = {n.id for c in parcours for n in ast.walk(c.target) if isinstance(n, ast.Name)}
+    for noeud in ast.walk(arbre):
+        if not isinstance(noeud, _NOEUDS):
+            raise FormuleRefusee(f"« {type(noeud).__name__} » n'a pas sa place dans une formule")
+        if isinstance(noeud, ast.Name) and (
+                noeud.id.startswith("_") or noeud.id not in {*valeurs, *fonctions, *locaux}):
+            raise FormuleRefusee(f"nom inconnu : {noeud.id}")
+        if isinstance(noeud, ast.Attribute) and noeud.attr != "get":
+            raise FormuleRefusee(f"attribut refusé : .{noeud.attr}")
+        if isinstance(noeud, ast.Call):
+            appelee = noeud.func
+            if noeud.keywords or not (
+                    (isinstance(appelee, ast.Name) and appelee.id in fonctions)
+                    or (isinstance(appelee, ast.Attribute) and appelee.attr == "get")):
+                raise FormuleRefusee("appel refusé")
+        # `'x' * 10**9` : une chaîne ne se multiplie ni ne s'additionne.
+        if isinstance(noeud, ast.BinOp) and any(
+                isinstance(c, ast.Constant) and isinstance(c.value, str)
+                for c in (noeud.left, noeud.right)):
+            raise FormuleRefusee("opération sur un texte")
+    try:
+        return eval(compile(arbre, "<formule>", "eval"),                    # noqa: S307
+                    {"__builtins__": {}}, {**valeurs, **_FONCTIONS})
+    except FormuleRefusee:
+        raise
+    except Exception as e:                                                  # noqa: BLE001
+        raise FormuleRefusee(f"calcul impossible ({type(e).__name__} : {e})")
 
 
 def _jours(a: str, b: str) -> int:
@@ -169,10 +240,12 @@ def verifier(chemin: Path) -> list[str]:
     unanimes = sum(1 for a in actes if (a.get("vote") or {}).get("unanimite"))
     calcules = set()
     for c in releve.get("calculs", []):
-        obtenu = eval(c["formule"], {"__builtins__": {"round": round, "sum": sum, "len": len,
-                                                      "min": min, "max": max}},
-                      {"unanimes": unanimes, "n_actes": len(actes), "actes": actes,
-                       "jours": _jours})
+        try:
+            obtenu = calculer(c["formule"], {"unanimes": unanimes, "n_actes": len(actes),
+                                             "actes": actes, "jours": _jours})
+        except FormuleRefusee as e:
+            fautes.append(f"CALCUL « {c['dit']} » : formule refusée — {e}")
+            continue
         attendu = float(re.sub(r"[ \u00a0\u202f]", "", c["valeur"]).replace(",", "."))
         if abs(float(obtenu) - attendu) > 1e-9:
             fautes.append(f"CALCUL « {c['dit']} » : écrit {c['valeur']}, "

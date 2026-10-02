@@ -37,11 +37,19 @@ SITES_CONFIG = ROOT / "config" / "sites_locaux.json"  # legacy — remplacé par
 _reseau = {"ok": 0, "err": 0, "derniere_erreur": ""}
 
 
+#: Au-delà, ce n'est pas la page d'un acteur local.
+TAILLE_MAX_PAGE = 20 * 2**20
+
+
 def fetch(url: str, timeout: int = 15) -> str | None:
     req = urllib.request.Request(url, headers=HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read()
+            # Le site d'un acteur n'est pas une source choisie : une réponse
+            # sans fin remplirait la mémoire, puis le disque (elle est archivée).
+            raw = r.read(TAILLE_MAX_PAGE + 1)
+            if len(raw) > TAILLE_MAX_PAGE:
+                raise ValueError(f"page de plus de {TAILLE_MAX_PAGE // 2**20} Mo, ignorée")
             encoding = r.headers.get_content_charset("utf-8")
             from urllib.parse import urlparse
             archive_fetch(f"web:{urlparse(url).netloc}", url, raw,

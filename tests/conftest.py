@@ -39,6 +39,16 @@ os.environ.setdefault("VIGIE_RULES",
 os.environ.setdefault("JWT_SECRET", "secret-de-test-sans-valeur")
 
 
+@pytest.fixture(autouse=True)
+def _reseau_relache():
+    """La garde réseau des collecteurs (`collectors/reseau.py`) se pose sur le
+    PROCESSUS : un test qui lance un point d'entrée de collecte la laisserait
+    aux suivants, qui parlent à des serveurs locaux — l'aperçu ne démarrait plus."""
+    yield
+    from collectors import reseau
+    reseau.relacher()
+
+
 @pytest.fixture(scope="session")
 def schema_sql() -> str:
     return (ROOT / "db" / "schema.sql").read_text(encoding="utf-8")
