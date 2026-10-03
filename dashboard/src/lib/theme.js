@@ -55,6 +55,9 @@ if (navigateur) {
     const html = document.documentElement
     if (v === 'system') html.removeAttribute('data-theme')
     else html.setAttribute('data-theme', v)
+    // static/theme.js a pu poser color-scheme en ligne au chargement : il
+    // suit le choix, ou rend la main au CSS.
+    html.style.colorScheme = v === 'system' ? '' : v
   })
 }
 

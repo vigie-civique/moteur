@@ -8,7 +8,14 @@
          donc nommé une commune précise aussi longtemps qu'il l'a portée. -->
     <meta property="og:type" content="website" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>" />
+    <!-- Avant tout CSS, le navigateur peint un fond : qu'il suive déjà le
+         système plutôt que d'être blanc. -->
+    <meta name="color-scheme" content="light dark" />
     %sveltekit.head%
+    <!-- Thème choisi dans l'atelier, posé avant le premier rendu. Un fichier
+         servi par l'atelier et non un script en ligne : la CSP n'accepte que
+         'self' et les scripts signés au build (svelte.config.js). -->
+    <script src="/theme.js"></script>
   </head>
   <body data-sveltekit-preload-data="hover">
     <div style="display: contents">%sveltekit.body%</div>

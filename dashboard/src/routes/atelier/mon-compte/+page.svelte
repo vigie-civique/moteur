@@ -2,6 +2,7 @@
   import { authFetch, currentUser } from '$lib/stores/auth.js'
   import { COMMUNE } from '$lib/instance.js'
   import { LIBELLE_ROLE, DESCRIPTION_ROLE, messageErreur } from '$lib/roles.js'
+  import ChoixTheme from '$lib/components/ChoixTheme.svelte'
 
   let actuel = ''
   let nouveau = ''
@@ -42,6 +43,12 @@
       <p class="muted">{DESCRIPTION_ROLE[$currentUser.role]}</p>
     </section>
   {/if}
+
+  <section class="carte">
+    <h2>Affichage</h2>
+    <p class="muted">« Système » suit le réglage clair ou sombre de cet ordinateur. Le choix est retenu sur ce navigateur seulement.</p>
+    <div><ChoixTheme /></div>
+  </section>
 
   <section class="carte">
     <h2>Changer de mot de passe</h2>

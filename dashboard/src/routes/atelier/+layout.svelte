@@ -1,4 +1,5 @@
 <script>
+  import ChoixTheme from '$lib/components/ChoixTheme.svelte'
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -94,6 +95,7 @@
 
       <div class="sidebar-footer">
         <a class="user-email" href="/atelier/mon-compte" title="Mon compte">{$currentUser.email}</a>
+        <ChoixTheme />
         <button class="logout-btn" on:click={handleLogout}>Déconnexion</button>
       </div>
     </aside>
@@ -146,7 +148,7 @@
     text-transform: uppercase;
     letter-spacing: .04em;
   }
-  .role-badge.admin { background: var(--accent-fort); color: var(--info); }
+  .role-badge.admin { background: var(--accent-fort); color: var(--sur-accent); }
 
   .sidebar-nav {
     flex: 1;
