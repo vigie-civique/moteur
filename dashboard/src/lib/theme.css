@@ -132,12 +132,12 @@
     --voile: rgba(15,23,42,.45);
     --serie-bleu: #1d4ed8;
     --serie-vert: #047857;
-    --serie-ambre: #b45309;
+    --serie-ambre: #a3540a;
     --serie-violet: #6d28d9;
     --serie-rouge: #b91c1c;
     --serie-orange: #c2410c;
     --serie-cyan: #0e7490;
-    --serie-lime: #4d7c0f;
+    --serie-lime: #466f0f;
     --serie-gris: #64748b;
   }
 }
@@ -181,11 +181,11 @@
   --voile: rgba(15,23,42,.45);
   --serie-bleu: #1d4ed8;
   --serie-vert: #047857;
-  --serie-ambre: #b45309;
+  --serie-ambre: #a3540a;
   --serie-violet: #6d28d9;
   --serie-rouge: #b91c1c;
   --serie-orange: #c2410c;
   --serie-cyan: #0e7490;
-  --serie-lime: #4d7c0f;
+  --serie-lime: #466f0f;
   --serie-gris: #64748b;
 }
