@@ -221,3 +221,36 @@ jobs:
           npx vite build
           CHROME_PATH="$(command -v google-chrome || command -v chromium)" \
             node scripts/verifier_hors_ligne.mjs build-hors-ligne
+
+  dependances:
+    # Les vulnérabilités CONNUES de ce que le dispositif installe. Depuis que
+    # l'atelier se met en ligne (lot E, 02/10/2026), la couche HTTP est exposée :
+    # le premier audit a trouvé cinq avis sur Starlette, corrigés en relevant
+    # les versions épinglées. Ce job les empêche de revenir sans qu'on le voie.
+    #
+    # Les paquets de PRODUCTION seulement côté JavaScript : les deux sites sont
+    # statiques, les outils de build ne sont pas servis.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python
+        # PYSEC-2026-1325 (ecdsa) : sans version corrigée, et hors du chemin
+        # d'exécution — python-jose l'installe, mais les jetons de l'atelier
+        # sont signés en HS256, qui n'y passe pas. À retirer d'ici le jour où
+        # une correction existe, ou python-jose est remplacé.
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --no-deps --progress-spinner off \
+            --ignore-vuln PYSEC-2026-1325
+      - name: Atelier
+        working-directory: dashboard
+        run: npm audit --omit=dev
+      - name: Site public
+        working-directory: public
+        run: npm audit --omit=dev

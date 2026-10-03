@@ -78,7 +78,9 @@ class TestContributeur:
         h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
         r = c.patch(f"/api/atelier/entities/{eid}", headers=h,
                     json={"updated_at": AVANT, "address": "1 rue Basse"})
-        assert r.status_code == 200
+        # 202 depuis le 02/10/2026 : la fiche est publiée (`verified` par
+        # défaut), la correction est une PROPOSITION — cf. test_api_propositions.
+        assert r.status_code == 202
         u = r.json()["updated_at"]
         r = c.patch(f"/api/atelier/entities/{eid}", headers=h,
                     json={"updated_at": u, "confidence": "probable"})
@@ -324,6 +326,17 @@ class TestApercuEtPublication:
         assert etat["etape"] == "pret_a_publier"
         assert (flux.APERCUS / str(j["user"]["id"]) / "donnees" / "stats.json").is_file()
         assert not (flux.BROUILLON / "stats.json").exists()
+
+    def test_un_compte_ne_relance_pas_son_apercu_en_boucle(self, atelier, flux):
+        """Un aperçu reconstruit tout le snapshot sous le verrou de publication."""
+        c = atelier["client"]
+        h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        assert c.post("/api/admin/publication/apercu", headers=h).status_code == 200
+        r = c.post("/api/admin/publication/apercu", headers=h)
+        assert r.status_code == 429 and "attendre" in r.json()["detail"]
+        # Le délai est par compte : un autre n'attend pas.
+        h2, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        assert c.post("/api/admin/publication/apercu", headers=h2).status_code == 200
 
     def test_ni_contributeur_ni_validateur_ne_publient(self, atelier, flux):
         c = atelier["client"]

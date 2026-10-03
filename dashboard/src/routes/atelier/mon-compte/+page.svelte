@@ -22,7 +22,6 @@
       if (!r.ok) { erreur = messageErreur(d.detail, `Échec (${r.status})`); return }
       // Les autres sessions du compte sont closes ; celle-ci reçoit des jetons neufs.
       sessionStorage.setItem('atelier_access', d.access_token)
-      localStorage.setItem('atelier_refresh', d.refresh_token)
       actuel = nouveau = confirmation = ''
       fait = true
     } finally {

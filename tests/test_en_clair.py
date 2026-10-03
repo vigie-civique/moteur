@@ -84,6 +84,39 @@ def test_un_chiffre_invente_est_refuse(instance):
     assert any("1 300" in f for f in fautes)
 
 
+@pytest.mark.parametrize("formule", [
+    "().__class__.__base__.__subclasses__()",      # la sortie classique d'un eval « réduit »
+    "__import__('os').system('id')",
+    "open('/etc/passwd').read()",
+    "actes.clear()",
+    "jours.__globals__",
+    "2 ** 99999999",
+    "sum(1 for a in actes for b in actes for c in actes)",
+])
+def test_une_formule_qui_n_est_pas_un_calcul_est_une_faute_pas_du_code(instance, formule):
+    """Un relevé est rédigé d'après des documents que personne ne maîtrise, et le
+    vérificateur tourne dans l'API de l'atelier : sa formule se CALCULE, elle ne
+    s'exécute pas."""
+    r = _releve()
+    r["calculs"] = [{"valeur": "2", "formule": formule, "dit": "délibérations"}]
+    _chemin(instance).write_text(json.dumps(r, ensure_ascii=False))
+    fautes = verifier(_chemin(instance))
+    assert any(f.startswith("CALCUL") and "formule refusée" in f for f in fautes), fautes
+
+
+@pytest.mark.parametrize("formule, valeur", [
+    ("n_actes", "2"), ("unanimes", "2"), ("round((1 - 20914 / 29835) * 100)", "30"),
+    ("sum(1 for a in actes if (a['vote'] or {}).get('unanimite'))", "2"),
+    ("sum(1 for a in actes if 'club' in a['objet'] or 'Poste' in a['objet'])", "1"),
+    ("jours('2026-09-23','2026-10-01')", "8"), ("round(163500 - 123555.80, 2)", "39944,20"),
+])
+def test_les_formules_ordinaires_se_calculent_toujours(instance, formule, valeur):
+    r = _releve()
+    r["calculs"].append({"valeur": valeur, "formule": formule, "dit": "essai"})
+    _chemin(instance).write_text(json.dumps(r, ensure_ascii=False))
+    assert [f for f in verifier(_chemin(instance)) if f.startswith("CALCUL")] == []
+
+
 def _avec_dit(instance, citation, actes):
     r = _releve()
     r["en_clair"]["comprendre"] = {

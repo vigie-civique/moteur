@@ -55,6 +55,7 @@
   // c'est la seconde qui trompe, parce qu'elle a l'air d'un travail fini.
   function raisonDuZero(f) {
     const p = f.derniere_passe
+    if (f.sans_collecte) return "Rien n'attend un geste pour l'instant."
     if (!p) return "Aucune passe de collecte connue pour cette file : ce zéro "
                  + "n'a jamais été mesuré ici."
     const quand = p.le ? heureLocale(p.le) : 'à une date inconnue'

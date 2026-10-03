@@ -25,6 +25,8 @@
     mot_de_passe: 'mot de passe changé', lien_mot_de_passe: 'lien de mot de passe',
     apercu: 'aperçu', publication: 'publication', 'mise-en-ligne': 'mise en ligne',
     'verification-en-ligne': 'vérification en ligne',
+    proposer: 'proposition', acceptee: 'proposition acceptée', refusee: 'proposition refusée',
+    retiree: 'proposition retirée',
   }
 
   onMount(() => charger(true))

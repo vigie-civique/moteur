@@ -153,12 +153,57 @@ def _check_ocr_tooling(lang: str) -> None:
                  f"  cp /tmp/{lang}.traineddata \"$(brew --prefix tesseract)/share/tessdata/\"")
 
 
+# ── Le texte reconnu, gardé à côté du PDF océrisé ────────────────────────────
+#
+# Le cache de la reconnaissance optique était le PDF océrisé lui-même : une
+# image par page plus sa couche de texte. Sur l'instance de référence, cela fait
+# 10 Go pour 11 Mo de texte — et chaque passe de collecte rouvrait ces PDF pour
+# en ressortir le même texte.
+#
+# Le texte est désormais écrit à côté (`x.ocr.pdf` → `x.ocr.txt`) et relu de
+# là. Deux conséquences : la passe ne rouvre plus dix gigaoctets, et une
+# instance peut vivre sur une machine qui n'a ni les PDF océrisés ni de quoi
+# océriser — il lui suffit des textes.
+#
+# Le texte ne vaut que s'il est AU MOINS aussi récent que le PDF océrisé quand
+# celui-ci est là : une ré-océrisation adoptée (un `.ocr.pdf` remplacé par un
+# meilleur) doit l'emporter sur le texte de l'ancienne.
+
+def texte_garde(ocr_pdf: Path) -> str | None:
+    """Le texte déjà extrait de ce PDF océrisé, ou rien s'il est absent ou périmé."""
+    garde = ocr_pdf.with_suffix(".txt")
+    try:
+        if garde.stat().st_size == 0:
+            return None
+        if ocr_pdf.exists() and ocr_pdf.stat().st_mtime > garde.stat().st_mtime:
+            return None
+        return garde.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def garder_texte(ocr_pdf: Path, texte: str) -> str:
+    """Écrit le texte à côté du PDF océrisé, et le rend. Un texte vide n'est pas
+    gardé : il dirait « déjà lu, rien dedans » d'un document qu'on n'a pas su lire."""
+    if texte.strip():
+        garde = ocr_pdf.with_suffix(".txt")
+        provisoire = garde.with_name(garde.name + ".partiel")
+        try:
+            provisoire.write_text(texte, encoding="utf-8")
+            provisoire.replace(garde)
+        except OSError as e:           # répertoire en lecture seule : on s'en passe
+            print(f"  [ocr] texte non gardé ({garde.name}) : {e}")
+    return texte
+
+
 def ensure_text(pdf: Path, lang: str = "fra") -> str:
     """Retourne le texte du PDF ; lance l'OCR si le PDF est scanné (peu/pas de texte)."""
     txt = _extract_text(pdf)
     if len(txt.strip()) >= MIN_TEXT_CHARS:
         return txt  # déjà textuel
     ocr_pdf = pdf.with_suffix(".ocr.pdf")
+    if (garde := texte_garde(ocr_pdf)) is not None:
+        return garde
     if not ocr_pdf.exists():
         _check_ocr_tooling(lang)
         print(f"  OCR ({lang}) → {ocr_pdf.name} …")
@@ -166,7 +211,7 @@ def ensure_text(pdf: Path, lang: str = "fra") -> str:
             ["ocrmypdf", "-l", lang, *OPTIONS_OCRMYPDF, str(pdf), str(ocr_pdf)],
             check=True, capture_output=True,
         )
-    return _extract_text(ocr_pdf)
+    return garder_texte(ocr_pdf, _extract_text(ocr_pdf))
 
 
 # ── Parsing des délibérations ──────────────────────────────────────────────────

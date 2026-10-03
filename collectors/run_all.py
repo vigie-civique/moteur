@@ -488,6 +488,11 @@ def main():
                         help="Reprendre depuis ce step")
     args = parser.parse_args()
 
+    # Avant le premier appel réseau : les collecteurs ne parlent qu'à
+    # l'internet public (cf. collectors/reseau.py).
+    from collectors import reseau
+    reseau.garder()
+
     if args.stats:
         print_stats()
         return

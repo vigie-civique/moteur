@@ -144,6 +144,21 @@ def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
     """
     return (
         FileDeTravail(
+            # En tête : derrière chaque ligne il y a quelqu'un qui attend de
+            # savoir si son travail a compté (cf. `collectors/propositions.py`).
+            cle="propositions",
+            titre="Propositions à relire",
+            question="Cette modification proposée par un contributeur est-elle juste ?",
+            geste="Accepter la proposition, ou la refuser en disant pourquoi",
+            effet="Une proposition acceptée est écrite sur la donnée publiée et "
+                  "part au prochain passage ; refusée, rien ne change.",
+            route="/atelier/propositions",
+            role_min="validator",
+            reste="SELECT COUNT(*) FROM propositions WHERE etat = 'en_attente'",
+            fait="SELECT COUNT(*) FROM propositions "
+                 "WHERE etat IN ('acceptee', 'refusee')",
+        ),
+        FileDeTravail(
             cle="relations-presumees",
             titre="Liens présumés",
             question="Ces deux-là sont-ils vraiment liés ?",
@@ -350,6 +365,9 @@ def relever(conn, commune: str, code_postal: str) -> list[dict]:
             ligne.update(reste=None, fait=None, en_cours=[], premier=None,
                          indisponible=str(e))
         ligne["derniere_passe"] = _derniere_passe(conn, f.steps)
+        # Une file que n'alimente aucun collecteur (les propositions viennent
+        # des contributeurs) : son zéro est MESURÉ, il ne dit pas « jamais passé ».
+        ligne["sans_collecte"] = not f.steps
         releve.append(ligne)
     return releve
 

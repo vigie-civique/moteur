@@ -33,7 +33,7 @@
 // nommée, donc rien à quoi répondre (le statut vient de la v1).
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { marked } from 'marked'
+import { markdownSur } from '$lib/markdown.js'
 import { lireJSON } from '$lib/donnees.server.js'
 
 const REPERTOIRE = resolve(process.env.VIGIE_DOSSIERS_DIR || join(process.cwd(), '..', 'dossiers'))
@@ -112,7 +112,7 @@ export function lireDossiers() {
       // Le corps d'un dossier « à développer » ne sort pas, même s'il existe.
       ...(statut === 'a_developper'
         ? { html: '', sommaire: [], minutes: 0, minutesTout: 0, replis: 0 }
-        : mettreEnForme(marked.parse(corps.replace(/^# .*\n/, '')))),
+        : mettreEnForme(markdownSur(corps.replace(/^# .*\n/, '')))),
     })
   }
   // Alphabétique, article initial ignoré (« L'eau » se range à E). Par date de

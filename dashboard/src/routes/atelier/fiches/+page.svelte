@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { COMMUNE, COMMUNE_A, EPCI, EPCI_NB_AUTRES } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
@@ -216,7 +217,7 @@
               <td class="resp-cell">{item.responsible ?? '—'}</td>
               <td class="contact-cell">
                 {#if item.website}
-                  <a href={item.website} target="_blank" rel="noopener" title={item.website}>🌐</a>
+                  <a href={lienSur(item.website)} target="_blank" rel="noopener" title={item.website}>🌐</a>
                 {/if}
                 {#if item.contacts_count > 0 && !item.website}
                   <span title="{item.contacts_count} contact(s)">📋</span>

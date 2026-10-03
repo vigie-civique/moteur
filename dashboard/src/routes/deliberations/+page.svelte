@@ -1,5 +1,6 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
+  import { lienSur } from '$lib/liens.js'
   import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
 
@@ -99,8 +100,13 @@
     return ev.source_url?.toLowerCase().includes('.pdf') ? '' : (ev.source_url || '')
   }
 
+  // Rendu par `{@html}` : `ev.snippet` arrive ÉCHAPPÉ de l'API, seul le
+  // surlignage y est une balise. `ev.content`, lui, est le texte brut d'un
+  // document collecté — il s'échappe ici.
+  const echapper = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
   function snippet(ev) {
-    return ev.snippet || ev.content || ''
+    return ev.snippet || echapper(ev.content || '')
   }
 </script>
 
@@ -150,10 +156,10 @@
           {/if}
           <div class="links">
             {#if pdfUrl(ev)}
-              <a href={pdfUrl(ev)} target="_blank" rel="noopener">PDF</a>
+              <a href={lienSur(pdfUrl(ev))} target="_blank" rel="noopener">PDF</a>
             {/if}
             {#if pageUrl(ev)}
-              <a href={pageUrl(ev)} target="_blank" rel="noopener">Page mairie</a>
+              <a href={lienSur(pageUrl(ev))} target="_blank" rel="noopener">Page mairie</a>
             {/if}
           </div>
         </article>

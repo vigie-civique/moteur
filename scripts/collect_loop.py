@@ -184,6 +184,10 @@ def main() -> int:
                     help="garde de temps par collecteur, en secondes")
     args = ap.parse_args()
 
+    # Seconde porte d'entrée de la collecte : même garde que `run_all.main`.
+    from collectors import reseau
+    reseau.garder()
+
     if args.only and args.only not in SUIVIS:
         raise SystemExit(f"step inconnu ou sans rythme déclaré : {args.only}\n"
                          f"  connus : {', '.join(sorted(SUIVIS))}")

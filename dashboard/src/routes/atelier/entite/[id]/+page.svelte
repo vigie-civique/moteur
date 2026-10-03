@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { COMMUNE } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
@@ -178,6 +179,18 @@
         throw new Error((typeof d.detail === 'object' ? d.detail?.message : d.detail) || `${res.status}`)
       }
       const saved = await res.json()
+      // Fiche publiée, compte contributeur : rien n'est écrit, c'est une
+      // PROPOSITION (202). Le formulaire revient à ce que la fiche vaut
+      // vraiment — afficher la valeur proposée ferait croire qu'elle est posée.
+      if (saved.propose) {
+        const champs = (saved.proposes || []).map(c => LIBELLES[c] ?? c).join(', ')
+        form = { ...initial }
+        dirty = false
+        conflit = null
+        saveMsg = `Proposition envoyée (${champs}). Cette fiche est publiée : un `
+                + `validateur doit l'accepter avant que ce soit appliqué.`
+        return
+      }
       // Mettre à jour updated_at local pour le prochain save
       if (saved.updated_at) entity = { ...entity, updated_at: saved.updated_at }
       initial = { ...form }
@@ -310,6 +323,11 @@
         body: JSON.stringify({ lat, lng })
       })
       if (!res.ok) throw new Error(`${res.status}`)
+      if (res.status === 202) {
+        coordsMsg = 'Déplacement proposé : cette fiche est publiée, un validateur doit '
+                  + "l'accepter. Le point reviendra à sa place au rechargement."
+        return
+      }
       form.lat = lat; form.lng = lng
       coordsMsg = `Position sauvegardée (${lat.toFixed(5)}, ${lng.toFixed(5)})`
       setTimeout(() => coordsMsg = '', 3000)
@@ -429,6 +447,11 @@
       const res = await authFetch(`/atelier/relations/${relId}`, { method:'PUT', body:JSON.stringify(body) })
       if (!res.ok) { const d = await res.json(); throw new Error(d.detail||`${res.status}`) }
       const updated = await res.json()
+      if (updated.propose) {
+        // Relation publiée, compte contributeur : la ligne garde sa valeur.
+        relError = updated.message
+        return
+      }
       relations = relations.map(r => r.id === relId ? updated : r)
       editingRelId = null
     } catch(e) { relError = e.message }
@@ -699,7 +722,7 @@
                 <span class="contact-icon">{contactIcon(c.type)}</span>
                 <span class="contact-type">{c.type}</span>
                 {#if c.type === 'website'}
-                  <a href={c.value} target="_blank" rel="noopener" class="contact-value">{c.value}</a>
+                  <a href={lienSur(c.value)} target="_blank" rel="noopener" class="contact-value">{c.value}</a>
                 {:else}
                   <span class="contact-value">{c.value}</span>
                 {/if}
@@ -935,7 +958,7 @@
             {#each websites as w (w.id)}
               <li class="web-item" class:validated={w.status==='validated'} class:rejected={w.status==='rejected'}>
                 <span class="web-status-dot web-{w.status}" title={w.status}></span>
-                <a href={w.url} target="_blank" rel="noopener" class="web-url">{w.url}</a>
+                <a href={lienSur(w.url)} target="_blank" rel="noopener" class="web-url">{w.url}</a>
                 <span class="web-meta">{w.found_by} {w.score != null ? `(${w.score.toFixed(2)})` : ''}</span>
                 <div class="web-actions">
                   {#if tranche}

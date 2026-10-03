@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { currentUser, logout } from '$lib/stores/auth.js'
+  import { currentUser, logout, rafraichir } from '$lib/stores/auth.js'
   import { LIBELLE_ROLE, auMoins } from '$lib/roles.js'
 
   let ready = false
@@ -18,7 +18,7 @@
     const access = sessionStorage.getItem('atelier_access')
     if (access) {
       const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${access}` },
+        headers: { 'X-Atelier-Session': access },
       })
       if (res.ok) {
         currentUser.set(await res.json())
@@ -27,25 +27,15 @@
       }
     }
 
-    // Tenter le refresh
-    const refresh = localStorage.getItem('atelier_refresh')
-    if (refresh) {
-      const rr = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refresh }),
+    // Tenter le rafraîchissement (cookie HttpOnly, cf. stores/auth.js)
+    if (await rafraichir()) {
+      const me = await fetch('/api/auth/me', {
+        headers: { 'X-Atelier-Session': sessionStorage.getItem('atelier_access') },
       })
-      if (rr.ok) {
-        const data = await rr.json()
-        sessionStorage.setItem('atelier_access', data.access_token)
-        const me = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${data.access_token}` },
-        })
-        if (me.ok) {
-          currentUser.set(await me.json())
-          ready = true
-          return
-        }
+      if (me.ok) {
+        currentUser.set(await me.json())
+        ready = true
+        return
       }
     }
 
@@ -72,6 +62,7 @@
     { href: '/atelier/queue/websites',         label: 'Adresses de sites' },
     { href: '/atelier/geo',                    label: 'Points sur la carte' },
     { href: '/atelier/donnees',                label: 'Chiffres à confirmer' },
+    { href: '/atelier/propositions',           label: 'Propositions' },
     { href: '/atelier/conseils',               label: 'Conseils en clair' },
     { href: '/atelier/dossiers',               label: 'Dossiers' },
     { href: '/atelier/fiches',                 label: 'Toutes les fiches' },

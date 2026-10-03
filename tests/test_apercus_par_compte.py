@@ -236,3 +236,10 @@ def test_sans_compte_ou_avec_un_compte_invalide_rien_nest_servi(serveur):
     assert _get(f"{serveur}/", "vigie_apercu=42")[0] == 404          # aucun aperçu
     assert _get(f"{serveur}/", "vigie_apercu=..")[0] == 404
     assert _get(f"{serveur}/?apercu=../7")[0] == 400
+
+
+def test_le_lien_ne_redirige_pas_hors_du_site(serveur):
+    """`//ailleurs.example/x?apercu=7` : deux barres en tête d'un `Location`
+    désignent un AUTRE site. Le lien de l'atelier ne doit mener que chez lui."""
+    code, entetes, _ = _get(f"{serveur}//ailleurs.example/x?apercu=7")
+    assert code == 303 and entetes["Location"] == "/ailleurs.example/x"

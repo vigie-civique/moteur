@@ -45,6 +45,9 @@ ATTENDU = {
     "financial_flows": {"type", "year", "amount", "from_id", "to_id",
                         "event_id", "description", "source", "confidence"},
     "budget_vote": {"year", "scope", "agregat", "value", "unit"},
+    "propositions": {"nature", "object_type", "object_id", "entity_id", "charge",
+                     "avant", "propose_par", "propose_le", "etat", "tranche_par",
+                     "tranche_le", "motif"},
 }
 
 

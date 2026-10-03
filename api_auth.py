@@ -14,13 +14,13 @@ import os
 import secrets
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 try:
@@ -65,7 +65,24 @@ _ACCESS_MINUTES  = 60
 _REFRESH_MINUTES = 60 * 24 * 7
 
 router  = APIRouter(prefix="/api/auth", tags=["auth"])
-_bearer = HTTPBearer(auto_error=False)
+
+# Le jeton de session voyage dans SON en-tête, et non plus seulement dans
+# `Authorization: Bearer`. Un atelier en ligne se place derrière un mur HTTP
+# (`auth_basic` de nginx), et ce mur parle par `Authorization` lui aussi : un
+# navigateur n'en envoie qu'un. Avec le jeton dans `Authorization`, nginx
+# refusait chaque appel de l'interface, mot de passe du mur pourtant donné.
+# `Authorization: Bearer` reste lu, pour les scripts et les ateliers sans mur.
+EN_TETE_SESSION = "x-atelier-session"
+
+
+def jeton_de(request: Request) -> Optional[str]:
+    jeton = (request.headers.get(EN_TETE_SESSION) or "").strip()
+    if jeton:
+        return jeton
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
 
 
 #: Bases dont les tables de comptes ont déjà été mises à niveau.
@@ -200,10 +217,10 @@ def utilisateur_du_jeton(jeton: str, kind: str = "access") -> dict:
     return user
 
 
-def require_auth(creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
-    if not creds:
+def require_auth(jeton: Optional[str] = Depends(jeton_de)):
+    if not jeton:
         raise HTTPException(401, "Token manquant")
-    return utilisateur_du_jeton(creds.credentials, "access")
+    return utilisateur_du_jeton(jeton, "access")
 
 
 def require_role(*roles):
@@ -229,7 +246,67 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Absent : le jeton est lu dans le cookie posé à la connexion (l'interface).
+    # Fourni : c'est un script, qui n'a pas de cookie.
+    refresh_token: Optional[str] = None
+
+
+# ─── Le jeton de rafraîchissement, hors de portée des scripts ───────────────────
+# Il vit sept jours. L'interface le rangeait dans `localStorage`, que tout script
+# de la page peut lire : une seule injection dans l'atelier, et la session d'un
+# administrateur partait pour une semaine. Il voyage maintenant dans un cookie
+# `HttpOnly` — le navigateur l'envoie, aucun script ne le lit.
+#
+# `SameSite=Strict` et un chemin réduit à `/api/auth` : un autre site ne peut pas
+# le faire envoyer, et il ne part avec aucune autre requête de l'atelier.
+# `Secure` dès que l'atelier est servi en https (un atelier local en http garde
+# un cookie utilisable).
+
+COOKIE_SESSION = "atelier_refresh"
+
+
+def _poser_cookie(response: Response, request: Request, jeton: str) -> None:
+    response.set_cookie(COOKIE_SESSION, jeton, max_age=_REFRESH_MINUTES * 60,
+                        path="/api/auth", httponly=True, samesite="strict",
+                        secure=request.url.scheme == "https")
+
+
+def _retirer_cookie(response: Response) -> None:
+    response.delete_cookie(COOKIE_SESSION, path="/api/auth")
+
+
+# ─── Les essais ratés, comptés par compte ET par origine ────────────────────────
+# Cinq mots de passe faux verrouillaient le COMPTE un quart d'heure, d'où que
+# viennent les essais : qui connaissait l'adresse de l'administrateur pouvait
+# l'empêcher d'entrer indéfiniment. Le verrou porte désormais sur le couple
+# (adresse du compte, adresse d'origine) : celui qui se trompe est arrêté, pas
+# celui qu'il vise. En mémoire — un redémarrage l'efface, et c'est sans gravité :
+# la borne de débit de nginx et fail2ban tiennent la porte en amont.
+
+ECHECS_MAX = 5
+ECHECS_FENETRE_S = 15 * 60
+_echecs: dict[tuple[str, str], list[float]] = {}
+
+
+def _origine(request: Request) -> str:
+    return request.client.host if request.client else "?"
+
+
+def _essais_recents(cle: tuple[str, str]) -> list[float]:
+    limite = time.monotonic() - ECHECS_FENETRE_S
+    recents = [t for t in _echecs.get(cle, []) if t > limite]
+    if recents:
+        _echecs[cle] = recents
+    else:
+        _echecs.pop(cle, None)
+    return recents
+
+
+def _noter_echec(cle: tuple[str, str]) -> None:
+    if len(_echecs) > 10_000:           # une table qui ne grossit pas sans fin
+        for c in list(_echecs):
+            _essais_recents(c)
+    _echecs.setdefault(cle, []).append(time.monotonic())
 
 
 class LogoutRequest(BaseModel):
@@ -239,25 +316,20 @@ class LogoutRequest(BaseModel):
 # ─── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request, response: Response):
+    email = req.email.lower().strip()
+    cle = (email, _origine(request))
+    if len(_essais_recents(cle)) >= ECHECS_MAX:
+        raise HTTPException(429, f"Trop d'essais ratés depuis cette connexion : attendre "
+                                 f"{ECHECS_FENETRE_S // 60} minutes avant de réessayer.")
     conn = _db()
     try:
-        user = _get(conn, "SELECT * FROM users WHERE email=?", (req.email.lower().strip(),))
-
-        if user and user["locked_until"]:
-            if user["locked_until"] > datetime.now(timezone.utc).isoformat():
-                raise HTTPException(429, "Compte verrouillé 15 min (5 tentatives échouées)")
+        user = _get(conn, "SELECT * FROM users WHERE email=?", (email,))
 
         if not user or not _verify_pw(req.password, user["password_hash"]):
-            if user:
-                attempts = (user["failed_attempts"] or 0) + 1
-                lock = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat() \
-                       if attempts >= 5 else None
-                conn.execute(
-                    "UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?",
-                    (attempts, lock, user["id"]),
-                )
-                conn.commit()
+            # Compté même si le compte n'existe pas : la réponse ne doit pas
+            # dire, par sa différence, quelles adresses ont un compte.
+            _noter_echec(cle)
             raise HTTPException(401, "Email ou mot de passe incorrect")
 
         if user.get("desactive_le"):
@@ -268,9 +340,12 @@ def login(req: LoginRequest):
             (user["id"],),
         )
         conn.commit()
+        _echecs.pop(cle, None)
 
+        sessions = _sessions(conn, user["id"])
+        _poser_cookie(response, request, sessions["refresh_token"])
         return {
-            **_sessions(conn, user["id"]),
+            **sessions,
             "user": {"id": user["id"], "email": user["email"], "role": user["role"]},
         }
     finally:
@@ -278,9 +353,12 @@ def login(req: LoginRequest):
 
 
 @router.post("/refresh")
-def refresh_token(req: RefreshRequest):
-    payload = _decode(req.refresh_token)
-    user = utilisateur_du_jeton(req.refresh_token, "refresh")
+def refresh_token(request: Request, req: Optional[RefreshRequest] = None):
+    jeton = (req.refresh_token if req else None) or request.cookies.get(COOKIE_SESSION)
+    if not jeton:
+        raise HTTPException(401, "Session absente : se reconnecter.")
+    payload = _decode(jeton)
+    user = utilisateur_du_jeton(jeton, "refresh")
     return {
         "access_token": _make_token(user["email"], "access", _ACCESS_MINUTES,
                                     payload.get("sv", 0)),
@@ -289,17 +367,20 @@ def refresh_token(req: RefreshRequest):
 
 
 @router.post("/logout")
-def logout(req: Optional[LogoutRequest] = None,
-           creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)):
+def logout(request: Request, response: Response, req: Optional[LogoutRequest] = None,
+           jeton_acces: Optional[str] = Depends(jeton_de)):
     """Révoque le jeton d'accès ET, s'il est fourni, celui de rafraîchissement.
 
     Seul le jeton d'accès (une heure) était révoqué. Celui de rafraîchissement
     (sept jours, gardé dans le navigateur) en refabriquait un neuf : après
     « Déconnexion », la session survivait une semaine — constaté le 17/09/2026.
     """
-    jetons = [creds.credentials] if creds else []
-    if req and req.refresh_token:
-        jetons.append(req.refresh_token)
+    jetons = [jeton_acces] if jeton_acces else []
+    for rafraichissement in ((req.refresh_token if req else None),
+                             request.cookies.get(COOKIE_SESSION)):
+        if rafraichissement:
+            jetons.append(rafraichissement)
+    _retirer_cookie(response)
     conn = _db()
     try:
         for jeton in jetons:
@@ -366,7 +447,8 @@ class ChangementMotDePasse(BaseModel):
 
 
 @router.post("/mot-de-passe")
-def changer_mot_de_passe(req: ChangementMotDePasse, user=Depends(require_auth)):
+def changer_mot_de_passe(req: ChangementMotDePasse, request: Request, response: Response,
+                         user=Depends(require_auth)):
     """Seule la ligne de commande changeait un mot de passe — donc personne, sauf
     celui qui tient la machine. Les autres sessions du compte sont closes ; celle
     qui change le mot de passe reçoit des jetons neufs."""
@@ -381,7 +463,9 @@ def changer_mot_de_passe(req: ChangementMotDePasse, user=Depends(require_auth)):
         _clore_sessions(conn, user["id"])
         _journal_compte(conn, user["id"], "mot_de_passe", user["email"])
         conn.commit()
-        return {"ok": True, **_sessions(conn, user["id"])}
+        sessions = _sessions(conn, user["id"])
+        _poser_cookie(response, request, sessions["refresh_token"])
+        return {"ok": True, **sessions}
     finally:
         conn.close()
 
@@ -481,7 +565,7 @@ def lire_invitation(req: JetonInvitation):
 
 
 @router.post("/invitation/accepter")
-def accepter_invitation(req: AcceptationInvitation):
+def accepter_invitation(req: AcceptationInvitation, request: Request, response: Response):
     """Crée le compte invité (ou pose le nouveau mot de passe), et ouvre la session."""
     _verifier_mot_de_passe(req.motdepasse)
     conn = _db()
@@ -508,7 +592,9 @@ def accepter_invitation(req: AcceptationInvitation):
         conn.execute("UPDATE invitations SET utilisee_le=datetime('now') WHERE id=?", (inv["id"],))
         conn.execute("UPDATE users SET last_login=datetime('now') WHERE id=?", (user["id"],))
         conn.commit()
-        return {**_sessions(conn, user["id"]), "user": user}
+        sessions = _sessions(conn, user["id"])
+        _poser_cookie(response, request, sessions["refresh_token"])
+        return {**sessions, "user": user}
     finally:
         conn.close()
 

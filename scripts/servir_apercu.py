@@ -131,7 +131,9 @@ class HandlerParCompte(Handler):
                 return False
             self.send_response(303)
             self.send_header("Set-Cookie", f"{COOKIE}={demande}; Path=/; SameSite=Lax")
-            self.send_header("Location", morceaux.path or "/")
+            # Une seule barre en tête : `//ailleurs.example?apercu=1` rendait un
+            # `Location: //ailleurs.example`, donc une redirection hors du site.
+            self.send_header("Location", "/" + morceaux.path.lstrip("/"))
             self.end_headers()
             return False
         cookie = SimpleCookie(self.headers.get("Cookie", ""))

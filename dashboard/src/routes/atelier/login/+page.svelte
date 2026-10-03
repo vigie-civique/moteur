@@ -36,7 +36,6 @@
         return
       }
       sessionStorage.setItem('atelier_access',  data.access_token)
-      localStorage.setItem('atelier_refresh', data.refresh_token)
       currentUser.set(data.user)
       goto('/atelier')
     } catch {

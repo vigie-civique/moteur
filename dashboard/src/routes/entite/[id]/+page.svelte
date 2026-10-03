@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { page } from '$app/stores'
@@ -259,7 +260,7 @@
                 <span class="tl-type">{ev.type}</span>
                 <span class="tl-title">{ev.title}</span>
                 {#if ev.source_url}
-                  <a href={ev.source_url} target="_blank" rel="noopener" class="tl-src">↗</a>
+                  <a href={lienSur(ev.source_url)} target="_blank" rel="noopener" class="tl-src">↗</a>
                 {/if}
               </div>
             </div>

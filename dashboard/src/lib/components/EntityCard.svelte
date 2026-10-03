@@ -1,4 +1,5 @@
 <script>
+  import { lienSur } from '$lib/liens.js'
   import { api } from '$lib/api.js'
   import { entityDetail, selectedEntity, activeTab, TYPE_COLORS, TYPE_LABELS } from '$lib/stores/app.js'
   import { onMount } from 'svelte'
@@ -109,7 +110,7 @@
             {/if}
             {#if tags.website || tags['contact:website']}
               {@const url = tags.website || tags['contact:website']}
-              <div class="row"><span>Site</span><a href={url} target="_blank" rel="noopener" class="contact-link">{url.replace(/^https?:\/\//, '')}</a></div>
+              <div class="row"><span>Site</span><a href={lienSur(url)} target="_blank" rel="noopener" class="contact-link">{url.replace(/^https?:\/\//, '')}</a></div>
             {/if}
             {#if tags.email || tags['contact:email']}
               {@const mail = tags.email || tags['contact:email']}
@@ -196,7 +197,7 @@
                 <span class="ev-date">{ev.date?.slice(0,10)}</span>
                 <span class="ev-role">{ev.role}</span>
                 {#if ev.source_url}
-                  <a href={ev.source_url} target="_blank">{ev.title}</a>
+                  <a href={lienSur(ev.source_url)} target="_blank">{ev.title}</a>
                 {:else}
                   <span>{ev.title}</span>
                 {/if}
