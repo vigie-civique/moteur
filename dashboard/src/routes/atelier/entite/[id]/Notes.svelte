@@ -117,11 +117,11 @@
 
 <style>
   .note-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
-  .note-item { display: flex; align-items: flex-start; gap: .4rem; padding: .45rem .5rem; background: #0f172a; border-radius: 5px; }
+  .note-item { display: flex; align-items: flex-start; gap: .4rem; padding: .45rem .5rem; background: var(--fond); border-radius: 5px; }
   .note-body { flex: 1; min-width: 0; }
-  .note-date { font-size: .7rem; color: #94a3b8; margin-right: .3rem; }
+  .note-date { font-size: .7rem; color: var(--texte-doux); margin-right: .3rem; }
   .note-src  { font-size: .7rem; margin-left: .3rem; }
-  .note-text { margin: .25rem 0 0; font-size: .8rem; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; }
+  .note-text { margin: .25rem 0 0; font-size: .8rem; color: var(--texte-2); white-space: pre-wrap; word-break: break-word; }
   .note-actions { display: flex; flex-direction: column; gap: .2rem; flex-shrink: 0; }
   .note-edit { flex: 1; display: flex; flex-direction: column; gap: .35rem; }
   .note-edit textarea { width: 100%; }

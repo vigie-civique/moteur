@@ -26,14 +26,14 @@
 
   // Sources cards data
   const SOURCES = [
-    { key: 'sirene',   label: 'SIRENE',        color: '#3b82f6', desc: 'Entreprises & dirigeants', available: true  },
-    { key: 'rna',      label: 'RNA / JO',       color: '#10b981', desc: 'Associations',             available: true  },
-    { key: 'dvf',      label: 'DVF',            color: '#f97316', desc: 'Transactions immobilières', available: true },
-    { key: 'cm',       label: 'Conseil munic.', color: '#8b5cf6', desc: 'Délibérations CM',          available: true  },
-    { key: 'osm',      label: 'OSM / POI',      color: '#f59e0b', desc: 'Lieux OpenStreetMap',       available: true  },
-    { key: 'profiles', label: 'Profils',        color: '#ef4444', desc: 'Élus & entourage',          available: true  },
-    { key: 'presse',   label: 'Presse',         color: '#06b6d4', desc: 'Objectif Gard, Le Grillon', available: false },
-    { key: 'insee',    label: 'INSEE',          color: '#64748b', desc: 'Démographie, revenus',       available: false },
+    { key: 'sirene',   label: 'SIRENE',        color: 'var(--serie-bleu)', desc: 'Entreprises & dirigeants', available: true  },
+    { key: 'rna',      label: 'RNA / JO',       color: 'var(--serie-vert)', desc: 'Associations',             available: true  },
+    { key: 'dvf',      label: 'DVF',            color: 'var(--serie-orange)', desc: 'Transactions immobilières', available: true },
+    { key: 'cm',       label: 'Conseil munic.', color: 'var(--serie-violet)', desc: 'Délibérations CM',          available: true  },
+    { key: 'osm',      label: 'OSM / POI',      color: 'var(--serie-ambre)', desc: 'Lieux OpenStreetMap',       available: true  },
+    { key: 'profiles', label: 'Profils',        color: 'var(--serie-rouge)', desc: 'Élus & entourage',          available: true  },
+    { key: 'presse',   label: 'Presse',         color: 'var(--serie-cyan)', desc: 'Objectif Gard, Le Grillon', available: false },
+    { key: 'insee',    label: 'INSEE',          color: 'var(--serie-gris)', desc: 'Démographie, revenus',       available: false },
   ]
 
   // ── État liste source ──────────────────────────────────────────
@@ -357,8 +357,8 @@
   .side-panel {
     width: 340px;
     min-width: 280px;
-    background: #1e293b;
-    border-left: 1px solid #334155;
+    background: var(--surface);
+    border-left: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -367,25 +367,25 @@
 
   .tabs {
     display: flex;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
   }
   .tabs button {
     flex: 1;
     padding: .5rem .25rem;
     font-size: .78rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     border-bottom: 2px solid transparent;
     transition: all .15s;
     position: relative;
   }
-  .tabs button.active { color: #e2e8f0; border-bottom-color: #3b82f6; }
+  .tabs button.active { color: var(--texte); border-bottom-color: var(--accent); }
   .dot-red {
     position: absolute;
     top: 4px; right: 4px;
     width: 6px; height: 6px;
     border-radius: 50%;
-    background: #ef4444;
+    background: var(--danger);
   }
   .dot-orange {
     position: absolute;
@@ -394,8 +394,8 @@
     padding: 0 3px;
     height: 14px;
     border-radius: 999px;
-    background: #f59e0b;
-    color: #000;
+    background: var(--alerte);
+    color: var(--sur-vif);
     font-size: .6rem;
     font-weight: 700;
     display: flex;
@@ -418,7 +418,7 @@
     padding: .75rem;
   }
   .source-card {
-    background: #0f172a;
+    background: var(--fond);
     border-radius: 6px;
     padding: .5rem .75rem;
     text-align: left;
@@ -426,10 +426,10 @@
     transition: background .15s;
     width: 100%;
   }
-  .source-card:hover:not(:disabled) { background: #1e293b; }
+  .source-card:hover:not(:disabled) { background: var(--surface); }
   .source-card.unavailable { opacity: .4; cursor: not-allowed; }
-  .src-label { font-size: .78rem; font-weight: 600; color: #e2e8f0; }
-  .src-desc  { font-size: .68rem; color: #94a3b8; margin-top: 2px; }
+  .src-label { font-size: .78rem; font-weight: 600; color: var(--texte); }
+  .src-desc  { font-size: .68rem; color: var(--texte-doux); margin-top: 2px; }
 
   /* Sources — liste */
   .list-header {
@@ -437,24 +437,24 @@
     align-items: center;
     gap: .5rem;
     padding: .5rem .75rem;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
   }
   .back-btn {
     font-size: .75rem;
-    color: #60a5fa;
+    color: var(--lien);
     padding: .2rem .5rem;
-    border: 1px solid #334155;
+    border: 1px solid var(--bordure);
     border-radius: 4px;
     cursor: pointer;
     background: transparent;
     flex-shrink: 0;
   }
-  .back-btn:hover { background: #1e293b; }
+  .back-btn:hover { background: var(--surface); }
   .list-title { font-size: .82rem; font-weight: 600; flex: 1; }
   .list-count {
-    font-size: .7rem; color: #94a3b8;
-    background: #0f172a; border-radius: 999px;
+    font-size: .7rem; color: var(--texte-doux);
+    background: var(--fond); border-radius: 999px;
     padding: .1rem .45rem;
   }
 
@@ -465,12 +465,12 @@
     width: 100%;
     text-align: left;
     padding: .45rem .75rem;
-    border-bottom: 1px solid #0f172a;
+    border-bottom: 1px solid var(--bordure-douce);
     cursor: pointer;
     background: transparent;
     transition: background .1s;
   }
-  .list-item:hover { background: #1e293b; }
+  .list-item:hover { background: var(--surface); }
 
   .li-main {
     display: flex;
@@ -480,14 +480,14 @@
   }
   .li-name {
     font-size: .78rem;
-    color: #cbd5e1;
+    color: var(--texte-2);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .li-date { font-size: .7rem; color: #94a3b8; flex-shrink: 0; }
-  .li-date.spurious { color: #dc2626; }
+  .li-date { font-size: .7rem; color: var(--texte-doux); flex-shrink: 0; }
+  .li-date.spurious { color: var(--danger); }
 
   .li-sub {
     display: flex;
@@ -496,20 +496,20 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  .li-muted { font-size: .68rem; color: #94a3b8; }
-  .li-price { font-size: .72rem; color: #10b981; font-weight: 600; }
-  .li-link  { font-size: .68rem; color: #60a5fa; }
+  .li-muted { font-size: .68rem; color: var(--texte-doux); }
+  .li-price { font-size: .72rem; color: var(--succes); font-weight: 600; }
+  .li-link  { font-size: .68rem; color: var(--lien); }
 
   .li-badge {
     font-size: .65rem; font-weight: 700;
     padding: .05rem .3rem;
     border-radius: 3px;
   }
-  .li-badge.active { background: #0d2e1f; color: #34d399; }
-  .li-badge.closed { background: #2d0f0f; color: #f87171; }
+  .li-badge.active { background: var(--succes-doux); color: var(--succes); }
+  .li-badge.closed { background: var(--danger-doux); color: var(--danger); }
   .li-badge-neutral {
-    font-size: .65rem; color: #94a3b8;
-    background: #1e293b; border-radius: 3px;
+    font-size: .65rem; color: var(--texte-doux);
+    background: var(--surface); border-radius: 3px;
     padding: .05rem .3rem; flex-shrink: 0;
   }
 
@@ -517,13 +517,13 @@
     display: flex;
     justify-content: space-around;
     padding: .5rem 1rem;
-    border-top: 1px solid #334155;
-    border-bottom: 1px solid #334155;
+    border-top: 1px solid var(--bordure);
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
   }
   .stat { text-align: center; }
-  .stat span { font-size: 1.1rem; font-weight: 700; color: #60a5fa; }
-  .stat small { display: block; font-size: .65rem; color: #94a3b8; }
+  .stat span { font-size: 1.1rem; font-weight: 700; color: var(--lien); }
+  .stat small { display: block; font-size: .65rem; color: var(--texte-doux); }
 
   /* Réseau */
   .network-summary { padding: .75rem; font-size: .82rem; }
@@ -532,12 +532,12 @@
     display: flex;
     gap: .4rem;
     padding: .2rem 0;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--bordure-douce);
     font-size: .75rem;
     flex-wrap: wrap;
   }
-  .en { color: #cbd5e1; }
-  .rt { color: #f59e0b; font-style: italic; }
+  .en { color: var(--texte-2); }
+  .rt { color: var(--alerte); font-style: italic; }
 
-  .hint { color: #94a3b8; font-size: .82rem; padding: 1rem; }
+  .hint { color: var(--texte-doux); font-size: .82rem; padding: 1rem; }
 </style>

@@ -113,13 +113,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #0f172a;
+    background: var(--fond);
   }
 
   .login-card {
     width: 360px;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 10px;
     padding: 2rem;
   }
@@ -135,7 +135,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #ef4444;
+    background: var(--danger);
     flex-shrink: 0;
     animation: pulse 2s infinite;
   }
@@ -147,12 +147,12 @@
   h1 {
     font-size: 1.1rem;
     font-weight: 700;
-    color: #e2e8f0;
+    color: var(--texte);
   }
 
   p {
     font-size: .75rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     margin-top: 2px;
   }
 
@@ -167,34 +167,34 @@
     flex-direction: column;
     gap: .35rem;
     font-size: .8rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
   }
 
   input {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
-    color: #e2e8f0;
+    color: var(--texte);
     padding: .55rem .7rem;
     font-size: .88rem;
     font-family: inherit;
     transition: border-color .15s;
   }
-  input:focus { outline: none; border-color: #3b82f6; }
+  input:focus { outline: none; border-color: var(--focus); }
   input:disabled { opacity: .5; }
 
   .error {
-    background: #450a0a;
-    border: 1px solid #7f1d1d;
+    background: var(--danger-doux);
+    border: 1px solid var(--danger-bordure);
     border-radius: 6px;
-    color: #fca5a5;
+    color: var(--danger-texte);
     padding: .5rem .7rem;
     font-size: .8rem;
   }
 
   .submit {
-    background: #2563eb;
-    color: #fff;
+    background: var(--bouton);
+    color: var(--sur-accent);
     border: none;
     border-radius: 6px;
     padding: .6rem;
@@ -204,13 +204,13 @@
     margin-top: .25rem;
     transition: background .15s;
   }
-  .submit:hover:not(:disabled) { background: #1d4ed8; }
+  .submit:hover:not(:disabled) { background: var(--accent-fort); }
   .submit:disabled { opacity: .45; cursor: default; }
 
   .note {
     margin-top: 1.1rem;
     font-size: .78rem;
     line-height: 1.5;
-    color: #94a3b8;
+    color: var(--texte-doux);
   }
 </style>

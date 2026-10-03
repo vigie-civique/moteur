@@ -3,7 +3,7 @@
   import { TYPE_COLORS } from '$lib/stores/app.js'
 
   const CONF_LABELS  = { probable: 'probable', hypothesis: 'hypothèse' }
-  const CONF_COLORS  = { probable: '#f59e0b',  hypothesis: '#64748b'   }
+  const CONF_COLORS  = { probable: 'var(--alerte)',  hypothesis: 'var(--texte-doux)' }
   const STATUS_TABS  = [
     { key: 'pending',  label: 'En attente' },
     { key: 'accepted', label: 'Validés'    },
@@ -89,11 +89,11 @@
 
           <!-- Entités -->
           <div class="entities">
-            <span class="ent" style="border-color:{TYPE_COLORS[c.from_type] ?? '#64748b'}">
+            <span class="ent" style="border-color:{TYPE_COLORS[c.from_type] ?? 'var(--serie-gris)'}">
               {c.from_name}
             </span>
             <span class="rel-type">{c.relation_type}</span>
-            <span class="ent" style="border-color:{TYPE_COLORS[c.to_type] ?? '#64748b'}">
+            <span class="ent" style="border-color:{TYPE_COLORS[c.to_type] ?? 'var(--serie-gris)'}">
               {c.to_name}
             </span>
           </div>
@@ -134,20 +134,20 @@
     display: flex;
     gap: .5rem;
     padding: .5rem .75rem;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
     flex-wrap: wrap;
     font-size: .7rem;
   }
   .stat-item { padding: 1px 6px; border-radius: 999px; }
-  .s-pending { background:#1e3a5f; color:#60a5fa; }
-  .s-ok      { background:#064e3b; color:#34d399; }
-  .s-ko      { background:#4c1d1d; color:#f87171; }
-  .s-ign     { background:#1e293b; color:#94a3b8; }
+  .s-pending { background:var(--info-doux); color:var(--lien); }
+  .s-ok      { background:var(--succes-bordure); color:var(--succes-texte); }
+  .s-ko      { background:var(--danger-doux); color:var(--danger); }
+  .s-ign     { background:var(--surface); color:var(--texte-doux); }
 
   .filters {
     padding: .4rem .75rem;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
     gap: .35rem;
@@ -158,16 +158,16 @@
     padding: .15rem .5rem;
     border-radius: 4px;
     font-size: .72rem;
-    color: #94a3b8;
-    background: #0f172a;
-    border: 1px solid #334155;
+    color: var(--texte-doux);
+    background: var(--fond);
+    border: 1px solid var(--bordure);
   }
-  .tab-btn.active { background: #1d4ed8; color: #bfdbfe; border-color: #1d4ed8; }
+  .tab-btn.active { background: var(--accent-fort); color: var(--sur-accent); border-color: var(--accent-fort); }
   .sig-filter {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--texte);
     font-size: .72rem;
     padding: 2px 6px;
   }
@@ -182,8 +182,8 @@
   }
 
   .card {
-    background: #0f172a;
-    border: 1px solid #1e293b;
+    background: var(--fond);
+    border: 1px solid var(--bordure-douce);
     border-radius: 6px;
     padding: .55rem .65rem;
     display: flex;
@@ -206,14 +206,14 @@
     border-radius: 4px;
     /* Dégradé rouge → vert selon le score */
     background: color-mix(in srgb,
-      #22c55e calc(var(--s)),
-      #ef4444 calc(100% - var(--s)));
-    color: #000;
+      var(--succes) calc(var(--s)),
+      var(--danger) calc(100% - var(--s)));
+    color: var(--sur-vif);
   }
   .sig-badge {
     font-size: .68rem;
-    background: #1e293b;
-    color: #94a3b8;
+    background: var(--surface);
+    color: var(--texte-doux);
     padding: 1px 6px;
     border-radius: 999px;
   }
@@ -227,11 +227,11 @@
   }
   .ent {
     font-size: .73rem;
-    color: #e2e8f0;
+    color: var(--texte);
     padding: 1px 6px;
     border-radius: 4px;
     border-left: 3px solid;
-    background: #1e293b;
+    background: var(--surface);
     max-width: 130px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -239,14 +239,14 @@
   }
   .rel-type {
     font-size: .68rem;
-    color: #f59e0b;
+    color: var(--alerte);
     font-style: italic;
     white-space: nowrap;
   }
 
   .detail {
     font-size: .68rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     line-height: 1.3;
   }
 
@@ -260,10 +260,10 @@
   .note-input {
     flex: 1;
     min-width: 80px;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--texte);
     font-size: .68rem;
     padding: 2px 6px;
   }
@@ -273,18 +273,18 @@
     border-radius: 4px;
     white-space: nowrap;
   }
-  .btn-ok  { background: #065f46; color: #6ee7b7; }
-  .btn-ko  { background: #450a0a; color: #fca5a5; }
-  .btn-ign { background: #1e293b; color: #94a3b8; }
-  .btn-ok:hover  { background: #047857; }
-  .btn-ko:hover  { background: #7f1d1d; }
-  .btn-ign:hover { background: #334155; }
+  .btn-ok  { background: var(--succes-bordure); color: var(--succes-texte); }
+  .btn-ko  { background: var(--danger-doux); color: var(--danger-texte); }
+  .btn-ign { background: var(--surface); color: var(--texte-doux); }
+  .btn-ok:hover  { background: var(--succes-bordure); }
+  .btn-ko:hover  { background: var(--danger-bordure); }
+  .btn-ign:hover { background: var(--surface-2); }
 
   .reviewed {
     font-size: .68rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     font-style: italic;
   }
 
-  .hint { color: #94a3b8; font-size: .82rem; padding: .75rem; }
+  .hint { color: var(--texte-doux); font-size: .82rem; padding: .75rem; }
 </style>

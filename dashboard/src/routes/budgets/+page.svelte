@@ -39,12 +39,12 @@
       : Math.round(n).toLocaleString('fr-FR') + ' €'
 
   const KPIS = [
-    { label: 'Recettes fonct.', key: 'Recettes de fonctionnement', color: '#22c55e' },
-    { label: 'Dépenses fonct.', key: 'Dépenses de fonctionnement', color: '#f87171' },
-    { label: 'Épargne brute',   key: 'Epargne brute',              color: '#60a5fa' },
-    { label: 'Dette',           key: 'Encours de dette',           color: '#fb923c' },
-    { label: 'DGF',             key: 'Dotation globale de fonctionnement', color: '#a78bfa' },
-    { label: 'Impôts locaux',   key: 'Impôts locaux',              color: '#34d399' },
+    { label: 'Recettes fonct.', key: 'Recettes de fonctionnement', color: 'var(--succes)' },
+    { label: 'Dépenses fonct.', key: 'Dépenses de fonctionnement', color: 'var(--danger)' },
+    { label: 'Épargne brute',   key: 'Epargne brute',              color: 'var(--lien)' },
+    { label: 'Dette',           key: 'Encours de dette',           color: 'var(--alerte)' },
+    { label: 'DGF',             key: 'Dotation globale de fonctionnement', color: 'var(--info)' },
+    { label: 'Impôts locaux',   key: 'Impôts locaux',              color: 'var(--succes)' },
   ]
 
   // ── Budget principal ──────────────────────────────────────────────────────────
@@ -201,40 +201,40 @@
 <style>
   .budgets-page { padding: 1.2rem; max-width: 1000px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
-  h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .78rem; color: #94a3b8; }
+  h1 { font-size: 1.1rem; font-weight: 700; color: var(--texte); margin: 0; }
+  .subtitle { font-size: .78rem; color: var(--texte-doux); }
 
-  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid #334155; margin-bottom: .85rem; flex-wrap: wrap; }
-  .tabs button { padding: .35rem .7rem; font-size: .78rem; color: #94a3b8;
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--bordure); margin-bottom: .85rem; flex-wrap: wrap; }
+  .tabs button { padding: .35rem .7rem; font-size: .78rem; color: var(--texte-doux);
     border-bottom: 2px solid transparent; background: none; border-radius: 4px 4px 0 0; }
-  .tabs button.active { color: #60a5fa; border-bottom-color: #60a5fa; }
-  .tabs button:hover:not(.active) { color: #e2e8f0; }
+  .tabs button.active { color: var(--lien); border-bottom-color: var(--lien); }
+  .tabs button:hover:not(.active) { color: var(--texte); }
 
-  .filter-bar { display: flex; align-items: center; gap: .75rem; margin-bottom: .6rem; font-size: .77rem; color: #94a3b8; }
-  .filter-bar select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+  .filter-bar { display: flex; align-items: center; gap: .75rem; margin-bottom: .6rem; font-size: .77rem; color: var(--texte-doux); }
+  .filter-bar select { background: var(--surface); border: 1px solid var(--bordure); color: var(--texte);
     border-radius: 4px; padding: .2rem .4rem; }
-  .ent-link-sm { font-size: .75rem; color: #60a5fa; }
+  .ent-link-sm { font-size: .75rem; color: var(--lien); }
 
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: .5rem; }
-  .kpi-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: .5rem .75rem; }
-  .kpi-label { font-size: .68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--bordure); border-radius: 6px; padding: .5rem .75rem; }
+  .kpi-label { font-size: .68rem; color: var(--texte-doux); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
   .kpi-val   { font-size: .95rem; font-weight: 700; }
   .kpi-strate { font-size: .68rem; margin-top: .2rem; }
 
-  .section-h { font-size: .82rem; font-weight: 600; color: #f59e0b; margin: .75rem 0 .4rem; }
+  .section-h { font-size: .82rem; font-weight: 600; color: var(--alerte); margin: .75rem 0 .4rem; }
 
   .data-table { width: 100%; border-collapse: collapse; font-size: .77rem; }
-  .data-table th { background: #1e293b; color: #94a3b8; font-size: .65rem; font-weight: 700;
+  .data-table th { background: var(--surface); color: var(--texte-doux); font-size: .65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem;
-    border-bottom: 1px solid #334155; text-align: left; }
-  .data-table td { padding: .35rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
-  .data-table tr:hover td { background: #1e293b; }
+    border-bottom: 1px solid var(--bordure); text-align: left; }
+  .data-table td { padding: .35rem .6rem; border-bottom: 1px solid var(--bordure-douce); color: var(--texte-2); }
+  .data-table tr:hover td { background: var(--surface); }
 
-  .montant { font-weight: 700; color: #fb923c; }
-  .muted { color: #94a3b8; }
-  .sens-recette { color: #4ade80; font-size: .7rem; font-weight: 700; }
-  .sens-depense { color: #f87171; font-size: .7rem; font-weight: 700; }
+  .montant { font-weight: 700; color: var(--alerte); }
+  .muted { color: var(--texte-doux); }
+  .sens-recette { color: var(--succes); font-size: .7rem; font-weight: 700; }
+  .sens-depense { color: var(--danger); font-size: .7rem; font-weight: 700; }
 
-  .err { color: #f87171; }
-  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
+  .err { color: var(--danger); }
+  .muted-center { color: var(--texte-doux); text-align: center; margin-top: 2rem; }
 </style>

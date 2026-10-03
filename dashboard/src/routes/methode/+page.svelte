@@ -107,13 +107,13 @@
   h2 {
     font-size: .95rem;
     font-weight: 700;
-    color: #60a5fa;
+    color: var(--lien);
     margin-bottom: .75rem;
     text-transform: uppercase;
     letter-spacing: .03em;
   }
   ul { padding-left: 1.2rem; }
-  li { font-size: .85rem; line-height: 1.6; color: #cbd5e1; margin-bottom: .3rem; }
+  li { font-size: .85rem; line-height: 1.6; color: var(--texte-2); margin-bottom: .3rem; }
 
   .sources-grid {
     display: grid;
@@ -121,14 +121,14 @@
     gap: .75rem;
   }
   .src-card {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 8px;
     padding: .75rem 1rem;
   }
   .src-card h3 { font-size: .85rem; font-weight: 600; margin-bottom: .3rem; }
-  .src-card p { font-size: .78rem; color: #94a3b8; line-height: 1.4; }
-  .src-url { color: #94a3b8; font-size: .72rem; margin-top: .2rem; }
+  .src-card p { font-size: .78rem; color: var(--texte-doux); line-height: 1.4; }
+  .src-url { color: var(--texte-doux); font-size: .72rem; margin-top: .2rem; }
 
   .stats-grid {
     display: grid;
@@ -136,11 +136,11 @@
     gap: .5rem;
   }
   .stat {
-    background: #1e293b;
+    background: var(--surface);
     border-radius: 8px;
     padding: .5rem .75rem;
     font-size: .82rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
   }
-  .stat span { font-weight: 700; color: #60a5fa; font-size: 1.1rem; margin-right: .3rem; }
+  .stat span { font-weight: 700; color: var(--lien); font-size: 1.1rem; margin-right: .3rem; }
 </style>

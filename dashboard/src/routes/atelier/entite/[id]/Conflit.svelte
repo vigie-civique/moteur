@@ -37,24 +37,24 @@
   .conflit {
     flex-shrink: 0;
     padding: .75rem 1rem;
-    background: #3b2506;
-    border-bottom: 1px solid #b45309;
-    color: #fde68a;
+    background: var(--alerte-doux);
+    border-bottom: 1px solid var(--alerte-bordure);
+    color: var(--alerte-texte);
     font-size: .85rem;
     line-height: 1.45;
   }
   .conflit p { margin: .3rem 0; }
   .conflit ul { margin: .3rem 0 .5rem 1.1rem; }
-  .conflit em { color: #fca5a5; font-style: normal; }
+  .conflit em { color: var(--danger-texte); font-style: normal; }
   .conflit-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
   .btn-reprendre {
-    padding: .38rem .9rem; background: #2563eb; color: #fff;
+    padding: .38rem .9rem; background: var(--bouton); color: var(--sur-accent);
     border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer;
   }
-  .btn-reprendre:hover { background: #1d4ed8; }
+  .btn-reprendre:hover { background: var(--accent-fort); }
   .btn-secondaire {
-    padding: .38rem .9rem; border: 1px solid #b45309; border-radius: 6px;
-    font-size: .8rem; color: #fde68a; cursor: pointer;
+    padding: .38rem .9rem; border: 1px solid var(--alerte-bordure); border-radius: 6px;
+    font-size: .8rem; color: var(--alerte-texte); cursor: pointer;
   }
-  .btn-secondaire:hover { background: #451a03; }
+  .btn-secondaire:hover { background: var(--alerte-doux); }
 </style>

@@ -8,6 +8,7 @@
   } from '$lib/stores/app.js'
   import { timelineYear, timelineMode, timelineRange } from '$lib/stores/timeline.js'
   import TimelineSlider from '$lib/components/TimelineSlider.svelte'
+  import { couleur, themeEffectif } from '$lib/theme.js'
   import { CENTROID_LAT, CENTROID_LNG, LA_COMMUNE } from '$lib/instance.js'
 
   let mapEl
@@ -47,22 +48,22 @@
   // ── Icônes ──────────────────────────────────────────────────
   function makeIcon(type, color) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-      <circle cx="10" cy="10" r="8" fill="${color}" fill-opacity=".85" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="10" cy="10" r="8" fill="${couleur(color)}" fill-opacity=".85" stroke="${couleur('--sur-accent')}" stroke-width="1.5"/>
     </svg>`
     return L.divIcon({ html: svg, className: '', iconSize: [20,20], iconAnchor: [10,10], popupAnchor: [0,-12] })
   }
 
   function mairieIcon() {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
-      <circle cx="14" cy="14" r="12" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
-      <text x="14" y="19" text-anchor="middle" font-size="13" fill="#fff">🏛</text>
+      <circle cx="14" cy="14" r="12" fill="${couleur('--serie-ambre')}" stroke="${couleur('--sur-accent')}" stroke-width="2"/>
+      <text x="14" y="19" text-anchor="middle" font-size="13" fill="${couleur('--sur-accent')}">🏛</text>
     </svg>`
     return L.divIcon({ html: svg, className: '', iconSize: [28,28], iconAnchor: [14,14], popupAnchor: [0,-16] })
   }
 
   function dvfIcon() {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14">
-      <rect x="1" y="1" width="12" height="12" rx="2" fill="#f97316" fill-opacity=".8" stroke="#fff" stroke-width="1"/>
+      <rect x="1" y="1" width="12" height="12" rx="2" fill="${couleur('--serie-orange')}" fill-opacity=".8" stroke="${couleur('--sur-accent')}" stroke-width="1"/>
     </svg>`
     return L.divIcon({ html: svg, className: '', iconSize: [14,14], iconAnchor: [7,7] })
   }
@@ -143,7 +144,7 @@
                   : key === 'services' ? 'service'
                   : key === 'places' ? 'place'
                   : key === 'persons' ? 'person' : key
-    const color = TYPE_COLORS[typeKey] || '#94a3b8'
+    const color = TYPE_COLORS[typeKey] || '--serie-gris'
     const icon  = makeIcon(typeKey, color)
     const group = L.markerClusterGroup({ maxClusterRadius: 40, disableClusteringAtZoom: 16 })
 
@@ -262,6 +263,14 @@
     }))
     subs.push(timelineMode.subscribe(m => renderAll($timelineYear, m)))
 
+    // Les marqueurs lisent leurs couleurs à la création : un changement de
+    // thème les recrée. Le fond de carte (IGN), lui, ne change pas.
+    let premierTheme = true
+    subs.push(themeEffectif.subscribe(() => {
+      if (premierTheme) { premierTheme = false; return }
+      requestAnimationFrame(() => { renderAll($timelineYear, $timelineMode); renderPinned() })
+    }))
+
     // Toggle couches → re-render depuis cache
     let firstL = true
     subs.push(activeLayers.subscribe(() => {
@@ -324,19 +333,19 @@
   :global(.hl-ring) {
     width: 40px; height: 40px;
     border-radius: 50%;
-    border: 3px solid #f59e0b;
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, .6);
+    border: 3px solid var(--alerte);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--alerte) 60%, transparent);
     animation: hl-pulse 1s ease-out 4;
   }
   @keyframes hl-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, .7); }
-    70%  { box-shadow: 0 0 0 14px rgba(245, 158, 11, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--alerte) 70%, transparent); }
+    70%  { box-shadow: 0 0 0 14px color-mix(in srgb, var(--alerte) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--alerte) 0%, transparent); }
   }
 
   :global(.leaflet-popup-content button) {
     margin-top: 6px; padding: 3px 10px;
-    background: #3b82f6; color: #fff;
+    background: var(--accent); color: var(--sur-accent);
     border-radius: 4px; font-size: .78rem; cursor: pointer; border: none;
   }
 </style>

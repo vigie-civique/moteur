@@ -82,17 +82,17 @@
   /* Les trois axes d'une fiche (lib/axes.js) : origine, fiabilité, verdict. */
   .axe { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem;
          font-size: .82rem; }
-  .axe-titre { color: #94a3b8; width: 100%; }
-  .axe-valeur { color: #e2e8f0; }
-  .axe-effet { width: 100%; margin: .1rem 0; color: #94a3b8; font-size: .78rem; }
-  .verdict { padding: .1rem .5rem; border-radius: 4px; font-weight: 600; background: #1e293b; color: #cbd5e1; }
+  .axe-titre { color: var(--texte-doux); width: 100%; }
+  .axe-valeur { color: var(--texte); }
+  .axe-effet { width: 100%; margin: .1rem 0; color: var(--texte-doux); font-size: .78rem; }
+  .verdict { padding: .1rem .5rem; border-radius: 4px; font-weight: 600; background: var(--surface); color: var(--texte-2); }
   .verdict.remplace { text-decoration: line-through; opacity: .6; }
-  .v-retenu { background: #052e16; color: #4ade80; }
-  .v-a_revoir { background: #1e3a5f; color: #93c5fd; }
-  .v-ecarte { background: #450a0a; color: #f87171; }
+  .v-retenu { background: var(--succes-doux); color: var(--succes); }
+  .v-a_revoir { background: var(--info-doux); color: var(--info); }
+  .v-ecarte { background: var(--danger-doux); color: var(--danger); }
   .verdict-gestes { display: flex; gap: .35rem; flex-wrap: wrap; width: 100%; margin-top: .2rem; }
-  .vg { border: 1px solid #334155; border-radius: 4px; padding: .25rem .6rem;
-        font-size: .78rem; cursor: pointer; background: #1e293b; color: #e2e8f0; }
-  .vg-retenu { color: #4ade80; } .vg-a_revoir { color: #93c5fd; } .vg-ecarte { color: #f87171; }
-  .vg:hover { border-color: #64748b; }
+  .vg { border: 1px solid var(--bordure); border-radius: 4px; padding: .25rem .6rem;
+        font-size: .78rem; cursor: pointer; background: var(--surface); color: var(--texte); }
+  .vg-retenu { color: var(--succes); } .vg-a_revoir { color: var(--info); } .vg-ecarte { color: var(--danger); }
+  .vg:hover { border-color: var(--bordure-forte); }
 </style>

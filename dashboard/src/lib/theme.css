@@ -1,0 +1,191 @@
+/* Couleurs de l'atelier — le SEUL fichier où une couleur s'écrit en dur.
+   Tout composant lit ces jetons (`var(--texte)`), jamais une valeur :
+   scripts/verifier_couleurs.mjs fait échouer le build sinon.
+
+   Trois blocs, dans cet ordre :
+   - :root                   le thème sombre, celui de l'atelier avant les
+                             jetons (ses valeurs n'ont pas bougé) ;
+   - @media light            le thème clair quand le système le demande et
+                             que personne n'a choisi « Sombre » ;
+   - [data-theme="light"]    le thème clair choisi dans l'atelier.
+   Le choix vit dans lib/theme.js ; static/theme.js le relit avant le premier
+   rendu. Les contrastes du thème clair sont calculés (WCAG AA : 4,5:1 pour un
+   texte, 3:1 pour une bordure active ou un objet de graphique) : voir la PR
+   « atelier-theme-clair » pour la table.
+
+   Les catégories (types, périmètres) gardent la même couleur dans les deux
+   thèmes : ce sont des fonds pleins sous un texte blanc, lisibles partout.
+   Les séries de graphiques foncent en clair pour tenir 3:1 sur fond clair. */
+:root {
+  color-scheme: dark;
+
+  /* Fonds et surfaces */
+  --fond: #0f172a;                  /* fond de page, champs de saisie */
+  --surface: #1e293b;               /* cartes, barres, menu */
+  --surface-2: #334155;             /* surface en relief : pastille neutre, survol, puce */
+  --papier: #ffffff;                /* aperçu d'un document (iframe) : une page blanche dans les deux thèmes */
+
+  /* Bordures */
+  --bordure-douce: #1e293b;         /* séparateur de lignes de tableau */
+  --bordure: #334155;               /* contour des cartes et des champs */
+  --bordure-forte: #475569;         /* contour au survol, bouton secondaire */
+
+  /* Textes */
+  --texte: #e2e8f0;                 /* texte courant, titres */
+  --texte-2: #cbd5e1;               /* texte secondaire appuyé */
+  --texte-doux: #94a3b8;            /* libellés, aides, métadonnées */
+  --texte-pale: #64748b;            /* graduations, puces neutres (graphique, non textuel) */
+  --sur-accent: #ffffff;            /* texte sur un fond plein coloré (bouton, badge) */
+  --sur-vif: #0f172a;               /* texte sur un fond vif clair (surlignage ambre, score) */
+
+  /* Accent */
+  --accent: #3b82f6;                /* sélection active : menu, onglet, curseur */
+  --bouton: #2563eb;                /* bouton principal */
+  --accent-fort: #1d4ed8;           /* bouton au survol, bascule enfoncée, badge plein */
+  --focus: #3b82f6;                 /* contour d'un champ qui a le focus */
+  --lien: #60a5fa;                  /* liens, onglet actif souligné */
+
+  /* Information */
+  --info: #93c5fd;                  /* information, titre de carte */
+  --info-doux: #1e3a5f;             /* fond de pastille d'information */
+
+  /* Réussite */
+  --succes: #4ade80;                /* réussite, valeur retenue */
+  --succes-texte: #bbf7d0;          /* texte sur fond de réussite */
+  --succes-doux: #14291d;           /* fond de pastille de réussite */
+  --succes-bordure: #166534;        /* contour ou fond appuyé de réussite */
+
+  /* Alerte */
+  --alerte: #f59e0b;                /* attention, à revoir */
+  --alerte-texte: #fde68a;          /* texte sur fond d'alerte */
+  --alerte-doux: #3b2506;           /* fond de bandeau d'alerte */
+  --alerte-bordure: #b45309;        /* contour d'alerte, pastille de changements */
+
+  /* Danger */
+  --danger: #f87171;                /* erreur, suppression */
+  --danger-texte: #fecaca;          /* texte sur fond d'erreur */
+  --danger-doux: #450a0a;           /* fond de bandeau d'erreur */
+  --danger-bordure: #7f1d1d;        /* contour d'erreur, bouton de rejet */
+
+  /* Effets */
+  --ombre: rgba(0,0,0,.4);          /* ombre portée */
+  --voile: rgba(2,6,23,.8);         /* voile derrière une fenêtre */
+
+  /* ── Catégories (données) : même rôle dans les deux thèmes ── */
+  --type-personne: #7f1d1d;         /* badge « personne » */
+  --type-entreprise: #1d4ed8;       /* badge « entreprise » */
+  --type-association: #065f46;      /* badge « association » */
+  --type-lieu: #4c1d95;             /* badge « lieu » */
+  --type-service: #92400e;          /* badge « service » */
+  --serie-bleu: #3b82f6;            /* série / type entreprise */
+  --serie-vert: #10b981;            /* série / type association */
+  --serie-ambre: #f59e0b;           /* série / type service */
+  --serie-violet: #8b5cf6;          /* série / type lieu */
+  --serie-rouge: #ef4444;           /* série / type personne */
+  --serie-orange: #f97316;          /* série (DVF, annuité) */
+  --serie-cyan: #06b6d4;            /* série (DGF, presse) */
+  --serie-lime: #84cc16;            /* série (impôts locaux) */
+  --serie-gris: #64748b;            /* série neutre, type inconnu */
+  --perimetre-c1: #14556b;          /* périmètre C1 */
+  --perimetre-c2: #9a6b12;          /* périmètre C2 */
+  --perimetre-c3: #5b5b66;          /* périmètre C3 */
+  --perimetre-lien: #7c3f58;        /* périmètre « lien » */
+}
+
+/* Clair, demandé par le système — sauf si l'atelier a été mis en « Sombre ». */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --fond: #eef2f7;
+    --surface: #f8fafc;
+    --surface-2: #e2e8f0;
+    --papier: #ffffff;
+    --bordure-douce: #e2e8f0;
+    --bordure: #cbd5e1;
+    --bordure-forte: #64748b;
+    --texte: #0f172a;
+    --texte-2: #1e293b;
+    --texte-doux: #475569;
+    --texte-pale: #64748b;
+    --sur-accent: #ffffff;
+    --sur-vif: #ffffff;
+    --accent: #2563eb;
+    --bouton: #1d4ed8;
+    --accent-fort: #1e40af;
+    --focus: #2563eb;
+    --lien: #1d4ed8;
+    --info: #1e40af;
+    --info-doux: #dbeafe;
+    --succes: #166534;
+    --succes-texte: #14532d;
+    --succes-doux: #dcfce7;
+    --succes-bordure: #bbf7d0;
+    --alerte: #92400e;
+    --alerte-texte: #78350f;
+    --alerte-doux: #fef3c7;
+    --alerte-bordure: #b45309;
+    --danger: #b91c1c;
+    --danger-texte: #7f1d1d;
+    --danger-doux: #fee2e2;
+    --danger-bordure: #fca5a5;
+    --ombre: rgba(15,23,42,.15);
+    --voile: rgba(15,23,42,.45);
+    --serie-bleu: #1d4ed8;
+    --serie-vert: #047857;
+    --serie-ambre: #a3540a;
+    --serie-violet: #6d28d9;
+    --serie-rouge: #b91c1c;
+    --serie-orange: #c2410c;
+    --serie-cyan: #0e7490;
+    --serie-lime: #466f0f;
+    --serie-gris: #64748b;
+  }
+}
+
+/* Clair, choisi dans l'atelier (Mon compte, ou le menu). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fond: #eef2f7;
+  --surface: #f8fafc;
+  --surface-2: #e2e8f0;
+  --papier: #ffffff;
+  --bordure-douce: #e2e8f0;
+  --bordure: #cbd5e1;
+  --bordure-forte: #64748b;
+  --texte: #0f172a;
+  --texte-2: #1e293b;
+  --texte-doux: #475569;
+  --texte-pale: #64748b;
+  --sur-accent: #ffffff;
+  --sur-vif: #ffffff;
+  --accent: #2563eb;
+  --bouton: #1d4ed8;
+  --accent-fort: #1e40af;
+  --focus: #2563eb;
+  --lien: #1d4ed8;
+  --info: #1e40af;
+  --info-doux: #dbeafe;
+  --succes: #166534;
+  --succes-texte: #14532d;
+  --succes-doux: #dcfce7;
+  --succes-bordure: #bbf7d0;
+  --alerte: #92400e;
+  --alerte-texte: #78350f;
+  --alerte-doux: #fef3c7;
+  --alerte-bordure: #b45309;
+  --danger: #b91c1c;
+  --danger-texte: #7f1d1d;
+  --danger-doux: #fee2e2;
+  --danger-bordure: #fca5a5;
+  --ombre: rgba(15,23,42,.15);
+  --voile: rgba(15,23,42,.45);
+  --serie-bleu: #1d4ed8;
+  --serie-vert: #047857;
+  --serie-ambre: #a3540a;
+  --serie-violet: #6d28d9;
+  --serie-rouge: #b91c1c;
+  --serie-orange: #c2410c;
+  --serie-cyan: #0e7490;
+  --serie-lime: #466f0f;
+  --serie-gris: #64748b;
+}

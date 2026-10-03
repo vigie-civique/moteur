@@ -45,7 +45,7 @@
 
 <style>
   .coords-actions { display: flex; align-items: center; gap: .75rem; margin: .5rem 0; font-size: .78rem; flex-wrap: wrap; }
-  .coords-current { color: #94a3b8; }
-  .coords-osm-link { color: #60a5fa; }
+  .coords-current { color: var(--texte-doux); }
+  .coords-osm-link { color: var(--lien); }
   .coords-hint { font-size: .75rem; margin: .5rem 0; }
 </style>

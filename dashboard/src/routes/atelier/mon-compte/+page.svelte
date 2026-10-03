@@ -2,6 +2,7 @@
   import { authFetch, currentUser } from '$lib/stores/auth.js'
   import { COMMUNE } from '$lib/instance.js'
   import { LIBELLE_ROLE, DESCRIPTION_ROLE, messageErreur } from '$lib/roles.js'
+  import ChoixTheme from '$lib/components/ChoixTheme.svelte'
 
   let actuel = ''
   let nouveau = ''
@@ -44,6 +45,12 @@
   {/if}
 
   <section class="carte">
+    <h2>Affichage</h2>
+    <p class="muted">« Système » suit le réglage clair ou sombre de cet ordinateur. Le choix est retenu sur ce navigateur seulement.</p>
+    <div><ChoixTheme /></div>
+  </section>
+
+  <section class="carte">
     <h2>Changer de mot de passe</h2>
     <form on:submit|preventDefault={changer}>
       <label>Mot de passe actuel
@@ -62,16 +69,16 @@
 
 <style>
   .page { padding: 1.2rem; max-width: 560px; display: flex; flex-direction: column; gap: 1rem; font-size: .9rem; }
-  h1 { font-size: 1.2rem; color: #e2e8f0; }
-  h2 { font-size: .95rem; color: #e2e8f0; margin-bottom: .6rem; }
-  .carte { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: .35rem; line-height: 1.5; }
+  h1 { font-size: 1.2rem; color: var(--texte); }
+  h2 { font-size: .95rem; color: var(--texte); margin-bottom: .6rem; }
+  .carte { background: var(--surface); border: 1px solid var(--bordure); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: .35rem; line-height: 1.5; }
   form { display: flex; flex-direction: column; gap: .7rem; }
-  label { display: flex; flex-direction: column; gap: .3rem; color: #cbd5e1; }
-  input { background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; padding: .55rem .7rem; font-size: .9rem; }
-  button { background: #2563eb; color: #fff; border-radius: 6px; padding: .6rem .9rem; font-weight: 600; align-self: flex-start; }
+  label { display: flex; flex-direction: column; gap: .3rem; color: var(--texte-2); }
+  input { background: var(--fond); border: 1px solid var(--bordure); border-radius: 6px; color: var(--texte); padding: .55rem .7rem; font-size: .9rem; }
+  button { background: var(--bouton); color: var(--sur-accent); border-radius: 6px; padding: .6rem .9rem; font-weight: 600; align-self: flex-start; }
   button:disabled { opacity: .45; cursor: default; }
-  .muted { color: #94a3b8; }
-  .aide { color: #fbbf24; font-size: .82rem; }
-  .erreur { background: #450a0a; border: 1px solid #7f1d1d; border-radius: 6px; color: #fecaca; padding: .5rem .7rem; }
-  .ok { background: #052e16; border: 1px solid #166534; border-radius: 6px; color: #bbf7d0; padding: .5rem .7rem; }
+  .muted { color: var(--texte-doux); }
+  .aide { color: var(--alerte); font-size: .82rem; }
+  .erreur { background: var(--danger-doux); border: 1px solid var(--danger-bordure); border-radius: 6px; color: var(--danger-texte); padding: .5rem .7rem; }
+  .ok { background: var(--succes-doux); border: 1px solid var(--succes-bordure); border-radius: 6px; color: var(--succes-texte); padding: .5rem .7rem; }
 </style>

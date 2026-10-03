@@ -82,10 +82,10 @@
   }
 
   function scoreColor(s) {
-    if (!s) return '#64748b'
-    if (s >= 0.7) return '#22c55e'
-    if (s >= 0.5) return '#f59e0b'
-    return '#f87171'
+    if (!s) return 'var(--texte-doux)'
+    if (s >= 0.7) return 'var(--succes)'
+    if (s >= 0.5) return 'var(--alerte)'
+    return 'var(--danger)'
   }
 
   $: typeGroups = candidates.reduce((acc, c) => {
@@ -164,12 +164,12 @@
 <style>
   .queue-page { padding: 1.2rem; max-width: 1100px; }
   .queue-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
-  h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
+  h1 { font-size: 1.1rem; font-weight: 700; color: var(--texte); margin: 0; }
   .queue-controls { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
-  .queue-controls select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 5px; padding: .3rem .5rem; font-size: .8rem; }
-  .btn-reload { background: #1e293b; border: 1px solid #334155; color: #94a3b8; border-radius: 5px; padding: .3rem .6rem; font-size: .78rem; cursor: pointer; }
-  .btn-reload:hover { border-color: #60a5fa; color: #60a5fa; }
-  .count-info { font-size: .78rem; color: #94a3b8; }
+  .queue-controls select { background: var(--surface); border: 1px solid var(--bordure); color: var(--texte); border-radius: 5px; padding: .3rem .5rem; font-size: .8rem; }
+  .btn-reload { background: var(--surface); border: 1px solid var(--bordure); color: var(--texte-doux); border-radius: 5px; padding: .3rem .6rem; font-size: .78rem; cursor: pointer; }
+  .btn-reload:hover { border-color: var(--lien); color: var(--lien); }
+  .count-info { font-size: .78rem; color: var(--texte-doux); }
 
   .candidate-list { display: flex; flex-direction: column; gap: .3rem; }
   .candidate-row {
@@ -178,40 +178,40 @@
     align-items: center;
     gap: .6rem;
     padding: .45rem .75rem;
-    background: #1e293b;
+    background: var(--surface);
     border-radius: 6px;
-    border: 1px solid #334155;
+    border: 1px solid var(--bordure);
     font-size: .78rem;
   }
   .candidate-row.low-score { opacity: .65; }
   .cand-entity { display: flex; align-items: center; gap: .35rem; min-width: 0; }
-  .entity-link { color: #93c5fd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entity-link { color: var(--info); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entity-link:hover { text-decoration: underline; }
-  .type-badge { font-size: .62rem; padding: 1px 5px; border-radius: 3px; color: #fff; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
-  .type-association { background: #065f46; }
-  .type-business    { background: #1d4ed8; }
-  .type-place       { background: #4c1d95; }
-  .type-service     { background: #92400e; }
-  .type-person      { background: #7f1d1d; }
+  .type-badge { font-size: .62rem; padding: 1px 5px; border-radius: 3px; color: var(--sur-accent); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+  .type-association { background: var(--type-association); }
+  .type-business    { background: var(--type-entreprise); }
+  .type-place       { background: var(--type-lieu); }
+  .type-service     { background: var(--type-service); }
+  .type-person      { background: var(--type-personne); }
 
-  .cand-url { color: #60a5fa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cand-url { color: var(--lien); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cand-url:hover { text-decoration: underline; }
   .cand-score { font-weight: 700; text-align: center; font-size: .8rem; }
   .cand-source { white-space: nowrap; }
-  .muted { color: #94a3b8; }
+  .muted { color: var(--texte-doux); }
   .cand-actions { display: flex; gap: .3rem; }
 
-  .btn-validate { background: #14532d; border: 1px solid #166534; color: #4ade80; border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
-  .btn-validate:hover:not(:disabled) { background: #166534; }
-  .btn-reject   { background: #450a0a; border: 1px solid #7f1d1d; color: #f87171; border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
-  .btn-reject:hover:not(:disabled)   { background: #7f1d1d; }
+  .btn-validate { background: var(--succes-bordure); border: 1px solid var(--succes-bordure); color: var(--succes-texte); border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
+  .btn-validate:hover:not(:disabled) { background: var(--succes-bordure); }
+  .btn-reject   { background: var(--danger-doux); border: 1px solid var(--danger-bordure); color: var(--danger); border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
+  .btn-reject:hover:not(:disabled)   { background: var(--danger-bordure); color: var(--danger-texte); }
   button:disabled { opacity: .45; cursor: default; }
 
-  .err-msg { color: #f87171; font-size: .83rem; }
-  .avis { margin: 0 0 .6rem; padding: .5rem .75rem; background: #3b2506; border: 1px solid #b45309;
-          border-radius: 6px; color: #fde68a; font-size: .82rem; }
-  .cand-lock { display: flex; align-items: center; gap: .35rem; color: #fbbf24; white-space: nowrap; }
-  .btn-liberer { border: 1px solid #b45309; border-radius: 4px; padding: .1rem .4rem;
-                 font-size: .68rem; color: #fde68a; cursor: pointer; }
-  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
+  .err-msg { color: var(--danger); font-size: .83rem; }
+  .avis { margin: 0 0 .6rem; padding: .5rem .75rem; background: var(--alerte-doux); border: 1px solid var(--alerte-bordure);
+          border-radius: 6px; color: var(--alerte-texte); font-size: .82rem; }
+  .cand-lock { display: flex; align-items: center; gap: .35rem; color: var(--alerte); white-space: nowrap; }
+  .btn-liberer { border: 1px solid var(--alerte-bordure); border-radius: 4px; padding: .1rem .4rem;
+                 font-size: .68rem; color: var(--alerte-texte); cursor: pointer; }
+  .muted-center { color: var(--texte-doux); text-align: center; margin-top: 2rem; }
 </style>

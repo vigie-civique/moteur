@@ -9,10 +9,10 @@
   let filter = 'tofix'   // tofix | all
 
   const STATUS = {
-    missing:   { label: 'Sans coords', color: '#ef4444' },
-    imprecise: { label: 'Imprécis',    color: '#f59e0b' },
-    ok:        { label: 'OK auto',     color: '#3b82f6' },
-    ok_manual: { label: 'Validé',      color: '#22c55e' },
+    missing:   { label: 'Sans coords', color: 'var(--serie-rouge)' },
+    imprecise: { label: 'Imprécis',    color: 'var(--serie-ambre)' },
+    ok:        { label: 'OK auto',     color: 'var(--serie-bleu)' },
+    ok_manual: { label: 'Validé',      color: 'var(--serie-vert)' },
   }
 
   onMount(load)
@@ -81,21 +81,21 @@
 <style>
   section { padding: 1.25rem 1.5rem; max-width: 1200px; }
   header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
-  h1 { font-size: 1.2rem; margin: 0 0 .2rem; color: #e2e8f0; }
-  .sub { color: #94a3b8; font-size: .85rem; margin: 0; }
+  h1 { font-size: 1.2rem; margin: 0 0 .2rem; color: var(--texte); }
+  .sub { color: var(--texte-doux); font-size: .85rem; margin: 0; }
   .stats { display: flex; gap: .5rem; }
   .pill { font-size: .8rem; padding: .25rem .7rem; border-radius: 999px; font-weight: 600; }
-  .pill.red { background: #7f1d1d; } .pill.green { background: #065f46; }
+  .pill.red { background: var(--danger-bordure); } .pill.green { background: var(--succes-bordure); }
   .bar { display: flex; gap: .5rem; margin: 1rem 0; }
-  .bar button { padding: .3rem .8rem; border-radius: 6px; background: #1e293b; color: #94a3b8; font-size: .8rem; }
-  .bar button.active { background: #3b82f6; color: #fff; }
+  .bar button { padding: .3rem .8rem; border-radius: 6px; background: var(--surface); color: var(--texte-doux); font-size: .8rem; }
+  .bar button.active { background: var(--accent); color: var(--sur-accent); }
   .bar .reload { margin-left: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #1e293b; }
-  th { color: #94a3b8; font-weight: 600; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--bordure-douce); }
+  th { color: var(--texte-doux); font-weight: 600; }
   .num { font-variant-numeric: tabular-nums; }
-  .muted { color: #94a3b8; } .addr { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .badge { color: #fff; font-size: .7rem; padding: .12rem .55rem; border-radius: 999px; white-space: nowrap; }
-  .fix { color: #60a5fa; font-weight: 600; white-space: nowrap; }
-  .err { color: #fca5a5; }
+  .muted { color: var(--texte-doux); } .addr { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { color: var(--sur-accent); font-size: .7rem; padding: .12rem .55rem; border-radius: 999px; white-space: nowrap; }
+  .fix { color: var(--lien); font-weight: 600; white-space: nowrap; }
+  .err { color: var(--danger-texte); }
 </style>

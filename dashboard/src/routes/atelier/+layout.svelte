@@ -1,4 +1,5 @@
 <script>
+  import ChoixTheme from '$lib/components/ChoixTheme.svelte'
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -94,6 +95,7 @@
 
       <div class="sidebar-footer">
         <a class="user-email" href="/atelier/mon-compte" title="Mon compte">{$currentUser.email}</a>
+        <ChoixTheme />
         <button class="logout-btn" on:click={handleLogout}>Déconnexion</button>
       </div>
     </aside>
@@ -115,8 +117,8 @@
   .atelier-sidebar {
     width: 200px;
     flex-shrink: 0;
-    background: #1e293b;
-    border-right: 1px solid #334155;
+    background: var(--surface);
+    border-right: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
     padding: .75rem 0;
@@ -127,26 +129,26 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 .9rem .6rem;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     margin-bottom: .4rem;
   }
 
   .sidebar-title {
     font-weight: 700;
     font-size: .85rem;
-    color: #e2e8f0;
+    color: var(--texte);
   }
 
   .role-badge {
     font-size: .65rem;
     padding: 1px 6px;
     border-radius: 999px;
-    background: #334155;
-    color: #94a3b8;
+    background: var(--surface-2);
+    color: var(--texte-doux);
     text-transform: uppercase;
     letter-spacing: .04em;
   }
-  .role-badge.admin { background: #1d4ed8; color: #bfdbfe; }
+  .role-badge.admin { background: var(--accent-fort); color: var(--sur-accent); }
 
   .sidebar-nav {
     flex: 1;
@@ -160,15 +162,15 @@
     padding: .4rem .65rem;
     border-radius: 5px;
     font-size: .8rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     transition: background .12s;
   }
-  .sidebar-nav a.active { background: #3b82f6; color: #fff; }
-  .sidebar-nav a:hover:not(.active) { background: #0f172a; color: #e2e8f0; }
+  .sidebar-nav a.active { background: var(--accent); color: var(--sur-accent); }
+  .sidebar-nav a:hover:not(.active) { background: var(--fond); color: var(--texte); }
 
   .sidebar-footer {
     padding: .6rem .9rem 0;
-    border-top: 1px solid #334155;
+    border-top: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
     gap: .4rem;
@@ -176,7 +178,7 @@
 
   .user-email {
     font-size: .72rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -184,7 +186,7 @@
 
   .logout-btn {
     font-size: .75rem;
-    color: #ef4444;
+    color: var(--danger);
     text-align: left;
     padding: 0;
     cursor: pointer;
@@ -196,7 +198,7 @@
   .atelier-content {
     flex: 1;
     overflow-y: auto;
-    background: #0f172a;
+    background: var(--fond);
   }
 
   /* Sur un portable étroit (820 px), le menu latéral mangeait le quart de la
@@ -206,7 +208,7 @@
     .atelier-shell { flex-direction: column; }
     .atelier-sidebar {
       width: 100%; flex-direction: row; align-items: center;
-      padding: .3rem .5rem; border-right: none; border-bottom: 1px solid #334155;
+      padding: .3rem .5rem; border-right: none; border-bottom: 1px solid var(--bordure);
       overflow-x: auto; gap: .5rem;
     }
     .sidebar-header { border-bottom: none; margin: 0; padding: 0 .4rem; gap: .4rem; }

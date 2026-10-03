@@ -36,8 +36,8 @@
   }
   .search-row {
     padding: .35rem 1rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
   }
   .graph-area {

@@ -1,8 +1,9 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import * as d3 from 'd3'
   import { api } from '$lib/api.js'
+  import { couleur, themeEffectif } from '$lib/theme.js'
 
   // ── Données ────────────────────────────────────────────────────────────────
   let flows    = []
@@ -59,12 +60,23 @@
     if (flows.some(f => f.year === 2026)) filterYear = '2026'
     loading = false
     // Attendre le DOM puis dessiner
-    setTimeout(() => {
-      drawDebtChart()
-      drawEpargneChart()
-      drawFonctChart()
-    }, 50)
+    setTimeout(dessiner, 50)
   })
+
+  function dessiner() {
+    drawDebtChart()
+    drawEpargneChart()
+    drawFonctChart()
+  }
+
+  // Les couleurs des graphiques sont lues au dessin : un changement de thème
+  // les redessine (sauf au premier passage, avant les données).
+  let premierTheme = true
+  const arreterTheme = themeEffectif.subscribe(() => {
+    if (premierTheme) { premierTheme = false; return }
+    requestAnimationFrame(dessiner)
+  })
+  onDestroy(arreterTheme)
 
   // ── Flux filtrés ───────────────────────────────────────────────────────────
   $: years      = [...new Set(flows.map(f => f.year).filter(Boolean))].sort((a, b) => b - a)
@@ -102,20 +114,20 @@
     svg.append('g').attr('transform', `translate(0,${h})`)
       .call(d3.axisBottom(x).tickSize(0).tickPadding(8))
       .call(g => g.select('.domain').remove())
-      .selectAll('text').attr('fill', '#64748b').attr('font-size', 10)
+      .selectAll('text').attr('fill', couleur('--texte-doux')).attr('font-size', 10)
 
     svg.append('g')
       .call(d3.axisLeft(y).ticks(4).tickFormat(fmt))
       .call(g => g.select('.domain').remove())
-      .call(g => g.selectAll('.tick line').attr('stroke', '#1e293b').attr('x2', w))
-      .selectAll('text').attr('fill', '#64748b').attr('font-size', 10)
+      .call(g => g.selectAll('.tick line').attr('stroke', couleur('--bordure-douce')).attr('x2', w))
+      .selectAll('text').attr('fill', couleur('--texte-doux')).attr('font-size', 10)
 
     // Ligne zéro si données négatives
     if (yMin < 0) {
       svg.append('line')
         .attr('x1', 0).attr('x2', w)
         .attr('y1', y(0)).attr('y2', y(0))
-        .attr('stroke', '#334155').attr('stroke-dasharray', '4,2')
+        .attr('stroke', couleur('--bordure')).attr('stroke-dasharray', '4,2')
     }
 
     // Séries
@@ -128,7 +140,7 @@
       svg.append('path')
         .datum(serie.data)
         .attr('fill', 'none')
-        .attr('stroke', colors[i] || '#3b82f6')
+        .attr('stroke', couleur(colors[i] || '--serie-bleu'))
         .attr('stroke-width', 2)
         .attr('d', line)
 
@@ -140,7 +152,7 @@
         .attr('cx', d => x(d.year))
         .attr('cy', d => y(d.montant || 0))
         .attr('r', 4)
-        .attr('fill', colors[i] || '#3b82f6')
+        .attr('fill', couleur(colors[i] || '--serie-bleu'))
         .append('title')
         .text(d => `${d.year} : ${fmtEur(d.montant)}`)
     })
@@ -149,7 +161,7 @@
   function drawDebtChart() {
     drawChart(chartDebtEl,
       [{ data: byAgregat('Encours de dette') }],
-      ['#ef4444'],
+      ['--serie-rouge'],
       'Encours dette'
     )
   }
@@ -160,7 +172,7 @@
         { data: byAgregat('Epargne brute') },
         { data: byAgregat('Epargne nette') },
       ],
-      ['#10b981', '#34d399'],
+      ['--serie-vert', '--serie-cyan'],
       'Épargne'
     )
   }
@@ -171,7 +183,7 @@
         { data: byAgregat('Recettes de fonctionnement') },
         { data: byAgregat('Dépenses de fonctionnement') },
       ],
-      ['#3b82f6', '#f59e0b'],
+      ['--serie-bleu', '--serie-ambre'],
       'Fonctionnement'
     )
   }
@@ -202,14 +214,14 @@
     <!-- ── KPIs ── -->
     <div class="kpis">
       {#each [
-        { label: 'Recettes fonct.',   agg: 'Recettes de fonctionnement',  color: '#3b82f6' },
-        { label: 'Dépenses fonct.',   agg: 'Dépenses de fonctionnement',  color: '#f59e0b' },
-        { label: 'Épargne brute',     agg: 'Epargne brute',               color: '#10b981' },
-        { label: 'Encours dette',     agg: 'Encours de dette',             color: '#ef4444' },
-        { label: 'Annuité dette',     agg: 'Annuité de la dette',          color: '#f97316' },
-        { label: 'Frais de personnel',agg: 'Frais de personnel',           color: '#8b5cf6' },
-        { label: 'DGF',               agg: 'Dotation globale de fonctionnement', color: '#06b6d4' },
-        { label: 'Impôts locaux',     agg: 'Impôts locaux',               color: '#84cc16' },
+        { label: 'Recettes fonct.',   agg: 'Recettes de fonctionnement',  color: 'var(--serie-bleu)' },
+        { label: 'Dépenses fonct.',   agg: 'Dépenses de fonctionnement',  color: 'var(--serie-ambre)' },
+        { label: 'Épargne brute',     agg: 'Epargne brute',               color: 'var(--serie-vert)' },
+        { label: 'Encours dette',     agg: 'Encours de dette',             color: 'var(--serie-rouge)' },
+        { label: 'Annuité dette',     agg: 'Annuité de la dette',          color: 'var(--serie-orange)' },
+        { label: 'Frais de personnel',agg: 'Frais de personnel',           color: 'var(--serie-violet)' },
+        { label: 'DGF',               agg: 'Dotation globale de fonctionnement', color: 'var(--serie-cyan)' },
+        { label: 'Impôts locaux',     agg: 'Impôts locaux',               color: 'var(--serie-lime)' },
       ] as k}
         {@const r = getAgg(k.agg)}
         <div class="kpi">
@@ -227,7 +239,7 @@
       <div class="chart-block">
         <div class="chart-title">
           Encours de dette 2017–{lastYear}
-          <span class="legend"><span class="dot" style="background:#ef4444"></span>Dette</span>
+          <span class="legend"><span class="dot" style="background:var(--serie-rouge)"></span>Dette</span>
         </div>
         <div bind:this={chartDebtEl} class="chart-area"></div>
       </div>
@@ -236,8 +248,8 @@
         <div class="chart-title">
           Épargne 2017–{lastYear}
           <span class="legend">
-            <span class="dot" style="background:#10b981"></span>Brute
-            <span class="dot" style="background:#34d399"></span>Nette
+            <span class="dot" style="background:var(--serie-vert)"></span>Brute
+            <span class="dot" style="background:var(--serie-cyan)"></span>Nette
           </span>
         </div>
         <div bind:this={chartEpargneEl} class="chart-area"></div>
@@ -247,8 +259,8 @@
         <div class="chart-title">
           Fonctionnement 2017–{lastYear}
           <span class="legend">
-            <span class="dot" style="background:#3b82f6"></span>Recettes
-            <span class="dot" style="background:#f59e0b"></span>Dépenses
+            <span class="dot" style="background:var(--serie-bleu)"></span>Recettes
+            <span class="dot" style="background:var(--serie-ambre)"></span>Dépenses
           </span>
         </div>
         <div bind:this={chartFonctEl} class="chart-area"></div>
@@ -322,7 +334,7 @@
   .toolbar {
     display: flex; align-items: center; gap: 1rem;
     padding: .6rem 1.25rem;
-    background: #1e293b; border-bottom: 1px solid #334155;
+    background: var(--surface); border-bottom: 1px solid var(--bordure);
     flex-shrink: 0; flex-wrap: wrap;
   }
   h1 { font-size: 1rem; font-weight: 700; }
@@ -330,48 +342,48 @@
   .tabs { display: flex; gap: 2px; }
   .tabs button {
     padding: .25rem .75rem; border-radius: 6px;
-    font-size: .8rem; background: #0f172a; color: #94a3b8;
-    border: 1px solid #334155;
+    font-size: .8rem; background: var(--fond); color: var(--texte-doux);
+    border: 1px solid var(--bordure);
   }
-  .tabs button.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
-  .tabs button:hover:not(.active) { color: #e2e8f0; }
+  .tabs button.active { background: var(--accent-fort); color: var(--sur-accent); border-color: var(--accent-fort); }
+  .tabs button:hover:not(.active) { color: var(--texte); }
 
   .badge {
-    margin-left: auto; font-size: .72rem; color: #94a3b8;
-    background: #0f172a; padding: 2px 8px; border-radius: 999px;
+    margin-left: auto; font-size: .72rem; color: var(--texte-doux);
+    background: var(--fond); padding: 2px 8px; border-radius: 999px;
   }
 
   /* ── KPIs ── */
   .kpis {
     display: flex; flex-wrap: wrap; gap: .75rem;
     padding: .75rem 1.25rem; flex-shrink: 0;
-    background: #0f172a; border-bottom: 1px solid #1e293b;
+    background: var(--fond); border-bottom: 1px solid var(--bordure-douce);
   }
   .kpi {
-    background: #1e293b; border: 1px solid #334155;
+    background: var(--surface); border: 1px solid var(--bordure);
     border-radius: 8px; padding: .5rem .9rem;
     min-width: 110px;
   }
   .kpi-val { font-size: 1.05rem; font-weight: 700; }
-  .kpi-sub { font-size: .7rem; color: #94a3b8; margin-top: 2px; }
-  .kpi-hab { font-size: .68rem; color: #94a3b8; }
+  .kpi-sub { font-size: .7rem; color: var(--texte-doux); margin-top: 2px; }
+  .kpi-hab { font-size: .68rem; color: var(--texte-doux); }
 
   /* ── Graphiques ── */
   .charts {
     display: flex; flex-wrap: wrap; gap: .75rem;
     padding: .75rem 1.25rem; flex-shrink: 0;
-    background: #0f172a; border-bottom: 1px solid #1e293b;
+    background: var(--fond); border-bottom: 1px solid var(--bordure-douce);
   }
   .chart-block {
-    background: #1e293b; border: 1px solid #334155;
+    background: var(--surface); border: 1px solid var(--bordure);
     border-radius: 8px; padding: .6rem .8rem;
     flex: 1; min-width: 280px;
   }
   .chart-title {
-    font-size: .75rem; color: #94a3b8; margin-bottom: .4rem;
+    font-size: .75rem; color: var(--texte-doux); margin-bottom: .4rem;
     display: flex; align-items: center; gap: .5rem;
   }
-  .legend { display: flex; align-items: center; gap: .35rem; margin-left: auto; font-size: .7rem; color: #94a3b8; }
+  .legend { display: flex; align-items: center; gap: .35rem; margin-left: auto; font-size: .7rem; color: var(--texte-doux); }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
   .chart-area { width: 100%; }
 
@@ -382,49 +394,49 @@
   table { width: 100%; border-collapse: collapse; font-size: .75rem; }
   th {
     text-align: right; padding: .3rem .6rem;
-    color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155;
+    color: var(--texte-doux); font-weight: 600; border-bottom: 1px solid var(--bordure);
     white-space: nowrap;
   }
   th:first-child { text-align: left; }
-  td { padding: .25rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
-  .agg-name { color: #94a3b8; white-space: nowrap; }
+  td { padding: .25rem .6rem; border-bottom: 1px solid var(--bordure-douce); color: var(--texte-2); }
+  .agg-name { color: var(--texte-doux); white-space: nowrap; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .num.neg { color: #f87171; }
-  tr:hover td { background: #1e293b; }
+  .num.neg { color: var(--danger); }
+  tr:hover td { background: var(--surface); }
 
   /* ── Flux ── */
   .toolbar-sub {
     display: flex; align-items: center; gap: 1rem;
-    padding: .5rem 1.25rem; background: #0f172a;
-    border-bottom: 1px solid #1e293b; flex-shrink: 0;
+    padding: .5rem 1.25rem; background: var(--fond);
+    border-bottom: 1px solid var(--bordure-douce); flex-shrink: 0;
   }
   select {
-    background: #1e293b; border: 1px solid #334155;
-    border-radius: 6px; color: #e2e8f0;
+    background: var(--surface); border: 1px solid var(--bordure);
+    border-radius: 6px; color: var(--texte);
     font-size: .8rem; padding: .3rem .6rem;
   }
-  .total { color: #10b981; font-size: .82rem; font-weight: 600; margin-left: auto; }
+  .total { color: var(--succes); font-size: .82rem; font-weight: 600; margin-left: auto; }
 
   .list {
     flex: 1; overflow-y: auto; padding: 1rem 1.25rem;
     display: flex; flex-direction: column; gap: .5rem;
   }
   .flow-card {
-    background: #1e293b; border: 1px solid #334155;
+    background: var(--surface); border: 1px solid var(--bordure);
     border-radius: 8px; padding: .6rem 1rem;
   }
   .flow-head { display: flex; gap: .5rem; align-items: center; margin-bottom: .25rem; }
-  .year { color: #94a3b8; font-size: .78rem; }
+  .year { color: var(--texte-doux); font-size: .78rem; }
   .ftype {
-    background: #0f172a; padding: 1px 8px; border-radius: 999px;
-    font-size: .7rem; color: #f59e0b;
+    background: var(--fond); padding: 1px 8px; border-radius: 999px;
+    font-size: .7rem; color: var(--alerte);
   }
-  .amount { color: #10b981; font-weight: 700; font-size: .88rem; margin-left: auto; }
+  .amount { color: var(--succes); font-weight: 700; font-size: .88rem; margin-left: auto; }
   .flow-parties { display: flex; gap: .4rem; align-items: center; font-size: .82rem; }
-  .from { color: #94a3b8; }
-  .arrow { color: #94a3b8; }
-  .to { color: #e2e8f0; font-weight: 500; }
-  .desc { font-size: .75rem; color: #94a3b8; margin-top: .2rem; font-style: italic; }
+  .from { color: var(--texte-doux); }
+  .arrow { color: var(--texte-doux); }
+  .to { color: var(--texte); font-weight: 500; }
+  .desc { font-size: .75rem; color: var(--texte-doux); margin-top: .2rem; font-style: italic; }
 
-  .hint { color: #94a3b8; padding: 2rem; text-align: center; }
+  .hint { color: var(--texte-doux); padding: 2rem; text-align: center; }
 </style>
