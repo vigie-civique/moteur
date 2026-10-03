@@ -3,6 +3,8 @@
 # fichiers nominatifs propres à une commune.
 db/*.db
 db/*.db-*
+# Les règles que la CI dérive de l'exemple, à côté de sa base (tests/amorcer_base_ci.py).
+db/*.regles.json
 public/static/data/
 # Le fond de carte est un artefact d'instance, produit par scripts/carte_fond.py
 # et borné à l'emprise de la commune : il n'appartient pas au moteur, pas plus

@@ -86,6 +86,11 @@ def assurer_schema(conn) -> None:
     colonnes = {r[1] for r in conn.execute("PRAGMA table_info(annotations)")}
     if colonnes and "empreinte" not in colonnes:
         conn.execute("ALTER TABLE annotations ADD COLUMN empreinte TEXT")
+    # 03/10/2026 — ce que le relecteur a vu de chaque acte cité (cf. `sceller`).
+    conn.execute("""CREATE TABLE IF NOT EXISTS citations_relues (
+        dossier_id INTEGER NOT NULL, empreinte_dossier TEXT NOT NULL,
+        cle TEXT NOT NULL, empreinte_acte TEXT NOT NULL, vue TEXT,
+        relu_le TEXT, PRIMARY KEY (dossier_id, cle))""")
 
 
 def identifiant(conn, slug: str, creer: bool = False) -> int | None:
@@ -117,6 +122,104 @@ def verdict(conn, dossier_id: int | None) -> dict | None:
     if not r:
         return None
     return dict(zip(("review_status", "note", "reviewed_by", "reviewed_at", "empreinte"), r))
+
+
+# ─── Ce que la relecture a vu des actes cités ────────────────────────────────
+# 03/10/2026. Un dossier sort RETENU et tel qu'il a été relu : son TEXTE est
+# figé par l'empreinte. Mais ce texte cite des actes, et un acte peut changer
+# après la relecture — un titre relu à l'OCR, un vote corrigé à l'atelier, une
+# délibération retirée du site. La phrase du dossier, elle, n'a pas bougé : la
+# règle de l'empreinte ne le voyait pas.
+#
+# Décision de Julien (03/10/2026) : au verdict, on scelle pour chaque citation
+# résolue la clé de l'acte et l'empreinte de ce qui en est affiché
+# (`citations.vue`). Au build, on compare. Si un acte cité a changé ou disparu,
+# le dossier RESTE publié — il a été relu, et rien de ce qu'il affirme n'a été
+# modifié — mais il porte un bandeau « un élément cité a changé depuis la
+# relecture du … », et l'atelier le montre à revoir.
+#
+# ⚠️ « À revoir » est ici un ÉTAT DÉDUIT, pas le verdict `a_revoir` : pour un
+# objet de `OBJETS_A_RETENIR`, ce verdict-là RETIRE du site (seul `retenu`
+# publie, `verdict.publiable_si_retenu`). L'écrire en base aurait contredit la
+# décision même qu'il servait. Même principe que « modifié depuis la
+# relecture » : rien n'est réécrit, l'état se lit dans la comparaison.
+
+def sceller(conn, dossier_id: int, empreinte_dossier: str, relie, relu_le: str | None) -> int:
+    """Pose le sceau d'un dossier qu'on retient : une ligne par acte cité.
+
+    `relie` : le résultat de `citations.relier` sur le texte RETENU, contre les
+    actes publiables à cet instant. Les citations non résolues n'ont rien à
+    sceller — elles sont des lacunes, pas des affirmations sur un acte.
+    """
+    import json
+    conn.execute("DELETE FROM citations_relues WHERE dossier_id=?", (dossier_id,))
+    n = 0
+    for c in relie.resolues:
+        a = c.resolution.cible
+        conn.execute(
+            "INSERT OR REPLACE INTO citations_relues(dossier_id, empreinte_dossier, cle, "
+            "empreinte_acte, vue, relu_le) VALUES(?,?,?,?,?,?)",
+            (dossier_id, empreinte_dossier, a.cle, a.empreinte,
+             json.dumps({**a.vue, "assemblee": a.assemblee,
+                         "seance": a.seance}, ensure_ascii=False), relu_le))
+        n += 1
+    return n
+
+
+def lever_le_sceau(conn, dossier_id: int) -> None:
+    conn.execute("DELETE FROM citations_relues WHERE dossier_id=?", (dossier_id,))
+
+
+def _libelle(cle: str, v: dict) -> str:
+    """« la délibération n°41 du 14/04/2021 (Conseil municipal) ».
+
+    Sans le titre, volontairement : le sceau garde le titre BRUT de la base, et
+    ce libellé part sur le site. Un acte retiré du site — peut-être parce qu'il
+    nommait quelqu'un — ne doit pas y revenir par le bandeau d'un dossier.
+    """
+    d = v.get("date") or ""
+    jour = f"{d[8:10]}/{d[5:7]}/{d[:4]}" if len(d) >= 10 else d
+    assemblee = f" ({v['assemblee']})" if v.get("assemblee") else ""
+    if v.get("seance"):
+        return f"la séance du {jour}{assemblee}"
+    num = f" n°{v['numero']}" if v.get("numero") else ""
+    return f"la délibération{num} du {jour}{assemblee}"
+
+
+def peremption(conn, dossier_id: int | None, empreinte_dossier: str | None, index) -> dict | None:
+    """Ce qui a changé, parmi les actes cités, depuis la relecture.
+
+    None : pas de sceau pour CE texte (dossier retenu avant le 03/10/2026, ou
+    texte modifié depuis) — on ne sait pas ce qui a été vu, on ne dit rien.
+    Sinon `{relu_le, elements: [...]}`, `elements` vide si rien n'a bougé.
+    `index` : les actes PUBLIÉS maintenant (`citations.Index`). Un acte qui n'y
+    est plus « n'est plus publié », quelle qu'en soit la raison.
+    """
+    import json
+    from .citations import CHAMPS
+    if dossier_id is None or not empreinte_dossier:
+        return None
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                        "AND name='citations_relues'").fetchone():
+        return None
+    lignes = conn.execute(
+        "SELECT cle, empreinte_acte, vue, relu_le FROM citations_relues "
+        "WHERE dossier_id=? AND empreinte_dossier=? ORDER BY cle",
+        (dossier_id, empreinte_dossier)).fetchall()
+    if not lignes:
+        return None
+    elements = []
+    for cle, emp, vue_json, _ in lignes:
+        avant = json.loads(vue_json or "{}")
+        a = index.par_cle.get(cle)
+        if a is None:
+            elements.append({"cle": cle, "libelle": _libelle(cle, avant),
+                             "quoi": "disparu", "champs": []})
+        elif a.empreinte != emp:
+            champs = [CHAMPS[k] for k in CHAMPS if avant.get(k) != a.vue.get(k)]
+            elements.append({"cle": cle, "libelle": _libelle(cle, avant),
+                             "quoi": "modifie", "champs": champs})
+    return {"relu_le": (lignes[0][3] or "")[:10], "elements": elements}
 
 
 # ─── Écrire ──────────────────────────────────────────────────────────────────

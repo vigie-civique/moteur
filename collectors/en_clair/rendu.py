@@ -277,8 +277,12 @@ def _sources(releve: dict, seule: str | None = None) -> str:
     return "".join(lignes)
 
 
-def feuilles(releve: dict, relu: str | None = None) -> str:
-    """Les deux feuilles d'une séance, en <section> — sans l'enveloppe HTML."""
+def feuilles(releve: dict, relu: str | None = None, liens: dict | None = None) -> str:
+    """Les deux feuilles d'une séance, en <section> — sans l'enveloppe HTML.
+
+    `liens` : n° d'acte → URL de l'acte publié (posé par la publication, par
+    la clé datée de l'acte). Sans lui — l'aperçu de l'atelier, le PDF —, les
+    numéros restent du texte."""
     s, ec = releve["seance"], releve["en_clair"]
     actes = {a["n"]: a for a in releve["actes"]}
     # `relu` : la mention que pose la PUBLICATION quand l'atelier a retenu la
@@ -334,7 +338,7 @@ def feuilles(releve: dict, relu: str | None = None) -> str:
                       + (f'<p class="pq"><b>Pourquoi ça compte</b> {e(it["pourquoi"])}</p>'
                          if it.get("pourquoi") else "")
                       + f'<div class="row">{_vote(actes, ns)}'
-                      f'<span class="acte">{"n°" + " · ".join(map(str, ns)) if ns else ""}'
+                      f'<span class="acte">{"n°" + _liste(ns, liens) if ns else ""}'
                       f'</span></div></div>')
         aussi = "".join(f"<li>{e(a['texte'])} {_vote(actes, a['actes'])}</li>"
                         for a in ap.get("aussi", []))
@@ -354,14 +358,21 @@ def feuilles(releve: dict, relu: str | None = None) -> str:
     <div>Relevé : {e(releve['origine']['releve'])}{', ' + e(relu) if relu and relu.startswith('relu') else (', relu par ' + e(relu) if relu else ', non relu')}.
     Une erreur ? Signalez-la : chaque correction est publiée.</div>{sources}</div>
 </section>"""
-    return avant + apres + comprendre(releve, tampon)
+    return avant + apres + comprendre(releve, tampon, liens)
 
 
-def _numeros(ns) -> str:
-    return f'<span class="acte">n°{" · ".join(map(str, ns))}</span>' if ns else ""
+def _liste(ns, liens: dict | None = None) -> str:
+    """« 41 · 42 », chaque numéro lié à son acte quand il est publié."""
+    liens = liens or {}
+    return " · ".join(f'<a href="{html.escape(liens[n])}">{n}</a>' if n in liens else str(n)
+                      for n in ns)
 
 
-def comprendre(releve: dict, tampon: str = "") -> str:
+def _numeros(ns, liens: dict | None = None) -> str:
+    return f'<span class="acte">n°{_liste(ns, liens)}</span>' if ns else ""
+
+
+def comprendre(releve: dict, tampon: str = "", liens: dict | None = None) -> str:
     """Feuille 3 (facultative) : ce qui s'est dit, ce qui reste à suivre, les
     mots de la séance. Absente du relevé, rien n'est rendu.
 
@@ -377,7 +388,7 @@ def comprendre(releve: dict, tampon: str = "") -> str:
     if c.get("debats"):
         dits = "".join(
             f'<div class="dit"><h4>{e(d["titre"])}<span class="row">'
-            f'{_vote(actes, d.get("actes", []))}{_numeros(d.get("actes"))}</span></h4>'
+            f'{_vote(actes, d.get("actes", []))}{_numeros(d.get("actes"), liens)}</span></h4>'
             f'<p>{e(d["texte"])}</p>'
             + (f'<blockquote>« {e(d["citation"])} »</blockquote>' if d.get("citation") else "")
             + "</div>"
@@ -385,7 +396,7 @@ def comprendre(releve: dict, tampon: str = "") -> str:
         intro = f'<div class="box warn">{e(c["avertissement"])}</div>' if c.get("avertissement") else ""
         blocs.append(f'<div class="bloc"><h3>Ce qui s’est dit</h3>{intro}{dits}</div>')
     if c.get("a_suivre"):
-        lis = "".join(f'<li><span>{e(x["texte"])} {_numeros(x.get("actes"))}</span></li>'
+        lis = "".join(f'<li><span>{e(x["texte"])} {_numeros(x.get("actes"), liens)}</span></li>'
                       for x in c["a_suivre"])
         blocs.append(f'<div class="bloc"><h3>À suivre</h3><ul class="suivre">{lis}</ul></div>')
     if c.get("lexique"):

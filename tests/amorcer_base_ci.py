@@ -95,10 +95,154 @@ def main() -> int:
         (conn.execute("SELECT MAX(id) FROM events").fetchone()[0], publiable))
     conn.commit()
 
+    n_actes = amorcer_deliberations(conn, publiable)
+    regles = ecrire_regles_ci()
+    n_dossiers = amorcer_dossiers(conn, regles) if os.environ.get("VIGIE_CI_DOSSIERS") else 0
+
     total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
     conn.close()
-    print(f"[ci] {DB_PATH} amorcée — {total} entités, dont 1 seule publiable")
+    print(f"[ci] {DB_PATH} amorcée — {total} entités, dont 1 seule publiable ; "
+          f"{n_actes} actes d'assemblée ; {n_dossiers} dossiers retenus ; "
+          f"règles : {regles}")
     return 0
+
+
+# ─── Les actes d'assemblée ───────────────────────────────────────────────────
+# Ajoutés le 03/10/2026. Jusque-là la base de la CI n'avait AUCUNE délibération
+# avec texte : une régression des extraits (`extrait/<id>.json`, le texte déplié
+# sous chaque acte) est passée verte, faute d'un seul acte à extraire. Ils sont
+# aussi ce qu'il faut au graphe des liens : deux années qui réemploient le même
+# numéro (la clé doit les distinguer), les deux assemblées, une séance qui a pris
+# plusieurs actes (une citation par date y est imprécise), un acte sans numéro
+# (clé faible, jamais une ancre).
+#
+# La source est le domaine de l'instance, comme `scripts/init_instance.py` le
+# déclare publiable : c'est ainsi qu'une vraie instance publie ses actes.
+
+SOURCE_COMMUNE = "exemple.invalid"
+SOURCE_EPCI = "epci.exemple.invalid"
+
+ACTES = (
+    # type, date, numéro d'acte, titre, texte, montants, vote
+    ("deliberation", "2021-04-14", "41", "Protection des captages : périmètres et servitudes",
+     "Le conseil municipal, après en avoir délibéré, décide la protection à 80 % de la "
+     "ressource en eau du captage du bourg et approuve les périmètres proposés.",
+     [], {"pour": 13, "contre": 0, "abstention": 2, "unanimite": False}),
+    ("deliberation", "2021-04-14", "42", "Budget primitif 2021 du service de l'eau",
+     "Le conseil municipal adopte le budget primitif 2021 de la régie de l'eau, équilibré "
+     "en section d'exploitation à 61 500 €.",
+     [{"montant": 61500.0, "context": "équilibré à 61 500 €"}], {"unanimite": True}),
+    # Le MÊME numéro, l'année suivante : une clé sans année les confondrait.
+    ("deliberation", "2022-05-11", "41", "Tarifs de l'eau : abonnement et part variable",
+     "Le conseil municipal fixe l'abonnement annuel à 45 € et la part variable à "
+     "1,20 € le mètre cube à compter du 1er juillet 2022.",
+     [{"montant": 45.0, "context": "abonnement annuel à 45 €"}], {"unanimite": True}),
+    # Sans numéro d'acte ni de séance : la clé repose sur le titre, elle est faible.
+    ("deliberation", "2023-03-06", None, "Compte administratif 2022 de la régie de l'eau",
+     "Le conseil municipal approuve le compte administratif 2022 : 27 980 € de dépenses "
+     "d'exploitation.",
+     [{"montant": 27980.0, "context": "27 980 € de dépenses"}], {"unanimite": True}),
+    ("deliberation_cc", "2025-04-02", "12", "Redevance pour pollution domestique",
+     "Le conseil communautaire approuve le reversement de 2 064 € de redevance à "
+     "l'Agence de l'eau au titre de l'exercice 2024.",
+     [{"montant": 2064.0, "context": "reversement de 2 064 €"}], {"unanimite": True}),
+    ("deliberation_cc", "2024-06-20", "12", "Adhésion au service commun d'instruction",
+     "Le conseil communautaire approuve l'adhésion au service commun d'instruction des "
+     "autorisations d'urbanisme.", [], {"pour": 30, "contre": 1, "abstention": 0}),
+)
+
+SEANCES = (("conseil_municipal", "2021-04-14", "Conseil municipal du 14 avril 2021"),
+           ("conseil_communautaire", "2025-04-02", "Conseil communautaire du 2 avril 2025"))
+
+
+def amorcer_deliberations(conn, entite_concernee: int) -> int:
+    import json
+    from collectors.cle_acte import cle_de_ligne
+    for type_, date, titre in SEANCES:
+        source = SOURCE_EPCI if type_ == "conseil_communautaire" else SOURCE_COMMUNE
+        cle = cle_de_ligne(type_, date, {}, titre)
+        conn.execute(
+            "INSERT INTO events (type, date, title, source, source_url, metadata, cle_acte) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (type_, date, titre, source, f"https://{source}/pv/{date}.pdf",
+             json.dumps({"pieces": [{"nature": "proces_verbal", "libelle": f"PV du {date}",
+                                     "url": f"https://{source}/pv/{date}.pdf"}]}),
+             cle.valeur))
+    for type_, date, numero, titre, texte, montants, vote in ACTES:
+        source = SOURCE_EPCI if type_ == "deliberation_cc" else SOURCE_COMMUNE
+        meta = {"numero_acte": numero, "numero_seance": None, "montants": montants,
+                "vote": vote, "categorie": "eau", "regime": "actes_teletransmis"}
+        cle = cle_de_ligne(type_, date, meta, titre)
+        eid = conn.execute(
+            "INSERT INTO events (type, date, title, content, source, source_url, metadata, "
+            "cle_acte) VALUES (?,?,?,?,?,?,?,?)",
+            (type_, date, titre, texte, source,
+             f"https://{source}/actes/{date}-{numero or 'sn'}.pdf",
+             json.dumps(meta, ensure_ascii=False), cle.valeur)).lastrowid
+        if type_ == "deliberation_cc" and numero == "12" and date.startswith("2025"):
+            # Une personne MORALE que l'acte concerne : l'index par SIREN
+            # (`personnes_morales.json`) doit avoir une ligne à publier.
+            conn.execute("INSERT INTO event_entities (event_id, entity_id, role) "
+                         "VALUES (?,?,'beneficiaire')", (eid, entite_concernee))
+    conn.execute("INSERT OR IGNORE INTO businesses (entity_id, siren) VALUES (?, '999000001')",
+                 (entite_concernee,))
+    conn.commit()
+    return len(ACTES)
+
+
+def ecrire_regles_ci() -> Path:
+    """Les règles d'exemple, plus les deux domaines de l'instance factice —
+    exactement ce que `scripts/init_instance.py` ajoute pour une vraie
+    instance. Sans eux, aucun acte d'assemblée ne sortirait, et la CI
+    construirait un site sans délibérations : le parcours qu'elle doit voir."""
+    import json
+    regles = json.loads((ROOT / "config" / "publication_rules.exemple.json").read_text())
+    sources = set(regles.setdefault("events", {}).get("public_sources", []))
+    regles["events"]["public_sources"] = sorted(sources | {SOURCE_COMMUNE, SOURCE_EPCI})
+    chemin = Path(DB_PATH).with_suffix(".regles.json")
+    chemin.write_text(json.dumps(regles, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return chemin
+
+
+# ─── Les dossiers ────────────────────────────────────────────────────────────
+# Un dossier inventé (tests/fixtures/dossiers/), sans personne physique, qui
+# cite les actes ci-dessus comme les vrais dossiers les citent. Il est RETENU,
+# son sceau est posé comme l'atelier le pose, puis un acte cité est « relu à
+# l'OCR » : le build doit publier le dossier AVEC son bandeau de péremption.
+#
+# Seulement sous `VIGIE_CI_DOSSIERS=1`, que pose le job `site` : la copie va
+# dans `dossiers/` à la racine du dépôt, qui est celui d'une instance quand on
+# travaille sur une instance. Ni un poste de développement ni la suite pytest
+# (qui rejoue ce script) n'ont à y trouver un dossier d'épreuve.
+
+def amorcer_dossiers(conn, regles_chemin: Path) -> int:
+    import json
+    import shutil
+    from collectors import dossiers as D
+    from collectors.citations import index_selon_regles, relier
+    regles = json.loads(Path(regles_chemin).read_text())
+    D.assurer_schema(conn)
+    n = 0
+    for source in sorted((ROOT / "tests" / "fixtures" / "dossiers").glob("*.md")):
+        cible = D.chemin(ROOT, source.stem)
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, cible)
+        did = D.identifiant(conn, source.stem, creer=True)
+        emp = D.empreinte_de(cible)
+        conn.execute(
+            "INSERT INTO annotations(object_type, object_id, review_status, reviewed_by, "
+            "reviewed_at, empreinte) VALUES('dossier', ?, 'retenu', 'ci', "
+            "'2026-10-01 10:00:00', ?)", (did, emp))
+        D.sceller(conn, did, emp, relier(cible.read_text(encoding="utf-8"),
+                                         index_selon_regles(conn, regles)),
+                  "2026-10-01 10:00:00")
+        n += 1
+    # La relecture OCR d'un titre, après le verdict : le bandeau doit le dire.
+    conn.execute("UPDATE events SET title = 'Budget primitif 2021 du service de l''eau (relu)' "
+                 "WHERE type='deliberation' AND date='2021-04-14' "
+                 "AND json_extract(metadata, '$.numero_acte') = '42'")
+    conn.commit()
+    return n
 
 
 if __name__ == "__main__":

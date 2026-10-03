@@ -2725,6 +2725,8 @@ def _decider(object_type: str, object_id: int, req: AnnotationUpdate, user,
                 raise HTTPException(404, "Le texte de cet objet est introuvable.")
             conn.execute("UPDATE annotations SET empreinte=? WHERE object_type=? AND object_id=?",
                          (actuelle if demande == RETENU else None, object_type, object_id))
+            if object_type == "dossier":
+                _sceller_dossier(conn, object_id, actuelle if demande == RETENU else None)
         conn.execute("""
             INSERT INTO audit_log(user_id, entity_id, table_name, action, field, old_value, new_value)
             VALUES(?,?,?,?,?,?,?)
@@ -2833,6 +2835,36 @@ def atelier_en_clair_apercu(nom: str = FPath(..., pattern=r"^\d{4}-\d{2}-\d{2}-(
 _SLUG_DOSSIER = r"^[a-z0-9][a-z0-9-]{0,60}$"
 
 
+def _index_atelier(conn):
+    """Les actes que la publication laisserait sortir, selon les règles de
+    l'instance — l'atelier n'a pas de snapshot sous la main quand un validateur
+    retient. Même prédicat que le snapshot (`citations.publiable_selon_regles`) :
+    on ne scelle pas une citation vers un acte que le site ne montrera pas."""
+    from collectors.citations import index_selon_regles
+    from collectors.config import RULES_PATH as _regles
+    return index_selon_regles(conn, _read_json_file(_regles, {}))
+
+
+def _sceller_dossier(conn, dossier_id: int, empreinte_retenue: Optional[str]) -> None:
+    """Le sceau des citations d'un dossier qu'on retient (cf.
+    `collectors/dossiers.py::sceller`) ; tout autre verdict le lève. Dans la
+    transaction du verdict : un verdict sans son sceau ne doit pas exister."""
+    from collectors.citations import relier
+    if empreinte_retenue is None:
+        _dossiers.lever_le_sceau(conn, dossier_id)
+        return
+    slug = _dossiers.slug_de(conn, dossier_id)
+    p = _dossiers.chemin(RACINE, slug)
+    octets = p.read_bytes()
+    if empreinte(octets) != empreinte_retenue:
+        raise HTTPException(409, "Le texte a changé pendant que vous le reteniez : "
+                                 "rechargez-le et relisez-le avant de décider.")
+    relu_le = conn.execute("SELECT reviewed_at FROM annotations WHERE object_type='dossier' "
+                           "AND object_id=?", (dossier_id,)).fetchone()[0]
+    _dossiers.sceller(conn, dossier_id, empreinte_retenue,
+                      relier(octets.decode("utf-8"), _index_atelier(conn)), relu_le)
+
+
 class DossierEcriture(BaseModel):
     texte: str
     # L'empreinte du fichier quand l'éditeur l'a ouvert ; null pour CRÉER.
@@ -2844,7 +2876,7 @@ class DossierCreation(BaseModel):
     titre: str
 
 
-def _dossier_ligne(conn, slug: str, p: Path) -> dict:
+def _dossier_ligne(conn, slug: str, p: Path, index=None) -> dict:
     meta, corps = _dossiers.entete(p.read_text(encoding="utf-8"))
     # Un dossier posé sur le disque (à la main, par un script) reçoit ici son
     # identifiant : sans lui, aucun verdict ne pourrait s'y attacher.
@@ -2852,7 +2884,13 @@ def _dossier_ligne(conn, slug: str, p: Path) -> dict:
     v = _dossiers.verdict(conn, did)
     actuelle = _dossiers.empreinte_de(p)
     statut = v["review_status"] if v else None
+    # « À revoir » parce qu'un acte cité a changé depuis la relecture : un état
+    # DÉDUIT, pas le verdict `a_revoir` — qui, pour un dossier, le retirerait
+    # du site (cf. collectors/dossiers.py, « Ce que la relecture a vu »).
+    perime = (_dossiers.peremption(conn, did, actuelle, index)
+              if index is not None and verdict_de(statut) == RETENU else None)
     return {
+        "perime": perime if perime and perime["elements"] else None,
         "slug": slug, "dossier_id": did,
         "titre": meta.get("titre") or slug, "chapeau": meta.get("chapeau", ""),
         "maj": meta.get("maj", ""), "a_developper": meta.get("statut") == "a_developper",
@@ -2871,7 +2909,8 @@ def atelier_dossiers(user=Depends(require_auth)):
     conn = get_db_rw()
     try:
         _dossiers.assurer_schema(conn)
-        lignes = [_dossier_ligne(conn, slug, p) for slug, p in _dossiers.lister(RACINE)]
+        index = _index_atelier(conn)
+        lignes = [_dossier_ligne(conn, slug, p, index) for slug, p in _dossiers.lister(RACINE)]
         conn.commit()   # les identifiants donnés aux dossiers posés sur le disque
         return lignes
     finally:
@@ -2886,7 +2925,14 @@ def atelier_dossier(slug: str = FPath(..., pattern=_SLUG_DOSSIER), user=Depends(
     conn = get_db_rw()
     try:
         _dossiers.assurer_schema(conn)
-        ligne = {**_dossier_ligne(conn, slug, p), "texte": p.read_text(encoding="utf-8")}
+        from collectors.citations import relier
+        index = _index_atelier(conn)
+        texte = p.read_text(encoding="utf-8")
+        ligne = {**_dossier_ligne(conn, slug, p, index), "texte": texte,
+                 # Ce que le résolveur fait de chaque citation, contre les actes
+                 # publiables : l'éditeur voit ce qui sera relié, et ce qui ne
+                 # le sera pas — avant de demander une relecture.
+                 "citations": [c.releve() for c in relier(texte, index).citations]}
         conn.commit()
         return ligne
     finally:

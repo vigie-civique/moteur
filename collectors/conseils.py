@@ -43,6 +43,7 @@ import pdfplumber
 from .archive import archive_fetch
 from .config import (COMMUNE_NAME, COMMUNE_SIREN, EPCI_NOM, EPCI_SIREN,
                      HEADERS, ROOT)
+from .cle_acte import a_la_colonne as _a_la_colonne_cle, cle_acte, cle_seance
 from .cm_ocr import OPTIONS_OCRMYPDF, garder_texte, texte_garde
 from .cm_parser import link_persons_to_event
 from .connecteurs import charger
@@ -290,6 +291,7 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None,
             " WHERE id=?",
             (doc.date, p["titre"].format(date=date_en_francais(doc.date)), url,
              json.dumps(fusion, ensure_ascii=False), row["id"]))
+        _poser_cle_seance(conn, p["seance"], doc.date, row["id"])
         return row["id"]
     # La séance renvoie vers le portail qui la publie, jamais vers l'un de ses
     # actes : le premier arrivé n'a pas à représenter les trente-neuf autres.
@@ -302,7 +304,16 @@ def enregistrer_seance(conn, doc, portee: str, meta_sup: dict | None = None,
         (p["seance"], doc.date,
          p["titre"].format(date=date_en_francais(doc.date)), doc.source,
          url_seance, json.dumps(meta, ensure_ascii=False)))
+    _poser_cle_seance(conn, p["seance"], doc.date, cur.lastrowid)
     return cur.lastrowid
+
+
+def _poser_cle_seance(conn, type_: str, date: str | None, eid: int) -> None:
+    """La clé datée de la séance (`c-2021-03-04`), si la base a la colonne."""
+    if _a_la_colonne_cle(conn):
+        cle = cle_seance(type_, date)
+        conn.execute("UPDATE events SET cle_acte=? WHERE id=?",
+                     (cle.valeur if cle else None, eid))
 
 
 def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
@@ -334,18 +345,29 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     if portee == "epci":
         meta["instance"] = EPCI_NOM
 
-    if delib.get("numero_acte"):
+    # La clé datée (`collectors/cle_acte.py`) EST cette identité, écrite une
+    # fois : on cherche d'abord par elle. Les requêtes d'avant restent en
+    # repli pour les lignes qu'aucune migration n'a encore clées — et pour
+    # celles que `scripts/migrer_cles_actes.py` a laissées vides parce qu'elles
+    # entraient en collision.
+    cle = cle_acte(p["delib"], doc.date, delib.get("numero_acte"),
+                   delib.get("numero_seance"), delib.get("titre"))
+    avec_cle = _a_la_colonne_cle(conn)
+    row = conn.execute(
+        "SELECT id FROM events WHERE type=? AND cle_acte=? ORDER BY id LIMIT 1",
+        (p["delib"], cle.valeur)).fetchone() if (avec_cle and cle) else None
+    if row is None and delib.get("numero_acte"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=?"
             " AND json_extract(metadata,'$.numero_acte')=?"
             " AND substr(date, 1, 4)=?",
             (p["delib"], delib["numero_acte"], (doc.date or "")[:4])).fetchone()
-    elif delib.get("numero_seance"):
+    elif row is None and delib.get("numero_seance"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=? AND date=?"
             " AND json_extract(metadata,'$.numero_seance')=?",
             (p["delib"], doc.date, delib["numero_seance"])).fetchone()
-    else:
+    elif row is None:
         row = conn.execute(
             "SELECT id FROM events WHERE type=? AND date=? AND title=?",
             (p["delib"], doc.date, delib["titre"])).fetchone()
@@ -356,13 +378,17 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
             " source_url=? WHERE id=?",
             (doc.date, delib["titre"], delib["texte"],
              json.dumps(meta, ensure_ascii=False), doc.source, doc.url, row["id"]))
-        return row["id"]
-    cur = conn.execute(
-        "INSERT INTO events (type,date,title,content,source,source_url,metadata)"
-        " VALUES (?,?,?,?,?,?,?)",
-        (p["delib"], doc.date, delib["titre"], delib["texte"], doc.source,
-         doc.url, json.dumps(meta, ensure_ascii=False)))
-    return cur.lastrowid
+        eid = row["id"]
+    else:
+        eid = conn.execute(
+            "INSERT INTO events (type,date,title,content,source,source_url,metadata)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (p["delib"], doc.date, delib["titre"], delib["texte"], doc.source,
+             doc.url, json.dumps(meta, ensure_ascii=False))).lastrowid
+    if avec_cle:
+        conn.execute("UPDATE events SET cle_acte=? WHERE id=?",
+                     (cle.valeur if cle else None, eid))
+    return eid
 
 
 def ocr(chemin: Path, langue: str = "fra") -> str:

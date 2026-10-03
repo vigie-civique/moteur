@@ -118,8 +118,15 @@ jobs:
         with:
           python-version: "3.13"
       - name: Base d'épreuve
+        # Depuis le 03/10/2026 : des actes d'assemblée avec leur texte, un
+        # dossier d'épreuve retenu (tests/fixtures/dossiers/) qui les cite, et
+        # les règles d'exemple complétées des domaines de l'instance factice
+        # (db/ci.regles.json) — comme `init_instance` le fait pour une vraie.
+        # Sans elles, aucun acte ne sortait et le texte des actes, les liens
+        # et les retours n'étaient éprouvés nulle part.
         env:
           VIGIE_DB: db/ci.db
+          VIGIE_CI_DOSSIERS: "1"
         run: python tests/amorcer_base_ci.py
       - name: Publication en deux temps — l'aperçu ne publie rien
         # Le flux tel qu'un admin le vit depuis l'atelier, sur le vrai
@@ -129,7 +136,7 @@ jobs:
         # aperçu ne touche pas au répertoire publié.
         env:
           VIGIE_INSTANCE: tests/instance_test.json
-          VIGIE_RULES: config/publication_rules.exemple.json
+          VIGIE_RULES: db/ci.regles.json
           VIGIE_DB: db/ci.db
         run: |
           python - <<'PY'
@@ -187,16 +194,37 @@ jobs:
       - name: Snapshot et contrôle d'étanchéité
         env:
           VIGIE_INSTANCE: tests/instance_test.json
-          VIGIE_RULES: config/publication_rules.exemple.json
+          VIGIE_RULES: db/ci.regles.json
           VIGIE_DB: db/ci.db
         run: |
           python scripts/build_public_snapshot.py
           python scripts/verify_snapshot.py public/static/data
+          # Le graphe des liens, de bout en bout : des actes avec leur texte,
+          # un dossier dont les citations sont reliées, des retours, et le
+          # bandeau d'un acte cité qui a changé depuis la relecture.
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = Path("public/static/data")
+          s = json.loads((d / "stats.json").read_text())
+          assert s["extraits_actes"] >= 6, f"textes d'actes : {s['extraits_actes']}"
+          [dossier] = json.loads((d / "dossiers.json").read_text())["dossiers"]
+          assert "/deliberations/2021#c-2021-41" in dossier["texte"], "citation non reliée"
+          assert dossier.get("perime", {}).get("elements"), "la péremption ne se voit pas"
+          liens = json.loads((d / "liens.json").read_text())
+          assert liens["actes"].get("c-2021-41"), "aucun retour vers l'acte cité"
+          assert json.loads((d / "lacunes.json").read_text())["total"] >= 2
+          print("graphe des liens :", s["graphe"])
+          PY
       - name: Build
         working-directory: public
         run: |
           npm ci
           npm run build
+          # Les ancres datées et les retours sont dans le HTML prérendu.
+          grep -q 'id="c-2021-41"' build/deliberations/2021.html
+          grep -q 'Cité dans' build/deliberations/2021.html
+          grep -q 'Un élément cité a changé' build/dossiers/eau.html
 
       - name: Le dossier hors-ligne s'ouvre comme un lecteur l'ouvre
         # Le contrôle qui manquait. Les deux défauts qu'il cherche — des liens

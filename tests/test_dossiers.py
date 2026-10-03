@@ -203,3 +203,57 @@ def test_creer_un_dossier(atelier):
     assert "titre: Les déchets" in texte and "## L'essentiel" in texte
     assert client.post("/api/atelier/dossiers", json={"slug": "dechets", "titre": "x"}).status_code == 409
     assert client.post("/api/atelier/dossiers", json={"slug": "../x", "titre": "x"}).status_code == 400
+
+
+# ── le sceau des citations (03/10/2026) ──────────────────────────────────────
+
+@pytest.fixture
+def atelier_avec_actes(atelier, tmp_path, monkeypatch):
+    """L'atelier, un dossier qui cite un acte, et des règles qui le publient."""
+    import api
+    from collectors import config
+    regles = tmp_path / "regles.json"
+    regles.write_text(json.dumps({"events": {"public_sources": ["fictiville.invalid"],
+                                             "exclude_types": []}}))
+    monkeypatch.setattr(config, "RULES_PATH", regles)
+    conn = sqlite3.connect(api.DB_PATH)
+    conn.execute("INSERT INTO events(type, date, title, content, source, metadata) VALUES("
+                 "'deliberation', '2021-04-14', 'Protection des captages', 'Texte.', "
+                 "'fictiville.invalid', '{\"numero_acte\": \"41\"}')")
+    conn.commit()
+    conn.close()
+    (atelier["instance"] / "dossiers" / "eau.md").write_text(
+        EAU + "\nLe captage est protégé (CM du 14/04/2021). Le reste (CM du 01/01/2019).\n")
+    return atelier
+
+
+def test_retenir_scelle_les_citations_et_un_acte_change_se_voit_a_revoir(atelier_avec_actes):
+    import api
+    v = atelier_avec_actes["en_tant_que"](VALIDEUR)
+    d = v.get("/api/atelier/dossiers/eau").json()
+    assert [(c["texte"], c["statut"]) for c in d["citations"]] == \
+        [("CM du 14/04/2021", "precis"), ("CM du 01/01/2019", "non_resolu")], \
+        "l'éditeur voit ce qui sera relié avant de demander une relecture"
+    url = f"/api/atelier/annotations/dossier/{d['dossier_id']}"
+    assert v.patch(url, json={"review_status": "retenu", "empreinte_vue": d["empreinte"]}).status_code == 200
+
+    conn = sqlite3.connect(api.DB_PATH)
+    assert conn.execute("SELECT cle FROM citations_relues").fetchall() == [("c-2021-41",)]
+    conn.execute("UPDATE events SET title = 'Protection des captages (relu)'")
+    conn.commit()
+    conn.close()
+
+    [ligne] = v.get("/api/atelier/dossiers").json()
+    assert ligne["verdict"] == "retenu", "le verdict n'est pas touché : il RESTE publié"
+    assert [e["champs"] for e in ligne["perime"]["elements"]] == [["le titre"]]
+
+
+def test_un_autre_verdict_leve_le_sceau(atelier_avec_actes):
+    import api
+    v = atelier_avec_actes["en_tant_que"](VALIDEUR)
+    d = v.get("/api/atelier/dossiers/eau").json()
+    url = f"/api/atelier/annotations/dossier/{d['dossier_id']}"
+    v.patch(url, json={"review_status": "retenu", "empreinte_vue": d["empreinte"]})
+    assert v.patch(url, json={"review_status": "a_revoir"}).status_code == 200
+    conn = sqlite3.connect(api.DB_PATH)
+    assert conn.execute("SELECT COUNT(*) FROM citations_relues").fetchone()[0] == 0

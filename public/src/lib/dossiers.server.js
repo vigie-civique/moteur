@@ -99,7 +99,7 @@ function sources() {
 
 export function lireDossiers() {
   const dossiers = []
-  for (const { slug, texte } of sources()) {
+  for (const { slug, texte, citations, perime, relu_le } of sources()) {
     const { meta, corps } = entete(texte)
     const statut = meta.statut === 'a_developper' ? 'a_developper'
       : AVEC_BROUILLONS ? 'brouillon' : 'publie'
@@ -109,6 +109,13 @@ export function lireDossiers() {
       chapeau: meta.chapeau || '',
       maj: meta.maj || '',
       statut,
+      // Le snapshot a relié les citations d'actes du texte (collectors/
+      // citations.py) : `citations` porte, pour chaque lien posé, ce que
+      // l'infobulle affiche. `perime` dit qu'un acte cité a changé depuis la
+      // relecture. Ni l'un ni l'autre n'existe en aperçu local des brouillons.
+      citations: citations || [],
+      perime: perime?.elements?.length ? perime : null,
+      relu_le: relu_le || '',
       // Le corps d'un dossier « à développer » ne sort pas, même s'il existe.
       ...(statut === 'a_developper'
         ? { html: '', sommaire: [], minutes: 0, minutesTout: 0, replis: 0 }

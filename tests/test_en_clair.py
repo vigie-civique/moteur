@@ -245,6 +245,31 @@ def test_un_releve_reecrit_apres_relecture_ne_sort_plus(base, instance, tmp_path
     assert (r["publiees"], r["modifies"]) == (0, ["2026-01-10-cm"])
 
 
+def test_les_numeros_d_actes_menent_a_l_acte_publie_par_sa_cle(base, instance, tmp_path):
+    """03/10/2026 : une séance en clair relève ses actes par numéro. Le n°1 est
+    publié, il devient un lien vers sa clé datée et un retour vers la séance ;
+    le n°2 ne l'est pas, il reste du texte."""
+    from collectors.citations import index_de, lignes_en_base
+    from collectors.graphe import Graphe
+    from scripts.build_public_snapshot import export_en_clair
+    _verdict(base, _seance(base), "retenu", instance)
+    un = base.execute("INSERT INTO events(type, date, title, source, metadata) VALUES("
+                      "'deliberation', '2026-01-10', 'Subvention au club', 'x', "
+                      "'{\"numero_acte\": \"1\"}')").lastrowid
+    base.execute("INSERT INTO events(type, date, title, source, metadata) VALUES("
+                 "'deliberation', '2026-01-10', 'Cimetière', 'x', '{\"numero_acte\": \"2\"}')")
+    graphe = Graphe(index_de(lignes_en_base(base), {un}))
+
+    export_en_clair(base, tmp_path / "snapshot", instance, graphe)
+
+    html = (tmp_path / "snapshot" / "conseils" / "2026-01-10_conseil-municipal.html").read_text()
+    assert '<a href="/deliberations/2026#c-2026-1">1</a>' in html
+    assert 'href="/deliberations/2026#c-2026-2"' not in html, "jamais un lien vers un acte non publié"
+    assert graphe.retours["c-2026-1"] == [{"type": "en_clair", "date": "2026-01-10",
+                                           "assemblee": "Conseil municipal de Fictiville",
+                                           "fichier": "conseils/2026-01-10_conseil-municipal.html"}]
+
+
 def test_un_verdict_sans_empreinte_ne_publie_pas(base, instance, tmp_path):
     """Retenu avant l'empreinte et pas repris : on ne sait pas ce qui a été relu."""
     from scripts.build_public_snapshot import export_en_clair

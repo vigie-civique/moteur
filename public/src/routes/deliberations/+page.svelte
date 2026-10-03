@@ -83,7 +83,7 @@
         <ul class="res">
           {#each resultats as e (e.id)}
             <li>
-              <a href="/deliberations/{e.annee}#a{e.id}">
+              <a href="/deliberations/{e.annee}#{e.ancre}">
                 <span class="date">{fmtDate(e.date)}</span>
                 <span class="badge {e.instance}">{e.label}</span>
                 <span class="titre">{e.titre || '(sans titre)'}</span>
@@ -116,7 +116,7 @@
           <ul class="debats">
             {#each votes.exemples as e}
               <li>
-                <a href="/deliberations/{e.annee}#a{e.id}">
+                <a href="/deliberations/{e.annee}#{e.ancre}">
                   <span class="date">{fmtDate(e.date)}</span>
                   <span class="titre">{e.titre || '(sans titre)'}</span>
                   <span class="vote">

@@ -38,6 +38,21 @@ for (const [texte, attendu] of [
   ['[écrire](mailto:contact@exemple.fr)', /href="mailto:contact@exemple\.fr"/],
   ['| a | b |\n|---|---|\n| 1 | 2 |', /<table>/],
   ['Un prix < 40 000 € et > 0', /&lt; 40 000/],
+  // Les liens que pose le résolveur de citations (collectors/citations.py) :
+  // une adresse interne ancrée sur la clé datée, et une infobulle.
+  ['([CM du 14/04/2021](/deliberations/2021#c-2021-41 "Délibération n°41 — Conseil municipal"))',
+   /<a href="\/deliberations\/2021#c-2021-41" title="Délibération n°41 — Conseil municipal">CM du 14\/04\/2021<\/a>/],
+  ['| [17/02/2016](/deliberations/2016#a12 "Délibération") | Motion | CM |\n|---|---|---|', /href="\/deliberations\/2016#a12"/],
 ]) assert.match(markdownSur(texte), attendu, texte)
+
+// La syntaxe explicite (`acte:`, `seance:`, `piece:`) est remplacée AU BUILD.
+// Si elle arrivait jusqu'ici — un aperçu local des brouillons —, elle ne doit
+// rien ouvrir : ce n'est pas une adresse.
+for (const texte of ['[le vote](acte:c-2021-41)', '[la séance](seance:c-2021-04-14)', '[la pièce](piece:c-2021-41)'])
+  assert.match(markdownSur(texte), /href="#"/, texte)
+// Une infobulle ne sort pas de son attribut, quoi qu'un titre d'acte contienne :
+// le résolveur remplace les guillemets droits, marked échappe le reste.
+assert.doesNotMatch(markdownSur('[x](/deliberations/2021#c-2021-41 "a <b onmouseover=alert(1)> & c")'),
+                    /<b onmouseover/)
 
 console.log(`✓ rendu des dossiers : ${CAS.length} injections arrêtées, le repli et les liens ordinaires passent`)

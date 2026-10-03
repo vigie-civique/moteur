@@ -496,6 +496,13 @@ STEP_META = {
 DB_PATH     = pathlib.Path(
     os.environ.get("VIGIE_DB") or ROOT / "db" / f"{COMMUNE_INSEE}.db")
 SCHEMA_PATH = ROOT / "db" / "schema.sql"
+# Les règles de publication. `VIGIE_RULES` en désigne d'autres — les tests s'en
+# servent pour tourner sur l'exemple versionné. Lu ici depuis le 03/10/2026 :
+# l'atelier en a besoin à son tour (le sceau des citations d'un dossier retenu,
+# collectors/citations.py), et deux chemins écrits à deux endroits finissent
+# par désigner deux fichiers.
+RULES_PATH  = pathlib.Path(
+    os.environ.get("VIGIE_RULES") or ROOT / "config" / "publication_rules.json")
 TERRITOIRE  = ROOT / "territoire"
 PROFILS_DIR = ROOT / "profils"
 FINANCES    = ROOT / "finances"

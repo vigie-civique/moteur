@@ -63,6 +63,45 @@ d'acte, date) et la résout au rendu. Les résumés de conseils de l'autre
 chantier sont une source de la frise, pas une copie : le dossier pointe le
 résumé et l'acte.
 
+**Fait le 03/10/2026** — la clé datée (`collectors/cle_acte.py`) :
+
+| Clé | Ce qu'elle désigne |
+|-----|--------------------|
+| `c-2021-41` | commune, année 2021, acte n° 41 |
+| `cc-2025-12` | intercommunalité, 2025, acte n° 12 |
+| `c-2021-03-04-s3` | acte sans numéro : 3ᵉ de la séance du 04/03/2021 |
+| `c-2021-03-04-t1a2b3c4` | ni numéro ni rang : date + empreinte du titre — **faible**, jamais une ancre |
+| `c-2021-03-04` | la séance elle-même |
+
+L'ancre publique d'un acte est `/deliberations/{année}#{clé}` ; `#a{id}` reste
+servi un cycle par la table d'alias de `liens.json`.
+
+### Citer un acte dans un dossier
+
+Rien à changer à la façon d'écrire : le snapshot relie seul les citations
+naturelles (`collectors/citations.py`), contre les actes **publiés** seulement :
+
+- `(CM du 14/04/2021)`, `(délibération CC du 02/04/2025)`,
+  `conseil municipal du 4 mars 2026`, `délibération n°41/2021` ;
+- une ligne de frise `| 17/02/2016 | Motion … | CM |` (la date est reliée).
+
+Une séance qui a pris plusieurs actes est départagée par ce que la phrase dit
+d'autre — une citation « entre guillemets » retrouvée dans le texte d'un seul
+acte, un montant voté par un seul, l'objet d'une ligne de frise proche d'un
+seul titre. Sinon le lien mène à la **séance**, signalé « imprécis ». Pour
+lever l'ambiguïté, la syntaxe explicite :
+
+```markdown
+[le budget de la régie](acte:c-2021-42)      un acte, par sa clé
+[la séance de mars](seance:c-2021-03-04)     une séance
+[le registre signé](piece:c-2021-42)         la pièce source de l'acte
+```
+
+Une citation qui ne mène à rien de publié n'a pas de lien : elle entre au
+relevé interne (`audits/citations_non_resolues.json`) et dans `lacunes.json`
+comme une question. L'atelier montre, à l'ouverture d'un dossier, ce que
+chaque citation deviendra.
+
 Le rattachement d'un acte à un thème ne peut pas reposer sur une recherche
 plein texte (voir § 3.6 : « station » ramène la station de ski de Prat-Peyrot).
 Il faut une **étiquette thématique** posée une fois par acte, par règles puis

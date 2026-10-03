@@ -305,7 +305,13 @@ CREATE TABLE IF NOT EXISTS events (
     origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
     raw_document_id INTEGER REFERENCES raw_documents(id),
     saisi_par       TEXT,
-    saisi_le        TEXT
+    saisi_le        TEXT,
+    -- L'identité DATÉE d'un acte ou d'une séance (`c-2021-41`, `cc-2025-12`),
+    -- stable d'un rejeu à l'autre quand `id` ne l'est pas. Écrite par la
+    -- collecte via `collectors/cle_acte.py`, seule à la composer. Non unique :
+    -- les collisions se montrent (scripts/migrer_cles_actes.py), elles ne
+    -- font pas échouer une collecte. Index déclaré dans `collectors/db.py`.
+    cle_acte        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(type, date);
