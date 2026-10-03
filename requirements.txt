@@ -14,7 +14,7 @@
 
 # ─── API de l'atelier ────────────────────────────────────────────────────────
 fastapi==0.142.2
-uvicorn==0.44.0
+uvicorn==0.54.0
 pydantic==2.12.5
 starlette==1.7.0
 slowapi==0.1.9
