@@ -2011,6 +2011,10 @@ def atelier_files(user=Depends(require_auth)):
     conn = get_db_rw()
     try:
         _propositions.assurer_schema(conn)
+        # La file « lacunes » compte des tâches : elles se mettent d'accord
+        # avec les dossiers AVANT d'être comptées, sinon la carte annoncerait
+        # une question qu'un éditeur vient de retirer.
+        _synchroniser_taches(conn)
         conn.commit()
     finally:
         conn.close()
@@ -2983,6 +2987,145 @@ def atelier_dossier_creer(req: DossierCreation, user=Depends(require_auth)):
     did = _identifier_dossier(req.slug)
     _journaliser_dossier(user, did, "create")
     return {"ok": True, "slug": req.slug, "dossier_id": did, "empreinte": nouvelle}
+
+
+# ─── Les tâches nées des lacunes ─────────────────────────────────────────────
+#
+# 03/10/2026. Chaque lacune d'un dossier — question ouverte, citation sans acte
+# publié — est une tâche de la file « lacunes » (`collectors/taches.py`). Les
+# tâches se mettent d'accord avec les dossiers à chaque relevé : une lacune
+# retirée ferme sa tâche, avec la raison. Répondre PROPOSE (contributeur) ;
+# valider tranche (validateur). Rien n'écrit jamais dans un dossier.
+
+from collectors import taches as _taches  # noqa: E402
+
+
+class TacheReponse(BaseModel):
+    contenu: dict
+
+
+class TacheDecision(BaseModel):
+    accepter: bool
+    motif: str = ""
+
+
+class TacheEnvoi(BaseModel):
+    envoye_le: str
+
+
+def _synchroniser_taches(conn, index=None) -> dict:
+    """Le relevé : les lacunes de tous les dossiers, contre les actes
+    publiables maintenant, puis les tâches mises d'accord avec elles."""
+    _dossiers.assurer_schema(conn)
+    _taches.assurer_schema(conn)
+    lacunes, titres = _taches.lacunes_de_l_instance(RACINE, index or _index_atelier(conn))
+    return _taches.synchroniser(conn, lacunes, titres)
+
+
+def _candidats_de(index, t: dict) -> list[dict]:
+    """Les actes publiés proposés pour relier une citation, tels qu'un
+    bénévole les lit : date, assemblée, numéro, titre, et où les vérifier."""
+    from collectors.citations import candidats
+    c = (t.get("lacune") or {}).get("citation") or {}
+    return [{"cle": a.cle, "date": a.date, "assemblee": a.assemblee, "numero": a.numero,
+             "titre": a.titre, "url": a.url, "source_url": a.source_url}
+            for a in candidats(index, c.get("texte", ""), c.get("candidats"))]
+
+
+def _tache_vue(index, t: dict, titres: dict) -> dict:
+    t = dict(t)
+    t["dossier_titre"] = titres.get(t["dossier"], t["dossier"])
+    if t["nature"] == "relier" and t["etat"] in ("ouverte", "proposee"):
+        t["candidats"] = _candidats_de(index, t)
+    # Ce que l'éditeur reportera dans le texte, une fois la réponse validée.
+    if t["nature"] == "relier" and t["etat"] == "validee" and (t.get("reponse") or {}).get("cle"):
+        texte = ((t.get("lacune") or {}).get("citation") or {}).get("texte", "")
+        t["a_reporter"] = f"[{texte}](acte:{t['reponse']['cle']})"
+    return t
+
+
+@app.get("/api/atelier/taches")
+def atelier_taches(etat: str = "a_faire", user=Depends(require_auth)):
+    """La file des tâches. `a_faire` : ouvertes, proposées, et validées en
+    attente de l'éditeur ; `fermee` : l'historique de ce que les dossiers ont
+    refermé."""
+    etats = {"a_faire": ("ouverte", "proposee", "validee"), "fermee": ("fermee",)}.get(etat)
+    if etats is None:
+        raise HTTPException(400, "etat invalide — valeurs : a_faire, fermee")
+    conn = get_db_rw()
+    try:
+        index = _index_atelier(conn)
+        bilan = _synchroniser_taches(conn, index)
+        conn.commit()
+        _, titres = _taches.lacunes_de_l_instance(RACINE, index)
+        return {"taches": [_tache_vue(index, t, titres) for t in _taches.lister(conn, etats)],
+                "releve": bilan, "dossiers": len(titres),
+                "relecture_croisee": _taches.relecture_croisee(),
+                "peut_valider": au_moins(user, "validator"), "moi": user.get("id")}
+    finally:
+        conn.close()
+
+
+@app.get("/api/atelier/taches/{tache_id}")
+def atelier_tache(tache_id: int = FPath(..., ge=1), user=Depends(require_auth)):
+    conn = get_db_rw()
+    try:
+        _taches.assurer_schema(conn)
+        t = _taches.lire(conn, tache_id)
+        if not t:
+            raise HTTPException(404, "Tâche introuvable.")
+        index = _index_atelier(conn)
+        _, titres = _taches.lacunes_de_l_instance(RACINE, index)
+        return _tache_vue(index, t, titres)
+    finally:
+        conn.close()
+
+
+def _geste_tache(fonction, tache_id: int, user, *args) -> dict:
+    conn = get_db_rw()
+    try:
+        _taches.assurer_schema(conn)
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            t = fonction(conn, tache_id, user, *args)
+        except _taches.Refus as e:
+            conn.rollback()
+            raise HTTPException(e.code, str(e))
+        conn.commit()
+        return t
+    finally:
+        conn.close()
+
+
+@app.post("/api/atelier/taches/{tache_id}/reponse")
+def atelier_tache_repondre(req: TacheReponse, tache_id: int = FPath(..., ge=1),
+                           user=Depends(require_au_moins("contributor", "Répondre à une tâche"))):
+    """Apporter une réponse : elle est PROPOSÉE, un validateur la tranchera.
+    Pour relier une citation, seuls les actes publiés proposés sont admis."""
+    cles = None
+    conn = get_db()
+    try:
+        t = _taches.lire(conn, tache_id) if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='taches'").fetchone() else None
+        if t and t["nature"] == "relier":
+            cles = {c["cle"] for c in _candidats_de(_index_atelier(conn), t)}
+    finally:
+        conn.close()
+    return _geste_tache(_taches.repondre, tache_id, user, req.contenu, cles)
+
+
+@app.post("/api/atelier/taches/{tache_id}/decision")
+def atelier_tache_valider(req: TacheDecision, tache_id: int = FPath(..., ge=1),
+                          user=Depends(require_au_moins("validator", "Valider une réponse"))):
+    return _geste_tache(_taches.valider, tache_id, user, req.accepter, req.motif)
+
+
+@app.post("/api/atelier/taches/{tache_id}/envoi")
+def atelier_tache_envoyee(req: TacheEnvoi, tache_id: int = FPath(..., ge=1),
+                          user=Depends(require_au_moins("contributor", "Noter l'envoi d'une demande"))):
+    """La demande validée est partie : sa date est notée, et la même tâche
+    attend désormais la réponse."""
+    return _geste_tache(_taches.marquer_envoyee, tache_id, user, req.envoye_le)
 
 
 def _journaliser_dossier(user, dossier_id: int, action: str) -> None:

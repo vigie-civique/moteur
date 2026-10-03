@@ -429,6 +429,43 @@ CREATE TABLE IF NOT EXISTS citations_relues (
 );
 
 -- ----------------------------------------------------------------
+-- TÂCHES — une par lacune de dossier (question ouverte, citation sans
+-- acte publié), file « lacunes » d'Aujourd'hui. Elles suivent le
+-- dossier : une lacune disparue ferme sa tâche. Aucune n'écrit dans un
+-- dossier. 03/10/2026, cf. collectors/taches.py (qui porte le même
+-- schéma pour les bases antérieures).
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS taches (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lacune_id     TEXT NOT NULL UNIQUE,     -- dossier:q-… ou dossier:c-…
+    dossier       TEXT NOT NULL,
+    nature        TEXT NOT NULL,            -- relier | demander | verser
+    etat          TEXT NOT NULL DEFAULT 'ouverte',  -- ouverte | proposee | validee | fermee
+    libelle       TEXT NOT NULL,            -- la question, en français
+    lacune        TEXT,                     -- JSON : la lacune telle que relevée
+    etat_lacune   TEXT,
+    reponse       TEXT,                     -- JSON : ce que le bénévole a apporté
+    propose_par   INTEGER REFERENCES users(id),
+    propose_le    TEXT,
+    valide_par    INTEGER REFERENCES users(id),
+    valide_le     TEXT,
+    envoye_le     TEXT,                     -- une demande partie : le suivi s'y branchera
+    cree_le       TEXT DEFAULT (datetime('now')),
+    ferme_le      TEXT,
+    raison        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_taches_etat ON taches(etat);
+
+CREATE TABLE IF NOT EXISTS taches_journal (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    tache_id  INTEGER NOT NULL REFERENCES taches(id),
+    le        TEXT DEFAULT (datetime('now')),
+    par       INTEGER REFERENCES users(id),  -- NULL : le relevé du dossier
+    quoi      TEXT NOT NULL,
+    detail    TEXT
+);
+
+-- ----------------------------------------------------------------
 -- PROPOSITIONS — ce qu'un contributeur écrit sur un objet PUBLIÉ
 -- (collectors/propositions.py). Rien n'est appliqué tant qu'un
 -- validateur ne l'a pas accepté ; l'acceptation REJOUE `charge` par
