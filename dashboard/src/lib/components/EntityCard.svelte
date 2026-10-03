@@ -48,7 +48,7 @@
 {:else}
   <div class="card">
     <!-- En-tête -->
-    <div class="card-header" style="border-left: 3px solid {TYPE_COLORS[entity.type] ?? '#64748b'}">
+    <div class="card-header" style="border-left: 3px solid {TYPE_COLORS[entity.type] ?? 'var(--serie-gris)'}">
       <span class="type-badge">{TYPE_LABELS[entity.type] ?? entity.type}</span>
       <h2>{entity.name}</h2>
       {#if entity.address}<p class="addr">{entity.address}</p>{/if}
@@ -211,29 +211,29 @@
 {/if}
 
 <style>
-  .empty { color: #94a3b8; font-size: .85rem; padding: 1rem; }
-  .loading { color: #60a5fa; font-size: .82rem; padding: .5rem 0; }
-  .err { color: #ef4444; font-size: .82rem; }
+  .empty { color: var(--texte-doux); font-size: .85rem; padding: 1rem; }
+  .loading { color: var(--lien); font-size: .82rem; padding: .5rem 0; }
+  .err { color: var(--danger); font-size: .82rem; }
 
   .card { overflow-y: auto; height: 100%; }
   .card-header {
     padding: .75rem 1rem;
-    background: #1e293b;
+    background: var(--surface);
     margin-bottom: .5rem;
   }
   .type-badge {
     font-size: .68rem;
     text-transform: uppercase;
     letter-spacing: .05em;
-    color: #94a3b8;
+    color: var(--texte-doux);
     display: block;
     margin-bottom: .25rem;
   }
   h2 { font-size: .95rem; font-weight: 600; }
-  .addr { font-size: .78rem; color: #94a3b8; margin-top: .25rem; }
+  .addr { font-size: .78rem; color: var(--texte-doux); margin-top: .25rem; }
 
-  section { padding: .5rem 1rem; border-bottom: 1px solid #1e293b; }
-  h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; margin-bottom: .35rem; }
+  section { padding: .5rem 1rem; border-bottom: 1px solid var(--bordure-douce); }
+  h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); margin-bottom: .35rem; }
 
   .row {
     display: flex;
@@ -242,10 +242,10 @@
     font-size: .78rem;
     padding: .15rem 0;
   }
-  .row span:first-child { color: #94a3b8; flex-shrink: 0; }
+  .row span:first-child { color: var(--texte-doux); flex-shrink: 0; }
   .row span:last-child  { text-align: right; }
-  .active { color: #10b981; font-weight: 600; }
-  .closed { color: #ef4444; }
+  .active { color: var(--succes); font-weight: 600; }
+  .closed { color: var(--danger); }
 
   .rel-list, .flow-list, .ev-list { list-style: none; }
   .rel-list li, .ev-list li {
@@ -256,10 +256,10 @@
     padding: .2rem 0;
     cursor: pointer;
   }
-  .rel-list li:hover { color: #60a5fa; }
-  .rel-type { color: #f59e0b; flex-shrink: 0; }
+  .rel-list li:hover { color: var(--lien); }
+  .rel-type { color: var(--alerte); flex-shrink: 0; }
   .rel-name { flex: 1; }
-  .rel-kind { color: #94a3b8; font-size: .7rem; }
+  .rel-kind { color: var(--texte-doux); font-size: .7rem; }
 
   .flow-list li {
     display: flex;
@@ -268,23 +268,23 @@
     padding: .2rem 0;
     flex-wrap: wrap;
   }
-  .flow-year  { color: #94a3b8; }
-  .flow-type  { color: #f59e0b; }
-  .flow-amount{ color: #10b981; font-weight: 600; }
-  .flow-desc  { color: #94a3b8; font-style: italic; }
+  .flow-year  { color: var(--texte-doux); }
+  .flow-type  { color: var(--alerte); }
+  .flow-amount{ color: var(--succes); font-weight: 600; }
+  .flow-desc  { color: var(--texte-doux); font-style: italic; }
 
-  .ev-date { color: #94a3b8; flex-shrink: 0; }
-  .ev-role { color: #f59e0b; flex-shrink: 0; }
+  .ev-date { color: var(--texte-doux); flex-shrink: 0; }
+  .ev-role { color: var(--alerte); flex-shrink: 0; }
 
-  .synthesis { background: #0f172a; border-left: 2px solid #f59e0b; }
+  .synthesis { background: var(--fond); border-left: 2px solid var(--alerte); }
   .synthesis h3 { display: flex; align-items: center; gap: .5rem; }
-  .resume { font-size: .8rem; line-height: 1.5; color: #cbd5e1; margin-bottom: .4rem; }
+  .resume { font-size: .8rem; line-height: 1.5; color: var(--texte-2); margin-bottom: .4rem; }
   .points { list-style: none; }
   .points li {
     font-size: .77rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     padding: .15rem 0 .15rem .75rem;
-    border-left: 1px solid #334155;
+    border-left: 1px solid var(--bordure);
     margin-bottom: .2rem;
   }
   .niveau {
@@ -294,11 +294,11 @@
     font-weight: 700;
     text-transform: uppercase;
   }
-  .niveau-faible   { background: #1e3a2f; color: #34d399; }
-  .niveau-moyen    { background: #1e2e4a; color: #60a5fa; }
-  .niveau-élevé    { background: #3d2e0a; color: #fbbf24; }
-  .niveau-critique { background: #3d0a0a; color: #f87171; }
+  .niveau-faible   { background: var(--succes-doux); color: var(--succes); }
+  .niveau-moyen    { background: var(--info-doux); color: var(--lien); }
+  .niveau-élevé    { background: var(--alerte-doux); color: var(--alerte); }
+  .niveau-critique { background: var(--danger-doux); color: var(--danger); }
 
-  .contact-link { color: #60a5fa; text-decoration: none; font-size: .78rem; word-break: break-all; }
+  .contact-link { color: var(--lien); text-decoration: none; font-size: .78rem; word-break: break-all; }
   .contact-link:hover { text-decoration: underline; }
 </style>

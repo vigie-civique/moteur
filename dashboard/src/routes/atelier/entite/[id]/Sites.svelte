@@ -79,22 +79,22 @@
 
 <style>
   .web-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; margin-bottom: .6rem; }
-  .web-item { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .78rem; padding: .3rem .4rem; border-radius: 5px; background: #0f172a; }
-  .web-item.validated { border-left: 3px solid #22c55e; }
+  .web-item { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .78rem; padding: .3rem .4rem; border-radius: 5px; background: var(--fond); }
+  .web-item.validated { border-left: 3px solid var(--succes); }
   .web-item.rejected  { opacity: .45; }
   .web-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .web-candidate  { background: #f59e0b; }
-  .web-validated  { background: #22c55e; }
-  .web-rejected   { background: #64748b; }
-  .web-broken     { background: #ef4444; }
-  .web-url { color: #60a5fa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .web-candidate  { background: var(--alerte); }
+  .web-validated  { background: var(--succes); }
+  .web-rejected   { background: var(--texte-pale); }
+  .web-broken     { background: var(--danger); }
+  .web-url { color: var(--lien); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   a.web-url:hover { text-decoration: underline; }
-  .web-meta { color: #94a3b8; font-size: .7rem; white-space: nowrap; }
+  .web-meta { color: var(--texte-doux); font-size: .7rem; white-space: nowrap; }
   .web-actions { display: flex; gap: .2rem; margin-left: auto; flex-shrink: 0; }
   .web-btn { background: none; border: none; cursor: pointer; font-size: .8rem; padding: 2px 5px; border-radius: 3px; }
-  .web-validate { color: #22c55e; } .web-validate:hover { background: #14532d44; }
-  .web-reject   { color: #f87171; } .web-reject:hover   { background: #7f1d1d44; }
-  .web-del      { color: #94a3b8; } .web-del:hover      { color: #ef4444; }
+  .web-validate { color: var(--succes); } .web-validate:hover { background: color-mix(in srgb, var(--succes-bordure) 27%, transparent); }
+  .web-reject   { color: var(--danger); } .web-reject:hover   { background: color-mix(in srgb, var(--danger-bordure) 27%, transparent); }
+  .web-del      { color: var(--texte-doux); } .web-del:hover      { color: var(--danger); }
   .add-web { display: flex; gap: .4rem; margin-top: .4rem; }
   .web-input { flex: 1; }
 </style>

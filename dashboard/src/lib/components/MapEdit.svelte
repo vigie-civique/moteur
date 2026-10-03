@@ -100,9 +100,9 @@
 
 <style>
   .map-edit-wrap { display: flex; flex-direction: column; gap: .3rem; }
-  .map-el { height: 440px; border-radius: 6px; border: 1px solid #334155; }
+  .map-el { height: 440px; border-radius: 6px; border: 1px solid var(--bordure); }
   .map-foot { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-  .hint { font-size: .72rem; color: #94a3b8; }
-  .coords { font-size: .72rem; color: #93c5fd; font-variant-numeric: tabular-nums; }
-  .coords em { color: #94a3b8; font-style: normal; }
+  .hint { font-size: .72rem; color: var(--texte-doux); }
+  .coords { font-size: .72rem; color: var(--info); font-variant-numeric: tabular-nums; }
+  .coords em { color: var(--texte-doux); font-style: normal; }
 </style>

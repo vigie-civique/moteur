@@ -35,14 +35,14 @@
   .defile { overflow-x: auto; }
   .audit-table { width: 100%; border-collapse: collapse; font-size: .76rem; }
   .audit-table th {
-    text-align: left; padding: .3rem .5rem; color: #94a3b8; font-weight: 600;
+    text-align: left; padding: .3rem .5rem; color: var(--texte-doux); font-weight: 600;
     font-size: .7rem; text-transform: uppercase; letter-spacing: .04em;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
   }
   .audit-table td {
-    padding: .32rem .5rem; color: #94a3b8;
-    border-bottom: 1px solid #1e293b; vertical-align: top;
+    padding: .32rem .5rem; color: var(--texte-doux);
+    border-bottom: 1px solid var(--bordure-douce); vertical-align: top;
   }
-  .old-val { color: #f87171; text-decoration: line-through; }
-  .new-val { color: #4ade80; }
+  .old-val { color: var(--danger); text-decoration: line-through; }
+  .new-val { color: var(--succes); }
 </style>

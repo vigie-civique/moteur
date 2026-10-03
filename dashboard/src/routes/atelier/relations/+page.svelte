@@ -225,51 +225,51 @@
     display: flex; align-items: flex-start; justify-content: space-between;
     gap: 1rem; flex-wrap: wrap;
   }
-  .retour { font-size: .85rem; color: #93c5fd; text-decoration: none; }
-  h1 { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; margin: .3rem 0 0; }
-  .intro { font-size: .92rem; line-height: 1.5; color: #94a3b8; margin: .4rem 0 0; max-width: 44rem; }
-  .intro strong { color: #cbd5e1; }
-  .compte { font-size: .9rem; color: #94a3b8; margin: 0; }
-  .compte strong { font-size: 1.5rem; color: #f1f5f9; }
+  .retour { font-size: .85rem; color: var(--info); text-decoration: none; }
+  h1 { font-size: 1.35rem; font-weight: 700; color: var(--texte); margin: .3rem 0 0; }
+  .intro { font-size: .92rem; line-height: 1.5; color: var(--texte-doux); margin: .4rem 0 0; max-width: 44rem; }
+  .intro strong { color: var(--texte-2); }
+  .compte { font-size: .9rem; color: var(--texte-doux); margin: 0; }
+  .compte strong { font-size: 1.5rem; color: var(--texte); }
 
-  .msg { font-size: .92rem; line-height: 1.5; color: #94a3b8; }
-  .msg.erreur { color: #fca5a5; }
+  .msg { font-size: .92rem; line-height: 1.5; color: var(--texte-doux); }
+  .msg.erreur { color: var(--danger-texte); }
   .avis {
-    font-size: .9rem; color: #bbf7d0; background: #14291d;
+    font-size: .9rem; color: var(--succes-texte); background: var(--succes-doux);
     border-radius: .3rem; padding: .5rem .7rem; margin: 0;
   }
 
   .liens { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .6rem; }
   .lien {
     padding: .85rem 1rem;
-    border: 1px solid #334155;
+    border: 1px solid var(--bordure);
     border-radius: .45rem;
-    background: #111a2b;
+    background: var(--fond);
     display: flex; flex-direction: column; gap: .4rem;
   }
-  .paire { font-size: 1.05rem; color: #f1f5f9; margin: 0; }
-  .paire a { color: #f1f5f9; text-decoration: none; border-bottom: 1px solid #475569; }
-  .paire a:hover { border-color: #93c5fd; }
+  .paire { font-size: 1.05rem; color: var(--texte); margin: 0; }
+  .paire a { color: var(--texte); text-decoration: none; border-bottom: 1px solid var(--bordure-forte); }
+  .paire a:hover { border-color: var(--info); }
   .type {
     font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
-    color: #94a3b8; margin: 0 .5rem;
+    color: var(--texte-doux); margin: 0 .5rem;
   }
-  .indice { font-size: .9rem; line-height: 1.45; color: #94a3b8; margin: 0; }
-  .detail { color: #94a3b8; }
+  .indice { font-size: .9rem; line-height: 1.45; color: var(--texte-doux); margin: 0; }
+  .detail { color: var(--texte-doux); }
 
   .consequence {
-    font-size: .85rem; line-height: 1.45; color: #cbd5e1; margin: 0;
-    border-left: 2px solid #3b82f6; padding-left: .55rem;
+    font-size: .85rem; line-height: 1.45; color: var(--texte-2); margin: 0;
+    border-left: 2px solid var(--accent); padding-left: .55rem;
   }
   /* Un lien qui ne sortira jamais se distingue d'un lien publiable : c'est la
      seule chose que le bénévole doit savoir avant de cliquer. */
-  .consequence.jamais { color: #94a3b8; border-left-color: #475569; }
+  .consequence.jamais { color: var(--texte-doux); border-left-color: var(--bordure-forte); }
 
   .reservation {
-    font-size: .85rem; color: #fcd34d; background: #2a2412;
+    font-size: .85rem; color: var(--alerte-texte); background: var(--alerte-doux);
     border-radius: .3rem; padding: .3rem .5rem; margin: 0; align-self: flex-start;
   }
-  .reservation.mienne { color: #bbf7d0; background: #14291d; }
+  .reservation.mienne { color: var(--succes-texte); background: var(--succes-doux); }
 
   .gestes { display: flex; gap: .45rem; flex-wrap: wrap; margin-top: .2rem; }
   .gestes button {
@@ -277,11 +277,11 @@
     font-weight: 600; border: 1px solid transparent; cursor: pointer;
   }
   .gestes button:disabled { opacity: .5; cursor: default; }
-  .oui   { background: #166534; color: #dcfce7; }
-  .non   { background: #7f1d1d; color: #fee2e2; }
-  .doute { background: transparent; color: #cbd5e1; border-color: #334155; }
+  .oui   { background: var(--succes-bordure); color: var(--succes-texte); }
+  .non   { background: var(--danger-bordure); color: var(--danger-texte); }
+  .doute { background: transparent; color: var(--texte-2); border-color: var(--bordure); }
   .lien-nu {
-    background: transparent; color: #93c5fd; border: none;
+    background: transparent; color: var(--info); border: none;
     font-size: .85rem; cursor: pointer; text-decoration: underline;
     padding: .42rem .3rem;
   }

@@ -7,7 +7,7 @@
     { key: 'services',     label: 'Services pub.', color: TYPE_COLORS.service     },
     { key: 'places',       label: 'POI / Lieux',   color: TYPE_COLORS.place       },
     { key: 'persons',      label: 'Personnes',     color: TYPE_COLORS.person      },
-    { key: 'dvf',          label: 'DVF (ventes)',  color: '#f97316'               },
+    { key: 'dvf',          label: 'DVF (ventes)',  color: 'var(--serie-orange)'               },
   ]
 
   function toggle(key) {
@@ -45,8 +45,8 @@
     align-items: center;
     gap: .35rem;
     padding: .35rem 1rem;
-    background: #1e293b;
-    border-bottom: 1px solid #1e293b;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure-douce);
     flex-wrap: wrap;
     flex-shrink: 0;
   }
@@ -58,9 +58,9 @@
     padding: .2rem .6rem;
     border-radius: 999px;
     font-size: .75rem;
-    border: 1px solid #334155;
-    background: #0f172a;
-    color: #94a3b8;
+    border: 1px solid var(--bordure);
+    background: var(--fond);
+    color: var(--texte-doux);
     transition: all .15s;
   }
   button.on {
@@ -79,10 +79,10 @@
 
   select {
     margin-left: auto;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--texte-doux);
     font-size: .75rem;
     padding: .2rem .5rem;
   }
@@ -92,7 +92,7 @@
     align-items: center;
     gap: .3rem;
     font-size: .75rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     cursor: pointer;
     user-select: none;
   }

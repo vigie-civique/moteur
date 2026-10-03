@@ -9,6 +9,8 @@
   import 'leaflet/dist/leaflet.css'
   import 'leaflet.markercluster/dist/MarkerCluster.css'
   import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
+  // Après Leaflet : ses contrôles et ses popups lisent les jetons du thème.
+  import '$lib/theme.css'
 
   onMount(async () => {
     initAuth()   // réhydrate currentUser depuis le token de session
@@ -108,12 +110,12 @@
      13 px à la taille par défaut, illisibles sur un portable qu'on ne choisit
      pas, dans une salle communale. Elles montent toutes d'un cran d'un coup. */
   :global(html) { font-size: 112.5%; }
-  :global(body) { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
-  :global(a) { color: #60a5fa; text-decoration: none; }
+  :global(body) { font-family: 'Inter', system-ui, sans-serif; background: var(--fond); color: var(--texte); overflow: hidden; }
+  :global(a) { color: var(--lien); text-decoration: none; }
   :global(button) { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
   :global(::-webkit-scrollbar) { width: 6px; }
-  :global(::-webkit-scrollbar-track) { background: #1e293b; }
-  :global(::-webkit-scrollbar-thumb) { background: #334155; border-radius: 3px; }
+  :global(::-webkit-scrollbar-track) { background: var(--surface); }
+  :global(::-webkit-scrollbar-thumb) { background: var(--surface-2); border-radius: 3px; }
 
   .app {
     display: flex;
@@ -127,8 +129,8 @@
     align-items: center;
     gap: 1rem;
     padding: .5rem 1rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
     flex-wrap: wrap;
   }
@@ -138,12 +140,12 @@
     align-items: center;
     gap: .5rem;
     white-space: nowrap;
-    color: #e2e8f0;
+    color: var(--texte);
   }
   .dot {
     width: 10px; height: 10px;
     border-radius: 50%;
-    background: #ef4444;
+    background: var(--danger);
     animation: pulse 2s infinite;
   }
   @keyframes pulse {
@@ -151,12 +153,12 @@
     50% { opacity: .4; }
   }
   .title { font-weight: 700; font-size: 1rem; }
-  .sub   { font-size: .75rem; color: #94a3b8; }
+  .sub   { font-size: .75rem; color: var(--texte-doux); }
 
   nav {
     display: flex;
     gap: .25rem;
-    background: #0f172a;
+    background: var(--fond);
     border-radius: 6px;
     padding: 2px;
   }
@@ -164,35 +166,35 @@
     padding: .25rem .75rem;
     border-radius: 4px;
     font-size: .8rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     transition: background .15s;
   }
   nav a.active {
-    background: #3b82f6;
-    color: #fff;
+    background: var(--accent);
+    color: var(--sur-accent);
   }
-  nav a:hover:not(.active) { background: #1e293b; }
+  nav a:hover:not(.active) { background: var(--surface); }
   nav .soon {
     padding: .25rem .75rem;
     font-size: .8rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     cursor: default;
   }
-  nav .soon em { font-style: normal; color: #94a3b8; font-size: .68rem; }
+  nav .soon em { font-style: normal; color: var(--texte-doux); font-size: .68rem; }
   nav .view-public {
     margin-left: .5rem;
     padding: .25rem .75rem;
     border-radius: 4px;
     font-size: .8rem;
-    color: #93c5fd;
-    border: 1px solid #334155;
+    color: var(--info);
+    border: 1px solid var(--bordure);
   }
-  nav .view-public:hover { background: #1e293b; }
+  nav .view-public:hover { background: var(--surface); }
   .view-public.seul {
     margin-left: auto; padding: .25rem .75rem; border-radius: 4px;
-    font-size: .8rem; color: #93c5fd; border: 1px solid #334155;
+    font-size: .8rem; color: var(--info); border: 1px solid var(--bordure);
   }
-  .view-public.seul:hover { background: #0f172a; }
+  .view-public.seul:hover { background: var(--fond); }
 
   .badge-row { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
   .badge {
@@ -201,10 +203,10 @@
     border-radius: 999px;
     font-weight: 600;
   }
-  .biz  { background: #1d4ed8; }
-  .asso { background: #065f46; }
-  .svc  { background: #92400e; }
-  .per  { background: #7f1d1d; }
+  .biz  { background: var(--type-entreprise); }
+  .asso { background: var(--type-association); }
+  .svc  { background: var(--type-service); }
+  .per  { background: var(--type-personne); }
 
   main {
     flex: 1;

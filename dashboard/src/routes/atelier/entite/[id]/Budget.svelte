@@ -102,28 +102,28 @@
 <style>
   .budget-table { width: 100%; border-collapse: collapse; font-size: .78rem; margin-bottom: .75rem; }
   .budget-table th {
-    text-align: left; color: #94a3b8; font-weight: 600;
-    border-bottom: 1px solid #334155; padding: .3rem .4rem;
+    text-align: left; color: var(--texte-doux); font-weight: 600;
+    border-bottom: 1px solid var(--bordure); padding: .3rem .4rem;
   }
-  .budget-table td { padding: .28rem .4rem; border-bottom: 1px solid #1e293b; }
+  .budget-table td { padding: .28rem .4rem; border-bottom: 1px solid var(--bordure-douce); }
   .budget-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .budget-table .neg { color: #f87171; }
+  .budget-table .neg { color: var(--danger); }
   .budget-table .small { font-size: .7rem; }
 
   .section-badge, .sens-badge { font-size: .68rem; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
-  .sec-fonctionnement { background: #1e3a5f; color: #93c5fd; }
-  .sec-investissement { background: #1a3a1a; color: #4ade80; }
-  .sec-dette          { background: #3a1a1a; color: #fca5a5; }
-  .sens-recette { background: #14532d; color: #86efac; }
-  .sens-depense { background: #7f1d1d; color: #fca5a5; }
-  .sens-solde   { background: #44403c; color: #d4d4aa; }
+  .sec-fonctionnement { background: var(--info-doux); color: var(--info); }
+  .sec-investissement { background: var(--succes-doux); color: var(--succes); }
+  .sec-dette          { background: var(--danger-doux); color: var(--danger-texte); }
+  .sens-recette { background: var(--succes-bordure); color: var(--succes); }
+  .sens-depense { background: var(--danger-bordure); color: var(--danger-texte); }
+  .sens-solde   { background: var(--surface-2); color: var(--texte-2); }
 
   .add-budget summary {
-    cursor: pointer; color: #60a5fa; font-size: .8rem; font-weight: 600;
+    cursor: pointer; color: var(--lien); font-size: .8rem; font-weight: 600;
     padding: .4rem 0; list-style: none; user-select: none;
   }
   .add-budget summary::-webkit-details-marker { display: none; }
   .budget-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem .75rem; margin-top: .6rem; }
-  .icon-del { background: none; border: none; color: #ef4444; cursor: pointer; font-size: .8rem; padding: 2px 4px; }
-  .icon-del:hover { color: #f87171; }
+  .icon-del { background: none; border: none; color: var(--danger); cursor: pointer; font-size: .8rem; padding: 2px 4px; }
+  .icon-del:hover { color: var(--danger); }
 </style>

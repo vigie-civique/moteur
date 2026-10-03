@@ -92,8 +92,8 @@
   }[perimetre]
 
   const TYPE_LABELS = { service: 'Service public', place: 'Lieu', association: 'Association' }
-  const TYPE_COLORS = { service: '#92400e', place: '#4c1d95', association: '#065f46' }
-  const PERIM_COLORS = { C1: '#14556b', C2: '#9a6b12', C3: '#5b5b66', lien: '#7c3f58', '': '#334155' }
+  const TYPE_COLORS = { service: 'var(--type-service)', place: 'var(--type-lieu)', association: 'var(--type-association)' }
+  const PERIM_COLORS = { C1: 'var(--perimetre-c1)', C2: 'var(--perimetre-c2)', C3: 'var(--perimetre-c3)', lien: 'var(--perimetre-lien)', '': 'var(--surface-2)' }
 
   // La valeur OSM brute était affichée telle quelle sous chaque lieu : dix
   // fiches portaient « tourism » pour seule description.
@@ -154,7 +154,7 @@
       {#each filtered as e}
         <a href="/entite/{e.id}" class="entity-card">
           <div class="card-header">
-            <span class="type-dot" style="background:{TYPE_COLORS[e.type] ?? '#334155'}"></span>
+            <span class="type-dot" style="background:{TYPE_COLORS[e.type] ?? 'var(--surface-2)'}"></span>
             <span class="type-label">{TYPE_LABELS[e.type] ?? e.type}</span>
           </div>
           <div class="card-name">{e.name}</div>
@@ -175,34 +175,34 @@
 <style>
   .ap-page { padding: 1.2rem; max-width: 1100px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
-  h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .78rem; color: #94a3b8; }
+  h1 { font-size: 1.1rem; font-weight: 700; color: var(--texte); margin: 0; }
+  .subtitle { font-size: .78rem; color: var(--texte-doux); }
 
   .controls { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; flex-wrap: wrap; }
-  .search-input { background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+  .search-input { background: var(--surface); border: 1px solid var(--bordure); color: var(--texte);
     border-radius: 6px; padding: .3rem .65rem; font-size: .8rem; width: 220px; }
-  .search-input:focus { outline: none; border-color: #3b82f6; }
+  .search-input:focus { outline: none; border-color: var(--focus); }
   .type-btns { display: flex; gap: .3rem; flex-wrap: wrap; }
-  .type-btns button { background: #1e293b; border: 1px solid #334155; color: #94a3b8;
+  .type-btns button { background: var(--surface); border: 1px solid var(--bordure); color: var(--texte-doux);
     border-radius: 5px; padding: .25rem .55rem; font-size: .75rem; cursor: pointer; }
-  .type-btns button.active { border-color: var(--c, #3b82f6); color: #e2e8f0; }
+  .type-btns button.active { border-color: var(--c, var(--accent)); color: var(--texte); }
 
   .entity-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: .5rem; }
-  .entity-card { background: #1e293b; border: 1px solid #334155; border-radius: 7px;
+  .entity-card { background: var(--surface); border: 1px solid var(--bordure); border-radius: 7px;
     padding: .6rem .75rem; text-decoration: none; display: block; transition: border-color .12s; }
-  .entity-card:hover { border-color: #60a5fa; }
+  .entity-card:hover { border-color: var(--lien); }
   .card-header { display: flex; align-items: center; gap: .35rem; margin-bottom: .3rem; }
   .type-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .type-label { font-size: .65rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
-  .card-name { font-size: .82rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
+  .type-label { font-size: .65rem; color: var(--texte-doux); text-transform: uppercase; letter-spacing: .04em; }
+  .card-name { font-size: .82rem; font-weight: 600; color: var(--texte); line-height: 1.3; }
   .card-addr, .card-cat { font-size: .71rem; margin-top: .2rem;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .muted { color: #94a3b8; }
+  .muted { color: var(--texte-doux); }
 
   .perim-btns { margin-left: auto; }
-  .avertissement { color: #fbbf24; font-size: .78rem; background: #1e293b;
-    border: 1px solid #92400e; border-radius: 6px; padding: .4rem .6rem; margin-bottom: .7rem; }
+  .avertissement { color: var(--alerte); font-size: .78rem; background: var(--surface);
+    border: 1px solid var(--alerte-bordure); border-radius: 6px; padding: .4rem .6rem; margin-bottom: .7rem; }
 
-  .err { color: #f87171; font-size: .83rem; }
-  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
+  .err { color: var(--danger); font-size: .83rem; }
+  .muted-center { color: var(--texte-doux); text-align: center; margin-top: 2rem; }
 </style>

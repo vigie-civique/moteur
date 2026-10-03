@@ -41,7 +41,7 @@
     <ul class="results">
       {#each $searchResults as item}
         <li on:click={() => selectResult(item)}>
-          <span class="dot" style="background:{TYPE_COLORS[item.type] ?? '#666'}"></span>
+          <span class="dot" style="background:{TYPE_COLORS[item.type] ?? 'var(--serie-gris)'}"></span>
           <span class="name">{item.name}</span>
           <span class="type">{item.type}</span>
         </li>
@@ -55,22 +55,22 @@
 
   input {
     width: 100%;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
     padding: .35rem .75rem;
     font-size: .85rem;
-    color: #e2e8f0;
+    color: var(--texte);
     outline: none;
   }
-  input:focus { border-color: #3b82f6; }
+  input:focus { border-color: var(--focus); }
 
   .results {
     position: absolute;
     top: 100%;
     left: 0; right: 0;
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
     max-height: 280px;
     overflow-y: auto;
@@ -86,8 +86,8 @@
     cursor: pointer;
     font-size: .82rem;
   }
-  li:hover { background: #0f172a; }
+  li:hover { background: var(--fond); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .type { font-size: .7rem; color: #94a3b8; flex-shrink: 0; }
+  .type { font-size: .7rem; color: var(--texte-doux); flex-shrink: 0; }
 </style>

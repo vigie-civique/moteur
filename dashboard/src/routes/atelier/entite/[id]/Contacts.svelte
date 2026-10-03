@@ -75,16 +75,16 @@
   .contact-list { list-style: none; display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
   .contact-list li {
     display: flex; align-items: center; gap: .45rem;
-    background: #0f172a; border: 1px solid #334155; border-radius: 5px;
+    background: var(--fond); border: 1px solid var(--bordure); border-radius: 5px;
     padding: .38rem .6rem; font-size: .8rem;
   }
   .contact-icon { font-size: .9rem; }
-  .contact-type { color: #94a3b8; font-size: .72rem; min-width: 52px; }
-  .contact-value { flex: 1; color: #93c5fd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-type { color: var(--texte-doux); font-size: .72rem; min-width: 52px; }
+  .contact-value { flex: 1; color: var(--info); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .contact-value:is(a):hover { text-decoration: underline; }
-  .contact-label { color: #94a3b8; font-size: .72rem; }
-  .contact-del { margin-left: auto; color: #ef4444; font-size: .78rem; cursor: pointer; padding: 0 .2rem; }
-  .contact-del:hover { color: #fca5a5; }
+  .contact-label { color: var(--texte-doux); font-size: .72rem; }
+  .contact-del { margin-left: auto; color: var(--danger); font-size: .78rem; cursor: pointer; padding: 0 .2rem; }
+  .contact-del:hover { color: var(--danger-texte); }
 
   .add-contact { display: flex; gap: .4rem; flex-wrap: wrap; }
   .add-contact select { width: 100px; }

@@ -47,13 +47,14 @@ export const graphDepth = writable(2)
 // Filtre min-relations (graphe global)
 export const minRelations = writable(2)
 
-// Thème couleurs par type d'entité
+// Couleur par type d'entité : des jetons (lib/theme.css). En CSS ils
+// s'écrivent tels quels ; pour d3 ou Leaflet, `couleur()` (lib/theme.js) les lit.
 export const TYPE_COLORS = {
-  business:    '#3b82f6',
-  association: '#10b981',
-  service:     '#f59e0b',
-  place:       '#8b5cf6',
-  person:      '#ef4444',
+  business:    'var(--serie-bleu)',
+  association: 'var(--serie-vert)',
+  service:     'var(--serie-ambre)',
+  place:       'var(--serie-violet)',
+  person:      'var(--serie-rouge)',
 }
 
 export const TYPE_LABELS = {

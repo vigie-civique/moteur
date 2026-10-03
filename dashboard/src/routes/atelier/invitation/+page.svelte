@@ -114,18 +114,18 @@
 
 <style>
   .wrap { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .carte { width: 100%; max-width: 440px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.75rem; display: flex; flex-direction: column; gap: .8rem; font-size: .92rem; line-height: 1.5; }
-  h1 { font-size: 1.15rem; color: #e2e8f0; }
-  .role { color: #cbd5e1; background: #0f172a; border-radius: 6px; padding: .6rem .75rem; font-size: .85rem; }
+  .carte { width: 100%; max-width: 440px; background: var(--surface); border: 1px solid var(--bordure); border-radius: 10px; padding: 1.75rem; display: flex; flex-direction: column; gap: .8rem; font-size: .92rem; line-height: 1.5; }
+  h1 { font-size: 1.15rem; color: var(--texte); }
+  .role { color: var(--texte-2); background: var(--fond); border-radius: 6px; padding: .6rem .75rem; font-size: .85rem; }
   form { display: flex; flex-direction: column; gap: .7rem; margin-top: .3rem; }
-  label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: #cbd5e1; }
-  input { background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; padding: .6rem .7rem; font-size: .95rem; }
-  input[readonly] { color: #94a3b8; }
-  input:focus { outline: none; border-color: #3b82f6; }
-  button { background: #2563eb; color: #fff; border-radius: 6px; padding: .7rem; font-weight: 600; font-size: .95rem; }
+  label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: var(--texte-2); }
+  input { background: var(--fond); border: 1px solid var(--bordure); border-radius: 6px; color: var(--texte); padding: .6rem .7rem; font-size: .95rem; }
+  input[readonly] { color: var(--texte-doux); }
+  input:focus { outline: none; border-color: var(--focus); }
+  button { background: var(--bouton); color: var(--sur-accent); border-radius: 6px; padding: .7rem; font-weight: 600; font-size: .95rem; }
   button:disabled { opacity: .45; cursor: default; }
-  .muted { color: #94a3b8; }
+  .muted { color: var(--texte-doux); }
   .petit { font-size: .8rem; }
-  .aide { color: #fbbf24; font-size: .82rem; }
-  .erreur { background: #450a0a; border: 1px solid #7f1d1d; border-radius: 6px; color: #fecaca; padding: .55rem .7rem; }
+  .aide { color: var(--alerte); font-size: .82rem; }
+  .erreur { background: var(--danger-doux); border: 1px solid var(--danger-bordure); border-radius: 6px; color: var(--danger-texte); padding: .55rem .7rem; }
 </style>

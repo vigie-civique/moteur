@@ -112,10 +112,10 @@
   }
 
   select, textarea {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
-    color: #e2e8f0;
+    color: var(--texte);
     font-size: .82rem;
     padding: .4rem .6rem;
     width: 100%;
@@ -124,42 +124,42 @@
 
   button {
     padding: .45rem 1rem;
-    background: #3b82f6;
-    color: #fff;
+    background: var(--accent);
+    color: var(--sur-accent);
     border-radius: 6px;
     font-size: .82rem;
     font-weight: 600;
     transition: background .15s;
   }
-  button:hover:not(:disabled) { background: #2563eb; }
+  button:hover:not(:disabled) { background: var(--bouton); }
   button:disabled { opacity: .5; cursor: wait; }
 
   .error {
-    background: #450a0a;
-    border: 1px solid #7f1d1d;
+    background: var(--danger-doux);
+    border: 1px solid var(--danger-bordure);
     border-radius: 6px;
     padding: .5rem .75rem;
     font-size: .8rem;
-    color: #fca5a5;
+    color: var(--danger-texte);
   }
 
   .result {
-    background: #0f172a;
-    border: 1px solid #1e3a5f;
+    background: var(--fond);
+    border: 1px solid var(--info-doux);
     border-radius: 6px;
     padding: .75rem;
     font-size: .82rem;
     line-height: 1.65;
-    color: #cbd5e1;
+    color: var(--texte-2);
     white-space: pre-wrap;
   }
   .result p { margin-bottom: .5rem; }
 
-  .hint { color: #94a3b8; font-size: .82rem; }
+  .hint { color: var(--texte-doux); font-size: .82rem; }
   .hint code {
-    background: #0f172a;
+    background: var(--fond);
     border-radius: 3px;
-    color: #94a3b8;
+    color: var(--texte-doux);
     padding: 0 .25rem;
   }
 </style>

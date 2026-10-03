@@ -181,25 +181,25 @@
     align-items: center;
     gap: 1rem;
     padding: .75rem 1.5rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
     flex-wrap: wrap;
   }
   h1 { font-size: 1rem; font-weight: 700; }
   input,
   select {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 6px;
-    color: #e2e8f0;
+    color: var(--texte);
     font-size: .8rem;
     padding: .3rem .6rem;
   }
   input {
     width: min(360px, 100%);
   }
-  .count { color: #94a3b8; font-size: .8rem; margin-left: auto; }
+  .count { color: var(--texte-doux); font-size: .8rem; margin-left: auto; }
 
   .list {
     flex: 1;
@@ -210,8 +210,8 @@
     gap: .75rem;
   }
   .delib {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 8px;
     padding: .75rem 1rem;
   }
@@ -222,30 +222,30 @@
     margin-bottom: .35rem;
     flex-wrap: wrap;
   }
-  .date { color: #94a3b8; font-size: .78rem; }
+  .date { color: var(--texte-doux); font-size: .78rem; }
   .cat {
-    background: #0f172a;
+    background: var(--fond);
     padding: 1px 8px;
     border-radius: 999px;
     font-size: .7rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
   }
   .montant {
-    color: #10b981;
+    color: var(--succes);
     font-weight: 600;
     font-size: .8rem;
   }
   h2 { font-size: .88rem; font-weight: 600; line-height: 1.35; }
-  .vote { font-size: .78rem; color: #f59e0b; margin-top: .25rem; }
+  .vote { font-size: .78rem; color: var(--alerte); margin-top: .25rem; }
   .snippet {
     margin-top: .4rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
     font-size: .78rem;
     line-height: 1.45;
   }
   :global(mark) {
-    background: #f59e0b;
-    color: #0f172a;
+    background: var(--alerte);
+    color: var(--sur-vif);
     border-radius: 3px;
     padding: 0 2px;
   }
@@ -256,5 +256,5 @@
     margin-top: .25rem;
   }
   a { font-size: .75rem; display: inline-block; }
-  .hint { color: #94a3b8; padding: 2rem; text-align: center; }
+  .hint { color: var(--texte-doux); padding: 2rem; text-align: center; }
 </style>

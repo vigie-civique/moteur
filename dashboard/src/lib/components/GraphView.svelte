@@ -3,6 +3,7 @@
   import * as d3 from 'd3'
   import { api } from '$lib/api.js'
   import { selectedEntity, activeTab, graphDepth, minRelations, TYPE_COLORS } from '$lib/stores/app.js'
+  import { couleur, themeEffectif } from '$lib/theme.js'
 
   let wrapEl   // div parent — source des dimensions réelles
   let svgEl
@@ -72,18 +73,18 @@
       .attr('id', 'arr')
       .attr('viewBox', '0 -4 8 8').attr('refX', 20).attr('refY', 0)
       .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
-      .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', '#475569')
+      .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', couleur('--bordure-forte'))
 
     // Arêtes
     const link = g.append('g').attr('class', 'links')
       .selectAll('line').data(edges).join('line')
-      .attr('stroke', '#334155').attr('stroke-width', 1.2)
+      .attr('stroke', couleur('--bordure')).attr('stroke-width', 1.2)
       .attr('marker-end', 'url(#arr)')
 
     // Étiquettes des relations
     const linkLabel = g.append('g').attr('class', 'link-labels')
       .selectAll('text').data(edges).join('text')
-      .attr('font-size', 7).attr('fill', '#475569')
+      .attr('font-size', 7).attr('fill', couleur('--bordure-forte'))
       .attr('text-anchor', 'middle').attr('pointer-events', 'none')
       .text(e => e.relation_type || '')
 
@@ -107,15 +108,15 @@
 
     node.append('circle')
       .attr('r', nodeRadius)
-      .attr('fill', d => TYPE_COLORS[d.type] || '#64748b')
-      .attr('stroke', d => d.id === $selectedEntity?.id ? '#fff' : '#0f172a')
+      .attr('fill', d => couleur(TYPE_COLORS[d.type] || '--serie-gris'))
+      .attr('stroke', d => couleur(d.id === $selectedEntity?.id ? '--sur-accent' : '--fond'))
       .attr('stroke-width', d => d.id === $selectedEntity?.id ? 2.5 : 1.5)
 
     // Labels : toujours visibles en vue focalisée, seulement pour nœuds importants en vue globale
     node.append('text')
       .attr('dy', d => nodeRadius(d) + 9)
       .attr('text-anchor', 'middle')
-      .attr('font-size', 9).attr('fill', '#94a3b8')
+      .attr('font-size', 9).attr('fill', couleur('--texte-doux'))
       .attr('pointer-events', 'none')
       .attr('display', d => large && (d.degree || 1) < 5 ? 'none' : null)
       .text(d => d.name?.length > 24 ? d.name.slice(0, 22) + '…' : d.name)
@@ -166,6 +167,11 @@
       rt = setTimeout(() => { if (lastNodes.length) drawGraph(lastNodes, lastEdges) }, 150)
     })
     if (wrapEl) ro.observe(wrapEl)
+
+    // Les couleurs sont lues au dessin : un changement de thème redessine.
+    subs.push(themeEffectif.subscribe(() => {
+      requestAnimationFrame(() => { if (lastNodes.length) drawGraph(lastNodes, lastEdges) })
+    }))
   })
 
   onDestroy(() => {
@@ -219,7 +225,7 @@
     flex-direction: column;
     width: 100%;
     height: 100%;
-    background: #0f172a;
+    background: var(--fond);
     position: relative;
   }
 
@@ -228,33 +234,33 @@
     align-items: center;
     gap: .6rem;
     padding: .4rem .75rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure);
     font-size: .78rem;
     flex-shrink: 0;
     flex-wrap: wrap;
   }
-  .toolbar label { display: flex; align-items: center; gap: .35rem; color: #94a3b8; }
+  .toolbar label { display: flex; align-items: center; gap: .35rem; color: var(--texte-doux); }
   .toolbar select {
-    background: #0f172a; border: 1px solid #334155;
-    border-radius: 4px; color: #e2e8f0;
+    background: var(--fond); border: 1px solid var(--bordure);
+    border-radius: 4px; color: var(--texte);
     padding: 1px 6px; font-size: .78rem;
   }
   .toolbar button {
-    padding: .2rem .6rem; background: #334155;
+    padding: .2rem .6rem; background: var(--surface-2);
     border-radius: 4px; font-size: .78rem;
   }
-  .toolbar button:hover { background: #475569; }
+  .toolbar button:hover { background: var(--bordure-forte); }
 
   .entity-badge {
-    background: #1d4ed8; color: #bfdbfe;
+    background: var(--accent-fort); color: var(--info);
     padding: 1px 8px; border-radius: 999px;
     font-size: .72rem; max-width: 200px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  .count { color: #94a3b8; font-size: .72rem; margin-left: auto; }
-  .spin  { color: #60a5fa; font-size: .78rem; }
+  .count { color: var(--texte-doux); font-size: .72rem; margin-left: auto; }
+  .spin  { color: var(--lien); font-size: .78rem; }
 
   .graph-svg { flex: 1; min-height: 0; }
 
@@ -262,7 +268,7 @@
     position: absolute;
     top: 50%; left: 50%;
     transform: translate(-50%, -50%);
-    color: #334155; font-size: .85rem;
+    color: var(--texte-doux); font-size: .85rem;
     text-align: center;
   }
 </style>

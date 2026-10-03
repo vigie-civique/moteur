@@ -576,15 +576,15 @@
     align-items: center;
     gap: .75rem;
     padding: .55rem 1rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--surface);
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
     flex-wrap: wrap;
   }
 
   .back-btn {
     font-size: .78rem;
-    color: #60a5fa;
+    color: var(--lien);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -598,9 +598,9 @@
     min-width: 0;
   }
 
-  .entity-id  { font-size: .72rem; color: #94a3b8; }
-  .entity-name { font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .save-error { font-size: .78rem; color: #f87171; }
+  .entity-id  { font-size: .72rem; color: var(--texte-doux); }
+  .entity-name { font-weight: 600; color: var(--texte); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .save-error { font-size: .78rem; color: var(--danger); }
 
   /* ── Type badge (topbar) ── */
   .type-badge {
@@ -608,21 +608,21 @@
     padding: 2px 7px;
     border-radius: 4px;
     font-weight: 600;
-    color: #fff;
+    color: var(--sur-accent);
   }
-  .type-person      { background: #7f1d1d; }
-  .type-business    { background: #1d4ed8; }
-  .type-association { background: #065f46; }
-  .type-place       { background: #4c1d95; }
-  .type-service     { background: #92400e; }
-  .type-property    { background: #334155; }
+  .type-person      { background: var(--type-personne); }
+  .type-business    { background: var(--type-entreprise); }
+  .type-association { background: var(--type-association); }
+  .type-place       { background: var(--type-lieu); }
+  .type-service     { background: var(--type-service); }
+  .type-property    { background: var(--surface-2); }
 
   /* ── Onglets ── */
   .onglets {
     display: flex;
     gap: .25rem;
     padding: .5rem 1rem 0;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--bordure);
     flex-shrink: 0;
     overflow-x: auto;
   }
@@ -631,17 +631,17 @@
     padding: .45rem .9rem;
     border: 1px solid transparent; border-bottom: none;
     border-radius: 6px 6px 0 0;
-    font-size: .82rem; color: #94a3b8;
+    font-size: .82rem; color: var(--texte-doux);
     cursor: pointer; white-space: nowrap;
     margin-bottom: -1px;
   }
-  .onglets button:hover { color: #e2e8f0; }
+  .onglets button:hover { color: var(--texte); }
   .onglets button.actif {
-    background: #1e293b; color: #e2e8f0; font-weight: 600;
-    border-color: #334155; border-bottom: 1px solid #1e293b;
+    background: var(--surface); color: var(--texte); font-weight: 600;
+    border-color: var(--bordure); border-bottom: 1px solid var(--bordure-douce);
   }
   .pastille {
-    background: #b45309; color: #fff;
+    background: var(--alerte-bordure); color: var(--sur-accent);
     border-radius: 999px; padding: 0 6px;
     font-size: .68rem; font-weight: 700;
   }
@@ -662,22 +662,22 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
+    color: var(--texte-doux);
     font-size: .9rem;
   }
-  .center-msg.error { color: #f87171; }
+  .center-msg.error { color: var(--danger); }
 
   /* ── Commun aux blocs de la fiche (composants voisins) ── */
   .editor-page :global(.card) {
-    background: #1e293b;
-    border: 1px solid #334155;
+    background: var(--surface);
+    border: 1px solid var(--bordure);
     border-radius: 8px;
     padding: 1rem;
   }
   .editor-page :global(.card h2) {
     font-size: .82rem;
     font-weight: 700;
-    color: #93c5fd;
+    color: var(--info);
     text-transform: uppercase;
     letter-spacing: .05em;
     margin-bottom: .75rem;
@@ -686,8 +686,8 @@
     gap: .4rem;
   }
   .editor-page :global(.count-badge) {
-    background: #334155;
-    color: #94a3b8;
+    background: var(--surface-2);
+    color: var(--texte-doux);
     border-radius: 999px;
     padding: 0 6px;
     font-size: .7rem;
@@ -704,15 +704,15 @@
     flex-direction: column;
     gap: .3rem;
     font-size: .76rem;
-    color: #94a3b8;
+    color: var(--texte-doux);
   }
   .editor-page :global(input),
   .editor-page :global(select),
   .editor-page :global(textarea) {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--fond);
+    border: 1px solid var(--bordure);
     border-radius: 5px;
-    color: #e2e8f0;
+    color: var(--texte);
     padding: .42rem .55rem;
     font-size: .82rem;
     font-family: inherit;
@@ -720,66 +720,66 @@
   }
   .editor-page :global(input:focus),
   .editor-page :global(select:focus),
-  .editor-page :global(textarea:focus) { outline: none; border-color: #3b82f6; }
+  .editor-page :global(textarea:focus) { outline: none; border-color: var(--focus); }
   .editor-page :global(input:disabled) { opacity: .6; }
   .editor-page :global(textarea) { resize: vertical; min-height: 70px; }
 
-  .editor-page :global(.muted) { color: #94a3b8; font-size: .8rem; }
+  .editor-page :global(.muted) { color: var(--texte-doux); font-size: .8rem; }
 
   .editor-page :global(.conf-dot) {
     display: inline-block;
     width: 7px; height: 7px;
     border-radius: 50%;
-    background: #475569;
+    background: var(--bordure-forte);
     flex-shrink: 0;
   }
-  .editor-page :global(.conf-dot.verified) { background: #4ade80; }
+  .editor-page :global(.conf-dot.verified) { background: var(--succes); }
 
   .editor-page :global(.btn-add-small) {
-    padding: .35rem .7rem; background: #1d4ed8; color: #fff;
+    padding: .35rem .7rem; background: var(--accent-fort); color: var(--sur-accent);
     border: none; border-radius: 5px; font-size: .78rem; font-weight: 600;
     cursor: pointer; white-space: nowrap;
   }
-  .editor-page :global(.btn-add-small:hover:not(:disabled)) { background: #1e40af; }
+  .editor-page :global(.btn-add-small:hover:not(:disabled)) { background: var(--accent-fort); }
   .editor-page :global(.btn-add-small:disabled) { opacity: .45; cursor: default; }
 
   .editor-page :global(.rel-btn) {
-    width: 22px; height: 22px; border-radius: 3px; border: 1px solid #334155;
+    width: 22px; height: 22px; border-radius: 3px; border: 1px solid var(--bordure);
     font-size: .7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
     background: transparent; transition: all .12s;
   }
-  .editor-page :global(.rel-btn-edit) { color: #93c5fd; }
-  .editor-page :global(.rel-btn-edit:hover) { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-  .editor-page :global(.rel-btn-del) { color: #f87171; }
-  .editor-page :global(.rel-btn-del:hover) { background: #7f1d1d; border-color: #7f1d1d; color: #fff; }
+  .editor-page :global(.rel-btn-edit) { color: var(--info); }
+  .editor-page :global(.rel-btn-edit:hover) { background: var(--accent-fort); border-color: var(--accent-fort); color: var(--sur-accent); }
+  .editor-page :global(.rel-btn-del) { color: var(--danger); }
+  .editor-page :global(.rel-btn-del:hover) { background: var(--danger-bordure); border-color: var(--danger-bordure); color: var(--sur-accent); }
 
   .editor-page :global(.rel-edit-actions) { display: flex; gap: .35rem; padding-top: .2rem; }
   .editor-page :global(.btn-rel-save) {
-    padding: .3rem .65rem; background: #166534; color: #4ade80;
-    border: 1px solid #166534; border-radius: 5px; font-size: .75rem; font-weight: 600; cursor: pointer;
+    padding: .3rem .65rem; background: var(--succes-bordure); color: var(--succes);
+    border: 1px solid var(--succes-bordure); border-radius: 5px; font-size: .75rem; font-weight: 600; cursor: pointer;
   }
-  .editor-page :global(.btn-rel-save:hover) { background: #15803d; }
+  .editor-page :global(.btn-rel-save:hover) { background: var(--succes-bordure); }
   .editor-page :global(.btn-rel-cancel) {
-    padding: .3rem .65rem; background: transparent; color: #94a3b8;
-    border: 1px solid #334155; border-radius: 5px; font-size: .75rem; cursor: pointer;
+    padding: .3rem .65rem; background: transparent; color: var(--texte-doux);
+    border: 1px solid var(--bordure); border-radius: 5px; font-size: .75rem; cursor: pointer;
   }
-  .editor-page :global(.btn-rel-cancel:hover) { border-color: #475569; color: #e2e8f0; }
+  .editor-page :global(.btn-rel-cancel:hover) { border-color: var(--bordure-forte); color: var(--texte); }
 
   /* ── Ce qui attend le bouton « Enregistrer » ── */
   .editor-page :global(.modifie input),
   .editor-page :global(.modifie select),
-  .editor-page :global(.modifie textarea) { border-color: #b45309; }
-  .editor-page :global(.a-enregistrer) { box-shadow: inset 3px 0 0 #b45309; }
-  .editor-page :global(.a-modifier)    { box-shadow: inset 3px 0 0 #b45309; }
+  .editor-page :global(.modifie textarea) { border-color: var(--alerte-bordure); }
+  .editor-page :global(.a-enregistrer) { box-shadow: inset 3px 0 0 var(--alerte-bordure); }
+  .editor-page :global(.a-modifier)    { box-shadow: inset 3px 0 0 var(--alerte-bordure); }
   .editor-page :global(.a-supprimer)   { opacity: .55; }
   .editor-page :global(.a-supprimer :is(.contact-value, .rel-dir, .web-url, .note-text, td)) {
     text-decoration: line-through;
   }
   .editor-page :global(.tag-attente) {
-    font-size: .68rem; color: #fbbf24; white-space: nowrap;
+    font-size: .68rem; color: var(--alerte); white-space: nowrap;
   }
   .editor-page :global(.lien-annuler) {
-    font-size: .72rem; color: #60a5fa; cursor: pointer; text-decoration: underline;
+    font-size: .72rem; color: var(--lien); cursor: pointer; text-decoration: underline;
     background: none; border: none; padding: 0 .2rem; white-space: nowrap;
   }
 
