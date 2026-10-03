@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && npx pagefind --site dist || true",
+    "build": "node scripts/verifier_couleurs.mjs && vite build && (npx pagefind --site dist || true)",
+    "verifier:couleurs": "node scripts/verifier_couleurs.mjs",
     "preview": "vite preview",
     "pagefind": "npx pagefind --site dist"
   },
