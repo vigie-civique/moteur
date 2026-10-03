@@ -1,0 +1,54 @@
+# systemd — la passe de collecte d'une instance (deploy/collecte.sh), lancée par
+# deploy/collecte.timer. Même compte, même cloisonnement que l'atelier : c'est
+# la même base qu'ils écrivent.
+#
+# Installer (à côté de atelier.service) :
+#   sudo cp deploy/collecte.service /etc/systemd/system/vigie-collecte.service
+#   sudo cp deploy/collecte.timer   /etc/systemd/system/vigie-collecte.timer
+#   sudo systemctl daemon-reload && sudo systemctl enable --now vigie-collecte.timer
+#
+# À adapter : User, les chemins, et les deux répertoires propres au serveur
+# (magasin national partagé, répertoire servi par la cible « local »).
+
+[Unit]
+Description=Vigie Civique — passe de collecte
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vigie
+WorkingDirectory=/opt/vigie
+EnvironmentFile=/opt/vigie/.env
+Environment=HOME=/opt/vigie/audits/.home
+Environment=PY=/opt/vigie/venv/bin/python3
+# Le magasin des gros jeux nationaux (DECP, DVF, SISPEA…), partagé entre les
+# instances d'une même machine : chacune ne les retélécharge pas.
+Environment=VIGIE_NATIONAL_STORE=/srv/vigie/national-store
+ExecStart=/bin/bash /opt/vigie/deploy/collecte.sh
+# Une passe complète avec océrisation peut durer ; au-delà, c'est une panne.
+TimeoutStartSec=6h
+
+# La passe partage la machine avec les sites et l'atelier : elle passe après.
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=150%
+MemoryMax=2500M
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0027
+ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public /opt/vigie/config
+ReadWritePaths=-/opt/vigie/territoire -/opt/vigie/decisions -/opt/vigie/dossiers -/opt/vigie/public-data
+ReadWritePaths=-/srv/vigie/national-store
+#ReadWritePaths=/srv/www/macommune
