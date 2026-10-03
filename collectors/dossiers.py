@@ -26,6 +26,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .chemins import sous
 from .verdict import empreinte
 
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}$")
@@ -46,7 +47,7 @@ def chemin(racine: Path, slug: str) -> Path:
     if not SLUG.match(slug or ""):
         raise ValueError(f"Identifiant de dossier invalide : « {slug} » "
                          "(minuscules, chiffres et tirets).")
-    return repertoire(racine) / f"{slug}.md"
+    return sous(repertoire(racine), f"{slug}.md")
 
 
 def lister(racine: Path) -> list[tuple[str, Path]]:

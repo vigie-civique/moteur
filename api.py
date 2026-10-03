@@ -813,7 +813,8 @@ def syntheses_list():
 
 @app.get("/api/syntheses/{entity_id}")
 def synthesis(entity_id: int = FPath(..., ge=1)):
-    path = SYNTHESES_DIR / f"{entity_id}.json"
+    from collectors.chemins import sous
+    path = sous(SYNTHESES_DIR, f"{entity_id}.json")
     if not path.exists():
         raise HTTPException(404, "Synthèse non disponible")
     return json.loads(path.read_text())
@@ -2820,7 +2821,8 @@ def atelier_en_clair_apercu(nom: str = FPath(..., pattern=r"^\d{4}-\d{2}-\d{2}-(
     from fastapi.responses import HTMLResponse
     from collectors.en_clair.rendu import document, feuilles, page_erreurs
     from collectors.en_clair.seances import dossier
-    chemin = dossier(RACINE) / nom / "releve.json"
+    from collectors.chemins import sous
+    chemin = sous(dossier(RACINE), nom, "releve.json")
     if not chemin.exists():
         raise HTTPException(404, f"Aucun relevé « {nom} ».")
     releve = json.loads(chemin.read_text())
