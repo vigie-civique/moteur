@@ -141,7 +141,7 @@
   }
   .stat-item { padding: 1px 6px; border-radius: 999px; }
   .s-pending { background:var(--info-doux); color:var(--lien); }
-  .s-ok      { background:var(--succes-bordure); color:var(--succes); }
+  .s-ok      { background:var(--succes-bordure); color:var(--succes-texte); }
   .s-ko      { background:var(--danger-doux); color:var(--danger); }
   .s-ign     { background:var(--surface); color:var(--texte-doux); }
 
@@ -162,7 +162,7 @@
     background: var(--fond);
     border: 1px solid var(--bordure);
   }
-  .tab-btn.active { background: var(--accent-fort); color: var(--info); border-color: var(--accent-fort); }
+  .tab-btn.active { background: var(--accent-fort); color: var(--sur-accent); border-color: var(--accent-fort); }
   .sig-filter {
     background: var(--fond);
     border: 1px solid var(--bordure);

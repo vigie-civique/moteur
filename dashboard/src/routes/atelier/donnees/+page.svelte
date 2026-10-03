@@ -424,7 +424,7 @@
   .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; }
   .filters { display: flex; gap: .35rem; }
   .chip { padding: .25rem .7rem; border-radius: 999px; background: var(--surface); color: var(--texte-doux); font-size: .78rem; }
-  .chip.on { background: var(--surface-2); color: var(--sur-accent); }
+  .chip.on { background: var(--surface-2); color: var(--texte); }
   .chip-select { width: auto; padding: .25rem .5rem; border-radius: 999px;
                  background: var(--surface); color: var(--texte-doux); font-size: .78rem;
                  border: none; }

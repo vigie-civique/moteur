@@ -253,7 +253,7 @@
   .toolbar button:hover { background: var(--bordure-forte); }
 
   .entity-badge {
-    background: var(--accent-fort); color: var(--info);
+    background: var(--accent-fort); color: var(--sur-accent);
     padding: 1px 8px; border-radius: 999px;
     font-size: .72rem; max-width: 200px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

@@ -340,10 +340,10 @@
     font-size: .65rem; padding: 2px 7px; border-radius: 999px; font-weight: 700;
     white-space: nowrap;
   }
-  .type-person      { background: var(--type-personne); color: var(--danger-texte); }
-  .type-business    { background: var(--type-entreprise); color: var(--info); }
-  .type-association { background: var(--type-association); color: var(--succes-texte); }
-  .type-service     { background: var(--type-service); color: var(--alerte-texte); }
+  .type-person      { background: var(--type-personne); color: var(--sur-accent); }
+  .type-business    { background: var(--type-entreprise); color: var(--sur-accent); }
+  .type-association { background: var(--type-association); color: var(--sur-accent); }
+  .type-service     { background: var(--type-service); color: var(--sur-accent); }
   .type-place       { background: var(--type-lieu); color: var(--sur-accent); }
 
   .mini-map {
@@ -424,7 +424,7 @@
 
   /* IA */
   .synth-block { background: var(--succes-doux); border: 1px solid var(--succes-bordure); border-radius: 8px; overflow: hidden; }
-  .synth-header { background: var(--succes-bordure); color: var(--succes); font-size: .72rem; font-weight: 700;
+  .synth-header { background: var(--succes-bordure); color: var(--succes-texte); font-size: .72rem; font-weight: 700;
     padding: .3rem .75rem; text-transform: uppercase; letter-spacing: .05em; }
   .synth-body { padding: .75rem; font-size: .82rem; color: var(--succes-texte); line-height: 1.6; white-space: pre-wrap; }
   .synth-meta { padding: .3rem .75rem .5rem; font-size: .7rem; }

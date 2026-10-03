@@ -114,7 +114,7 @@
   .sec-fonctionnement { background: var(--info-doux); color: var(--info); }
   .sec-investissement { background: var(--succes-doux); color: var(--succes); }
   .sec-dette          { background: var(--danger-doux); color: var(--danger-texte); }
-  .sens-recette { background: var(--succes-bordure); color: var(--succes); }
+  .sens-recette { background: var(--succes-bordure); color: var(--succes-texte); }
   .sens-depense { background: var(--danger-bordure); color: var(--danger-texte); }
   .sens-solde   { background: var(--surface-2); color: var(--texte-2); }
 

@@ -11,6 +11,8 @@
   import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
   // Après Leaflet : ses contrôles et ses popups lisent les jetons du thème.
   import '$lib/theme.css'
+  // Le choix Système / Clair / Sombre s'applique sur toutes les pages.
+  import '$lib/theme.js'
 
   onMount(async () => {
     initAuth()   // réhydrate currentUser depuis le token de session
@@ -117,6 +119,33 @@
   :global(::-webkit-scrollbar-track) { background: var(--surface); }
   :global(::-webkit-scrollbar-thumb) { background: var(--surface-2); border-radius: 3px; }
 
+  /* Leaflet : seuls les contrôles et les popups suivent le thème. Le fond de
+     carte (plan IGN, orthophoto) reste celui de son éditeur. Les sélecteurs
+     reprennent la spécificité de leaflet.css pour le remplacer. */
+  :global(.leaflet-bar a),
+  :global(.leaflet-touch .leaflet-bar a) {
+    background-color: var(--surface); color: var(--texte); border-bottom-color: var(--bordure);
+  }
+  :global(.leaflet-bar a:hover),
+  :global(.leaflet-bar a:focus) { background-color: var(--surface-2); color: var(--texte); }
+  :global(.leaflet-bar a.leaflet-disabled) { background-color: var(--fond); color: var(--texte-doux); }
+  :global(.leaflet-touch .leaflet-control-layers),
+  :global(.leaflet-touch .leaflet-bar) { border-color: var(--bordure); }
+  :global(.leaflet-control-layers) {
+    background: var(--surface); color: var(--texte); box-shadow: 0 1px 5px var(--ombre);
+  }
+  :global(.leaflet-control-layers-separator) { border-top-color: var(--bordure); }
+  :global(.leaflet-popup-content-wrapper),
+  :global(.leaflet-popup-tip) {
+    background: var(--surface); color: var(--texte); box-shadow: 0 3px 14px var(--ombre);
+  }
+  :global(.leaflet-container a.leaflet-popup-close-button) { color: var(--texte-doux); }
+  :global(.leaflet-container a.leaflet-popup-close-button:hover) { color: var(--texte); }
+  :global(.leaflet-container .leaflet-control-attribution) {
+    background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--texte-doux);
+  }
+  :global(.leaflet-container .leaflet-control-attribution a) { color: var(--lien); }
+
   .app {
     display: flex;
     flex-direction: column;
@@ -198,6 +227,7 @@
 
   .badge-row { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
   .badge {
+    color: var(--sur-accent);
     font-size: .72rem;
     padding: 2px 8px;
     border-radius: 999px;

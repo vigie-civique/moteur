@@ -201,10 +201,10 @@
   .muted { color: var(--texte-doux); }
   .cand-actions { display: flex; gap: .3rem; }
 
-  .btn-validate { background: var(--succes-bordure); border: 1px solid var(--succes-bordure); color: var(--succes); border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
+  .btn-validate { background: var(--succes-bordure); border: 1px solid var(--succes-bordure); color: var(--succes-texte); border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
   .btn-validate:hover:not(:disabled) { background: var(--succes-bordure); }
   .btn-reject   { background: var(--danger-doux); border: 1px solid var(--danger-bordure); color: var(--danger); border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
-  .btn-reject:hover:not(:disabled)   { background: var(--danger-bordure); }
+  .btn-reject:hover:not(:disabled)   { background: var(--danger-bordure); color: var(--danger-texte); }
   button:disabled { opacity: .45; cursor: default; }
 
   .err-msg { color: var(--danger); font-size: .83rem; }

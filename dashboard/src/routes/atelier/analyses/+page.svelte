@@ -260,7 +260,7 @@
   .tab.active { color: var(--lien); border-bottom-color: var(--lien); }
   .tab:hover:not(.active) { color: var(--texte); }
   .tab-count { font-size: .68rem; background: var(--surface-2); color: var(--texte-doux); border-radius: 999px; padding: 1px 5px; }
-  .tab.active .tab-count { background: var(--accent-fort); color: var(--info); }
+  .tab.active .tab-count { background: var(--accent-fort); color: var(--sur-accent); }
   .btn-reload { margin-left: auto; background: none; border: none; color: var(--texte-doux); cursor: pointer; font-size: .85rem; padding: .3rem .5rem; }
   .btn-reload:hover { color: var(--texte); }
 
@@ -282,7 +282,7 @@
   .ent-link { color: var(--info); }
   .ent-link:hover { text-decoration: underline; }
   .badge { font-size: .65rem; padding: 1px 6px; border-radius: 999px; font-weight: 700; }
-  .badge-elu  { background: var(--accent-fort); color: var(--info); }
+  .badge-elu  { background: var(--accent-fort); color: var(--sur-accent); }
   .badge-priv { background: var(--succes-bordure); color: var(--succes-texte); }
   .center { text-align: center; }
   .bold { font-weight: 600; }

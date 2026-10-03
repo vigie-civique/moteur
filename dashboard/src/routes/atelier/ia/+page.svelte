@@ -196,7 +196,7 @@
     background: var(--succes-doux); border: 1px solid var(--succes-bordure); border-radius: 8px;
     margin-bottom: 1rem; overflow: hidden;
   }
-  .answer-header { background: var(--succes-bordure); color: var(--succes); font-size: .72rem; font-weight: 700;
+  .answer-header { background: var(--succes-bordure); color: var(--succes-texte); font-size: .72rem; font-weight: 700;
     padding: .3rem .75rem; text-transform: uppercase; letter-spacing: .05em; }
   .answer-text { padding: .75rem; font-size: .82rem; color: var(--succes-texte); line-height: 1.6; white-space: pre-wrap; }
 

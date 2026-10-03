@@ -2,7 +2,20 @@
    Tout composant lit ces jetons (`var(--texte)`), jamais une valeur :
    scripts/verifier_couleurs.mjs fait échouer le build sinon.
 
-   Valeurs sombres : celles de l'atelier avant les jetons. */
+   Trois blocs, dans cet ordre :
+   - :root                   le thème sombre, celui de l'atelier avant les
+                             jetons (ses valeurs n'ont pas bougé) ;
+   - @media light            le thème clair quand le système le demande et
+                             que personne n'a choisi « Sombre » ;
+   - [data-theme="light"]    le thème clair choisi dans l'atelier.
+   Le choix vit dans lib/theme.js ; static/theme.js le relit avant le premier
+   rendu. Les contrastes du thème clair sont calculés (WCAG AA : 4,5:1 pour un
+   texte, 3:1 pour une bordure active ou un objet de graphique) : voir la PR
+   « atelier-theme-clair » pour la table.
+
+   Les catégories (types, périmètres) gardent la même couleur dans les deux
+   thèmes : ce sont des fonds pleins sous un texte blanc, lisibles partout.
+   Les séries de graphiques foncent en clair pour tenir 3:1 sur fond clair. */
 :root {
   color-scheme: dark;
 
@@ -77,4 +90,102 @@
   --perimetre-c2: #9a6b12;          /* périmètre C2 */
   --perimetre-c3: #5b5b66;          /* périmètre C3 */
   --perimetre-lien: #7c3f58;        /* périmètre « lien » */
+}
+
+/* Clair, demandé par le système — sauf si l'atelier a été mis en « Sombre ». */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --fond: #eef2f7;
+    --surface: #f8fafc;
+    --surface-2: #e2e8f0;
+    --papier: #ffffff;
+    --bordure-douce: #e2e8f0;
+    --bordure: #cbd5e1;
+    --bordure-forte: #64748b;
+    --texte: #0f172a;
+    --texte-2: #1e293b;
+    --texte-doux: #475569;
+    --texte-pale: #64748b;
+    --sur-accent: #ffffff;
+    --sur-vif: #ffffff;
+    --accent: #2563eb;
+    --bouton: #1d4ed8;
+    --accent-fort: #1e40af;
+    --focus: #2563eb;
+    --lien: #1d4ed8;
+    --info: #1e40af;
+    --info-doux: #dbeafe;
+    --succes: #166534;
+    --succes-texte: #14532d;
+    --succes-doux: #dcfce7;
+    --succes-bordure: #bbf7d0;
+    --alerte: #92400e;
+    --alerte-texte: #78350f;
+    --alerte-doux: #fef3c7;
+    --alerte-bordure: #b45309;
+    --danger: #b91c1c;
+    --danger-texte: #7f1d1d;
+    --danger-doux: #fee2e2;
+    --danger-bordure: #fca5a5;
+    --ombre: rgba(15,23,42,.15);
+    --voile: rgba(15,23,42,.45);
+    --serie-bleu: #1d4ed8;
+    --serie-vert: #047857;
+    --serie-ambre: #b45309;
+    --serie-violet: #6d28d9;
+    --serie-rouge: #b91c1c;
+    --serie-orange: #c2410c;
+    --serie-cyan: #0e7490;
+    --serie-lime: #4d7c0f;
+    --serie-gris: #64748b;
+  }
+}
+
+/* Clair, choisi dans l'atelier (Mon compte, ou le menu). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --fond: #eef2f7;
+  --surface: #f8fafc;
+  --surface-2: #e2e8f0;
+  --papier: #ffffff;
+  --bordure-douce: #e2e8f0;
+  --bordure: #cbd5e1;
+  --bordure-forte: #64748b;
+  --texte: #0f172a;
+  --texte-2: #1e293b;
+  --texte-doux: #475569;
+  --texte-pale: #64748b;
+  --sur-accent: #ffffff;
+  --sur-vif: #ffffff;
+  --accent: #2563eb;
+  --bouton: #1d4ed8;
+  --accent-fort: #1e40af;
+  --focus: #2563eb;
+  --lien: #1d4ed8;
+  --info: #1e40af;
+  --info-doux: #dbeafe;
+  --succes: #166534;
+  --succes-texte: #14532d;
+  --succes-doux: #dcfce7;
+  --succes-bordure: #bbf7d0;
+  --alerte: #92400e;
+  --alerte-texte: #78350f;
+  --alerte-doux: #fef3c7;
+  --alerte-bordure: #b45309;
+  --danger: #b91c1c;
+  --danger-texte: #7f1d1d;
+  --danger-doux: #fee2e2;
+  --danger-bordure: #fca5a5;
+  --ombre: rgba(15,23,42,.15);
+  --voile: rgba(15,23,42,.45);
+  --serie-bleu: #1d4ed8;
+  --serie-vert: #047857;
+  --serie-ambre: #b45309;
+  --serie-violet: #6d28d9;
+  --serie-rouge: #b91c1c;
+  --serie-orange: #c2410c;
+  --serie-cyan: #0e7490;
+  --serie-lime: #4d7c0f;
+  --serie-gris: #64748b;
 }

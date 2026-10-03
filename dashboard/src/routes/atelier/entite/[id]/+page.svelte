@@ -751,14 +751,14 @@
   .editor-page :global(.rel-btn-edit) { color: var(--info); }
   .editor-page :global(.rel-btn-edit:hover) { background: var(--accent-fort); border-color: var(--accent-fort); color: var(--sur-accent); }
   .editor-page :global(.rel-btn-del) { color: var(--danger); }
-  .editor-page :global(.rel-btn-del:hover) { background: var(--danger-bordure); border-color: var(--danger-bordure); color: var(--sur-accent); }
+  .editor-page :global(.rel-btn-del:hover) { background: var(--danger-bordure); border-color: var(--danger-bordure); color: var(--danger-texte); }
 
   .editor-page :global(.rel-edit-actions) { display: flex; gap: .35rem; padding-top: .2rem; }
   .editor-page :global(.btn-rel-save) {
-    padding: .3rem .65rem; background: var(--succes-bordure); color: var(--succes);
+    padding: .3rem .65rem; background: var(--succes-bordure); color: var(--succes-texte);
     border: 1px solid var(--succes-bordure); border-radius: 5px; font-size: .75rem; font-weight: 600; cursor: pointer;
   }
-  .editor-page :global(.btn-rel-save:hover) { background: var(--succes-bordure); }
+  .editor-page :global(.btn-rel-save:hover) { background: var(--succes-bordure); border-color: var(--succes); }
   .editor-page :global(.btn-rel-cancel) {
     padding: .3rem .65rem; background: transparent; color: var(--texte-doux);
     border: 1px solid var(--bordure); border-radius: 5px; font-size: .75rem; cursor: pointer;

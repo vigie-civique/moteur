@@ -386,11 +386,11 @@
   .act-jamais_relu { background: var(--surface); color: var(--texte-2); }
   .act-jamais_relu:hover { background: var(--surface-2); border-color: var(--bordure-forte); }
   .act-a_revoir { background: var(--info-doux); color: var(--info); }
-  .act-a_revoir:hover { background: var(--accent-fort); border-color: var(--accent-fort); }
+  .act-a_revoir:hover { background: var(--accent-fort); border-color: var(--accent-fort); color: var(--sur-accent); }
   .act-retenu  { background: var(--succes-doux); color: var(--succes); }
   .act-retenu:hover { background: var(--succes-bordure); border-color: var(--succes-bordure); }
   .act-ecarte  { background: var(--danger-doux); color: var(--danger); }
-  .act-ecarte:hover { background: var(--danger-bordure); border-color: var(--danger-bordure); }
+  .act-ecarte:hover { background: var(--danger-bordure); border-color: var(--danger-bordure); color: var(--danger-texte); }
 
   .msg { padding: 2rem; text-align: center; color: var(--texte-doux); font-size: .85rem; }
   .msg.error { color: var(--danger); }

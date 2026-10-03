@@ -100,7 +100,9 @@
 
 <style>
   .map-edit-wrap { display: flex; flex-direction: column; gap: .3rem; }
-  .map-el { height: 440px; border-radius: 6px; border: 1px solid var(--bordure); }
+  .map-el { height: 440px; border-radius: 6px; border: 1px solid var(--bordure);
+    /* Le fond visible avant l'arrivée des tuiles suit le thème (Leaflet : #ddd). */
+    background: var(--surface-2); }
   .map-foot { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .hint { font-size: .72rem; color: var(--texte-doux); }
   .coords { font-size: .72rem; color: var(--info); font-variant-numeric: tabular-nums; }
