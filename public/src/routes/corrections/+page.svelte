@@ -1,6 +1,6 @@
 <script>
   import { CONTACT_EMAIL, SITE_NOM } from '$lib/instance.js'
-  import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
+  import { INSTITUTIONAL, lienActe } from '$lib/actes.js'
 
   // Rendu au build par +page.server.js.
   export let data
@@ -11,7 +11,7 @@
   // Un acte d'assemblée s'ouvre à sa ligne, dans son millésime ; le reste
   // renvoie à la page qui le liste.
   const LIENS = {
-    acte: (d) => INSTITUTIONAL[d.type] ? `/deliberations/${anneeDe(d)}#a${d.id}` : '/nouveautes',
+    acte: (d) => INSTITUTIONAL[d.type] ? lienActe(d) : '/nouveautes',
     marche: () => '/marches', flux: () => '/finances',
   }
   const fmt = (d) => {

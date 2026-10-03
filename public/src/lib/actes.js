@@ -55,3 +55,12 @@ export const AGENDA_TYPES = new Set(['local_event', 'evenement_culturel', 'expos
 export const anneeDe = (e) => (e.date || '').slice(0, 4) || 'sans-date'
 
 export const libelleAnnee = (a) => (a === 'sans-date' ? 'Sans date' : a)
+
+// L'ancre d'un acte sur la page de son année : sa clé datée (`c-2021-41`), que
+// le snapshot calcule (collectors/cle_acte.py) et qui survit au rejeu de la
+// collecte. `a{id}` n'est plus qu'un repli — clé faible, collision, ou snapshot
+// d'avant le 03/10/2026 — parce que `events.id` change à chaque rejeu, et un
+// lien posé dans un courriel ou un dossier cassait avec lui.
+export const ancreActe = (e) => e.ancre || `a${e.id}`
+
+export const lienActe = (e) => `/deliberations/${e.annee || anneeDe(e)}#${ancreActe(e)}`

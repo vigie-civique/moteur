@@ -10,7 +10,7 @@
 // le découpage faisait perdre.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { INSTITUTIONAL, anneeDe, estSeance, instanceDe } from '$lib/actes.js'
+import { INSTITUTIONAL, anneeDe, ancreActe, estSeance, instanceDe } from '$lib/actes.js'
 import { DATA_DIR, lireJSON } from '$lib/donnees.server.js'
 import { etatSource } from '$lib/couverture.js'
 
@@ -42,6 +42,7 @@ export function load() {
   // Index de recherche : strictement ce qu'affiche une ligne de résultat.
   const index = actes.map((e) => ({
     id: e.id,
+    ancre: ancreActe(e),
     date: e.date || null,
     titre: e.title || '',
     annee: anneeDe(e),
@@ -86,7 +87,7 @@ export function load() {
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
         .slice(0, 5)
         .map((e) => ({
-          id: e.id, date: e.date, titre: e.title,
+          id: e.id, ancre: ancreActe(e), date: e.date, titre: e.title,
           annee: anneeDe(e), vote: e.vote,
         })),
     } : null,

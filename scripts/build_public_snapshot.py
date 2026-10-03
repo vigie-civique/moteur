@@ -57,9 +57,8 @@ from collectors.config import STATUT  # noqa: E402
 from collectors.etat_flux import etat_du_flux  # noqa: E402
 # `VIGIE_RULES` désigne d'autres règles de publication — les tests s'en servent
 # pour tourner sur l'exemple versionné, un dépôt fraîchement cloné n'ayant pas
-# encore de règles à lui.
-RULES_PATH = Path(os.environ.get("VIGIE_RULES")
-                  or ROOT / "config" / "publication_rules.json")
+# encore de règles à lui. Le chemin est lu dans la config, comme l'atelier le lit.
+from collectors.config import RULES_PATH  # noqa: E402
 
 
 def load_rules(path: Path = RULES_PATH) -> dict:
@@ -2093,7 +2092,7 @@ def export_corrections(public_events: list[dict], public_flows: list[dict],
     for e in public_events:
         if e.get("corrige"):
             donnees.append({"nature": "acte", "id": e["id"], "type": e.get("type"),
-                            "date": e.get("date"),
+                            "date": e.get("date"), "ancre": e.get("ancre"),
                             "libelle": e.get("title"), "champs": e["corrige"],
                             "motif": e.get("note_revue")})
     for f in public_flows:
@@ -2248,7 +2247,9 @@ def write_recherche_index(out: Path, public_entities, public_events,
         annee = (ev.get("date") or "")[:4] or "sans-date"
         idx.append({
             "k": "acte", "t": ev.get("title") or "(sans titre)",
-            "u": f"/deliberations/{annee}#a{ev['id']}",
+            # L'ancre est la clé datée de l'acte quand elle est stable : un
+            # résultat de recherche copié et partagé doit survivre au rejeu.
+            "u": f"/deliberations/{annee}#{ev.get('ancre') or 'a' + str(ev['id'])}",
             "d": ev.get("date"), "m": ev.get("montant_principal"),
             "c": ev.get("source"),
             # Un acte portant un montant est plus souvent ce qu'on cherche.
@@ -2745,7 +2746,26 @@ def export_reperes_fiscaux(conn) -> list[dict]:
 # modifié après avoir été retenu ne porte plus l'empreinte retenue, et attend
 # une nouvelle relecture (`verdict.publiable_tel_quel`).
 
-def export_en_clair(conn, out: Path, root: Path) -> dict:
+def _liens_en_clair(releve: dict, graphe) -> dict:
+    """n° d'acte d'une séance relevée → l'acte publié, par sa clé datée. Une
+    séance en clair relève ses actes par leur NUMÉRO : c'est la clé
+    (`c-2026-41`), pas l'identifiant en base, qui les relie. Un numéro dont
+    l'acte n'est pas publié reste du texte."""
+    from collectors.cle_acte import TYPE_ACTE, cle_acte
+    prefixe = {"cm": "c", "cc": "cc"}.get(releve.get("code", ""))
+    date = (releve.get("seance") or {}).get("date")
+    if not prefixe or not date or graphe is None:
+        return {}
+    liens = {}
+    for acte in releve.get("actes", []):
+        c = cle_acte(TYPE_ACTE[prefixe], date, str(acte.get("n")))
+        a = graphe.index.acte(c.valeur) if c else None
+        if a:
+            liens[acte["n"]] = a
+    return liens
+
+
+def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
     from collectors.en_clair.rendu import document, feuilles, page_erreurs
     from collectors.en_clair.seances import nom_de_fichier, releves, seance_id
     from collectors.en_clair.verifier import verifier
@@ -2782,9 +2802,15 @@ def export_en_clair(conn, out: Path, root: Path) -> dict:
         relu = f"relu à l'atelier le {(a['reviewed_at'] or '')[:10]}"
         nom = nom_de_fichier(r)
         s = r["seance"]
+        actes_lies = _liens_en_clair(r, graphe)
+        for acte in actes_lies.values():
+            graphe.citer(acte.cle, {"type": "en_clair", "date": s["date"],
+                                 "assemblee": s["assemblee_court"],
+                                 "fichier": f"conseils/{nom}.html"})
         (dossier / f"{nom}.html").write_text(document(
             f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
-            feuilles(r, relu=relu) + page_erreurs(r),
+            feuilles(r, relu=relu, liens={n: x.url for n, x in actes_lies.items()})
+            + page_erreurs(r),
             retour=("/conseils", "Toutes les séances")), encoding="utf-8")
         ap = r["en_clair"]["apres"]
         index.append({
@@ -2808,11 +2834,41 @@ def export_en_clair(conn, out: Path, root: Path) -> dict:
 # ne contient que ce qui sort. Un dossier écarté ou en cours de réécriture n'y
 # figure pas — il n'a ni page ni URL.
 
-def export_dossiers(conn, out: Path, root: Path) -> dict:
-    from collectors.dossiers import publiables
+#
+# Depuis le 03/10/2026, chaque dossier publié passe par le résolveur de
+# citations (`collectors/citations.py`) : son markdown sort RELIÉ — les « (CM du
+# 14/04/2021) » deviennent des liens vers l'acte publié —, avec la liste de ses
+# citations pour les infobulles, et, si un acte cité a changé depuis la
+# relecture, l'état de péremption (`collectors/dossiers.py::peremption`). Le
+# dossier reste publié dans ce cas : il a été relu, et le bandeau le dit.
+
+def export_dossiers(conn, out: Path, root: Path, graphe=None) -> dict:
+    from collectors.dossiers import entete, identifiant, peremption, publiables
+    from collectors.graphe import Graphe
+    graphe = graphe or Graphe()
     sortis, ecartes = publiables(conn, root)
+    citations = Counter()
+    perimes = []
+    for d in sortis:
+        meta, _ = entete(d["texte"])
+        if meta.get("statut") == "a_developper":
+            continue            # son corps ne sort pas : rien à relier
+        r = graphe.dossier(d["slug"], meta.get("titre") or d["slug"], d["texte"])
+        d["texte"] = r["relie"].texte
+        if r["citations"]:
+            d["citations"] = r["citations"]
+        for c in r["relie"].citations:
+            citations[c.resolution.statut] += 1
+        p = peremption(conn, identifiant(conn, d["slug"]), d["empreinte"], graphe.index)
+        if p and p["elements"]:
+            for el in p["elements"]:
+                if el["quoi"] == "modifie" and (t := graphe.titre_public(el["cle"])):
+                    el["titre"] = t
+            d["perime"] = p
+            perimes.append(d["slug"])
     write_json(out / "dossiers.json", {"dossiers": sortis, "total": len(sortis)})
-    return {"publies": len(sortis), **ecartes}
+    return {"publies": len(sortis), **ecartes, "citations": dict(citations),
+            "perimes": perimes}
 
 
 def synchroniser_site_public(src: Path, root: Path) -> dict:
@@ -3282,6 +3338,36 @@ def build_snapshot(out: Path) -> dict:
         for e in public_events:
             e["portee"] = portee_evenement(e["type"], perimetres_par_acte[e["id"]],
                                            e.get("source"))
+
+        # ── L'identité datée de chaque acte et séance ────────────────────────
+        # `events.id` change à chaque rejeu : l'ancre publique d'un acte est sa
+        # clé (`collectors/cle_acte.py`), calculée sur la ligne BRUTE de la base
+        # — la même lecture que l'atelier au moment de sceller un dossier.
+        # Une clé faible (date + titre) ou portée par deux actes publiés garde
+        # l'ancre `a{id}` : elle n'est jamais présentée comme stable.
+        from collectors.citations import acte_de_ligne, index_de, lignes_en_base
+        lignes_actes = lignes_en_base(conn)
+        index_actes = index_de(lignes_actes, public_event_ids)
+        cles_brutes = {l["id"]: a for l in lignes_actes
+                       if l["id"] in public_event_ids and (a := acte_de_ligne(l))}
+        for e in public_events:
+            a = cles_brutes.get(e["id"])
+            if not a:
+                continue
+            e["cle"] = a.cle
+            if a.faible:
+                e["cle_faible"] = True
+            e["ancre"] = a.ancre if a.cle not in index_actes.collisions else f"a{e['id']}"
+        affiches = {e["id"]: e for e in public_events}
+        for a in index_actes.par_cle.values():
+            # Le titre affiché par le résolveur (infobulles) est le titre PUBLIÉ,
+            # masques compris — jamais celui de la base.
+            a.titre = affiches[a.id].get("title") or a.titre
+        cles_stats = {
+            "stables": sum(1 for e in public_events if e.get("cle") and e.get("ancre") == e["cle"]),
+            "faibles": sum(1 for e in public_events if e.get("cle_faible")),
+            "en_collision": len(index_actes.collisions),
+        }
 
         flow_rows = rows(conn, """
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,
@@ -4368,8 +4454,20 @@ def build_snapshot(out: Path) -> dict:
         corrections = export_corrections(public_events, public_flows, marches_data,
                                          lire_journal_corrections())
         write_json(out / "corrections.json", corrections)
-        stats["conseils_en_clair"] = export_en_clair(conn, out, ROOT)
-        stats["dossiers"] = export_dossiers(conn, out, ROOT)
+        # Le graphe des liens se remplit pendant que séances et dossiers
+        # s'écrivent : ce sont eux qui citent. Il ne connaît que les actes
+        # PUBLIÉS (`index_actes`), jamais la base entière.
+        from collectors.graphe import Graphe, personnes_morales_par_acte
+        graphe = Graphe(index_actes, affiches)
+        stats["conseils_en_clair"] = export_en_clair(conn, out, ROOT, graphe)
+        stats["dossiers"] = export_dossiers(conn, out, ROOT, graphe)
+        stats["graphe"] = graphe.ecrire(
+            out,
+            alias={f"a{e['id']}": e["ancre"] for e in public_events
+                   if e.get("ancre") and e["ancre"] != f"a{e['id']}"},
+            personnes_morales=personnes_morales_par_acte(
+                conn, public_events, public_links, public_entities))
+        stats["graphe"]["cles"] = cles_stats
         stats["corrections_site"] = len(corrections["site"])
         stats["actualite_items"] = min(len(actualite), 400)
         stats["actualite_a_venir"] = len(a_venir)
@@ -4442,6 +4540,7 @@ def build_snapshot(out: Path) -> dict:
         # exclusions nominatives = exactement les données filtrées). Écrit hors `out`.
         review_out = ROOT / "audits"
         review_out.mkdir(parents=True, exist_ok=True)
+        graphe.ecrire_releve(review_out)
         write_json(review_out / "public_snapshot_review.json", {
             "stats": {**stats, "source_db": str(DB_PATH)},
             "entity_exclusions_sample": entity_exclusions[:250],
@@ -4565,6 +4664,13 @@ def build_snapshot(out: Path) -> dict:
             "| `entite/<id>.json` | Fiche complète d'un acteur | racine |",
             "| `extrait/<id>.json` | Texte d'une délibération, lu dans le "
             "document | `texte` |",
+            "| `liens.json` | Clé datée d'un acte (`c-2021-41`) → les dossiers "
+            "et séances en clair qui le citent ; table d'alias `#a{id}` → clé | "
+            "`actes`, `alias` |",
+            "| `lacunes.json` | Questions ouvertes des dossiers publiés et "
+            "citations sans acte publié | `lacunes` |",
+            "| `personnes_morales.json` | Par clé d'acte, les personnes morales "
+            "publiées qu'il concerne (SIREN) | `actes` |",
             "",
             "Chaque fichier à liste porte aussi un `total`.",
             "",

@@ -305,7 +305,13 @@ CREATE TABLE IF NOT EXISTS events (
     origine         TEXT CHECK(origine IN ('institutionnel','verbatim','atelier')),
     raw_document_id INTEGER REFERENCES raw_documents(id),
     saisi_par       TEXT,
-    saisi_le        TEXT
+    saisi_le        TEXT,
+    -- L'identité DATÉE d'un acte ou d'une séance (`c-2021-41`, `cc-2025-12`),
+    -- stable d'un rejeu à l'autre quand `id` ne l'est pas. Écrite par la
+    -- collecte via `collectors/cle_acte.py`, seule à la composer. Non unique :
+    -- les collisions se montrent (scripts/migrer_cles_actes.py), elles ne
+    -- font pas échouer une collecte. Index déclaré dans `collectors/db.py`.
+    cle_acte        TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_type_date ON events(type, date);
@@ -406,6 +412,20 @@ CREATE TABLE IF NOT EXISTS dossiers (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     slug     TEXT NOT NULL UNIQUE,
     cree_le  TEXT DEFAULT (datetime('now'))
+);
+
+-- Le sceau d'un dossier retenu : pour chaque acte cité, ce qui en était
+-- affiché au moment de la relecture (empreinte de `citations.vue`). Au build,
+-- un acte qui a changé laisse le dossier publié, avec un bandeau. 03/10/2026,
+-- cf. collectors/dossiers.py::sceller. `assurer_schema` le rattrape.
+CREATE TABLE IF NOT EXISTS citations_relues (
+    dossier_id        INTEGER NOT NULL,
+    empreinte_dossier TEXT NOT NULL,       -- le texte relu
+    cle               TEXT NOT NULL,       -- la clé datée de l'acte cité
+    empreinte_acte    TEXT NOT NULL,
+    vue               TEXT,                -- JSON : ce qui était affiché
+    relu_le           TEXT,
+    PRIMARY KEY (dossier_id, cle)
 );
 
 -- ----------------------------------------------------------------

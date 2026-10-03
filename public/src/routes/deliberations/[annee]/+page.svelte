@@ -1,14 +1,14 @@
 <script>
   import { COMMUNE_A, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
-  import { INSTITUTIONAL, instanceDe, libelleAnnee } from '$lib/actes.js'
+  import { INSTITUTIONAL, ancreActe, instanceDe, libelleAnnee } from '$lib/actes.js'
   import { axesDe } from '$lib/provenance.js'
   import { onMount } from 'svelte'
 
   // Rendu au build par +page.server.js : les actes du millésime sont déjà
   // dans le HTML.
   export let data
-  $: ({ annee, items, nCM, nCC, precedente, suivante, annees } = data)
+  $: ({ annee, items, nCM, nCC, precedente, suivante, annees, alias } = data)
 
   let q = '', instance = 'all'
 
@@ -32,7 +32,12 @@
   // Arriver par le lien d'un acte — « Les décisions qui ont fait débat », la
   // recherche — l'ouvre d'emblée : c'est lui qu'on venait lire.
   onMount(() => {
+    // Une ancienne ancre `#a{id}` (avant le 03/10/2026) : on la remplace par la
+    // clé datée de l'acte, que le lecteur pourra recopier sans qu'elle casse.
+    const demande = decodeURIComponent(location.hash.slice(1))
+    if (alias?.[demande]) history.replaceState(null, '', `#${alias[demande]}`)
     const cible = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)))
+    cible?.scrollIntoView()
     const volet = cible?.querySelector('details.extrait')
     if (volet) volet.open = true
   })
@@ -92,7 +97,7 @@
 
   <ul class="list">
     {#each filtered as e (e.id)}
-      <li id="a{e.id}">
+      <li id={ancreActe(e)}>
         <span class="date">{fmtDate(e.date)}</span>
         <span class="badge {inst(e)}">{INSTITUTIONAL[e.type].label}</span>
         <span class="title">
@@ -127,6 +132,15 @@
             <span class="axe {a.axe} {a.cle}" title={a.long}>{a.court}</span>
           {/each}
         </span>
+
+        <!-- Vers le haut : qui cite cet acte. Rien quand personne ne le cite —
+             « cité dans 0 dossier » ne dit rien d'utile. -->
+        {#if e.cite?.length}
+          <p class="cite">
+            Cité dans&nbsp;:
+            {#each e.cite as c, i}{#if i}, {/if}{#if c.type === 'dossier'}<a href="/dossiers/{c.slug}{c.ancre ? `#${c.ancre}` : ''}">le dossier « {c.titre} »{#if c.section} (§&nbsp;{c.section}){/if}</a>{#if !c.precis} <span class="imprecis" title="Le dossier cite la séance, sans dire lequel de ses actes">(la séance)</span>{/if}{:else}<a href="/data/{c.fichier}">la séance en clair du {fmtDate(c.date)}</a>{/if}{/each}
+          </p>
+        {/if}
 
         {#if e.extrait}
           <details class="extrait" on:toggle={(ev) => deplier(ev, e.id)}>
@@ -204,6 +218,10 @@
   @media (max-width: 680px) { .axes { grid-column: 1; } }
 
   .extrait { grid-column: 3 / -1; margin-top: .3rem; }
+  .cite { grid-column: 3 / -1; margin: .2rem 0 0; font-size: .78rem; color: var(--gris); }
+  .cite a { color: var(--ardoise); }
+  .cite .imprecis { color: var(--gris); }
+  @media (max-width: 680px) { .cite { grid-column: 1; } }
   .extrait summary { font-size: .78rem; color: var(--ardoise); cursor: pointer; width: fit-content; }
   .extrait pre {
     white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit;

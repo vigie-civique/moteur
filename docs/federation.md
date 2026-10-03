@@ -173,6 +173,15 @@ Corollaire : le croisement inter-instances porte sur les personnes morales.
 « Ce prestataire est attributaire dans onze communes » est le cas d'usage
 central, il est licite, et il suffit largement à justifier l'annuaire.
 
+**Préparé, non branché (03/10/2026).** Chaque snapshot publie
+`personnes_morales.json` : par clé datée d'acte (`c-2021-41`, cf.
+`collectors/cle_acte.py`), les personnes morales publiées que l'acte concerne,
+avec leur SIREN. C'est l'endpoint que l'annuaire moissonnera pour ce
+croisement : clé stable côté acte, SIREN côté structure, aucune personne
+physique — une entité de type personne n'y entre jamais, même publiée au titre
+de son mandat. Aucune instance n'appelle encore une autre vigie ; le
+branchement suit le manifeste ci-dessus.
+
 ---
 
 ## 5. Conformité et label

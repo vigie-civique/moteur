@@ -111,6 +111,10 @@ _COLONNES_AJOUTEES = [
     ("budget_vote",          "saisi_le", "TEXT"),
     ("dotations_etat",       "saisi_le", "TEXT"),
     ("approbations_projets", "saisi_le", "TEXT"),
+
+    # 03/10/2026 — l'identité datée d'un acte, cf. collectors/cle_acte.py.
+    # `events.id` change à chaque rejeu ; un lien vers un acte ne doit pas.
+    ("events",               "cle_acte", "TEXT"),
 ]
 
 
@@ -124,6 +128,7 @@ _INDEX_AJOUTES = [
     ("idx_events_origine",  "events",          "origine"),
     ("idx_flows_origine",   "financial_flows", "origine"),
     ("idx_marches_origine", "marches_publics", "origine"),
+    ("idx_events_cle_acte", "events",          "cle_acte"),
 ]
 
 

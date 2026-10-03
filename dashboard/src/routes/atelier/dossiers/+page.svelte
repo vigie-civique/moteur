@@ -20,6 +20,21 @@
 
   const LIBELLE = { jamais_relu: 'Jamais relu', retenu: 'Retenu — publié', a_revoir: 'À revoir', ecarte: 'Écarté' }
 
+  // Ce qui a changé parmi les actes cités depuis la relecture (api.py,
+  // `_dossier_ligne` → collectors/dossiers.py::peremption).
+  const perimeDetail = (d) => (d.perime?.elements || [])
+    .map((e) => `${e.libelle} : ${e.quoi === 'disparu' ? "n'est plus publiée" : e.champs.join(', ') + ' modifié'}`)
+    .join('\n')
+  // Ce que le résolveur fait des citations du texte enregistré.
+  const citationsResume = (d) => {
+    const n = (s) => d.citations.filter((c) => c.statut === s).length
+    return [`${n('precis') + n('imprecis')} citation(s) reliée(s)`,
+            n('non_resolu') ? `${n('non_resolu')} sans acte publié` : ''].filter(Boolean).join(' · ')
+  }
+  const citationsDetail = (d) => d.citations
+    .map((c) => `${c.texte} → ${c.statut === 'non_resolu' ? c.raison : c.cle}${c.statut === 'imprecis' ? ' (imprécis)' : ''}`)
+    .join('\n')
+
   let dossiers = []
   let loading = true
   let error = ''
@@ -191,7 +206,7 @@
       </p>
     </div>
     {#if !loading}
-      <p class="compte"><strong>{dossiers.filter(d => d.verdict !== 'retenu' || d.modifie).length}</strong>
+      <p class="compte"><strong>{dossiers.filter(d => d.verdict !== 'retenu' || d.modifie || d.perime).length}</strong>
         à relire sur {dossiers.length}</p>
     {/if}
   </header>
@@ -205,6 +220,8 @@
           <strong>{ouvert.titre}</strong> <code>{ouvert.slug}.md</code>
           · <span class="verdict">{LIBELLE[ouvert.verdict]}</span>
           {#if ouvert.modifie}<span class="modifie">modifié depuis la relecture — ne sort plus</span>{/if}
+          {#if ouvert.perime}<span class="modifie" title={perimeDetail(ouvert)}>à revoir : un acte cité a changé — reste en ligne</span>{/if}
+          {#if ouvert.citations?.length}<span class="tag" title={citationsDetail(ouvert)}>{citationsResume(ouvert)}</span>{/if}
           {#if sale}<span class="sale">non enregistré</span>{/if}
         </div>
         <div class="actions">
@@ -255,6 +272,10 @@
             <span class="verdict">{LIBELLE[d.verdict]}</span>
             {#if d.reviewed_at} par {d.reviewed_by}, {heureLocale(d.reviewed_at)}{/if}
             {#if d.modifie}<span class="modifie">modifié depuis la relecture — ne sort plus</span>{/if}
+            <!-- Un acte cité a changé depuis la relecture : le dossier RESTE en
+                 ligne avec un bandeau. « À revoir » est un état déduit, pas le
+                 verdict — qui, pour un dossier, le retirerait du site. -->
+            {#if d.perime}<span class="modifie" title={perimeDetail(d)}>à revoir : un acte cité a changé — reste en ligne</span>{/if}
           </p>
           <div class="actions">
             <button on:click={() => ouvrir(d.slug)}>{ecrit ? 'Ouvrir et modifier' : 'Lire'}</button>

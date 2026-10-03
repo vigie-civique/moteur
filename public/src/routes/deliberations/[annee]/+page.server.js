@@ -15,6 +15,12 @@ const lireActes = () => {
   } catch { return [] }
 }
 
+// Absent sur un snapshot d'avant le 03/10/2026 : la page reste celle d'avant.
+const lireLiens = () => {
+  try { return JSON.parse(readFileSync(join(DATA_DIR, 'liens.json'), 'utf8')) }
+  catch { return { actes: {}, alias: {} } }
+}
+
 // Une base peut ne porter AUCUN acte d'assemblée : c'est le cas de tout dossier
 // national, qui exclut par conception les collecteurs de procès-verbaux. La
 // route n'a alors aucun millésime à produire, et `prerender = true` faisait
@@ -44,6 +50,19 @@ export function load({ params }) {
 
   if (!items.length) throw error(404, 'Aucun acte pour cette année.')
 
+  // Vers le haut : les dossiers et séances en clair qui citent chaque acte
+  // (`liens.json`, écrit par le snapshot — collectors/graphe.py). Un acte que
+  // personne ne cite n'en reçoit rien, et la page n'affiche rien pour lui.
+  const liens = lireLiens()
+  for (const e of items) {
+    const cite = e.cle && liens.actes?.[e.cle]
+    if (cite?.length) e.cite = cite
+  }
+  // Les anciennes ancres `#a{id}` de CE millésime, pour un cycle : un lien
+  // posé avant le 03/10/2026 retrouve l'acte sous sa clé datée.
+  const ici = new Set(items.map((e) => e.ancre).filter(Boolean))
+  const alias = Object.fromEntries(Object.entries(liens.alias || {}).filter(([, c]) => ici.has(c)))
+
   // Années voisines, pour naviguer de millésime en millésime sans repasser
   // par le sommaire.
   const annees = [...new Set(actes.map(anneeDe))]
@@ -58,5 +77,6 @@ export function load({ params }) {
     precedente: annees[i + 1] ?? null,   // plus ancienne
     suivante: annees[i - 1] ?? null,     // plus récente
     annees,
+    alias,
   }
 }
