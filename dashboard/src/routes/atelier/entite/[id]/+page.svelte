@@ -1,38 +1,59 @@
 <script>
-  import { lienSur } from '$lib/liens.js'
   import { COMMUNE } from '$lib/instance.js'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { page } from '$app/stores'
   import { goto, beforeNavigate } from '$app/navigation'
   import { authFetch, currentUser } from '$lib/stores/auth.js'
   import { auMoins } from '$lib/roles.js'
   import { heureLocale } from '$lib/heure.js'
-  import { LIBELLES, champLisible, valeurLisible } from '$lib/champs.js'
-  import { VERDICTS, VERDICT, FIABILITE, FIABILITE_AIDE, ORIGINES, ORIGINE_AIDE } from '$lib/axes.js'
-  import MapEdit from '$lib/components/MapEdit.svelte'
+  import { LIBELLES } from '$lib/champs.js'
+  import { VERDICT } from '$lib/axes.js'
+  import { brouillonVide, resumer, parOnglet, enumerer } from './brouillon.js'
+  import BarreEnregistrement from './BarreEnregistrement.svelte'
+  import Conflit from './Conflit.svelte'
+  import Identite from './Identite.svelte'
+  import ChampsDuType from './ChampsDuType.svelte'
+  import Adresse from './Adresse.svelte'
+  import Carte from './Carte.svelte'
+  import Budget from './Budget.svelte'
+  import Relations from './Relations.svelte'
+  import Contacts from './Contacts.svelte'
+  import Sites from './Sites.svelte'
+  import Notes from './Notes.svelte'
+  import Historique from './Historique.svelte'
 
-  const ENTITY_TYPES  = ['person','business','association','place','service','property']
-  const CONFIDENCES   = ['verified','confirmed','probable','hypothesis']
-  const CONTACT_TYPES = ['website','phone','email','other']
-  const GENDERS       = ['M','F','']
+  const ONGLETS = [
+    { cle: 'essentiel',  titre: "L'essentiel" },
+    { cle: 'liens',      titre: 'Les liens' },
+    { cle: 'historique', titre: 'Historique et notes' },
+  ]
+  let onglet = 'essentiel'
+  let corps                // la zone qui défile : remise en haut à chaque onglet
+
+  function ouvrir(cle) { onglet = cle; if (corps) corps.scrollTop = 0 }
 
   let entity     = null
   let form       = {}
+  let initial    = {}      // le formulaire tel que lu : ce qu'on compare pour savoir ce qui a changé
   let contacts   = []
   let relations  = []
   let audit      = []
+  let notes      = []
+  let websites   = []
   let loading    = true
-  let saving     = false
-  let dirty      = false
   let error      = ''
-  let saveMsg    = ''
-  let initial    = {}      // le formulaire tel que lu : ce qu'on compare pour savoir ce qui a changé
   // Fiabilité, statut, verdict sur un site : trancher, réservé au validateur.
   $: tranche = auMoins($currentUser, 'validator')
   let conflit    = null    // détail d'un 409 : { message, par, le, champs, updated_at }
 
-  // Champs du formulaire que l'enregistrement n'envoie pas : le type ne change
-  // pas ici, les coordonnées passent par la carte.
+  // Tout ce qui n'est pas encore envoyé, hors champs du formulaire (brouillon.js).
+  let brouillon      = brouillonVide()
+  let enregistrement = false
+  let bilan          = []  // [{ ok, texte }] du dernier enregistrement
+  let carteVersion   = 0
+
+  // Champs du formulaire que le PATCH de la fiche n'envoie pas : le type ne
+  // change pas ici, les coordonnées ont leur propre appel.
   const NON_ENVOYES = new Set(['type', 'lat', 'lng'])
 
   // Ce que l'éditeur a réellement changé. On n'envoie QUE cela : renvoyer toute
@@ -40,16 +61,24 @@
   $: modifies = Object.keys(form).filter(k =>
     !NON_ENVOYES.has(k) && String(form[k] ?? '') !== String(initial[k] ?? ''))
 
+  // Le point déplacé (carte ou saisie) : seulement s'il est complet, l'API
+  // n'accepte pas de coordonnées vides.
+  $: coordsModifiees = coordsValides(form)
+    && (String(form.lat) !== String(initial.lat ?? '') || String(form.lng) !== String(initial.lng ?? ''))
+
+  $: aEnregistrer = resumer(modifies, coordsModifiees, brouillon)
+  $: enAttente    = parOnglet(modifies, coordsModifiees, brouillon)
+
+  function coordsValides(f) {
+    return [f.lat, f.lng].every(v => v !== '' && v != null && !isNaN(+v))
+  }
+
   beforeNavigate(({ cancel, type }) => {
-    if (!modifies.length) return
+    if (!aEnregistrer.length) return
     // Fermeture d'onglet ou lien externe : le navigateur pose lui-même la question.
     if (type === 'leave') { cancel(); return }
     if (!confirm('Des modifications ne sont pas enregistrées. Quitter la fiche quand même ?')) cancel()
   })
-
-  // new contact form
-  let newContact = { type: 'website', value: '', label: '' }
-  let addingContact = false
 
   $: entityId = $page.params.id
 
@@ -74,13 +103,17 @@
   function initForm() {
     form = formDepuis(entity)
     initial = { ...form }
-    contacts  = [...(entity.contacts  ?? [])]
-    relations = [...(entity.relations ?? [])]
-    audit     = [...(entity.audit     ?? [])]
-    notes     = [...(entity.notes     ?? [])]
-    websites  = [...(entity.websites  ?? [])]
-    dirty = false
+    listesDepuis(entity)
     conflit = null
+    carteVersion++
+  }
+
+  function listesDepuis(e) {
+    contacts  = [...(e.contacts  ?? [])]
+    relations = [...(e.relations ?? [])]
+    audit     = [...(e.audit     ?? [])]
+    notes     = [...(e.notes     ?? [])]
+    websites  = [...(e.websites  ?? [])]
   }
 
   function formDepuis(entity) {
@@ -125,162 +158,9 @@
     }
   }
 
-  function markDirty() { dirty = true; saveMsg = '' }
-
-  // Le verdict n'est pas un champ du formulaire : c'est une DÉCISION, posée à
-  // part et lue par la publication (collectors/verdict.py). Il ne touche pas à
-  // la fiche — donc pas à son verrou : on peut trancher sans perdre une saisie
-  // en cours dans le formulaire.
-  let verdictMsg = ''
-  async function poserVerdict(verdict) {
-    verdictMsg = ''
-    const res = await authFetch(`/atelier/entities/${entityId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ verdict, statut_lu: entity.verdict || 'jamais_relu' }),
-    })
-    if (res.ok) {
-      const r = await res.json()
-      entity = { ...entity, verdict: r.verdict, verdict_par: r.reviewed_by,
-                 verdict_le: r.reviewed_at }
-      verdictMsg = `${VERDICT[r.verdict].libelle}. ${VERDICT[r.verdict].effet}`
-      const r2 = await authFetch(`/atelier/entities/${entityId}`)
-      if (r2.ok) { const d = await r2.json(); audit = d.audit ?? [] }
-    } else if (res.status === 409) {
-      const d = (await res.json()).detail || {}
-      verdictMsg = (d.message || 'Le verdict a changé entre-temps.')
-        + (d.par ? ` Par ${d.par}` : '') + (d.le ? `, le ${heureLocale(d.le)}` : '')
-        + '. Rien n\'a été écrasé.'
-      if (d.actuel) entity = { ...entity, verdict: d.actuel, verdict_par: d.par, verdict_le: d.le }
-    } else {
-      verdictMsg = `L'enregistrement a échoué (${res.status}).`
-    }
-  }
-
-  async function save() {
-    saving = true; saveMsg = ''; error = ''
-    try {
-      // Verrou optimiste : envoyer updated_at lu au chargement. Un champ vidé
-      // part en `null`, que l'API traite comme un effacement.
-      const body = { updated_at: entity.updated_at ?? '' }
-      for (const k of modifies) body[k] = form[k] === '' ? null : form[k]
-      const res = await authFetch(`/atelier/entities/${entityId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      })
-      if (res.status === 409) {
-        const d = await res.json()
-        conflit = typeof d.detail === 'object' && d.detail
-          ? d.detail
-          : { message: 'Cette fiche a été modifiée pendant que vous l\'éditiez.' }
-        return
-      }
-      if (!res.ok) {
-        const d = await res.json()
-        throw new Error((typeof d.detail === 'object' ? d.detail?.message : d.detail) || `${res.status}`)
-      }
-      const saved = await res.json()
-      // Fiche publiée, compte contributeur : rien n'est écrit, c'est une
-      // PROPOSITION (202). Le formulaire revient à ce que la fiche vaut
-      // vraiment — afficher la valeur proposée ferait croire qu'elle est posée.
-      if (saved.propose) {
-        const champs = (saved.proposes || []).map(c => LIBELLES[c] ?? c).join(', ')
-        form = { ...initial }
-        dirty = false
-        conflit = null
-        saveMsg = `Proposition envoyée (${champs}). Cette fiche est publiée : un `
-                + `validateur doit l'accepter avant que ce soit appliqué.`
-        return
-      }
-      // Mettre à jour updated_at local pour le prochain save
-      if (saved.updated_at) entity = { ...entity, updated_at: saved.updated_at }
-      initial = { ...form }
-      dirty = false
-      conflit = null
-      saveMsg = 'Sauvegardé ✓'
-      // Recharge l'audit log
-      const r2 = await authFetch(`/atelier/entities/${entityId}`)
-      if (r2.ok) { const d = await r2.json(); audit = d.audit ?? [] }
-      setTimeout(() => saveMsg = '', 2500)
-    } catch (e) {
-      error = e.message
-    } finally {
-      saving = false
-    }
-  }
-
-  // Après un conflit : relire la fiche à jour SANS perdre ce que l'éditeur a
-  // tapé. Les champs qu'il n'a pas touchés prennent la version de l'autre ; les
-  // siens restent, et rien n'est enregistré tant qu'il ne l'a pas relu.
-  async function reprendre() {
-    error = ''
-    const res = await authFetch(`/atelier/entities/${entityId}`)
-    if (!res.ok) { error = `Relecture impossible (${res.status})`; return }
-    const frais = await res.json()
-    const aGarder = Object.fromEntries(modifies.map(k => [k, form[k]]))
-    entity = frais
-    initial = formDepuis(frais)
-    form = { ...initial, ...aGarder }
-    audit = [...(frais.audit ?? [])]
-    dirty = Object.keys(aGarder).length > 0
-    conflit = null
-    saveMsg = 'Version à jour chargée — vos modifications sont gardées : relisez, puis enregistrez.'
-  }
-
-  function abandonner() {
-    initial = { ...form }        // rien à protéger : on repart de la base
-    load()
-  }
-
-  async function addContact() {
-    if (!newContact.value.trim()) return
-    addingContact = true
-    try {
-      const res = await authFetch(`/atelier/entities/${entityId}/contacts`, {
-        method: 'POST',
-        body: JSON.stringify(newContact),
-      })
-      if (!res.ok) throw new Error(`${res.status}`)
-      const c = await res.json()
-      contacts = [...contacts, c]
-      newContact = { type: 'website', value: '', label: '' }
-    } catch (e) {
-      error = e.message
-    } finally {
-      addingContact = false
-    }
-  }
-
-  async function removeContact(id) {
-    const res = await authFetch(`/atelier/contacts/${id}`, { method: 'DELETE' })
-    if (res.ok) contacts = contacts.filter(c => c.id !== id)
-  }
-
-  function contactIcon(type) {
-    return { website: '🌐', phone: '📞', email: '✉️', other: '🔗' }[type] ?? '🔗'
-  }
-
-  function relDir(r) {
-    return r.from_id === entity?.id
-      ? `→ ${r.to_name} (${r.to_type})`
-      : `← ${r.from_name} (${r.from_type})`
-  }
-
-  // ── Relation editing ───────────────────────────────────────────────────────
-
-  const REL_TYPES = [
-    'dirigeant','gérant','associé','président','trésorier','secrétaire','membre',
-    'élu_cm','élu_cc','candidat','agent_communal','membre_commission',
-    'locataire_commune','bailleur_commune','subventionné','prestataire',
-    'famille_présumé','époux_présumé','enfant_présumé','proche_présumé',
-    'même_adresse','même_lieu_dit',
-  ]
-
-  // ── Budget annexe ──────────────────────────────────────────────────────────
-  let budgetAnnexe    = []
-  let budgetLoading   = false
-  let newBudget       = { year: new Date().getFullYear(), section: 'fonctionnement', sens: 'recette', compte: '', libelle: '', montant: '', source: '' }
-  let addingBudget    = false
-  let budgetError     = ''
+  // ── Budget annexe (lu à part : ce n'est pas dans la fiche) ────────────────
+  let budgetAnnexe  = []
+  let budgetLoading = false
 
   async function loadBudgetAnnexe() {
     if (!entityId) return
@@ -291,203 +171,328 @@
     } catch {} finally { budgetLoading = false }
   }
 
-  async function addBudgetLine() {
-    if (!newBudget.libelle || !newBudget.montant || !newBudget.source) return
-    addingBudget = true; budgetError = ''
+  // ── Enregistrer : un seul bouton, qui envoie tout le brouillon ────────────
+  // Chaque changement part par son propre appel, comme avant ; ce qui réussit
+  // sort du brouillon, ce qui échoue y reste, avec la raison dans le bilan.
+
+  function noter(ok, texte) { bilan = [...bilan, { ok, texte }] }
+
+  async function echec(res) {
+    let d = {}
+    try { d = await res.json() } catch {}
+    const msg = typeof d.detail === 'object' ? d.detail?.message : d.detail
+    return new Error(msg || `${res.status}`)
+  }
+
+  // Un appel du brouillon : { ok, d } ; l'échec est noté au bilan.
+  async function executer(libelle, requete) {
     try {
-      const body = { ...newBudget, entity_id: parseInt(entityId), montant: parseFloat(newBudget.montant) }
-      const res = await authFetch('/atelier/budget-annexe', { method:'POST', body:JSON.stringify(body) })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || `${res.status}`) }
-      const created = await res.json()
-      budgetAnnexe = [...budgetAnnexe, created]
-      newBudget = { year: new Date().getFullYear(), section: 'fonctionnement', sens: 'recette', compte: '', libelle: '', montant: '', source: '' }
-    } catch(e) { budgetError = e.message }
-    finally { addingBudget = false }
-  }
-
-  async function deleteBudgetLine(id) {
-    if (!confirm('Supprimer cette ligne ?')) return
-    const res = await authFetch(`/atelier/budget-annexe/${id}`, { method:'DELETE' })
-    if (res.ok) budgetAnnexe = budgetAnnexe.filter(b => b.id !== id)
-  }
-
-  // ── Coords drag-and-drop ────────────────────────────────────────────────────
-  let coordsSaving = false
-  let coordsMsg    = ''
-
-  async function saveCoords(lat, lng) {
-    coordsSaving = true; coordsMsg = ''
-    try {
-      const res = await authFetch(`/atelier/entities/${entityId}/coords`, {
-        method: 'PATCH',
-        body: JSON.stringify({ lat, lng })
-      })
-      if (!res.ok) throw new Error(`${res.status}`)
-      if (res.status === 202) {
-        coordsMsg = 'Déplacement proposé : cette fiche est publiée, un validateur doit '
-                  + "l'accepter. Le point reviendra à sa place au rechargement."
-        return
-      }
-      form.lat = lat; form.lng = lng
-      coordsMsg = `Position sauvegardée (${lat.toFixed(5)}, ${lng.toFixed(5)})`
-      setTimeout(() => coordsMsg = '', 3000)
-    } catch(e) { coordsMsg = '⚠ Erreur : ' + e.message }
-    finally { coordsSaving = false }
-  }
-
-  // ── Relation editing ──────────────────────────────────────────────────────
-  let editingRelId = null
-  let editRelForm  = {}
-  let relSaving    = false
-  let relError     = ''
-  let newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence: auMoins($currentUser, 'validator') ? 'verified' : 'probable' }
-  let relSearch = ''
-  let relSearchResults = []
-  let relTarget = null
-  let relSearchOpen = false
-  let relAdding = false
-  let _searchTimer = null
-
-  // ── Notes ─────────────────────────────────────────────────────────────────
-  let notes         = []
-  let editingNoteId = null
-  let editNoteText  = ''
-  let editNoteSrc   = ''
-  let editNoteConf  = 'verified'
-  let newNote       = { note: '', source: 'manual', confidence: 'verified' }
-  let noteError     = ''
-  let noteSaving    = false
-
-  async function addNote() {
-    if (!newNote.note.trim()) return
-    noteSaving = true; noteError = ''
-    try {
-      const res = await authFetch(`/atelier/entities/${entityId}/notes`, {
-        method: 'POST', body: JSON.stringify(newNote)
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || res.status) }
-      notes = [await res.json(), ...notes]
-      newNote = { note: '', source: 'manual', confidence: 'verified' }
-    } catch(e) { noteError = e.message }
-    finally { noteSaving = false }
-  }
-
-  function startEditNote(n) {
-    editingNoteId = n.id; editNoteText = n.note; editNoteSrc = n.source; editNoteConf = n.confidence
-  }
-
-  async function saveNote(id) {
-    noteSaving = true; noteError = ''
-    try {
-      const res = await authFetch(`/atelier/notes/${id}`, {
-        method: 'PUT', body: JSON.stringify({ note: editNoteText, source: editNoteSrc, confidence: editNoteConf })
-      })
-      if (!res.ok) throw new Error(res.status)
-      const updated = await res.json()
-      notes = notes.map(n => n.id === id ? updated : n)
-      editingNoteId = null
-    } catch(e) { noteError = e.message }
-    finally { noteSaving = false }
-  }
-
-  async function deleteNote(id) {
-    if (!confirm('Supprimer cette note ?')) return
-    const res = await authFetch(`/atelier/notes/${id}`, { method: 'DELETE' })
-    if (res.ok) notes = notes.filter(n => n.id !== id)
-  }
-
-  // ── Websites ──────────────────────────────────────────────────────────────
-  let websites     = []
-  let newWebUrl    = ''
-  let webError     = ''
-  let webSaving    = false
-
-  async function addWebsite() {
-    if (!newWebUrl.trim()) return
-    webSaving = true; webError = ''
-    try {
-      const res = await authFetch(`/atelier/entities/${entityId}/websites`, {
-        method: 'POST', body: JSON.stringify({ url: newWebUrl.trim(), found_by: 'manual', score: 1.0 })
-      })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail || res.status) }
-      websites = [...websites, await res.json()]
-      newWebUrl = ''
-    } catch(e) { webError = e.message }
-    finally { webSaving = false }
-  }
-
-  async function setWebStatus(id, status) {
-    const res = await authFetch(`/atelier/websites/${id}`, {
-      method: 'PATCH', body: JSON.stringify({ status })
-    })
-    if (res.ok) {
-      const updated = await res.json()
-      websites = websites.map(w => w.id === id ? updated : w)
+      const res = await requete()
+      if (!res.ok) throw await echec(res)
+      const d = res.status === 204 ? null : await res.json().catch(() => null)
+      return { ok: true, d }
+    } catch (e) {
+      noter(false, `${libelle} : ${e.message}`)
+      return { ok: false }
     }
   }
 
-  async function deleteWebsite(id) {
-    if (!confirm('Supprimer cette URL ?')) return
-    const res = await authFetch(`/atelier/websites/${id}`, { method: 'DELETE' })
-    if (res.ok) websites = websites.filter(w => w.id !== id)
-  }
-
-  function startEditRel(r) {
-    editingRelId = r.id
-    editRelForm  = { relation_type:r.relation_type, since:r.since??'', until:r.until??'', source:r.source??'manual', confidence:r.confidence??'verified' }
-    relError = ''
-  }
-  function cancelEditRel() { editingRelId = null; relError = '' }
-
-  async function saveRelation(relId) {
-    relSaving = true; relError = ''
+  async function enregistrer() {
+    if (!aEnregistrer.length || enregistrement) return
+    const annonce = enumerer(aEnregistrer)
+    enregistrement = true; bilan = []; error = ''
     try {
-      const body = {}
-      for (const [k, v] of Object.entries(editRelForm)) body[k] = v === '' ? null : v
-      const res = await authFetch(`/atelier/relations/${relId}`, { method:'PUT', body:JSON.stringify(body) })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail||`${res.status}`) }
-      const updated = await res.json()
-      if (updated.propose) {
-        // Relation publiée, compte contributeur : la ligne garde sa valeur.
-        relError = updated.message
-        return
+      if (brouillon.verdict) await envoyerVerdict()
+      if (modifies.length)   await envoyerChamps()
+      const coords = coordsModifiees
+      if (coords)            await envoyerCoords()
+      await envoyerRelations()
+      await envoyerContacts()
+      await envoyerSites()
+      await envoyerNotes()
+      const budget = brouillon.budget.ajouts.length + brouillon.budget.suppr.length
+      await envoyerBudget()
+      await relire()
+      if (budget) await loadBudgetAnnexe()
+      if (coords) carteVersion++
+      await tick()               // aEnregistrer à jour de ce qui reste
+      if (bilan.some(b => !b.ok)) {
+        noter(false, aEnregistrer.length
+          ? `Reste à enregistrer : ${enumerer(aEnregistrer)}.`
+          : 'Rien n\'est resté en attente.')
+      } else {
+        bilan = [{ ok: true, texte: `Enregistré : ${annonce}.` }, ...bilan]
       }
-      relations = relations.map(r => r.id === relId ? updated : r)
-      editingRelId = null
-    } catch(e) { relError = e.message }
-    finally { relSaving = false }
+    } finally {
+      enregistrement = false
+    }
   }
 
-  async function deleteRelation(relId) {
-    if (!confirm('Supprimer cette relation ?')) return
-    const res = await authFetch(`/atelier/relations/${relId}`, { method:'DELETE' })
-    if (res.ok) relations = relations.filter(r => r.id !== relId)
-  }
-
-  function onRelSearch() {
-    clearTimeout(_searchTimer); relTarget = null
-    if (relSearch.length < 2) { relSearchResults = []; relSearchOpen = false; return }
-    _searchTimer = setTimeout(async () => {
-      const r = await authFetch(`/search?q=${encodeURIComponent(relSearch)}&limit=8`)
-      if (r.ok) { relSearchResults = await r.json(); relSearchOpen = relSearchResults.length > 0 }
-    }, 280)
-  }
-
-  function selectTarget(e) { relTarget = e; relSearch = e.name; relSearchOpen = false }
-
-  async function addRelation() {
-    if (!relTarget) return
-    relAdding = true; relError = ''
+  // Le verdict n'est pas un champ du formulaire : c'est une DÉCISION, posée à
+  // part et lue par la publication (collectors/verdict.py). Il ne touche pas à
+  // la fiche — donc pas à son verrou : un conflit sur les champs ne l'empêche pas.
+  async function envoyerVerdict() {
+    const verdict = brouillon.verdict
+    let res
     try {
-      const body = { direction:newRel.direction, other_entity_id:relTarget.id, relation_type:newRel.relation_type,
-                     since:newRel.since||null, until:newRel.until||null, source:newRel.source||'manual', confidence:newRel.confidence }
-      const res = await authFetch(`/atelier/entities/${entityId}/relations`, { method:'POST', body:JSON.stringify(body) })
-      if (!res.ok) { const d = await res.json(); throw new Error(d.detail||`${res.status}`) }
-      relations = [...relations, await res.json()]
-      newRel = { direction:'from', relation_type:'dirigeant', since:'', until:'', source:'manual', confidence: auMoins($currentUser, 'validator') ? 'verified' : 'probable' }
-      relTarget = null; relSearch = ''
-    } catch(e) { relError = e.message }
-    finally { relAdding = false }
+      res = await authFetch(`/atelier/entities/${entityId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ verdict, statut_lu: entity.verdict || 'jamais_relu' }),
+      })
+    } catch (e) { noter(false, `Verdict : ${e.message}`); return }
+    if (res.ok) {
+      const r = await res.json()
+      entity = { ...entity, verdict: r.verdict, verdict_par: r.reviewed_by,
+                 verdict_le: r.reviewed_at }
+      brouillon.verdict = null
+      noter(true, `Verdict : ${VERDICT[r.verdict].libelle}. ${VERDICT[r.verdict].effet}`)
+    } else if (res.status === 409) {
+      const d = (await res.json()).detail || {}
+      brouillon.verdict = null
+      noter(false, 'Verdict : ' + (d.message || 'Le verdict a changé entre-temps.')
+        + (d.par ? ` Par ${d.par}` : '') + (d.le ? `, le ${heureLocale(d.le)}` : '')
+        + '. Rien n\'a été écrasé.')
+      if (d.actuel) entity = { ...entity, verdict: d.actuel, verdict_par: d.par, verdict_le: d.le }
+    } else {
+      noter(false, `Verdict : l'enregistrement a échoué (${res.status}).`)
+    }
+  }
+
+  async function envoyerChamps() {
+    const champs = [...modifies]
+    const noms = champs.map(c => LIBELLES[c] ?? c).join(', ')
+    // Verrou optimiste : envoyer updated_at lu au chargement. Un champ vidé
+    // part en `null`, que l'API traite comme un effacement.
+    const body = { updated_at: entity.updated_at ?? '' }
+    for (const k of champs) body[k] = form[k] === '' ? null : form[k]
+    let res
+    try {
+      res = await authFetch(`/atelier/entities/${entityId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      })
+    } catch (e) { noter(false, `${noms} : ${e.message}`); return }
+    if (res.status === 409) {
+      const d = await res.json()
+      conflit = typeof d.detail === 'object' && d.detail
+        ? d.detail
+        : { message: 'Cette fiche a été modifiée pendant que vous l\'éditiez.' }
+      noter(false, `${noms} : la fiche a changé entre-temps, voir l'encadré en haut.`)
+      return
+    }
+    if (!res.ok) { noter(false, `${noms} : ${(await echec(res)).message}`); return }
+    const saved = await res.json()
+    const valeurs = src => Object.fromEntries(champs.map(k => [k, src[k]]))
+    // Fiche publiée, compte contributeur : rien n'est écrit, c'est une
+    // PROPOSITION (202). Le formulaire revient à ce que la fiche vaut
+    // vraiment — afficher la valeur proposée ferait croire qu'elle est posée.
+    if (saved.propose) {
+      const proposes = (saved.proposes || []).map(c => LIBELLES[c] ?? c).join(', ')
+      form = { ...form, ...valeurs(initial) }
+      noter(true, `Proposition envoyée (${proposes}). Cette fiche est publiée : un `
+                + `validateur doit l'accepter avant que ce soit appliqué.`)
+      return
+    }
+    // Mettre à jour updated_at local pour le prochain envoi
+    if (saved.updated_at) entity = { ...entity, updated_at: saved.updated_at }
+    initial = { ...initial, ...valeurs(form) }
+  }
+
+  async function envoyerCoords() {
+    const lat = +form.lat, lng = +form.lng
+    const { ok, d } = await executer('Position sur la carte', () =>
+      authFetch(`/atelier/entities/${entityId}/coords`, {
+        method: 'PATCH',
+        body: JSON.stringify({ lat, lng })
+      }))
+    if (!ok) return
+    if (d?.propose) {
+      form = { ...form, lat: initial.lat, lng: initial.lng }
+      noter(true, 'Déplacement proposé : cette fiche est publiée, un validateur doit '
+                + "l'accepter. Le point reste à sa place d'ici là.")
+      return
+    }
+    initial = { ...initial, lat, lng }
+  }
+
+  async function envoyerRelations() {
+    const b = brouillon.relations
+    const reste = { ajouts: [], modifs: {}, suppr: [] }
+    const nom = id => `Relation « ${relations.find(r => r.id === +id)?.relation_type ?? id} »`
+    for (const id of b.suppr) {
+      const { ok } = await executer(`${nom(id)} (suppression)`, () =>
+        authFetch(`/atelier/relations/${id}`, { method:'DELETE' }))
+      if (ok) relations = relations.filter(r => r.id !== id)
+      else reste.suppr.push(id)
+    }
+    for (const [id, champs] of Object.entries(b.modifs)) {
+      const body = {}
+      for (const [k, v] of Object.entries(champs)) body[k] = v === '' ? null : v
+      const { ok, d } = await executer(nom(id), () =>
+        authFetch(`/atelier/relations/${id}`, { method:'PUT', body:JSON.stringify(body) }))
+      if (!ok) { reste.modifs[id] = champs; continue }
+      // Relation publiée, compte contributeur : la ligne garde sa valeur.
+      if (d.propose) noter(true, d.message)
+      else relations = relations.map(r => r.id === +id ? d : r)
+    }
+    for (const a of b.ajouts) {
+      const c = a.corps
+      const body = { direction:c.direction, other_entity_id:a.cible.id, relation_type:c.relation_type,
+                     since:c.since||null, until:c.until||null, source:c.source||'manual', confidence:c.confidence }
+      const { ok, d } = await executer(`Relation « ${c.relation_type} » avec ${a.cible.name}`, () =>
+        authFetch(`/atelier/entities/${entityId}/relations`, { method:'POST', body:JSON.stringify(body) }))
+      if (ok) relations = [...relations, d]
+      else reste.ajouts.push(a)
+    }
+    brouillon.relations = reste
+  }
+
+  async function envoyerContacts() {
+    const b = brouillon.contacts
+    const reste = { ajouts: [], suppr: [] }
+    for (const id of b.suppr) {
+      const c = contacts.find(x => x.id === id)
+      const { ok } = await executer(`Contact ${c?.value ?? id} (suppression)`, () =>
+        authFetch(`/atelier/contacts/${id}`, { method: 'DELETE' }))
+      if (ok) contacts = contacts.filter(x => x.id !== id)
+      else reste.suppr.push(id)
+    }
+    for (const a of b.ajouts) {
+      const { ok, d } = await executer(`Contact ${a.corps.value}`, () =>
+        authFetch(`/atelier/entities/${entityId}/contacts`, {
+          method: 'POST',
+          body: JSON.stringify(a.corps),
+        }))
+      if (ok) contacts = [...contacts, d]
+      else reste.ajouts.push(a)
+    }
+    brouillon.contacts = reste
+  }
+
+  async function envoyerSites() {
+    const b = brouillon.sites
+    const reste = { ajouts: [], statuts: {}, suppr: [] }
+    const url = id => websites.find(w => w.id === +id)?.url ?? id
+    for (const id of b.suppr) {
+      const { ok } = await executer(`Site ${url(id)} (suppression)`, () =>
+        authFetch(`/atelier/websites/${id}`, { method: 'DELETE' }))
+      if (ok) websites = websites.filter(w => w.id !== id)
+      else reste.suppr.push(id)
+    }
+    for (const [id, status] of Object.entries(b.statuts)) {
+      const { ok, d } = await executer(`Site ${url(id)}`, () =>
+        authFetch(`/atelier/websites/${id}`, {
+          method: 'PATCH', body: JSON.stringify({ status })
+        }))
+      if (ok) websites = websites.map(w => w.id === +id ? d : w)
+      else reste.statuts[id] = status
+    }
+    for (const a of b.ajouts) {
+      const { ok, d } = await executer(`Site ${a.corps.url}`, () =>
+        authFetch(`/atelier/entities/${entityId}/websites`, {
+          method: 'POST', body: JSON.stringify({ url: a.corps.url, found_by: 'manual', score: 1.0 })
+        }))
+      if (ok) websites = [...websites, d]
+      else reste.ajouts.push(a)
+    }
+    brouillon.sites = reste
+  }
+
+  async function envoyerNotes() {
+    const b = brouillon.notes
+    const reste = { ajouts: [], modifs: {}, suppr: [] }
+    for (const id of b.suppr) {
+      const { ok } = await executer('Note (suppression)', () =>
+        authFetch(`/atelier/notes/${id}`, { method: 'DELETE' }))
+      if (ok) notes = notes.filter(n => n.id !== id)
+      else reste.suppr.push(id)
+    }
+    for (const [id, n] of Object.entries(b.modifs)) {
+      const { ok, d } = await executer('Note modifiée', () =>
+        authFetch(`/atelier/notes/${id}`, {
+          method: 'PUT', body: JSON.stringify({ note: n.note, source: n.source, confidence: n.confidence })
+        }))
+      if (ok) notes = notes.map(x => x.id === +id ? d : x)
+      else reste.modifs[id] = n
+    }
+    for (const a of b.ajouts) {
+      const { ok, d } = await executer('Nouvelle note', () =>
+        authFetch(`/atelier/entities/${entityId}/notes`, {
+          method: 'POST', body: JSON.stringify(a.corps)
+        }))
+      if (ok) notes = [d, ...notes]
+      else reste.ajouts.push(a)
+    }
+    brouillon.notes = reste
+  }
+
+  async function envoyerBudget() {
+    const b = brouillon.budget
+    const reste = { ajouts: [], suppr: [] }
+    for (const id of b.suppr) {
+      const { ok } = await executer('Ligne de budget (suppression)', () =>
+        authFetch(`/atelier/budget-annexe/${id}`, { method:'DELETE' }))
+      if (ok) budgetAnnexe = budgetAnnexe.filter(x => x.id !== id)
+      else reste.suppr.push(id)
+    }
+    for (const a of b.ajouts) {
+      const body = { ...a.corps, entity_id: parseInt(entityId), montant: parseFloat(a.corps.montant) }
+      const { ok, d } = await executer(`Ligne de budget « ${a.corps.libelle} »`, () =>
+        authFetch('/atelier/budget-annexe', { method:'POST', body:JSON.stringify(body) }))
+      if (ok) budgetAnnexe = [...budgetAnnexe, d]
+      else reste.ajouts.push(a)
+    }
+    brouillon.budget = reste
+  }
+
+  // Après l'envoi : relire la fiche (historique, updated_at, listes). Un champ
+  // qui n'est pas passé garde la valeur tapée. Pendant un conflit, la fiche
+  // n'est pas relue : c'est l'encadré qui décide de la suite.
+  async function relire() {
+    const res = await authFetch(`/atelier/entities/${entityId}`)
+    if (!res.ok) return
+    const frais = await res.json()
+    listesDepuis(frais)
+    if (conflit) return
+    const aGarder = champsAGarder()
+    entity = frais
+    initial = formDepuis(frais)
+    form = { ...initial, ...aGarder }
+  }
+
+  function champsAGarder() {
+    const cles = [...modifies, ...(coordsModifiees ? ['lat', 'lng'] : [])]
+    return Object.fromEntries(cles.map(k => [k, form[k]]))
+  }
+
+  function annulerTout() {
+    if (!confirm(`Annuler sans enregistrer : ${enumerer(aEnregistrer)} ?`)) return
+    brouillon = brouillonVide()
+    form = { ...initial }
+    bilan = []
+    carteVersion++
+  }
+
+  // Après un conflit : relire la fiche à jour SANS perdre ce que l'éditeur a
+  // tapé. Les champs qu'il n'a pas touchés prennent la version de l'autre ; les
+  // siens restent, et rien n'est enregistré tant qu'il ne l'a pas relu.
+  async function reprendre() {
+    error = ''
+    const res = await authFetch(`/atelier/entities/${entityId}`)
+    if (!res.ok) { error = `Relecture impossible (${res.status})`; return }
+    const frais = await res.json()
+    const aGarder = champsAGarder()
+    entity = frais
+    initial = formDepuis(frais)
+    form = { ...initial, ...aGarder }
+    audit = [...(frais.audit ?? [])]
+    conflit = null
+    bilan = [{ ok: true, texte: 'Version à jour chargée — vos modifications sont gardées : relisez, puis enregistrez.' }]
+  }
+
+  function abandonner() {
+    initial = { ...form }        // rien à protéger : on repart de la base
+    load()
   }
 </script>
 
@@ -508,38 +513,11 @@
       </div>
     {/if}
 
-    <div class="topbar-actions">
-      {#if saveMsg}<span class="save-msg">{saveMsg}</span>{/if}
-      {#if error}<span class="save-error">{error}</span>{/if}
-      <button class="btn-save" on:click={save} disabled={saving || !modifies.length || !!conflit}>
-        {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-      </button>
-    </div>
+    {#if error && entity}<span class="save-error">{error}</span>{/if}
   </div>
 
   {#if conflit}
-    <div class="conflit" role="alert">
-      <strong>⚠ {conflit.message}</strong>
-      <p>
-        {#if conflit.par}Par <b>{conflit.par}</b>{#if conflit.le}, le {heureLocale(conflit.le)}{/if}.{:else if conflit.le}Le {heureLocale(conflit.le)}.{/if}
-        Rien de ce que vous avez tapé n'est perdu : c'est toujours dans le formulaire.
-      </p>
-      {#if conflit.champs?.length}
-        <ul>
-          {#each conflit.champs as c}
-            <li>
-              {LIBELLES[c.champ] ?? c.champ} : « {c.avant ?? '—'} » → « {c.apres ?? '—'} »
-              {#if c.par && c.par !== conflit.par}<span class="muted">({c.par})</span>{/if}
-              {#if modifies.includes(c.champ)}<em> — vous l'avez modifié aussi : c'est votre valeur qui sera gardée</em>{/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-      <div class="conflit-actions">
-        <button class="btn-save" on:click={reprendre}>Charger la version à jour en gardant mes modifications</button>
-        <button class="btn-secondaire" on:click={abandonner}>Abandonner mes modifications</button>
-      </div>
-    </div>
+    <Conflit {conflit} {modifies} on:reprendre={reprendre} on:abandonner={abandonner} />
   {/if}
 
   {#if loading}
@@ -547,554 +525,44 @@
   {:else if error && !entity}
     <div class="center-msg error">{error}</div>
   {:else if entity}
-    <div class="editor-body">
-
-      <!-- Section : Identité -->
-      <section class="card">
-        <h2>Identité</h2>
-        <div class="grid2">
-          <label>
-            Nom complet
-            <input bind:value={form.name} on:input={markDirty} />
-          </label>
-          <label>
-            Nom court / abrégé
-            <input bind:value={form.short_name} on:input={markDirty} placeholder="optionnel" />
-          </label>
-          <label>
-            Type
-            <select bind:value={form.type} on:change={markDirty}>
-              {#each ENTITY_TYPES as t}<option value={t}>{t}</option>{/each}
-            </select>
-          </label>
-          <label>
-            Responsable
-            <input bind:value={form.responsible} on:input={markDirty}
-                   placeholder="Nom du dirigeant / président" />
-          </label>
-          <label>
-            Fiabilité de la source
-            <select bind:value={form.confidence} on:change={markDirty} disabled={!tranche}
-                    title={tranche ? 'Ce que la machine sait de la fiche — pas un jugement humain'
-                                   : 'Réservé au validateur'}>
-              {#each CONFIDENCES as c}
-                <option value={c} title={FIABILITE_AIDE[c]}>{FIABILITE[c]} — {FIABILITE_AIDE[c]}</option>
-              {/each}
-            </select>
-          </label>
-          <div class="axe">
-            <span class="axe-titre">Origine</span>
-            <span class="axe-valeur" title={ORIGINE_AIDE[entity.origine] ?? "Aucune preuve en base de la façon dont cette fiche est entrée."}>
-              {ORIGINES[entity.origine] ?? 'Non établie'}
-            </span>
-          </div>
-          <div class="axe col2">
-            <span class="axe-titre">Verdict de l'atelier</span>
-            <span class="verdict v-{entity.verdict}">{VERDICT[entity.verdict]?.libelle ?? entity.verdict}</span>
-            {#if entity.verdict_par}
-              <span class="muted">— {entity.verdict_par}, {heureLocale(entity.verdict_le)}</span>
-            {/if}
-            <p class="axe-effet">{VERDICT[entity.verdict]?.effet ?? ''}</p>
-            {#if entity.verdict_note}<p class="axe-effet">« {entity.verdict_note} »</p>{/if}
-            {#if tranche}
-              <div class="verdict-gestes">
-                {#each VERDICTS.filter(v => v.cle !== entity.verdict) as v}
-                  <button type="button" class="vg vg-{v.cle}" title={v.effet}
-                          on:click={() => poserVerdict(v.cle)}>{v.geste}</button>
-                {/each}
-              </div>
-            {:else}
-              <p class="axe-effet">Retenir ou écarter revient au validateur.</p>
-            {/if}
-            {#if verdictMsg}<p class="verdict-msg" role="status">{verdictMsg}</p>{/if}
-          </div>
-        </div>
-      </section>
-
-      <!-- Section : Localisation -->
-      <section class="card">
-        <h2>Localisation</h2>
-        <div class="grid2">
-          <label class="col2">
-            Adresse
-            <input bind:value={form.address} on:input={markDirty} />
-          </label>
-          <label>
-            Latitude
-            <input type="number" step="0.000001" bind:value={form.lat} on:input={markDirty}
-                   placeholder="44.04..." />
-          </label>
-          <label>
-            Longitude
-            <input type="number" step="0.000001" bind:value={form.lng} on:input={markDirty}
-                   placeholder="3.86..." />
-          </label>
-        </div>
-        {#if form.lat && form.lng}
-          <div class="coords-actions">
-            <span class="coords-current">{(+form.lat).toFixed(5)}, {(+form.lng).toFixed(5)}</span>
-            <a class="coords-osm-link" target="_blank" rel="noopener"
-               href={`https://www.openstreetmap.org/?mlat=${form.lat}&mlon=${form.lng}#map=17/${form.lat}/${form.lng}`}>
-              Voir sur OSM ↗
-            </a>
-          </div>
-        {:else}
-          <p class="muted coords-hint">Aucune coordonnée. Saisir lat/lng ci-dessus ou cliquer sur la carte.</p>
-        {/if}
-        {#if coordsMsg}<p class="coords-msg" class:err={coordsMsg.startsWith('⚠')}>{coordsMsg}</p>{/if}
-        <MapEdit
-          lat={form.lat ? +form.lat : null}
-          lng={form.lng ? +form.lng : null}
-          entityName={entity?.name}
-          on:coords={e => saveCoords(e.detail.lat, e.detail.lng)}
-        />
-      </section>
-
-      <!-- Section : Budget annexe -->
-      <section class="card">
-        <h2>Budget annexe</h2>
-        {#if budgetLoading}
-          <p class="muted">Chargement…</p>
-        {:else if budgetAnnexe.length > 0}
-          <table class="budget-table">
-            <thead>
-              <tr><th>Année</th><th>Section</th><th>Sens</th><th>Compte</th><th>Libellé</th><th class="num">Montant (€)</th><th>Source</th><th></th></tr>
-            </thead>
-            <tbody>
-              {#each budgetAnnexe as b (b.id)}
-                <tr class="budget-row sens-{b.sens}">
-                  <td>{b.year}</td>
-                  <td><span class="section-badge sec-{b.section}">{b.section}</span></td>
-                  <td><span class="sens-badge sens-{b.sens}">{b.sens}</span></td>
-                  <td class="muted">{b.compte ?? '—'}</td>
-                  <td>{b.libelle}</td>
-                  <td class="num" class:neg={b.montant < 0}>{b.montant.toLocaleString('fr-FR', {minimumFractionDigits:2})} €</td>
-                  <td class="muted small">{b.source}</td>
-                  <td><button class="icon-del" on:click={() => deleteBudgetLine(b.id)}>✕</button></td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {:else}
-          <p class="muted">Aucune ligne de budget annexe.</p>
-        {/if}
-
-        {#if budgetError}<p class="rel-error">{budgetError}</p>{/if}
-
-        <details class="add-budget">
-          <summary>+ Ajouter une ligne</summary>
-          <div class="budget-add-grid">
-            <label>Année<input type="number" bind:value={newBudget.year} min="2015" max="2035" /></label>
-            <label>Section
-              <select bind:value={newBudget.section}>
-                <option value="fonctionnement">fonctionnement</option>
-                <option value="investissement">investissement</option>
-                <option value="dette">dette</option>
-              </select>
-            </label>
-            <label>Sens
-              <select bind:value={newBudget.sens}>
-                <option value="recette">recette</option>
-                <option value="depense">dépense</option>
-                <option value="solde">solde</option>
-              </select>
-            </label>
-            <label>Compte M57<input bind:value={newBudget.compte} placeholder="64, 74…" /></label>
-            <label class="col2">Libellé<input bind:value={newBudget.libelle} placeholder="Charges de personnel…" /></label>
-            <label>Montant (€)<input type="number" step="0.01" bind:value={newBudget.montant} placeholder="44000.00" /></label>
-            <label class="col2">Source<input bind:value={newBudget.source} placeholder="CM 27/04/2026, DGFiP…" /></label>
-            <div class="col2">
-              <button class="btn-add" on:click={addBudgetLine} disabled={addingBudget || !newBudget.libelle || !newBudget.montant}>
-                {addingBudget ? 'Ajout…' : '+ Ajouter'}
-              </button>
-            </div>
-          </div>
-        </details>
-      </section>
-
-      <!-- Section : Contacts -->
-      <section class="card">
-        <h2>Contacts</h2>
-        {#if contacts.length > 0}
-          <ul class="contact-list">
-            {#each contacts as c (c.id)}
-              <li>
-                <span class="contact-icon">{contactIcon(c.type)}</span>
-                <span class="contact-type">{c.type}</span>
-                {#if c.type === 'website'}
-                  <a href={lienSur(c.value)} target="_blank" rel="noopener" class="contact-value">{c.value}</a>
-                {:else}
-                  <span class="contact-value">{c.value}</span>
-                {/if}
-                {#if c.label}<span class="contact-label">{c.label}</span>{/if}
-                <button class="contact-del" on:click={() => removeContact(c.id)}>✕</button>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="muted">Aucun contact renseigné.</p>
-        {/if}
-
-        <div class="add-contact">
-          <select bind:value={newContact.type}>
-            {#each CONTACT_TYPES as t}<option value={t}>{t}</option>{/each}
-          </select>
-          <input bind:value={newContact.value} placeholder="Valeur (URL, numéro, email…)" />
-          <input bind:value={newContact.label} placeholder="Étiquette (optionnel)" class="label-input" />
-          <button class="btn-add" on:click={addContact} disabled={addingContact || !newContact.value.trim()}>
-            {addingContact ? '…' : '+ Ajouter'}
-          </button>
-        </div>
-      </section>
-
-      <!-- Section : Champs type-spécifiques -->
-      {#if form.type === 'person'}
-        <section class="card">
-          <h2>Personne</h2>
-          <div class="grid2">
-            <label>Prénom<input bind:value={form.firstname} on:input={markDirty} /></label>
-            <label>Nom de famille<input bind:value={form.lastname} on:input={markDirty} /></label>
-            <label>Année de naissance<input type="number" bind:value={form.birth_year} on:input={markDirty} placeholder="1970" /></label>
-            <label>Mois de naissance<input type="number" min="1" max="12" bind:value={form.birth_month} on:input={markDirty} /></label>
-            <label>
-              Genre
-              <select bind:value={form.gender} on:change={markDirty}>
-                <option value="">—</option>
-                <option value="M">Masculin</option>
-                <option value="F">Féminin</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-      {:else if form.type === 'business'}
-        <section class="card">
-          <h2>Entreprise</h2>
-          <div class="grid2">
-            <label>Code NAF<input bind:value={form.naf_code} on:input={markDirty} placeholder="ex: 6820B" /></label>
-            <label>Libellé NAF<input bind:value={form.naf_label} on:input={markDirty} /></label>
-            <label>Forme juridique<input bind:value={form.legal_form} on:input={markDirty} /></label>
-            <label>
-              Statut
-              <select bind:value={form.biz_status} on:change={markDirty}>
-                <option value="">—</option>
-                <option value="A">Actif (A)</option>
-                <option value="F">Fermé (F)</option>
-              </select>
-            </label>
-            <label>Capital (€)<input type="number" bind:value={form.capital} on:input={markDirty} /></label>
-            <label>Tranche effectif<input bind:value={form.employees_range} on:input={markDirty} placeholder="ex: 1-2" /></label>
-            <label>Date création<input bind:value={form.biz_creation} on:input={markDirty} placeholder="AAAA-MM-JJ" /></label>
-            <label>Date fermeture<input bind:value={form.closing_date} on:input={markDirty} placeholder="AAAA-MM-JJ" /></label>
-          </div>
-        </section>
-
-      {:else if form.type === 'association'}
-        <section class="card">
-          <h2>Association</h2>
-          <div class="grid2">
-            <label>N° RNA<input bind:value={form.rna_id} on:input={markDirty} placeholder="W30..." /></label>
-            <label>
-              Statut
-              <select bind:value={form.asso_status} on:change={markDirty}>
-                <option value="">—</option>
-                <option value="A">Active</option>
-                <option value="D">Dissoute</option>
-              </select>
-            </label>
-            <label class="col2">
-              Objet social
-              <textarea bind:value={form.asso_object} on:input={markDirty} rows="3"></textarea>
-            </label>
-            <label>Date création<input bind:value={form.asso_creation} on:input={markDirty} placeholder="AAAA-MM-JJ" /></label>
-            <label>Date dissolution<input bind:value={form.dissolution_date} on:input={markDirty} placeholder="AAAA-MM-JJ" /></label>
-          </div>
-        </section>
-
-      {:else if form.type === 'place'}
-        <section class="card">
-          <h2>Lieu</h2>
-          <div class="grid2">
-            <label>Catégorie OSM<input bind:value={form.osm_category} on:input={markDirty} placeholder="ex: amenity" /></label>
-            <label>Valeur OSM<input bind:value={form.osm_value} on:input={markDirty} placeholder="ex: restaurant" /></label>
-          </div>
-        </section>
-
-      {:else if form.type === 'service'}
-        <section class="card">
-          <h2>Service public</h2>
-          <div class="grid2">
-            <label>Catégorie<input bind:value={form.svc_category} on:input={markDirty} placeholder="santé, éducation…" /></label>
-            <label>Opérateur<input bind:value={form.operator} on:input={markDirty} /></label>
-            <label class="col2">Horaires<input bind:value={form.opening_hours} on:input={markDirty} placeholder="Mo-Fr 09:00-17:00" /></label>
-          </div>
-        </section>
-      {/if}
-
-      <!-- Section : Relations -->
-      <section class="card">
-        <h2>Relations <span class="count-badge">{relations.length}</span></h2>
-
-        {#if relError}
-          <p class="rel-error">{relError}</p>
-        {/if}
-
-        {#if relations.length === 0}
-          <p class="muted">Aucune relation connue.</p>
-        {:else}
-          <ul class="relation-list">
-            {#each relations as r (r.id)}
-              <li class="rel-item" class:editing={editingRelId === r.id}>
-                {#if editingRelId === r.id}
-                  <div class="rel-edit-form">
-                    <div class="rel-edit-row">
-                      <label>Type
-                        <select bind:value={editRelForm.relation_type}>
-                          {#each REL_TYPES as t}<option value={t}>{t}</option>{/each}
-                        </select>
-                      </label>
-                      <label>Depuis<input bind:value={editRelForm.since} placeholder="AAAA-MM-JJ" /></label>
-                      <label>Jusqu'au<input bind:value={editRelForm.until} placeholder="AAAA-MM-JJ" /></label>
-                      <label>Source<input bind:value={editRelForm.source} /></label>
-                      <label>Qualité
-                        <select bind:value={editRelForm.confidence}>
-                          <option value="verified">verified</option>
-                          <option value="probable">probable</option>
-                          <option value="hypothesis">hypothesis</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div class="rel-edit-actions">
-                      <button class="btn-rel-save" on:click={() => saveRelation(r.id)} disabled={relSaving}>
-                        {relSaving ? '…' : '✓ Sauvegarder'}
-                      </button>
-                      <button class="btn-rel-cancel" on:click={cancelEditRel}>Annuler</button>
-                    </div>
-                  </div>
-                {:else}
-                  <span class="rel-type">{r.relation_type}</span>
-                  <span class="rel-dir">{relDir(r)}</span>
-                  {#if r.since || r.until}
-                    <span class="rel-dates">{r.since ?? '?'}{r.until ? ' → '+r.until : ''}</span>
-                  {/if}
-                  <span class="rel-src">{r.source}</span>
-                  <span class="conf-dot" class:verified={r.confidence === 'verified'} title={r.confidence}></span>
-                  <div class="rel-row-actions">
-                    <button class="rel-btn rel-btn-edit" on:click={() => startEditRel(r)} title="Modifier">✏</button>
-                    <button class="rel-btn rel-btn-del"  on:click={() => deleteRelation(r.id)} title="Supprimer">✕</button>
-                  </div>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-
-        <!-- Ajouter une relation -->
-        <div class="add-rel">
-          <h3>Ajouter une relation</h3>
-          <div class="add-rel-grid">
-
-            <label class="col2">
-              Direction
-              <div class="dir-toggle">
-                <button class="dir-btn" class:active={newRel.direction==='from'} on:click={() => newRel.direction='from'}>
-                  Cette entité → cible
-                </button>
-                <button class="dir-btn" class:active={newRel.direction==='to'} on:click={() => newRel.direction='to'}>
-                  Cible → cette entité
-                </button>
-              </div>
-            </label>
-
-            <label class="col2 search-wrap">
-              Entité cible
-              <input bind:value={relSearch} on:input={onRelSearch}
-                     on:blur={() => setTimeout(() => relSearchOpen=false, 180)}
-                     placeholder="Rechercher par nom…"
-                     class:has-target={relTarget !== null} />
-              {#if relSearchOpen && relSearchResults.length > 0}
-                <ul class="search-dropdown">
-                  {#each relSearchResults as e (e.id)}
-                    <li on:mousedown={() => selectTarget(e)}>
-                      <span class="sd-type sd-{e.type}">{e.type}</span>
-                      <span class="sd-name">{e.name}</span>
-                      {#if e.address}<span class="sd-addr">{e.address}</span>{/if}
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </label>
-
-            <label>Type de relation
-              <select bind:value={newRel.relation_type}>
-                {#each REL_TYPES as t}<option value={t}>{t}</option>{/each}
-              </select>
-            </label>
-            <label>Qualité
-              <select bind:value={newRel.confidence}>
-                <option value="verified">verified</option>
-                <option value="probable">probable</option>
-                <option value="hypothesis">hypothesis</option>
-              </select>
-            </label>
-            <label>Depuis<input bind:value={newRel.since} placeholder="AAAA-MM-JJ" /></label>
-            <label>Jusqu'au<input bind:value={newRel.until} placeholder="AAAA-MM-JJ" /></label>
-            <label class="col2">Source<input bind:value={newRel.source} placeholder="manual, sirene…" /></label>
-          </div>
-
-          <button class="btn-add-rel" on:click={addRelation} disabled={relAdding || !relTarget}>
-            {relAdding ? 'Ajout…' : '+ Ajouter la relation'}
-          </button>
-        </div>
-      </section>
-
-      <!-- Section : Websites -->
-      <section class="card">
-        <h2>Sites web <span class="count-badge">{websites.length}</span></h2>
-        {#if webError}<p class="rel-error">{webError}</p>{/if}
-
-        {#if websites.length > 0}
-          <ul class="web-list">
-            {#each websites as w (w.id)}
-              <li class="web-item" class:validated={w.status==='validated'} class:rejected={w.status==='rejected'}>
-                <span class="web-status-dot web-{w.status}" title={w.status}></span>
-                <a href={lienSur(w.url)} target="_blank" rel="noopener" class="web-url">{w.url}</a>
-                <span class="web-meta">{w.found_by} {w.score != null ? `(${w.score.toFixed(2)})` : ''}</span>
-                <div class="web-actions">
-                  {#if tranche}
-                    {#if w.status !== 'validated'}
-                      <button class="web-btn web-validate" on:click={() => setWebStatus(w.id,'validated')} title="Valider">✓</button>
-                    {/if}
-                    {#if w.status !== 'rejected'}
-                      <button class="web-btn web-reject"   on:click={() => setWebStatus(w.id,'rejected')}  title="Rejeter">✕</button>
-                    {/if}
-                    <button class="web-btn web-del" on:click={() => deleteWebsite(w.id)} title="Supprimer">🗑</button>
-                  {/if}
-                </div>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="muted">Aucune URL connue.</p>
-        {/if}
-
-        <div class="add-web">
-          <input bind:value={newWebUrl} placeholder="https://…" class="web-input" />
-          <button class="btn-add-small" on:click={addWebsite} disabled={webSaving || !newWebUrl.trim()}>
-            {webSaving ? '…' : '+ Ajouter'}
-          </button>
-        </div>
-      </section>
-
-      <!-- Section : Notes -->
-      <section class="card">
-        <h2>Notes <span class="count-badge">{notes.length}</span></h2>
-        {#if noteError}<p class="rel-error">{noteError}</p>{/if}
-
-        {#if notes.length > 0}
-          <ul class="note-list">
-            {#each notes as n (n.id)}
-              <li class="note-item">
-                {#if editingNoteId === n.id}
-                  <div class="note-edit">
-                    <textarea bind:value={editNoteText} rows="3"></textarea>
-                    <div class="note-edit-meta">
-                      <input bind:value={editNoteSrc} placeholder="source" />
-                      <select bind:value={editNoteConf}>
-                        <option value="verified">verified</option>
-                        <option value="probable">probable</option>
-                        <option value="hypothesis">hypothesis</option>
-                        <option value="unverified">unverified</option>
-                      </select>
-                    </div>
-                    <div class="rel-edit-actions">
-                      <button class="btn-rel-save" on:click={() => saveNote(n.id)} disabled={noteSaving}>✓ Sauvegarder</button>
-                      <button class="btn-rel-cancel" on:click={() => editingNoteId=null}>Annuler</button>
-                    </div>
-                  </div>
-                {:else}
-                  <div class="note-body">
-                    <span class="note-date">{n.date ?? ''}</span>
-                    <span class="conf-dot" class:verified={n.confidence==='verified'} title={n.confidence}></span>
-                    <span class="note-src muted">{n.source}</span>
-                    <p class="note-text">{n.note}</p>
-                  </div>
-                  <div class="note-actions">
-                    <button class="rel-btn rel-btn-edit" on:click={() => startEditNote(n)} title="Modifier">✏</button>
-                    <button class="rel-btn rel-btn-del"  on:click={() => deleteNote(n.id)} title="Supprimer">✕</button>
-                  </div>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="muted">Aucune note.</p>
-        {/if}
-
-        <div class="add-note">
-          <textarea bind:value={newNote.note} rows="2" placeholder="Nouvelle note…"></textarea>
-          <div class="add-note-meta">
-            <input bind:value={newNote.source} placeholder="source" />
-            <select bind:value={newNote.confidence}>
-              <option value="verified">verified</option>
-              <option value="probable">probable</option>
-              <option value="hypothesis">hypothesis</option>
-              <option value="unverified">unverified</option>
-            </select>
-            <button class="btn-add-small" on:click={addNote} disabled={noteSaving || !newNote.note.trim()}>
-              {noteSaving ? '…' : '+ Ajouter'}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section : Historique -->
-      <section class="card">
-        <h2>Historique des modifications</h2>
-        {#if audit.length === 0}
-          <p class="muted">Aucune modification enregistrée.</p>
-        {:else}
-          <table class="audit-table">
-            <thead>
-              <tr><th>Date</th><th>Utilisateur</th><th>Champ</th><th>Avant</th><th>Après</th></tr>
-            </thead>
-            <tbody>
-              {#each audit as a}
-                <tr>
-                  <td>{heureLocale(a.at)}</td>
-                  <td>{a.user_email ?? '—'}</td>
-                  <td>{champLisible(a.field) ?? a.action}</td>
-                  <td class="old-val">{valeurLisible(a.field, a.old_value) ?? '—'}</td>
-                  <td class="new-val">{valeurLisible(a.field, a.new_value) ?? '—'}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </section>
-
+    <div class="onglets" role="tablist">
+      {#each ONGLETS as o}
+        <button role="tab" id="onglet-{o.cle}" aria-controls="panneau-{o.cle}"
+                aria-selected={onglet === o.cle} class:actif={onglet === o.cle}
+                on:click={() => ouvrir(o.cle)}>
+          {o.titre}
+          {#if enAttente[o.cle]}
+            <span class="pastille" title="Changements à enregistrer dans cet onglet">{enAttente[o.cle]}</span>
+          {/if}
+        </button>
+      {/each}
     </div>
+
+    <div class="editor-body" bind:this={corps} class:occupe={enregistrement} aria-busy={enregistrement}
+         role="tabpanel" id="panneau-{onglet}" aria-labelledby="onglet-{onglet}">
+      {#if onglet === 'essentiel'}
+        <Identite bind:form bind:verdict={brouillon.verdict} {entity} {modifies} {tranche} />
+        <ChampsDuType bind:form {modifies} />
+        <Adresse bind:form {modifies} />
+        <Carte bind:form entityName={entity.name} modifiee={coordsModifiees} version={carteVersion} />
+        <Budget lignes={budgetAnnexe} chargement={budgetLoading} bind:brouillon={brouillon.budget} />
+      {:else if onglet === 'liens'}
+        <Relations {relations} entityId={entity.id} bind:brouillon={brouillon.relations} />
+        <Contacts {contacts} bind:brouillon={brouillon.contacts} />
+        <Sites sites={websites} {tranche} bind:brouillon={brouillon.sites} />
+      {:else}
+        <Notes {notes} bind:brouillon={brouillon.notes} />
+        <Historique {audit} />
+      {/if}
+    </div>
+
+    <BarreEnregistrement resume={aEnregistrer} {enregistrement} {bilan}
+                         bloque={!!conflit}
+                         on:enregistrer={enregistrer} on:annuler={annulerTout} />
   {/if}
 </div>
 
 <style>
-  /* Les trois axes d'une fiche (lib/axes.js) : origine, fiabilité, verdict. */
-  .axe { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem;
-         font-size: .82rem; }
-  .axe-titre { color: #94a3b8; width: 100%; }
-  .axe-valeur { color: #e2e8f0; }
-  .axe-effet { width: 100%; margin: .1rem 0; color: #94a3b8; font-size: .78rem; }
-  .verdict { padding: .1rem .5rem; border-radius: 4px; font-weight: 600; background: #1e293b; color: #cbd5e1; }
-  .v-retenu { background: #052e16; color: #4ade80; }
-  .v-a_revoir { background: #1e3a5f; color: #93c5fd; }
-  .v-ecarte { background: #450a0a; color: #f87171; }
-  .verdict-gestes { display: flex; gap: .35rem; flex-wrap: wrap; width: 100%; margin-top: .2rem; }
-  .vg { border: 1px solid #334155; border-radius: 4px; padding: .25rem .6rem;
-        font-size: .78rem; cursor: pointer; background: #1e293b; color: #e2e8f0; }
-  .vg-retenu { color: #4ade80; } .vg-a_revoir { color: #93c5fd; } .vg-ecarte { color: #f87171; }
-  .vg:hover { border-color: #64748b; }
-  .verdict-msg { width: 100%; margin: .2rem 0 0; color: #fbbf24; font-size: .78rem; }
-
   .editor-page {
     display: flex;
     flex-direction: column;
@@ -1132,127 +600,7 @@
 
   .entity-id  { font-size: .72rem; color: #94a3b8; }
   .entity-name { font-weight: 600; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .topbar-actions { display: flex; align-items: center; gap: .5rem; margin-left: auto; }
-
-  .save-msg   { font-size: .78rem; color: #4ade80; }
   .save-error { font-size: .78rem; color: #f87171; }
-
-  .btn-save {
-    padding: .38rem .9rem;
-    background: #2563eb;
-    color: #fff;
-    border-radius: 6px;
-    font-size: .8rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background .12s;
-  }
-  .btn-save:hover:not(:disabled) { background: #1d4ed8; }
-  .btn-save:disabled { opacity: .45; cursor: default; }
-
-  /* ── Conflit d'édition ── */
-  .conflit {
-    flex-shrink: 0;
-    padding: .75rem 1rem;
-    background: #3b2506;
-    border-bottom: 1px solid #b45309;
-    color: #fde68a;
-    font-size: .85rem;
-    line-height: 1.45;
-  }
-  .conflit p { margin: .3rem 0; }
-  .conflit ul { margin: .3rem 0 .5rem 1.1rem; }
-  .conflit em { color: #fca5a5; font-style: normal; }
-  .conflit-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .4rem; }
-  .btn-secondaire {
-    padding: .38rem .9rem;
-    border: 1px solid #b45309;
-    border-radius: 6px;
-    font-size: .8rem;
-    color: #fde68a;
-    cursor: pointer;
-  }
-  .btn-secondaire:hover { background: #451a03; }
-
-  /* ── Body ── */
-  .editor-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: .75rem;
-  }
-
-  .center-msg {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #94a3b8;
-    font-size: .9rem;
-  }
-  .center-msg.error { color: #f87171; }
-
-  /* ── Cards ── */
-  .card {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 1rem;
-  }
-
-  .card h2 {
-    font-size: .82rem;
-    font-weight: 700;
-    color: #93c5fd;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    margin-bottom: .75rem;
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-  }
-
-  .count-badge {
-    background: #334155;
-    color: #94a3b8;
-    border-radius: 999px;
-    padding: 0 6px;
-    font-size: .7rem;
-  }
-
-  /* ── Form grid ── */
-  .grid2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: .65rem;
-  }
-
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: .3rem;
-    font-size: .76rem;
-    color: #94a3b8;
-  }
-
-  .col2 { grid-column: 1 / -1; }
-
-  input, select, textarea {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 5px;
-    color: #e2e8f0;
-    padding: .42rem .55rem;
-    font-size: .82rem;
-    font-family: inherit;
-    transition: border-color .12s;
-  }
-  input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; }
-
-  textarea { resize: vertical; min-height: 70px; }
 
   /* ── Type badge (topbar) ── */
   .type-badge {
@@ -1269,320 +617,174 @@
   .type-service     { background: #92400e; }
   .type-property    { background: #334155; }
 
-  /* ── Contacts ── */
-  .contact-list {
-    list-style: none;
+  /* ── Onglets ── */
+  .onglets {
+    display: flex;
+    gap: .25rem;
+    padding: .5rem 1rem 0;
+    border-bottom: 1px solid #334155;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .onglets button {
+    display: flex; align-items: center; gap: .4rem;
+    padding: .45rem .9rem;
+    border: 1px solid transparent; border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    font-size: .82rem; color: #94a3b8;
+    cursor: pointer; white-space: nowrap;
+    margin-bottom: -1px;
+  }
+  .onglets button:hover { color: #e2e8f0; }
+  .onglets button.actif {
+    background: #1e293b; color: #e2e8f0; font-weight: 600;
+    border-color: #334155; border-bottom: 1px solid #1e293b;
+  }
+  .pastille {
+    background: #b45309; color: #fff;
+    border-radius: 999px; padding: 0 6px;
+    font-size: .68rem; font-weight: 700;
+  }
+
+  /* ── Body ── */
+  .editor-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+  }
+  .editor-body.occupe { pointer-events: none; opacity: .6; }
+
+  .center-msg {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: .9rem;
+  }
+  .center-msg.error { color: #f87171; }
+
+  /* ── Commun aux blocs de la fiche (composants voisins) ── */
+  .editor-page :global(.card) {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .editor-page :global(.card h2) {
+    font-size: .82rem;
+    font-weight: 700;
+    color: #93c5fd;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: .75rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .editor-page :global(.count-badge) {
+    background: #334155;
+    color: #94a3b8;
+    border-radius: 999px;
+    padding: 0 6px;
+    font-size: .7rem;
+  }
+
+  .editor-page :global(.grid2) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .65rem;
+  }
+  .editor-page :global(.col2) { grid-column: 1 / -1; }
+  .editor-page :global(label) {
     display: flex;
     flex-direction: column;
     gap: .3rem;
-    margin-bottom: .75rem;
+    font-size: .76rem;
+    color: #94a3b8;
   }
-
-  .contact-list li {
-    display: flex;
-    align-items: center;
-    gap: .45rem;
+  .editor-page :global(input),
+  .editor-page :global(select),
+  .editor-page :global(textarea) {
     background: #0f172a;
     border: 1px solid #334155;
     border-radius: 5px;
-    padding: .38rem .6rem;
-    font-size: .8rem;
+    color: #e2e8f0;
+    padding: .42rem .55rem;
+    font-size: .82rem;
+    font-family: inherit;
+    transition: border-color .12s;
   }
+  .editor-page :global(input:focus),
+  .editor-page :global(select:focus),
+  .editor-page :global(textarea:focus) { outline: none; border-color: #3b82f6; }
+  .editor-page :global(input:disabled) { opacity: .6; }
+  .editor-page :global(textarea) { resize: vertical; min-height: 70px; }
 
-  .contact-icon { font-size: .9rem; }
-  .contact-type { color: #94a3b8; font-size: .72rem; min-width: 52px; }
-  .contact-value { flex: 1; color: #93c5fd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .contact-value:is(a):hover { text-decoration: underline; }
-  .contact-label { color: #94a3b8; font-size: .72rem; }
-  .contact-del { margin-left: auto; color: #ef4444; font-size: .78rem; cursor: pointer; padding: 0 .2rem; }
-  .contact-del:hover { color: #fca5a5; }
+  .editor-page :global(.muted) { color: #94a3b8; font-size: .8rem; }
 
-  .add-contact {
-    display: flex;
-    gap: .4rem;
-    flex-wrap: wrap;
-  }
-  .add-contact select { width: 100px; }
-  .add-contact input  { flex: 1; min-width: 120px; }
-  .add-contact .label-input { max-width: 130px; }
-
-  .btn-add {
-    padding: .4rem .75rem;
-    background: #1d4ed8;
-    color: #fff;
-    border-radius: 5px;
-    font-size: .78rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn-add:disabled { opacity: .45; cursor: default; }
-
-  /* ── Relations ── */
-  .relation-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: .25rem;
-  }
-
-  .relation-list li {
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-    font-size: .78rem;
-    padding: .3rem 0;
-    border-bottom: 1px solid #1e293b;
-  }
-
-  .rel-type  { background: #334155; color: #e2e8f0; border-radius: 3px; padding: 1px 6px; font-size: .7rem; white-space: nowrap; }
-  .rel-dir   { flex: 1; color: #93c5fd; }
-  .rel-dates { color: #94a3b8; font-size: .72rem; white-space: nowrap; }
-  .rel-src   { color: #94a3b8; font-size: .7rem; }
-
-  .conf-dot {
+  .editor-page :global(.conf-dot) {
+    display: inline-block;
     width: 7px; height: 7px;
     border-radius: 50%;
     background: #475569;
     flex-shrink: 0;
   }
-  .conf-dot.verified { background: #4ade80; }
+  .editor-page :global(.conf-dot.verified) { background: #4ade80; }
 
-  .small { font-size: .72rem; margin-top: .4rem; }
-
-  /* ── Audit table ── */
-  .audit-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: .76rem;
-  }
-
-  .audit-table th {
-    text-align: left;
-    padding: .3rem .5rem;
-    color: #94a3b8;
-    font-weight: 600;
-    font-size: .7rem;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    border-bottom: 1px solid #334155;
-  }
-
-  .audit-table td {
-    padding: .32rem .5rem;
-    color: #94a3b8;
-    border-bottom: 1px solid #1e293b;
-    vertical-align: top;
-  }
-
-  .old-val { color: #f87171; text-decoration: line-through; }
-  .new-val { color: #4ade80; }
-
-  .muted {
-    color: #94a3b8;
-    font-size: .8rem;
-  }
-
-  @media (max-width: 640px) {
-    .grid2 { grid-template-columns: 1fr; }
-    .col2  { grid-column: 1; }
-  }
-
-  /* ── Relations — édition ── */
-  .rel-error {
-    color: #f87171; font-size: .78rem; margin-bottom: .5rem;
-    background: #450a0a; border: 1px solid #7f1d1d; border-radius: 4px; padding: .35rem .55rem;
-  }
-
-  .rel-item { border-bottom: 1px solid #1e293b; }
-  .rel-item:last-child { border-bottom: none; }
-  .rel-item:not(.editing) {
-    display: flex; align-items: center; gap: .4rem;
-    padding: .35rem 0; font-size: .78rem;
-  }
-  .rel-item.editing { padding: .55rem; margin: .25rem 0; background: #0f172a; border-radius: 6px; }
-
-  .rel-row-actions { margin-left: auto; display: flex; gap: .2rem; }
-  .rel-btn {
-    width: 22px; height: 22px; border-radius: 3px; border: 1px solid #334155;
-    font-size: .7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
-    background: transparent; transition: all .12s;
-  }
-  .rel-btn-edit { color: #93c5fd; }
-  .rel-btn-edit:hover { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-  .rel-btn-del  { color: #f87171; }
-  .rel-btn-del:hover  { background: #7f1d1d; border-color: #7f1d1d; color: #fff; }
-
-  .rel-edit-form { display: flex; flex-direction: column; gap: .4rem; }
-  .rel-edit-row  { display: flex; gap: .45rem; flex-wrap: wrap; }
-  .rel-edit-row label { flex: 1; min-width: 90px; }
-  .rel-edit-actions { display: flex; gap: .35rem; padding-top: .2rem; }
-
-  .btn-rel-save {
-    padding: .3rem .65rem; background: #166534; color: #4ade80;
-    border: 1px solid #166534; border-radius: 5px; font-size: .75rem; font-weight: 600; cursor: pointer;
-  }
-  .btn-rel-save:disabled { opacity:.45; cursor:default; }
-  .btn-rel-save:hover:not(:disabled) { background: #15803d; }
-
-  .btn-rel-cancel {
-    padding: .3rem .65rem; background: transparent; color: #94a3b8;
-    border: 1px solid #334155; border-radius: 5px; font-size: .75rem; cursor: pointer;
-  }
-  .btn-rel-cancel:hover { border-color: #475569; color: #e2e8f0; }
-
-  /* ── Add relation form ── */
-  .add-rel {
-    margin-top: .85rem; padding-top: .85rem; border-top: 1px solid #334155;
-  }
-  .add-rel h3 {
-    font-size: .72rem; font-weight: 600; color: #94a3b8;
-    text-transform: uppercase; letter-spacing: .04em; margin-bottom: .6rem;
-  }
-  .add-rel-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .6rem;
-  }
-
-  .dir-toggle { display: flex; gap: .25rem; margin-top: .25rem; }
-  .dir-btn {
-    flex: 1; padding: .3rem .35rem; border-radius: 4px; border: 1px solid #334155;
-    background: transparent; color: #94a3b8; font-size: .72rem; cursor: pointer;
-    text-align: center; transition: all .12s;
-  }
-  .dir-btn.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-
-  .search-wrap { position: relative; }
-  .search-wrap input.has-target { border-color: #166534; color: #4ade80; }
-
-  .search-dropdown {
-    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
-    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
-    list-style: none; max-height: 200px; overflow-y: auto;
-    box-shadow: 0 8px 24px rgba(0,0,0,.5);
-  }
-  .search-dropdown li {
-    display: flex; align-items: center; gap: .4rem;
-    padding: .4rem .55rem; cursor: pointer; font-size: .78rem; transition: background .1s;
-  }
-  .search-dropdown li:hover { background: #334155; }
-
-  .sd-type { font-size: .64rem; padding: 1px 5px; border-radius: 3px; color: #fff; font-weight: 600; white-space: nowrap; }
-  .sd-person      { background: #7f1d1d; }
-  .sd-business    { background: #1d4ed8; }
-  .sd-association { background: #065f46; }
-  .sd-place       { background: #4c1d95; }
-  .sd-service     { background: #92400e; }
-  .sd-name  { flex: 1; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sd-addr  { color: #94a3b8; font-size: .7rem; white-space: nowrap; }
-
-  .btn-add-rel {
-    padding: .4rem .9rem; background: #1d4ed8; color: #fff;
-    border: none; border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer;
-    transition: background .12s;
-  }
-  .btn-add-rel:hover:not(:disabled) { background: #1e40af; }
-  .btn-add-rel:disabled { opacity: .45; cursor: default; }
-
-  /* ── Localisation coords ── */
-  .coords-actions { display: flex; align-items: center; gap: .75rem; margin-top: .5rem; font-size: .78rem; }
-  .coords-current { color: #94a3b8; }
-  .coords-osm-link { color: #60a5fa; }
-  .coords-hint { font-size: .75rem; }
-  .coords-msg { font-size: .78rem; color: #4ade80; margin-top: .4rem; }
-  .coords-msg.err { color: #f87171; }
-
-  /* ── Budget annexe ── */
-  .budget-table {
-    width: 100%; border-collapse: collapse; font-size: .78rem;
-    margin-bottom: .75rem;
-  }
-  .budget-table th {
-    text-align: left; color: #94a3b8; font-weight: 600;
-    border-bottom: 1px solid #334155; padding: .3rem .4rem;
-  }
-  .budget-table td { padding: .28rem .4rem; border-bottom: 1px solid #1e293b; }
-  .budget-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .budget-table .neg { color: #f87171; }
-  .budget-table .small { font-size: .7rem; }
-
-  .section-badge {
-    font-size: .68rem; padding: 1px 5px; border-radius: 3px; font-weight: 600;
-  }
-  .sec-fonctionnement { background: #1e3a5f; color: #93c5fd; }
-  .sec-investissement { background: #1a3a1a; color: #4ade80; }
-  .sec-dette          { background: #3a1a1a; color: #fca5a5; }
-
-  .sens-badge {
-    font-size: .68rem; padding: 1px 5px; border-radius: 3px; font-weight: 600;
-  }
-  .sens-recette { background: #14532d; color: #86efac; }
-  .sens-depense { background: #7f1d1d; color: #fca5a5; }
-  .sens-solde   { background: #44403c; color: #d4d4aa; }
-
-  .add-budget summary {
-    cursor: pointer; color: #60a5fa; font-size: .8rem; font-weight: 600;
-    padding: .4rem 0; list-style: none; user-select: none;
-  }
-  .add-budget summary::-webkit-details-marker { display: none; }
-  .budget-add-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: .5rem .75rem;
-    margin-top: .6rem;
-  }
-  .budget-add-grid label { display: flex; flex-direction: column; gap: .2rem; font-size: .78rem; color: #94a3b8; }
-  .budget-add-grid input, .budget-add-grid select {
-    background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
-    border-radius: 5px; padding: .28rem .5rem; font-size: .78rem;
-  }
-  .icon-del {
-    background: none; border: none; color: #ef4444; cursor: pointer;
-    font-size: .8rem; padding: 2px 4px;
-  }
-  .icon-del:hover { color: #f87171; }
-
-  /* ── Websites ── */
-  .web-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; margin-bottom: .6rem; }
-  .web-item { display: flex; align-items: center; gap: .5rem; font-size: .78rem; padding: .3rem .4rem; border-radius: 5px; background: #0f172a; }
-  .web-item.validated { border-left: 3px solid #22c55e; }
-  .web-item.rejected  { opacity: .45; }
-  .web-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .web-candidate  { background: #f59e0b; }
-  .web-validated  { background: #22c55e; }
-  .web-rejected   { background: #64748b; }
-  .web-broken     { background: #ef4444; }
-  .web-url { color: #60a5fa; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .web-url:hover { text-decoration: underline; }
-  .web-meta { color: #94a3b8; font-size: .7rem; white-space: nowrap; }
-  .web-actions { display: flex; gap: .2rem; margin-left: auto; flex-shrink: 0; }
-  .web-btn { background: none; border: none; cursor: pointer; font-size: .8rem; padding: 2px 5px; border-radius: 3px; }
-  .web-validate { color: #22c55e; } .web-validate:hover { background: #14532d44; }
-  .web-reject   { color: #f87171; } .web-reject:hover   { background: #7f1d1d44; }
-  .web-del      { color: #94a3b8; } .web-del:hover      { color: #ef4444; }
-  .add-web { display: flex; gap: .4rem; margin-top: .4rem; }
-  .web-input { flex: 1; }
-
-  /* ── Notes ── */
-  .note-list { list-style: none; display: flex; flex-direction: column; gap: .5rem; margin-bottom: .6rem; }
-  .note-item { display: flex; align-items: flex-start; gap: .4rem; padding: .45rem .5rem; background: #0f172a; border-radius: 5px; }
-  .note-body { flex: 1; min-width: 0; }
-  .note-date { font-size: .7rem; color: #94a3b8; margin-right: .3rem; }
-  .note-src  { font-size: .7rem; margin-left: .3rem; }
-  .note-text { margin: .25rem 0 0; font-size: .8rem; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; }
-  .note-actions { display: flex; flex-direction: column; gap: .2rem; flex-shrink: 0; }
-  .note-edit { flex: 1; display: flex; flex-direction: column; gap: .35rem; }
-  .note-edit textarea { width: 100%; }
-  .note-edit-meta { display: flex; gap: .4rem; }
-  .note-edit-meta input  { flex: 1; }
-  .note-edit-meta select { width: 110px; }
-  .add-note { display: flex; flex-direction: column; gap: .4rem; margin-top: .4rem; }
-  .add-note textarea { width: 100%; resize: vertical; }
-  .add-note-meta { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
-  .add-note-meta input  { flex: 1; min-width: 80px; }
-  .add-note-meta select { width: 110px; }
-  .btn-add-small {
+  .editor-page :global(.btn-add-small) {
     padding: .35rem .7rem; background: #1d4ed8; color: #fff;
     border: none; border-radius: 5px; font-size: .78rem; font-weight: 600;
     cursor: pointer; white-space: nowrap;
   }
-  .btn-add-small:hover:not(:disabled) { background: #1e40af; }
-  .btn-add-small:disabled { opacity: .45; cursor: default; }
+  .editor-page :global(.btn-add-small:hover:not(:disabled)) { background: #1e40af; }
+  .editor-page :global(.btn-add-small:disabled) { opacity: .45; cursor: default; }
+
+  .editor-page :global(.rel-btn) {
+    width: 22px; height: 22px; border-radius: 3px; border: 1px solid #334155;
+    font-size: .7rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    background: transparent; transition: all .12s;
+  }
+  .editor-page :global(.rel-btn-edit) { color: #93c5fd; }
+  .editor-page :global(.rel-btn-edit:hover) { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .editor-page :global(.rel-btn-del) { color: #f87171; }
+  .editor-page :global(.rel-btn-del:hover) { background: #7f1d1d; border-color: #7f1d1d; color: #fff; }
+
+  .editor-page :global(.rel-edit-actions) { display: flex; gap: .35rem; padding-top: .2rem; }
+  .editor-page :global(.btn-rel-save) {
+    padding: .3rem .65rem; background: #166534; color: #4ade80;
+    border: 1px solid #166534; border-radius: 5px; font-size: .75rem; font-weight: 600; cursor: pointer;
+  }
+  .editor-page :global(.btn-rel-save:hover) { background: #15803d; }
+  .editor-page :global(.btn-rel-cancel) {
+    padding: .3rem .65rem; background: transparent; color: #94a3b8;
+    border: 1px solid #334155; border-radius: 5px; font-size: .75rem; cursor: pointer;
+  }
+  .editor-page :global(.btn-rel-cancel:hover) { border-color: #475569; color: #e2e8f0; }
+
+  /* ── Ce qui attend le bouton « Enregistrer » ── */
+  .editor-page :global(.modifie input),
+  .editor-page :global(.modifie select),
+  .editor-page :global(.modifie textarea) { border-color: #b45309; }
+  .editor-page :global(.a-enregistrer) { box-shadow: inset 3px 0 0 #b45309; }
+  .editor-page :global(.a-modifier)    { box-shadow: inset 3px 0 0 #b45309; }
+  .editor-page :global(.a-supprimer)   { opacity: .55; }
+  .editor-page :global(.a-supprimer :is(.contact-value, .rel-dir, .web-url, .note-text, td)) {
+    text-decoration: line-through;
+  }
+  .editor-page :global(.tag-attente) {
+    font-size: .68rem; color: #fbbf24; white-space: nowrap;
+  }
+  .editor-page :global(.lien-annuler) {
+    font-size: .72rem; color: #60a5fa; cursor: pointer; text-decoration: underline;
+    background: none; border: none; padding: 0 .2rem; white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    .editor-page :global(.grid2) { grid-template-columns: 1fr; }
+    .editor-page :global(.col2)  { grid-column: 1; }
+  }
 </style>
