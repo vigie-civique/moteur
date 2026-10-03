@@ -55,6 +55,9 @@
   // c'est la seconde qui trompe, parce qu'elle a l'air d'un travail fini.
   function raisonDuZero(f) {
     const p = f.derniere_passe
+    // Une file que ne remplit aucun collecteur peut dire elle-même d'où vient
+    // son zéro (collectors/files.py, `vide`).
+    if (f.sans_collecte && f.vide) return f.vide
     if (f.sans_collecte) return "Rien n'attend un geste pour l'instant."
     if (!p) return "Aucune passe de collecte connue pour cette file : ce zéro "
                  + "n'a jamais été mesuré ici."

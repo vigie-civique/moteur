@@ -40,6 +40,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from . import taches as _taches
+
 #: Combien de temps une réservation tient avant de retomber. Une seule valeur :
 #: l'API la lit ici pour poser et lever les réservations, le relevé pour dire
 #: « en cours ». Les deux ont besoin du MÊME nombre pour ne pas se contredire.
@@ -134,6 +136,9 @@ class FileDeTravail:
     #: y cherche la PREMIÈRE ligne non tranchée : c'est ce qui permet à
     #: « Commencer » d'ouvrir un écran de décision plutôt qu'un tableau.
     ecran: tuple[tuple[str, str], ...] = ()
+    #: Pourquoi la file est vide, quand ce n'est pas un collecteur qui la
+    #: remplit : un zéro ne s'affiche jamais nu (cf. l'en-tête).
+    vide: Optional[str] = None
 
 
 def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
@@ -241,6 +246,25 @@ def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
             # l'acte permet vraiment de trancher. La définition vit dans
             # `ECRANS` — l'écran de décision la relit pour son « reste ».
             ecran=ECRANS,
+        ),
+        FileDeTravail(
+            # 03/10/2026 — les lacunes des dossiers (`collectors/lacunes.py`)
+            # devenues tâches (`collectors/taches.py`). Ouverte aux
+            # contributeurs : répondre PROPOSE, un validateur valide.
+            cle="lacunes",
+            titre="Ce que les dossiers ne savent pas",
+            question="Pouvez-vous aider à répondre à une question ouverte d'un dossier ?",
+            geste="Relier une citation à son acte, préparer une demande, ou "
+                  "verser une réponse reçue",
+            effet="Rien ne change sur le site tant que l'éditeur n'a pas repris "
+                  "la réponse dans le dossier : une tâche ne réécrit jamais un "
+                  "dossier, elle lui apporte de quoi être corrigé.",
+            route="/atelier/taches",
+            role_min="contributor",
+            reste=_taches.RESTE,
+            fait=_taches.FAIT,
+            vide="Aucun dossier ne déclare de question ouverte, ni de citation "
+                 "qui ne mène à aucun acte publié.",
         ),
         FileDeTravail(
             cle="fiches",
@@ -354,7 +378,7 @@ def relever(conn, commune: str, code_postal: str) -> list[dict]:
         ligne = {
             "cle": f.cle, "titre": f.titre, "question": f.question,
             "geste": f.geste, "effet": f.effet, "route": f.route,
-            "role_min": f.role_min, "experte": f.experte,
+            "role_min": f.role_min, "experte": f.experte, "vide": f.vide,
         }
         try:
             ligne["reste"] = _un_nombre(conn, f.reste, f.params)

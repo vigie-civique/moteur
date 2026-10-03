@@ -567,6 +567,40 @@ def _naturelles(ligne: str, interdits: list[tuple[int, int]], index: Index,
     return trouvees
 
 
+# ─── Des candidats pour une citation sans cible ──────────────────────────────
+
+def candidats(index: Index, texte: str, cles: list[str] | None = None,
+              jours: int = 60, n: int = 8) -> list[Acte]:
+    """Les actes publiés qu'une citation non résolue POURRAIT vouloir dire —
+    ce que l'atelier propose au bénévole qui la relie.
+
+    Les candidats du résolveur d'abord (plusieurs actes le même jour) ; sinon
+    les actes publiés les plus proches de la date citée, à `jours` près, dans
+    l'assemblée citée quand elle est dite. Une date mal recopiée est l'erreur
+    la plus fréquente d'une citation : le bon acte est souvent tout près.
+    """
+    from datetime import date as _jour
+    if cles:
+        return [a for c in cles if (a := index.par_cle.get(c))][:n]
+    m = NATURELLE.search(texte or "") or _CELLULE_DATE.match(texte or "")
+    iso = _iso(m) if m else None
+    if not iso:
+        return []
+    prefixe = _prefixe(m.group("ass")) if "ass" in m.re.groupindex else None
+    cible = _jour.fromisoformat(iso)
+    proches = []
+    for a in index.par_cle.values():
+        if a.seance or (prefixe and a.prefixe != prefixe):
+            continue
+        try:
+            ecart = abs((_jour.fromisoformat(a.date) - cible).days)
+        except ValueError:
+            continue
+        if ecart <= jours:
+            proches.append((ecart, a.date, a.cle, a))
+    return [x[3] for x in sorted(proches, key=lambda x: x[:3])][:n]
+
+
 def _frise(ligne: str, index: Index, no: int, section: str | None):
     """Une ligne de tableau : une cellule date, une cellule CM ou CC. On relie
     la date — c'est elle que le lecteur cherche dans la frise."""
