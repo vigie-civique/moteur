@@ -414,6 +414,20 @@ CREATE TABLE IF NOT EXISTS dossiers (
     cree_le  TEXT DEFAULT (datetime('now'))
 );
 
+-- Le sceau d'un dossier retenu : pour chaque acte cité, ce qui en était
+-- affiché au moment de la relecture (empreinte de `citations.vue`). Au build,
+-- un acte qui a changé laisse le dossier publié, avec un bandeau. 03/10/2026,
+-- cf. collectors/dossiers.py::sceller. `assurer_schema` le rattrape.
+CREATE TABLE IF NOT EXISTS citations_relues (
+    dossier_id        INTEGER NOT NULL,
+    empreinte_dossier TEXT NOT NULL,       -- le texte relu
+    cle               TEXT NOT NULL,       -- la clé datée de l'acte cité
+    empreinte_acte    TEXT NOT NULL,
+    vue               TEXT,                -- JSON : ce qui était affiché
+    relu_le           TEXT,
+    PRIMARY KEY (dossier_id, cle)
+);
+
 -- ----------------------------------------------------------------
 -- PROPOSITIONS — ce qu'un contributeur écrit sur un objet PUBLIÉ
 -- (collectors/propositions.py). Rien n'est appliqué tant qu'un
