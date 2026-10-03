@@ -489,7 +489,8 @@ def dossier_apercu(compte: int) -> Path:
     chemin, et rien d'autre qu'un entier ne doit pouvoir y entrer."""
     if isinstance(compte, bool) or not isinstance(compte, int) or compte <= 0:
         raise PublicationRefusee(f"Compte invalide pour un aperçu : {compte!r}")
-    return APERCUS / str(compte)
+    from collectors.chemins import sous
+    return sous(APERCUS, str(compte))
 
 
 def _fiche_apercu(compte: int) -> Path:
