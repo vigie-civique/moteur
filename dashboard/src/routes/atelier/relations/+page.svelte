@@ -255,7 +255,7 @@
     color: #94a3b8; margin: 0 .5rem;
   }
   .indice { font-size: .9rem; line-height: 1.45; color: #94a3b8; margin: 0; }
-  .detail { color: #64748b; }
+  .detail { color: #94a3b8; }
 
   .consequence {
     font-size: .85rem; line-height: 1.45; color: #cbd5e1; margin: 0;

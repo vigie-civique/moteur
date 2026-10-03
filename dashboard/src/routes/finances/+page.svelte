@@ -330,14 +330,14 @@
   .tabs { display: flex; gap: 2px; }
   .tabs button {
     padding: .25rem .75rem; border-radius: 6px;
-    font-size: .8rem; background: #0f172a; color: #64748b;
+    font-size: .8rem; background: #0f172a; color: #94a3b8;
     border: 1px solid #334155;
   }
   .tabs button.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
   .tabs button:hover:not(.active) { color: #e2e8f0; }
 
   .badge {
-    margin-left: auto; font-size: .72rem; color: #475569;
+    margin-left: auto; font-size: .72rem; color: #94a3b8;
     background: #0f172a; padding: 2px 8px; border-radius: 999px;
   }
 
@@ -353,8 +353,8 @@
     min-width: 110px;
   }
   .kpi-val { font-size: 1.05rem; font-weight: 700; }
-  .kpi-sub { font-size: .7rem; color: #64748b; margin-top: 2px; }
-  .kpi-hab { font-size: .68rem; color: #475569; }
+  .kpi-sub { font-size: .7rem; color: #94a3b8; margin-top: 2px; }
+  .kpi-hab { font-size: .68rem; color: #94a3b8; }
 
   /* ── Graphiques ── */
   .charts {
@@ -371,7 +371,7 @@
     font-size: .75rem; color: #94a3b8; margin-bottom: .4rem;
     display: flex; align-items: center; gap: .5rem;
   }
-  .legend { display: flex; align-items: center; gap: .35rem; margin-left: auto; font-size: .7rem; color: #64748b; }
+  .legend { display: flex; align-items: center; gap: .35rem; margin-left: auto; font-size: .7rem; color: #94a3b8; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
   .chart-area { width: 100%; }
 
@@ -382,7 +382,7 @@
   table { width: 100%; border-collapse: collapse; font-size: .75rem; }
   th {
     text-align: right; padding: .3rem .6rem;
-    color: #64748b; font-weight: 600; border-bottom: 1px solid #334155;
+    color: #94a3b8; font-weight: 600; border-bottom: 1px solid #334155;
     white-space: nowrap;
   }
   th:first-child { text-align: left; }
@@ -414,7 +414,7 @@
     border-radius: 8px; padding: .6rem 1rem;
   }
   .flow-head { display: flex; gap: .5rem; align-items: center; margin-bottom: .25rem; }
-  .year { color: #64748b; font-size: .78rem; }
+  .year { color: #94a3b8; font-size: .78rem; }
   .ftype {
     background: #0f172a; padding: 1px 8px; border-radius: 999px;
     font-size: .7rem; color: #f59e0b;
@@ -422,9 +422,9 @@
   .amount { color: #10b981; font-weight: 700; font-size: .88rem; margin-left: auto; }
   .flow-parties { display: flex; gap: .4rem; align-items: center; font-size: .82rem; }
   .from { color: #94a3b8; }
-  .arrow { color: #475569; }
+  .arrow { color: #94a3b8; }
   .to { color: #e2e8f0; font-weight: 500; }
-  .desc { font-size: .75rem; color: #475569; margin-top: .2rem; font-style: italic; }
+  .desc { font-size: .75rem; color: #94a3b8; margin-top: .2rem; font-style: italic; }
 
-  .hint { color: #475569; padding: 2rem; text-align: center; }
+  .hint { color: #94a3b8; padding: 2rem; text-align: center; }
 </style>

@@ -199,7 +199,7 @@
   input {
     width: min(360px, 100%);
   }
-  .count { color: #64748b; font-size: .8rem; margin-left: auto; }
+  .count { color: #94a3b8; font-size: .8rem; margin-left: auto; }
 
   .list {
     flex: 1;
@@ -222,7 +222,7 @@
     margin-bottom: .35rem;
     flex-wrap: wrap;
   }
-  .date { color: #64748b; font-size: .78rem; }
+  .date { color: #94a3b8; font-size: .78rem; }
   .cat {
     background: #0f172a;
     padding: 1px 8px;
@@ -256,5 +256,5 @@
     margin-top: .25rem;
   }
   a { font-size: .75rem; display: inline-block; }
-  .hint { color: #475569; padding: 2rem; text-align: center; }
+  .hint { color: #94a3b8; padding: 2rem; text-align: center; }
 </style>

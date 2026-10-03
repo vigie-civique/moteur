@@ -143,7 +143,7 @@
   .s-pending { background:#1e3a5f; color:#60a5fa; }
   .s-ok      { background:#064e3b; color:#34d399; }
   .s-ko      { background:#4c1d1d; color:#f87171; }
-  .s-ign     { background:#1e293b; color:#64748b; }
+  .s-ign     { background:#1e293b; color:#94a3b8; }
 
   .filters {
     padding: .4rem .75rem;
@@ -158,7 +158,7 @@
     padding: .15rem .5rem;
     border-radius: 4px;
     font-size: .72rem;
-    color: #64748b;
+    color: #94a3b8;
     background: #0f172a;
     border: 1px solid #334155;
   }
@@ -246,7 +246,7 @@
 
   .detail {
     font-size: .68rem;
-    color: #475569;
+    color: #94a3b8;
     line-height: 1.3;
   }
 
@@ -275,16 +275,16 @@
   }
   .btn-ok  { background: #065f46; color: #6ee7b7; }
   .btn-ko  { background: #450a0a; color: #fca5a5; }
-  .btn-ign { background: #1e293b; color: #64748b; }
+  .btn-ign { background: #1e293b; color: #94a3b8; }
   .btn-ok:hover  { background: #047857; }
   .btn-ko:hover  { background: #7f1d1d; }
   .btn-ign:hover { background: #334155; }
 
   .reviewed {
     font-size: .68rem;
-    color: #475569;
+    color: #94a3b8;
     font-style: italic;
   }
 
-  .hint { color: #475569; font-size: .82rem; padding: .75rem; }
+  .hint { color: #94a3b8; font-size: .82rem; padding: .75rem; }
 </style>

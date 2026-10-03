@@ -1042,7 +1042,7 @@
   .metric { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: .7rem; }
   .metric span { display: block; font-size: 1.35rem; font-weight: 750; color: #bfdbfe; }
   .metric small { display: block; color: #e2e8f0; font-size: .76rem; }
-  .metric em { display: block; color: #64748b; font-size: .7rem; font-style: normal; margin-top: .2rem; }
+  .metric em { display: block; color: #94a3b8; font-size: .7rem; font-style: normal; margin-top: .2rem; }
 
   .bloc { margin-top: .6rem; }
   .bloc summary { cursor: pointer; color: #93c5fd; font-size: .8rem; }
@@ -1109,7 +1109,7 @@
      un déploiement), ni rouge (rien n'a échoué). */
   .attente { background: #422006; color: #fdba74; border: 1px solid #b45309; }
   .etiq { display: inline-block; min-width: 11rem; color: #94a3b8; font-size: .8rem; }
-  .separateur { color: #64748b; font-size: .72rem; margin-left: .35rem; }
+  .separateur { color: #94a3b8; font-size: .72rem; margin-left: .35rem; }
 
   /* Le bandeau reste dans l'ATELIER, jamais dans le site : l'aperçu doit
      montrer le site publié, pas un site décoré pour l'occasion. */

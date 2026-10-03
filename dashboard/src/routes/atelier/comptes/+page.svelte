@@ -268,7 +268,7 @@
   td { padding: .45rem .4rem; border-bottom: 1px solid #1f2a3d; color: #e2e8f0; vertical-align: middle; }
   td.droite { text-align: right; white-space: nowrap; }
   td.adresse-cell, td.date { white-space: nowrap; }
-  tr.inactif td { color: #64748b; }
+  tr.inactif td { color: #94a3b8; }
   select { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 5px; padding: .25rem .4rem; }
   .muted { color: #94a3b8; }
   .petit { font-size: .8rem; margin-top: .6rem; }

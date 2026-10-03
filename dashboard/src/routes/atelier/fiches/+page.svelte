@@ -277,7 +277,7 @@
   }
   .header-left { display: flex; align-items: baseline; gap: .65rem; }
   h1 { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
-  .total { font-size: .75rem; color: #64748b; }
+  .total { font-size: .75rem; color: #94a3b8; }
   .retour { font-size: .78rem; color: #93c5fd; text-decoration: none; }
 
   .stat-chips { display: flex; gap: .3rem; flex-wrap: wrap; }
@@ -304,13 +304,13 @@
   .type-btn:hover:not(.active) { border-color: #475569; color: #e2e8f0; }
 
   .table-wrap { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: .4rem; }
-  .table-meta { font-size: .73rem; color: #64748b; padding: .15rem 0; }
+  .table-meta { font-size: .73rem; color: #94a3b8; padding: .15rem 0; }
 
   table { width: 100%; border-collapse: collapse; font-size: .78rem; }
 
   th {
     text-align: left; padding: .38rem .5rem;
-    color: #64748b; font-size: .69rem; font-weight: 600;
+    color: #94a3b8; font-size: .69rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em;
     border-bottom: 1px solid #334155; white-space: nowrap;
     cursor: default;
@@ -369,7 +369,7 @@
   .conf-probable   { color: #fbbf24; background: #451a03; }
   .conf-hypothesis { color: #94a3b8; background: #1e293b; }
 
-  .center { text-align: center; color: #475569; }
+  .center { text-align: center; color: #94a3b8; }
 
   .actions-cell { display: flex; gap: .2rem; align-items: center; white-space: nowrap; }
 
@@ -392,7 +392,7 @@
   .act-ecarte  { background: #450a0a; color: #f87171; }
   .act-ecarte:hover { background: #7f1d1d; border-color: #7f1d1d; }
 
-  .msg { padding: 2rem; text-align: center; color: #64748b; font-size: .85rem; }
+  .msg { padding: 2rem; text-align: center; color: #94a3b8; font-size: .85rem; }
   .msg.error { color: #f87171; }
   .avis {
     margin: .25rem 0 .5rem; padding: .5rem .75rem;

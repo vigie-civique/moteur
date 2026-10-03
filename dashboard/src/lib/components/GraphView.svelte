@@ -253,7 +253,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  .count { color: #475569; font-size: .72rem; margin-left: auto; }
+  .count { color: #94a3b8; font-size: .72rem; margin-left: auto; }
   .spin  { color: #60a5fa; font-size: .78rem; }
 
   .graph-svg { flex: 1; min-height: 0; }

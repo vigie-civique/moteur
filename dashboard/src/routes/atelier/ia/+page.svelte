@@ -164,7 +164,7 @@
   .ia-page { padding: 1.2rem; max-width: 900px; }
   .page-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .muted { color: #64748b; font-size: .75rem; }
+  .muted { color: #94a3b8; font-size: .75rem; }
 
   .mode-toggle { display: flex; gap: .4rem; margin-bottom: .75rem; }
   .mode-toggle button {

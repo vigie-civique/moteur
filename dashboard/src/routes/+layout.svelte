@@ -5,7 +5,7 @@
   import { api } from '$lib/api.js'
   import { currentUser, initAuth } from '$lib/stores/auth.js'
   import { auMoins } from '$lib/roles.js'
-  import { COMMUNE, COMMUNE_DE, LA_COMMUNE, CODE_POSTAL, SITE_NOM } from '$lib/instance.js'
+  import { COMMUNE, COMMUNE_DE, LA_COMMUNE, CODE_POSTAL, SITE_NOM, SITE_URL } from '$lib/instance.js'
   import 'leaflet/dist/leaflet.css'
   import 'leaflet.markercluster/dist/MarkerCluster.css'
   import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -46,8 +46,13 @@
   // Connexion et invitation : la personne n'a pas (encore) de session. Lui
   // montrer le menu de l'atelier, c'était l'inviter dans des pages fermées.
   $: horsSession = ['/atelier/login', '/atelier/invitation'].includes($page.url.pathname)
-  // « 👁 Voir le site public » — app publique séparée (dev : 5174).
-  const PUBLIC_URL = 'http://localhost:5174'
+  // Dans l'atelier, le menu est celui du côté (`atelier/+layout.svelte`). Les
+  // deux menus empilés ne disaient pas la même chose (« Tableau de bord » ici,
+  // « Aujourd'hui » là) : celui-ci ne reste que sur les pages hors atelier.
+  $: dansAtelier = $page.url.pathname.startsWith('/atelier')
+  // « 👁 Voir le site public » : l'adresse déclarée par l'instance. Elle visait
+  // `localhost:5174`, le serveur de développement — mort pour tout le monde.
+  const PUBLIC_URL = SITE_URL || '/'
 </script>
 
 <svelte:head>
@@ -66,7 +71,9 @@
       <span class="sub">{CODE_POSTAL} — atelier de veille</span>
     </a>
 
-    {#if !horsSession}
+    {#if !horsSession && dansAtelier}
+      <a class="view-public seul" href={PUBLIC_URL} target="_blank" rel="noopener">👁 Voir le site public</a>
+    {:else if !horsSession}
     <nav>
       {#each nav as n}
         {#if n.soon}
@@ -80,7 +87,7 @@
 
     {/if}
 
-    {#if $stats && !horsSession}
+    {#if $stats && !horsSession && !dansAtelier}
       <div class="badge-row">
         <span class="badge biz">{$stats.businesses ?? 0} entreprises</span>
         <span class="badge asso">{$stats.associations ?? 0} assos</span>
@@ -97,6 +104,10 @@
 
 <style>
   :global(*, *::before, *::after) { box-sizing: border-box; margin: 0; padding: 0; }
+  /* 112,5 % : les tailles de l'atelier sont en `rem`, de .65 à .85 — soit 10 à
+     13 px à la taille par défaut, illisibles sur un portable qu'on ne choisit
+     pas, dans une salle communale. Elles montent toutes d'un cran d'un coup. */
+  :global(html) { font-size: 112.5%; }
   :global(body) { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; }
   :global(a) { color: #60a5fa; text-decoration: none; }
   :global(button) { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
@@ -140,7 +151,7 @@
     50% { opacity: .4; }
   }
   .title { font-weight: 700; font-size: 1rem; }
-  .sub   { font-size: .75rem; color: #64748b; }
+  .sub   { font-size: .75rem; color: #94a3b8; }
 
   nav {
     display: flex;
@@ -164,10 +175,10 @@
   nav .soon {
     padding: .25rem .75rem;
     font-size: .8rem;
-    color: #475569;
+    color: #94a3b8;
     cursor: default;
   }
-  nav .soon em { font-style: normal; color: #64748b; font-size: .68rem; }
+  nav .soon em { font-style: normal; color: #94a3b8; font-size: .68rem; }
   nav .view-public {
     margin-left: .5rem;
     padding: .25rem .75rem;
@@ -177,6 +188,11 @@
     border: 1px solid #334155;
   }
   nav .view-public:hover { background: #1e293b; }
+  .view-public.seul {
+    margin-left: auto; padding: .25rem .75rem; border-radius: 4px;
+    font-size: .8rem; color: #93c5fd; border: 1px solid #334155;
+  }
+  .view-public.seul:hover { background: #0f172a; }
 
   .badge-row { display: flex; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
   .badge {

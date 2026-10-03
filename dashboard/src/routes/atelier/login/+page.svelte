@@ -152,7 +152,7 @@
 
   p {
     font-size: .75rem;
-    color: #64748b;
+    color: #94a3b8;
     margin-top: 2px;
   }
 

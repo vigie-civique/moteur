@@ -374,7 +374,7 @@
     flex: 1;
     padding: .5rem .25rem;
     font-size: .78rem;
-    color: #64748b;
+    color: #94a3b8;
     border-bottom: 2px solid transparent;
     transition: all .15s;
     position: relative;
@@ -429,7 +429,7 @@
   .source-card:hover:not(:disabled) { background: #1e293b; }
   .source-card.unavailable { opacity: .4; cursor: not-allowed; }
   .src-label { font-size: .78rem; font-weight: 600; color: #e2e8f0; }
-  .src-desc  { font-size: .68rem; color: #475569; margin-top: 2px; }
+  .src-desc  { font-size: .68rem; color: #94a3b8; margin-top: 2px; }
 
   /* Sources — liste */
   .list-header {
@@ -453,7 +453,7 @@
   .back-btn:hover { background: #1e293b; }
   .list-title { font-size: .82rem; font-weight: 600; flex: 1; }
   .list-count {
-    font-size: .7rem; color: #475569;
+    font-size: .7rem; color: #94a3b8;
     background: #0f172a; border-radius: 999px;
     padding: .1rem .45rem;
   }
@@ -486,7 +486,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .li-date { font-size: .7rem; color: #475569; flex-shrink: 0; }
+  .li-date { font-size: .7rem; color: #94a3b8; flex-shrink: 0; }
   .li-date.spurious { color: #dc2626; }
 
   .li-sub {
@@ -496,7 +496,7 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  .li-muted { font-size: .68rem; color: #475569; }
+  .li-muted { font-size: .68rem; color: #94a3b8; }
   .li-price { font-size: .72rem; color: #10b981; font-weight: 600; }
   .li-link  { font-size: .68rem; color: #60a5fa; }
 
@@ -523,7 +523,7 @@
   }
   .stat { text-align: center; }
   .stat span { font-size: 1.1rem; font-weight: 700; color: #60a5fa; }
-  .stat small { display: block; font-size: .65rem; color: #64748b; }
+  .stat small { display: block; font-size: .65rem; color: #94a3b8; }
 
   /* Réseau */
   .network-summary { padding: .75rem; font-size: .82rem; }
@@ -539,5 +539,5 @@
   .en { color: #cbd5e1; }
   .rt { color: #f59e0b; font-style: italic; }
 
-  .hint { color: #475569; font-size: .82rem; padding: 1rem; }
+  .hint { color: #94a3b8; font-size: .82rem; padding: 1rem; }
 </style>

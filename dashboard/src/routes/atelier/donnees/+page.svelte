@@ -440,7 +440,7 @@
   .corrections.verrou .hint { color: #94a3b8; }
   .corrections.verrou code { background: #0f172a; padding: 0 .25rem; border-radius: 3px; }
   .corrections { border-top: 1px solid #1e293b; padding-top: .75rem; margin-top: .25rem; }
-  .corrections .hint { color: #64748b; font-size: .74rem; line-height: 1.45;
+  .corrections .hint { color: #94a3b8; font-size: .74rem; line-height: 1.45;
                        margin: .2rem 0 .6rem; font-weight: 400; }
   .corr { display: block; margin-bottom: .5rem; }
   .corr-lab { display: block; font-size: .74rem; color: #94a3b8; margin-bottom: .15rem; }
@@ -450,7 +450,7 @@
     width: 100%; background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
     border-radius: 6px; padding: .35rem .5rem; font-size: .82rem; font-family: inherit;
   }
-  .corr input::placeholder, .corr textarea::placeholder { color: #475569; }
+  .corr input::placeholder, .corr textarea::placeholder { color: #94a3b8; }
   .legend { display: flex; gap: .4rem; }
   .pill { font-size: .72rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .pill.jamais_relu { background: #334155; color: #e2e8f0; }
@@ -463,14 +463,14 @@
   .layout { display: grid; grid-template-columns: 1fr 340px; gap: 1rem; align-items: start; }
   .table-wrap { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-  thead th { text-align: left; padding: .5rem .7rem; color: #64748b; font-weight: 600; border-bottom: 1px solid #1e293b; position: sticky; top: 0; background: #0f172a; }
+  thead th { text-align: left; padding: .5rem .7rem; color: #94a3b8; font-weight: 600; border-bottom: 1px solid #1e293b; position: sticky; top: 0; background: #0f172a; }
   tbody td { padding: .45rem .7rem; border-bottom: 1px solid #1e293b; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: #1e293b; }
   tbody tr.sel { background: #1d3a5f; }
   .nowrap { white-space: nowrap; }
   .title { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .muted { color: #64748b; font-size: .85rem; padding: 1rem; }
+  .muted { color: #94a3b8; font-size: .85rem; padding: 1rem; }
 
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
   .dot.jamais_relu { background: #64748b; }
@@ -494,7 +494,7 @@
   select, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 5px; color: #e2e8f0; padding: .4rem; font: inherit; font-size: .82rem; }
   .save { width: 100%; padding: .55rem; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 600; }
   .save:disabled { opacity: .6; }
-  .meta { color: #64748b; font-size: .72rem; margin: .5rem 0 0; }
+  .meta { color: #94a3b8; font-size: .72rem; margin: .5rem 0 0; }
   .conflit {
     margin: .5rem 0; padding: .6rem .7rem;
     background: #3b2506; border: 1px solid #b45309; border-radius: 6px;

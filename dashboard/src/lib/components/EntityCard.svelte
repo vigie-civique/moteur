@@ -211,7 +211,7 @@
 {/if}
 
 <style>
-  .empty { color: #475569; font-size: .85rem; padding: 1rem; }
+  .empty { color: #94a3b8; font-size: .85rem; padding: 1rem; }
   .loading { color: #60a5fa; font-size: .82rem; padding: .5rem 0; }
   .err { color: #ef4444; font-size: .82rem; }
 
@@ -225,15 +225,15 @@
     font-size: .68rem;
     text-transform: uppercase;
     letter-spacing: .05em;
-    color: #64748b;
+    color: #94a3b8;
     display: block;
     margin-bottom: .25rem;
   }
   h2 { font-size: .95rem; font-weight: 600; }
-  .addr { font-size: .78rem; color: #64748b; margin-top: .25rem; }
+  .addr { font-size: .78rem; color: #94a3b8; margin-top: .25rem; }
 
   section { padding: .5rem 1rem; border-bottom: 1px solid #1e293b; }
-  h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #475569; margin-bottom: .35rem; }
+  h3 { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; margin-bottom: .35rem; }
 
   .row {
     display: flex;
@@ -242,7 +242,7 @@
     font-size: .78rem;
     padding: .15rem 0;
   }
-  .row span:first-child { color: #64748b; flex-shrink: 0; }
+  .row span:first-child { color: #94a3b8; flex-shrink: 0; }
   .row span:last-child  { text-align: right; }
   .active { color: #10b981; font-weight: 600; }
   .closed { color: #ef4444; }
@@ -259,7 +259,7 @@
   .rel-list li:hover { color: #60a5fa; }
   .rel-type { color: #f59e0b; flex-shrink: 0; }
   .rel-name { flex: 1; }
-  .rel-kind { color: #475569; font-size: .7rem; }
+  .rel-kind { color: #94a3b8; font-size: .7rem; }
 
   .flow-list li {
     display: flex;
@@ -268,12 +268,12 @@
     padding: .2rem 0;
     flex-wrap: wrap;
   }
-  .flow-year  { color: #64748b; }
+  .flow-year  { color: #94a3b8; }
   .flow-type  { color: #f59e0b; }
   .flow-amount{ color: #10b981; font-weight: 600; }
-  .flow-desc  { color: #64748b; font-style: italic; }
+  .flow-desc  { color: #94a3b8; font-style: italic; }
 
-  .ev-date { color: #64748b; flex-shrink: 0; }
+  .ev-date { color: #94a3b8; flex-shrink: 0; }
   .ev-role { color: #f59e0b; flex-shrink: 0; }
 
   .synthesis { background: #0f172a; border-left: 2px solid #f59e0b; }

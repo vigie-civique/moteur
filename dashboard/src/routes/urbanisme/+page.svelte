@@ -30,8 +30,12 @@
     if (typeof window === 'undefined' || !mapEl) return
     L = (await import('leaflet')).default
     mapObj = L.map(mapEl, { attributionControl: true })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+      '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM' +
+      '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png', {
+      // CARTO exige désormais une clé : la carte restait grise, marquée
+      // « API key required ». Le plan IGN, sans clé, est celui de l'éditeur.
+      attribution: '&copy; <a href="https://geoservices.ign.fr/">IGN</a>'
     }).addTo(mapObj)
     const pts = dvf.filter(t => t.lat && t.lng)
     if (!pts.length) { mapObj.setView([43.99, 3.87], 13); return }
@@ -154,13 +158,13 @@
   .urb-page { padding: 1.2rem; max-width: 1100px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .78rem; color: #64748b; }
+  .subtitle { font-size: .78rem; color: #94a3b8; }
 
   .kpi-row { display: flex; gap: .5rem; margin-bottom: .8rem; flex-wrap: wrap; }
   .kpi { background: #1e293b; border: 1px solid #334155; border-radius: 6px;
     padding: .4rem .7rem; min-width: 110px; }
   .kpi-v { font-size: .95rem; font-weight: 700; color: #e2e8f0; }
-  .kpi-l { font-size: .65rem; color: #64748b; margin-top: 1px; }
+  .kpi-l { font-size: .65rem; color: #94a3b8; margin-top: 1px; }
 
   .tabs { display: flex; gap: .25rem; border-bottom: 1px solid #334155; margin-bottom: .75rem; }
   .tabs button { padding: .35rem .7rem; font-size: .78rem; color: #94a3b8;
@@ -176,7 +180,7 @@
   .dot.red    { background: #f87171; }
 
   .data-table { width: 100%; border-collapse: collapse; font-size: .77rem; }
-  .data-table th { background: #1e293b; color: #64748b; font-size: .65rem; font-weight: 700;
+  .data-table th { background: #1e293b; color: #94a3b8; font-size: .65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem;
     border-bottom: 1px solid #334155; text-align: left; }
   .data-table td { padding: .35rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
@@ -187,9 +191,9 @@
   .ent-link { color: #93c5fd; }
   .ent-link:hover { text-decoration: underline; }
   .montant { font-weight: 700; color: #fb923c; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
   .small { font-size: .72rem; }
   .objet-cell { max-width: 280px; }
   .err { color: #f87171; }
-  .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
+  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
 </style>

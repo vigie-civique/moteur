@@ -116,7 +116,7 @@
     flex: 1;
     padding: .4rem .5rem;
     font-size: .72rem;
-    color: #64748b;
+    color: #94a3b8;
     border-bottom: 2px solid transparent;
     transition: all .15s;
     white-space: nowrap;
@@ -138,10 +138,10 @@
   .icon { flex-shrink: 0; font-size: 1rem; }
   .body { flex: 1; min-width: 0; }
   .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .meta { color: #64748b; font-size: .72rem; margin-top: 2px; }
+  .meta { color: #94a3b8; font-size: .72rem; margin-top: 2px; }
   .meta a { color: #60a5fa; }
   .amount { color: #10b981; }
-  .desc { color: #475569; }
-  .addr { color: #475569; font-size: .7rem; }
+  .desc { color: #94a3b8; }
+  .addr { color: #94a3b8; font-size: .7rem; }
   .empty { color: #334155; font-style: italic; }
 </style>

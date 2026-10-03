@@ -202,7 +202,7 @@
   .budgets-page { padding: 1.2rem; max-width: 1000px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .78rem; color: #64748b; }
+  .subtitle { font-size: .78rem; color: #94a3b8; }
 
   .tabs { display: flex; gap: .25rem; border-bottom: 1px solid #334155; margin-bottom: .85rem; flex-wrap: wrap; }
   .tabs button { padding: .35rem .7rem; font-size: .78rem; color: #94a3b8;
@@ -217,24 +217,24 @@
 
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: .5rem; }
   .kpi-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: .5rem .75rem; }
-  .kpi-label { font-size: .68rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
+  .kpi-label { font-size: .68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
   .kpi-val   { font-size: .95rem; font-weight: 700; }
   .kpi-strate { font-size: .68rem; margin-top: .2rem; }
 
   .section-h { font-size: .82rem; font-weight: 600; color: #f59e0b; margin: .75rem 0 .4rem; }
 
   .data-table { width: 100%; border-collapse: collapse; font-size: .77rem; }
-  .data-table th { background: #1e293b; color: #64748b; font-size: .65rem; font-weight: 700;
+  .data-table th { background: #1e293b; color: #94a3b8; font-size: .65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem;
     border-bottom: 1px solid #334155; text-align: left; }
   .data-table td { padding: .35rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
   .data-table tr:hover td { background: #1e293b; }
 
   .montant { font-weight: 700; color: #fb923c; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
   .sens-recette { color: #4ade80; font-size: .7rem; font-weight: 700; }
   .sens-depense { color: #f87171; font-size: .7rem; font-weight: 700; }
 
   .err { color: #f87171; }
-  .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
+  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
 </style>

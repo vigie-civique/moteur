@@ -89,5 +89,5 @@
   li:hover { background: #0f172a; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .type { font-size: .7rem; color: #64748b; flex-shrink: 0; }
+  .type { font-size: .7rem; color: #94a3b8; flex-shrink: 0; }
 </style>

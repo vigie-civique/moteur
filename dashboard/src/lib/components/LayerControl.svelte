@@ -60,7 +60,7 @@
     font-size: .75rem;
     border: 1px solid #334155;
     background: #0f172a;
-    color: #64748b;
+    color: #94a3b8;
     transition: all .15s;
   }
   button.on {
@@ -92,7 +92,7 @@
     align-items: center;
     gap: .3rem;
     font-size: .75rem;
-    color: #64748b;
+    color: #94a3b8;
     cursor: pointer;
     user-select: none;
   }

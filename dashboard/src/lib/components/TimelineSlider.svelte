@@ -145,7 +145,7 @@
     font-size: .65rem;
     padding: 2px 6px;
     border-radius: 4px;
-    color: #64748b;
+    color: #94a3b8;
     transition: all .15s;
   }
   .mode-toggle button.active {
@@ -181,7 +181,7 @@
 
   .yr-label {
     font-size: .72rem;
-    color: #64748b;
+    color: #94a3b8;
     flex-shrink: 0;
     width: 36px;
   }

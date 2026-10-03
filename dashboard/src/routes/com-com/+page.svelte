@@ -195,7 +195,7 @@
   .comcom-page { padding: 1.2rem; max-width: 1000px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .8rem; color: #64748b; }
+  .subtitle { font-size: .8rem; color: #94a3b8; }
 
   .tabs { display: flex; gap: .25rem; border-bottom: 1px solid #334155; margin-bottom: 1rem; flex-wrap: wrap; }
   .tabs button { padding: .35rem .7rem; font-size: .78rem; color: #94a3b8; border-bottom: 2px solid transparent;
@@ -206,12 +206,12 @@
 
   .cards-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: .75rem; }
   .info-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: .75rem 1rem; }
-  .card-title { font-size: .7rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+  .card-title { font-size: .7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;
     letter-spacing: .05em; margin-bottom: .5rem; }
   .card-body { font-size: .78rem; color: #94a3b8; line-height: 1.5; margin-bottom: .5rem; }
   .card-link { font-size: .77rem; color: #60a5fa; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: .2rem .75rem; font-size: .77rem; margin-bottom: .5rem; }
-  dt { color: #64748b; }
+  dt { color: #94a3b8; }
   dd { color: #e2e8f0; }
 
   .filter-bar { margin-bottom: .6rem; font-size: .77rem; color: #94a3b8; }
@@ -221,13 +221,13 @@
   .timeline { display: flex; flex-direction: column; gap: 0; }
   .tl-item { display: grid; grid-template-columns: 100px 1fr; gap: .5rem;
     padding: .3rem 0; border-bottom: 1px solid #1e293b; font-size: .77rem; }
-  .tl-date { color: #64748b; white-space: nowrap; }
+  .tl-date { color: #94a3b8; white-space: nowrap; }
   .tl-body { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
   .tl-title { color: #cbd5e1; flex: 1; }
   .tl-src { font-size: .8rem; color: #60a5fa; }
 
   .data-table { width: 100%; border-collapse: collapse; font-size: .77rem; }
-  .data-table th { background: #1e293b; color: #64748b; font-size: .65rem; font-weight: 700;
+  .data-table th { background: #1e293b; color: #94a3b8; font-size: .65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem;
     border-bottom: 1px solid #334155; text-align: left; }
   .data-table td { padding: .35rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
@@ -236,8 +236,8 @@
   .ent-link:hover { text-decoration: underline; }
   .rel-badge { font-size: .67rem; background: #334155; padding: 1px 5px; border-radius: 3px; color: #94a3b8; }
   .montant { font-weight: 700; color: #fb923c; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
   .objet-cell { max-width: 280px; }
   .err { color: #f87171; font-size: .83rem; }
-  .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
+  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
 </style>

@@ -128,7 +128,7 @@
   }
   .src-card h3 { font-size: .85rem; font-weight: 600; margin-bottom: .3rem; }
   .src-card p { font-size: .78rem; color: #94a3b8; line-height: 1.4; }
-  .src-url { color: #475569; font-size: .72rem; margin-top: .2rem; }
+  .src-url { color: #94a3b8; font-size: .72rem; margin-top: .2rem; }
 
   .stats-grid {
     display: grid;

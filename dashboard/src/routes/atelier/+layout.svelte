@@ -176,7 +176,7 @@
 
   .user-email {
     font-size: .72rem;
-    color: #64748b;
+    color: #94a3b8;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -197,5 +197,22 @@
     flex: 1;
     overflow-y: auto;
     background: #0f172a;
+  }
+
+  /* Sur un portable étroit (820 px), le menu latéral mangeait le quart de la
+     largeur et les tableaux débordaient : il devient une bande en haut, qui
+     défile de côté. */
+  @media (max-width: 900px) {
+    .atelier-shell { flex-direction: column; }
+    .atelier-sidebar {
+      width: 100%; flex-direction: row; align-items: center;
+      padding: .3rem .5rem; border-right: none; border-bottom: 1px solid #334155;
+      overflow-x: auto; gap: .5rem;
+    }
+    .sidebar-header { border-bottom: none; margin: 0; padding: 0 .4rem; gap: .4rem; }
+    .sidebar-nav { flex-direction: row; flex: none; padding: 0; }
+    .sidebar-nav a { white-space: nowrap; }
+    .sidebar-footer { flex-direction: row; align-items: center; border-top: none; padding: 0 .4rem; }
+    .user-email { display: none; }
   }
 </style>

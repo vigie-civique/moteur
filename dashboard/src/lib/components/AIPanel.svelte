@@ -155,7 +155,7 @@
   }
   .result p { margin-bottom: .5rem; }
 
-  .hint { color: #475569; font-size: .82rem; }
+  .hint { color: #94a3b8; font-size: .82rem; }
   .hint code {
     background: #0f172a;
     border-radius: 3px;

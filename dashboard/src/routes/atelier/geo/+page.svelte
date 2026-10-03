@@ -92,7 +92,7 @@
   .bar .reload { margin-left: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .85rem; }
   th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid #1e293b; }
-  th { color: #64748b; font-weight: 600; }
+  th { color: #94a3b8; font-weight: 600; }
   .num { font-variant-numeric: tabular-nums; }
   .muted { color: #94a3b8; } .addr { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge { color: #fff; font-size: .7rem; padding: .12rem .55rem; border-radius: 999px; white-space: nowrap; }

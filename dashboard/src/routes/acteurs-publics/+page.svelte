@@ -176,7 +176,7 @@
   .ap-page { padding: 1.2rem; max-width: 1100px; overflow-y: auto; }
   .page-header { margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .subtitle { font-size: .78rem; color: #64748b; }
+  .subtitle { font-size: .78rem; color: #94a3b8; }
 
   .controls { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; flex-wrap: wrap; }
   .search-input { background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
@@ -193,16 +193,16 @@
   .entity-card:hover { border-color: #60a5fa; }
   .card-header { display: flex; align-items: center; gap: .35rem; margin-bottom: .3rem; }
   .type-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .type-label { font-size: .65rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .type-label { font-size: .65rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
   .card-name { font-size: .82rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
   .card-addr, .card-cat { font-size: .71rem; margin-top: .2rem;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
 
   .perim-btns { margin-left: auto; }
   .avertissement { color: #fbbf24; font-size: .78rem; background: #1e293b;
     border: 1px solid #92400e; border-radius: 6px; padding: .4rem .6rem; margin-bottom: .7rem; }
 
   .err { color: #f87171; font-size: .83rem; }
-  .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
+  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
 </style>

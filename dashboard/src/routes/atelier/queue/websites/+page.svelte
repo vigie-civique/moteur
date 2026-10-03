@@ -169,7 +169,7 @@
   .queue-controls select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 5px; padding: .3rem .5rem; font-size: .8rem; }
   .btn-reload { background: #1e293b; border: 1px solid #334155; color: #94a3b8; border-radius: 5px; padding: .3rem .6rem; font-size: .78rem; cursor: pointer; }
   .btn-reload:hover { border-color: #60a5fa; color: #60a5fa; }
-  .count-info { font-size: .78rem; color: #64748b; }
+  .count-info { font-size: .78rem; color: #94a3b8; }
 
   .candidate-list { display: flex; flex-direction: column; gap: .3rem; }
   .candidate-row {
@@ -198,7 +198,7 @@
   .cand-url:hover { text-decoration: underline; }
   .cand-score { font-weight: 700; text-align: center; font-size: .8rem; }
   .cand-source { white-space: nowrap; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
   .cand-actions { display: flex; gap: .3rem; }
 
   .btn-validate { background: #14532d; border: 1px solid #166534; color: #4ade80; border-radius: 4px; padding: .25rem .55rem; font-size: .72rem; font-weight: 600; cursor: pointer; }
@@ -213,5 +213,5 @@
   .cand-lock { display: flex; align-items: center; gap: .35rem; color: #fbbf24; white-space: nowrap; }
   .btn-liberer { border: 1px solid #b45309; border-radius: 4px; padding: .1rem .4rem;
                  font-size: .68rem; color: #fde68a; cursor: pointer; }
-  .muted-center { color: #64748b; text-align: center; margin-top: 2rem; }
+  .muted-center { color: #94a3b8; text-align: center; margin-top: 2rem; }
 </style>

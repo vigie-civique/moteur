@@ -41,8 +41,12 @@
     if (typeof window === 'undefined') return
     L = (await import('leaflet')).default
     mapObj = L.map(mapEl, { zoomControl: false, attributionControl: true })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+      '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM' +
+      '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png', {
+      // CARTO exige désormais une clé : la carte restait grise, marquée
+      // « API key required ». Le plan IGN, sans clé, est celui de l'éditeur.
+      attribution: '&copy; <a href="https://geoservices.ign.fr/">IGN</a>'
     }).addTo(mapObj)
     mapObj.setView([entity.lat, entity.lng], 15)
     L.circleMarker([entity.lat, entity.lng], { radius: 8, color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: .8 })
@@ -315,7 +319,7 @@
 {/if}
 
 <style>
-  .loading, .err-page { color: #64748b; text-align: center; margin-top: 4rem; font-size: .9rem; }
+  .loading, .err-page { color: #94a3b8; text-align: center; margin-top: 4rem; font-size: .9rem; }
 
   .entity-page { max-width: 1000px; padding: 1rem; overflow-y: auto; height: 100%; }
 
@@ -327,8 +331,8 @@
   }
   .ent-title { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
   h1 { font-size: 1.15rem; font-weight: 700; color: #e2e8f0; margin: 0; }
-  .short-name { font-size: .8rem; color: #64748b; }
-  .ent-meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .35rem; font-size: .75rem; color: #64748b; grid-column: 1; }
+  .short-name { font-size: .8rem; color: #94a3b8; }
+  .ent-meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .35rem; font-size: .75rem; color: #94a3b8; grid-column: 1; }
   .meta-item { display: flex; align-items: center; gap: .2rem; }
 
   .type-badge {
@@ -363,10 +367,10 @@
   /* Aperçu */
   .apercu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: .6rem; }
   .info-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: .65rem .8rem; }
-  .card-title { font-size: .7rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+  .card-title { font-size: .7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;
     letter-spacing: .05em; margin-bottom: .4rem; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: .15rem .75rem; font-size: .77rem; }
-  dt { color: #64748b; white-space: nowrap; }
+  dt { color: #94a3b8; white-space: nowrap; }
   dd { color: #e2e8f0; }
   dd.obj { color: #cbd5e1; font-size: .72rem; line-height: 1.4; }
   .montant-pos { color: #4ade80; font-weight: 700; }
@@ -374,7 +378,7 @@
 
   /* Table commune */
   .data-table { width: 100%; border-collapse: collapse; font-size: .77rem; }
-  .data-table th { background: #1e293b; color: #64748b; font-size: .65rem; font-weight: 700;
+  .data-table th { background: #1e293b; color: #94a3b8; font-size: .65rem; font-weight: 700;
     text-transform: uppercase; letter-spacing: .04em; padding: .4rem .6rem;
     border-bottom: 1px solid #334155; text-align: left; }
   .data-table td { padding: .35rem .6rem; border-bottom: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
@@ -385,7 +389,7 @@
   .ent-link { color: #93c5fd; }
   .ent-link:hover { text-decoration: underline; }
   .self-name { color: #e2e8f0; font-weight: 600; }
-  .muted { color: #64748b; }
+  .muted { color: #94a3b8; }
   .montant { font-weight: 700; color: #fb923c; }
   .source-cell { font-size: .7rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -406,7 +410,7 @@
   .timeline { display: flex; flex-direction: column; gap: 0; }
   .tl-item { display: grid; grid-template-columns: 100px 1fr; gap: .5rem;
     padding: .3rem 0; border-bottom: 1px solid #1e293b; font-size: .77rem; }
-  .tl-date { color: #64748b; white-space: nowrap; padding-top: 1px; }
+  .tl-date { color: #94a3b8; white-space: nowrap; padding-top: 1px; }
   .tl-body { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
   .tl-type { font-size: .65rem; background: #334155; padding: 1px 5px; border-radius: 3px; color: #94a3b8; }
   .tl-title { color: #cbd5e1; flex: 1; }
@@ -424,11 +428,11 @@
   .synth-body { padding: .75rem; font-size: .82rem; color: #d1fae5; line-height: 1.6; white-space: pre-wrap; }
   .synth-meta { padding: .3rem .75rem .5rem; font-size: .7rem; }
   .ia-empty { text-align: center; margin-top: 2rem; }
-  .ia-empty p { color: #64748b; margin-bottom: 1rem; }
+  .ia-empty p { color: #94a3b8; margin-bottom: 1rem; }
   .btn-ia { background: #1d4ed8; color: #fff; border-radius: 6px; padding: .4rem .85rem; font-size: .8rem; }
   .btn-ia:hover { background: #2563eb; }
 
-  .empty { color: #64748b; text-align: center; margin-top: 2rem; font-size: .85rem; }
+  .empty { color: #94a3b8; text-align: center; margin-top: 2rem; font-size: .85rem; }
 
   .status-active, .status-actif { color: #4ade80; }
   .status-closed, .status-fermé, .status-radiée { color: #f87171; }

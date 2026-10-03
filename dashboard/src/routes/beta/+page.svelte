@@ -164,13 +164,13 @@
   }
 
   .lede {
-    color: #475569;
+    color: #94a3b8;
     max-width: 680px;
   }
 
   .stamp {
     text-align: right;
-    color: #64748b;
+    color: #94a3b8;
     font-size: .75rem;
   }
 
@@ -205,7 +205,7 @@
   .type-grid span,
   article span,
   .state {
-    color: #64748b;
+    color: #94a3b8;
     font-size: .8rem;
   }
 
@@ -256,7 +256,7 @@
 
   ul {
     padding-left: 1.1rem;
-    color: #475569;
+    color: #94a3b8;
     font-size: .85rem;
     line-height: 1.6;
   }
