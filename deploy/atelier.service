@@ -74,6 +74,10 @@ ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public
 ReadWritePaths=-/opt/vigie/public-data -/opt/vigie/decisions -/opt/vigie/dashboard/static/api
 # Les dossiers thématiques s'écrivent depuis l'atelier (`dossiers/<slug>.md`).
 ReadWritePaths=-/opt/vigie/dossiers
+# Avec la cible de publication « local » (config/instance.json), « Mettre en
+# ligne » écrit dans le répertoire que sert le serveur web : lui seul, pas son
+# parent ni ses voisins. Sans cette ligne, la copie échoue en lecture seule.
+#ReadWritePaths=/srv/www/macommune
 
 [Install]
 WantedBy=multi-user.target
