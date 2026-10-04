@@ -48,11 +48,14 @@
   // 2 et 3). L'en-tête disait « Conseils en clair » et la page « Le conseil en
   // clair », l'en-tête « Dossiers thématiques » et la page « Dossiers » : le
   // lecteur qui cherche le mot cliqué ne le retrouvait pas en arrivant.
+  //
+  // 04/10/2026 : les conseils en clair et les dossiers passent en tête, et
+  // « Récent » quitte l'en-tête pour l'accueil (« Tout le flux ») et le pied
+  // de page (décision 11) — six entrées, la décision avant la donnée.
   $: nav = [
-    { href: '/nouveautes',      label: 'Récent',         icone: 'recent', titre: 'Ce qui a changé' },
-    { href: '/qui-decide',      label: 'Qui décide',     icone: 'decide' },
     { href: '/conseils',        label: 'Les conseils en clair', icone: 'conseil', fort: data?.aConseils },
     data?.aDossiers && { href: '/dossiers', label: 'Dossiers thématiques', icone: 'document', fort: true },
+    { href: '/qui-decide',      label: 'Qui décide',     icone: 'decide' },
     { href: '/argent',          label: "Où va l'argent", icone: 'argent' },
     { href: '/acteurs-publics', label: 'Qui agit',       icone: 'acteurs', titre: 'Qui agit ?',
       aussi: ['/carte', '/entite'] },
@@ -103,7 +106,7 @@
 
 <svelte:window on:keydown={(e) => { if (e.key === 'Escape') menuOuvert = false }} />
 
-<div class="app" class:sept={nav.length > 6}>
+<div class="app" class:sept={nav.length > 5}>
   <header>
     <a class="brand" href="/">
       <Icon name="decide" size={22} />
@@ -162,6 +165,7 @@
       Veille citoyenne — données publiques (SIRENE, RNA, DVF, BODACC, OFGL, DECP, délibérations).
     </div>
     <nav class="fnav">
+      <a href="/nouveautes">Ce qui a changé</a>
       <a href="/territoire">Le territoire</a>
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
@@ -328,7 +332,11 @@
   /* Sept entrées quand l'instance publie des dossiers (01/10/2026) : mesuré à
      1 440 px de large au naturel. L'en-tête se resserre, puis les entrées
      ordinaires perdent leur icône, puis le menu burger prend le relais plus
-     tôt. Une instance à six entrées garde les seuils d'avant. */
+     tôt. Une instance à six entrées garde les seuils d'avant.
+     04/10/2026 : six entrées seulement (« Récent » est au pied de page), mais
+     les deux plus longues — « Les conseils en clair », « Dossiers
+     thématiques » — sont en pastille : la classe `sept` vaut dès six entrées,
+     sans quoi le champ de recherche sortait de l'écran à 1 280 px. */
   @media (max-width: 1460px) and (min-width: 1216px) {
     .sept header { gap: .8rem; }
     .sept .principale { gap: .7rem; }
@@ -336,6 +344,7 @@
   }
   @media (max-width: 1330px) and (min-width: 1216px) {
     .sept .principale a:not(.fort) :global(.icon) { display: none; }
+    .sept .recherche input { width: 6.5rem; }
   }
   @media (max-width: 1215px) and (min-width: 1081px) {
     .sept .principale, .sept .recherche:not(.mobile) { display: none; }

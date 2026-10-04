@@ -17,7 +17,11 @@ export function load() {
   return {
     // `null` : snapshot antérieur aux pages de séance. La page le dit plutôt
     // que d'écrire « aucune séance », qui serait une affirmation.
-    seances,
+    // Les seuls champs que la liste affiche : 216 séances à Lasalle, et la
+    // page porte ses données deux fois (HTML et hydratation).
+    seances: seances && seances.map(({ id, date, code, assemblee, nb_actes, en_clair }) =>
+      ({ id, date, code, assemblee, nb_actes,
+         ...(en_clair ? { en_clair: { titre: en_clair.titre, relu_le: en_clair.relu_le } } : {}) })),
     // Une instance sans procès-verbal collecté : une question non posée,
     // pas une absence de séances.
     source: etatSource(lireJSON('couverture.json', {}), 'deliberations'),

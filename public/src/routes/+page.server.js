@@ -7,6 +7,7 @@ import { DATA_DIR } from '$lib/donnees.server.js'
 import { estAttribue } from '$lib/marches.js'
 import { TYPES_ACTEURS } from '$lib/actes.js'
 import { etatSource } from '$lib/couverture.js'
+import { lireDossiers } from '$lib/dossiers.server.js'
 
 export const prerender = true
 
@@ -78,7 +79,19 @@ export function load() {
   // (docs/refonte-du-contenu.md § 2.1). Un snapshot sans `seances.json` garde
   // le renvoi vers l'année.
   const ASSEMBLEE = { conseil_municipal: 'conseil-municipal', conseil_communautaire: 'conseil-communautaire' }
-  const pages = new Set(((lire('seances.json', {}).seances) || []).map((s) => s.id))
+  const seances = (lire('seances.json', {}).seances) || []
+  const pages = new Set(seances.map((s) => s.id))
+
+  // ── Au conseil : la dernière séance de chaque assemblée ─────────────────
+  // Une par assemblée, jamais deux de la même : la commune et
+  // l'intercommunalité ne votent ni les mêmes actes ni avec les mêmes élus.
+  // `seances.json` est trié du plus récent au plus ancien ; une séance datée
+  // après l'arrêt des données n'a pas encore eu lieu.
+  const dernieres = ['cm', 'cc']
+    .map((code) => seances.find((s) => s.code === code && s.date <= aujourdhui))
+    .filter(Boolean)
+    .map(({ id, date, code, assemblee, nb_actes, en_clair }) =>
+      ({ id, date, code, assemblee, nb_actes, en_clair: en_clair || null }))
   const lienDeSeance = (i) => {
     const id = `${i.date}_${ASSEMBLEE[i.type]}`
     return pages.has(id) ? `/conseils/${id}` : `/deliberations/${i.date.slice(0, 4)}`
@@ -169,6 +182,11 @@ export function load() {
 
   return {
     prochains,
+    dernieres,
+    // Les dossiers publiés, sans leur corps : l'accueil n'en montre que le titre
+    // et le chapeau. Un dossier « à développer » attend sur /dossiers.
+    dossiers: lireDossiers().filter((d) => d.statut !== 'a_developper')
+      .map(({ slug, titre, chapeau }) => ({ slug, titre, chapeau })),
     chiffres: {
       acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
