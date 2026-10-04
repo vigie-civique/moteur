@@ -136,6 +136,10 @@ from scripts.snapshot.argent import (  # noqa: E402,F401
 )
 from scripts.snapshot.territoire import (  # noqa: E402,F401
     DECHETS_INDICATEURS,
+    export_enfance,
+    export_telecoms,
+    INSEE_PUBLIABLES,
+    RUPTURE_CUIVRE,
     export_dechets,
     export_eau_potable,
     export_incendie,
@@ -829,207 +833,6 @@ def mesurer_replicabilite() -> dict:
     }
 
 
-# ── Internet et téléphone (ARCEP, `collectors/telecoms.py`) ──────────────────
-#
-# Cinq relevés, cinq façons de se tromper en les affichant — chacune qualifiée
-# ici, pour que la page n'ait rien à décider :
-#   - le nombre de LOCAUX varie d'un trimestre à l'autre (le plan d'adressage
-#     nettoie la base) : on publie la PART fibrée, jamais le seul compte ;
-#   - l'éligibilité au cuivre tombe à zéro au 2ᵉ trimestre 2026 dans 25 805
-#     communes à la fois : une rupture de méthode, pas une fermeture ;
-#   - la qualité de la fibre n'existe que PAR RÉSEAU (tout un département hors
-#     villes) : elle se dit comme telle, et ne se classe qu'à période et
-#     périmètre égaux ;
-#   - un site mobile est une ligne par opérateur : le site physique est
-#     `id_site_partage` (sinon `num_site`) ;
-#   - « 0 panne » ne vaut que sur des jours LUS : sans jour lu, rien n'est dit.
-
-def _fin_de_periode(periode: str) -> tuple:
-    """« 10/25 - 03/26 » → (26, 3) : une période se trie par sa fin."""
-    m = re.search(r"(\d{2})/(\d{2})\s*$", periode or "")
-    return (int(m.group(2)), int(m.group(1))) if m else (0, 0)
-
-
-def _situer(conn, periode: str, perimetre: str, colonne: str, valeur) -> dict | None:
-    """Rang (du meilleur au moins bon) et médiane parmi les réseaux de même
-    période et même périmètre."""
-    if valeur is None:
-        return None
-    autres = sorted(r[0] for r in conn.execute(
-        f"SELECT {colonne} FROM telecoms_qualite_ftth WHERE periode=? AND perimetre=? "
-        f"AND {colonne} IS NOT NULL", (periode, perimetre)))
-    if not autres:
-        return None
-    n = len(autres)
-    mediane = autres[n // 2] if n % 2 else (autres[n // 2 - 1] + autres[n // 2]) / 2
-    return {"taux": valeur, "rang": sum(1 for x in autres if x < valeur) + 1,
-            "sur": n, "mediane": round(mediane, 6)}
-
-
-#: Les trimestres où l'ARCEP a changé de méthode pour le cuivre (le zéro y
-#: apparaît dans des dizaines de milliers de communes, selon leur calendrier de
-#: mise à jour). Un zéro apparu HORS de cette fenêtre n'est pas qualifié : la
-#: page n'en dit rien plutôt que de l'expliquer à tort.
-RUPTURE_CUIVRE = ("2026_T1", "2026_T2")
-
-
-def _cuivre_a_zero(serie: list[dict]) -> dict | None:
-    """Le trimestre où l'éligibilité au cuivre tombe à zéro, s'il est dans la
-    fenêtre de rupture et le reste depuis."""
-    for avant, apres in zip(serie, serie[1:]):
-        if avant["cuivre"] and apres["cuivre"] == 0:
-            if apres["trimestre"] in RUPTURE_CUIVRE and serie[-1]["cuivre"] == 0:
-                return {"trimestre": apres["trimestre"], "date": apres["date"],
-                        "avant": avant["cuivre"], "date_avant": avant["date"]}
-    return None
-
-
-def export_telecoms(conn, insee: str, departement: str, rayon_km: float) -> dict | None:
-    if not table_exists(conn, "telecoms_fixe"):
-        return None
-    serie = rows(conn, """
-        SELECT trimestre, date, locaux, elig_ftth AS fibre, elig_cu AS cuivre,
-               mt_ftth, mt_4gf, mt_sat, mt_autre
-          FROM telecoms_fixe WHERE insee=? ORDER BY trimestre
-    """, (insee,))
-    if not serie:
-        return None
-    for s in serie:
-        s["part"] = round(100 * s["fibre"] / s["locaux"], 1) \
-            if s["locaux"] and s["fibre"] is not None else None
-    dernier = serie[-1]
-    ouverture = next((s for s in serie if s["fibre"]), None)
-    fixe = {
-        "serie": [{k: s[k] for k in ("trimestre", "date", "locaux", "fibre", "part")}
-                  for s in serie],
-        "dernier": {**dernier, "sans_fibre": (dernier["locaux"] or 0) - (dernier["fibre"] or 0)},
-        "ouverture": ouverture and {k: ouverture[k] for k in ("trimestre", "date", "fibre")},
-        "cuivre_a_zero": _cuivre_a_zero(serie),
-    }
-
-    reseau = None
-    if table_exists(conn, "telecoms_fixe_oi"):
-        oi = row(conn, """
-            SELECT f.trimestre, f.zone, f.oi, o.nom, f.locaux, f.ftth
-              FROM telecoms_fixe_oi f LEFT JOIN telecoms_operateurs o ON o.code = f.oi
-             WHERE f.insee=? ORDER BY f.trimestre DESC LIMIT 1
-        """, (insee,))
-        if oi:
-            reseau = {**oi, "qualite": None}
-            nom = oi.get("nom")
-            if nom and table_exists(conn, "telecoms_qualite_ftth"):
-                # L'ARCEP nomme le même opérateur « Wigard » ici, « Wigard
-                # Fibre » là : la jointure se fait par préfixe.
-                lignes = rows(conn, "SELECT * FROM telecoms_qualite_ftth WHERE oi LIKE ?",
-                              (nom + "%",))
-                periodes = sorted({r["periode"] for r in lignes}, key=_fin_de_periode)
-                if periodes:
-                    p = periodes[-1]
-                    res = next((r for r in lignes if r["periode"] == p
-                                and r["perimetre"] == "reseau"), None)
-                    dep = next((r for r in lignes if r["periode"] == p
-                                and r["perimetre"] == "departement"
-                                and r["dep_code"] == departement), None)
-                    reseau["qualite"] = {
-                        "periode": p, "oi": (res or dep or {}).get("oi"),
-                        "maison_mere": (res or dep or {}).get("maison_mere"),
-                        "pannes": res and _situer(conn, p, "reseau", "taux_pannes",
-                                                  res["taux_pannes"]),
-                        "echecs_raccordement": res and _situer(
-                            conn, p, "reseau", "taux_echecs_raccordement",
-                            res["taux_echecs_raccordement"]),
-                        # Publié au seul périmètre départemental par l'ARCEP.
-                        "abonnes_avec_panne": dep and _situer(
-                            conn, p, "departement", "taux_abonnes_avec_panne",
-                            dep["taux_abonnes_avec_panne"]),
-                    }
-
-    mobile = None
-    if table_exists(conn, "telecoms_sites_mobiles"):
-        lignes = rows(conn, """
-            SELECT *, COALESCE(id_site_partage, num_site) AS site FROM telecoms_sites_mobiles
-             WHERE trimestre=(SELECT MAX(trimestre) FROM telecoms_sites_mobiles)
-             ORDER BY distance_km, nom_op
-        """)
-        if lignes:
-            sites: dict[str, dict] = {}
-            for l in lignes:
-                s = sites.setdefault(l["site"], {
-                    "site": l["site"], "commune": l["nom_com"], "insee": l["insee_com"],
-                    "distance_km": l["distance_km"], "zones_blanches": False,
-                    "couverture_ciblee": False, "cinq_g": False, "operateurs": []})
-                s["zones_blanches"] |= bool(l["site_zb"])
-                s["couverture_ciblee"] |= bool(l["site_dcc"])
-                s["cinq_g"] |= bool(l["site_5g"])
-                s["operateurs"].append({"nom": l["nom_op"], **{
-                    t: bool(l[f"site_{t}"]) for t in ("2g", "3g", "4g", "5g")}})
-            tous = list(sites.values())
-            cinq_g = [s for s in tous if s["cinq_g"]]
-            mobile = {
-                "trimestre": lignes[0]["trimestre"], "rayon_km": rayon_km,
-                "sites": len(tous),
-                "dans_la_commune": [s for s in tous if s["insee"] == insee],
-                "plus_proche_5g": cinq_g[0] if cinq_g else None,
-                "zones_blanches": sum(1 for s in tous if s["zones_blanches"]),
-                "couverture_ciblee": sum(1 for s in tous if s["couverture_ciblee"]),
-            }
-
-    pannes = None
-    if table_exists(conn, "telecoms_indispo_jours"):
-        j = row(conn, "SELECT COUNT(*) AS jours, MIN(jour) AS du, MAX(jour) AS au "
-                      "FROM telecoms_indispo_jours")
-        if j and j["jours"]:
-            pannes = {**j, "declarees": conn.execute(
-                "SELECT COUNT(*) FROM telecoms_indisponibilites WHERE code_insee=? "
-                "AND jour BETWEEN ? AND ?", (insee, j["du"], j["au"])).fetchone()[0]}
-
-    return {"insee": insee, "fixe": fixe, "reseau": reseau, "mobile": mobile, "pannes": pannes}
-
-
-def export_enfance(conn, insee: str, epci: str, departement: str) -> dict | None:
-    """Les écoles de la commune, rentrée par rentrée, et l'accueil des moins de
-    trois ans dans l'intercommunalité."""
-    ecoles = []
-    if table_exists(conn, "ecoles_effectifs") and table_exists(conn, "etablissements_scolaires"):
-        for e in rows(conn, """
-                -- Le nom de l'ANNUAIRE, pas celui de la fiche : la fiche a pu être
-                -- adoptée d'une autre source (« École élémentaire »), alors que
-                -- les effectifs sont ceux de l'école entière, maternelle comprise.
-                SELECT s.uai, json_extract(s.raw_data, '$.nom_etablissement') AS nom,
-                       s.nature, s.secteur, s.etat
-                  FROM etablissements_scolaires s
-                 WHERE json_extract(s.raw_data, '$.code_commune') = ?
-                   AND s.uai IN (SELECT uai FROM ecoles_effectifs) ORDER BY s.uai""", (insee,)):
-            ecoles.append({
-                **e,
-                "serie": rows(conn, "SELECT rentree, eleves, maternelle, classes"
-                                    " FROM ecoles_effectifs WHERE uai=? ORDER BY rentree", (e["uai"],)),
-                "ips": rows(conn, """
-                    SELECT rentree, ips, ips_france_public AS france_public,
-                           ips_departement_public AS departement_public
-                      FROM ecoles_ips WHERE uai=? AND ips IS NOT NULL ORDER BY rentree""",
-                            (e["uai"],)) if table_exists(conn, "ecoles_ips") else [],
-            })
-    accueil = None
-    if epci and table_exists(conn, "accueil_petite_enfance"):
-        serie = rows(conn, """
-            SELECT annee, creche, assistantes, domicile, ecole, total, taux
-              FROM accueil_petite_enfance WHERE portee='epci' AND code=? ORDER BY annee""", (epci,))
-        if serie:
-            # Les repères ne valent qu'à ANNÉE ÉGALE : la CAF publie le
-            # département et la France sur moins d'années que l'intercommunalité.
-            repere = lambda portee, code, annee: (row(conn, """
-                SELECT taux FROM accueil_petite_enfance WHERE portee=? AND code=? AND annee=?""",
-                                                      (portee, code, annee)) or {}).get("taux")
-            for s in serie:
-                s["departement"] = repere("departement", departement, s["annee"])
-                s["france"] = repere("france", "", s["annee"])
-            accueil = {"serie": serie, "dernier": serie[-1]}
-    if not ecoles and not accueil:
-        return None
-    return {"insee": insee, "ecoles": ecoles, "accueil": accueil}
-
-
 def export_reperes_fiscaux(conn) -> list[dict]:
     """Où se place un taux parmi les communes qui lèvent la même taxe."""
     if not table_exists(conn, "fiscalite_reperes"):
@@ -1253,14 +1056,6 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
 # et un `DELETE` à la main dans trois bases de production n'est pas un
 # correctif. Le jour où les migrations existent, ce filtre devient inutile —
 # et il ne fera alors que confirmer un jeu déjà propre.
-INSEE_PUBLIABLES = """
-    SELECT insee, commune, dataset, indicateur, libelle, annee, valeur, dims
-      FROM insee_indicateurs
-     WHERE dataset <> 'DS_BPE'
-     ORDER BY dataset, indicateur, annee
-"""
-
-
 def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
     # Avant toute lecture de la base : l'heure de cette construction, pour
     # tous les fichiers. Cf. `lire_horloge`.
@@ -1325,47 +1120,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         dvf_data = faits["dvf_data"]
         marches_data = faits["marches_data"]
         approbations_data = faits["approbations_data"]
-
-        # ── Portrait de territoire (INSEE) ────────────────────────────────────
-        insee_data = rows(conn, INSEE_PUBLIABLES) \
-            if table_exists(conn, "insee_indicateurs") else []
-
-        # Équipements et services (BPE). `geo_type` distingue le communal de
-        # l'intercommunal : l'INSEE ne publie l'ÉVOLUTION qu'à partir de l'EPCI,
-        # et une page qui présenterait cette trajectoire comme communale
-        # mentirait. Le champ voyage donc jusqu'au JSON.
-        equipements = rows(conn, """
-            SELECT geo_type, geo_code, geo_nom, annee, niveau, code, libelle, nombre
-              FROM equipements ORDER BY geo_type, annee, niveau, code
-        """) if table_exists(conn, "equipements") else []
-
-        # Transport déclaré et dispositifs de l'État. Seuls les arrêts DANS la
-        # commune sortent : ceux que la boîte englobante a ramassés chez le
-        # voisin gonfleraient la desserte communale. Leur nombre est publié à
-        # part, pour que l'écart reste lisible.
-        mobilite_aom = rows(conn, """
-            SELECT insee, nom, siren, forme, departement FROM mobilite_aom
-        """) if table_exists(conn, "mobilite_aom") else []
-        mobilite_arrets = rows(conn, """
-            SELECT insee, reseau, arret, lat, lng FROM mobilite_arrets
-             WHERE dans_commune = 1 ORDER BY reseau, arret
-        """) if table_exists(conn, "mobilite_arrets") else []
-        arrets_hors_commune = (conn.execute(
-            "SELECT COUNT(*) FROM mobilite_arrets WHERE dans_commune = 0").fetchone()[0]
-            if table_exists(conn, "mobilite_arrets") else 0)
-        dispositifs = rows(conn, """
-            SELECT insee, code, libelle, reference FROM dispositifs_etat
-             ORDER BY insee, libelle
-        """) if table_exists(conn, "dispositifs_etat") else []
-
-        # Cadastre : le parcellaire ne se publie pas parcelle par parcelle (des
-        # milliers de lignes qu'aucune page ne lit), mais son RÉSUMÉ situe le
-        # territoire — combien de parcelles, quelle surface cadastrée.
-        cadastre_resume = rows(conn, """
-            SELECT insee, COUNT(*) AS parcelles, COUNT(DISTINCT section) AS sections,
-                   SUM(contenance) AS contenance_m2
-              FROM cadastre_parcelles GROUP BY insee
-        """) if table_exists(conn, "cadastre_parcelles") else []
 
         # Un statut déclaré est une promesse ; la date de dernière collecte est
         # un fait. C'est elle qui permet à un lecteur de vérifier le statut sans
@@ -1558,19 +1312,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         write_json(out / "marches.json", {"marches": marches_data, "total": len(marches_data)})
         write_json(out / "approbations.json",
                    {"approbations": approbations_data, "total": len(approbations_data)})
-        write_json(out / "territoire.json", {
-            "insee": insee_data,
-            "total": len(insee_data),
-            "equipements": equipements,
-            "mobilite_aom": mobilite_aom,
-            "mobilite_arrets": mobilite_arrets,
-            "mobilite_arrets_hors_commune": arrets_hors_commune,
-            "dispositifs_etat": dispositifs,
-            "cadastre": cadastre_resume,
-            "telecoms": export_telecoms(conn, INSEE_C1, DEPARTEMENT, TELECOMS_RAYON_KM),
-            "enfance": export_enfance(conn, INSEE_C1, EPCI_SIREN_C2, DEPARTEMENT),
-        })
-
         # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
         # Popolo (popoloproject.com) est le vocabulaire commun des projets de
         # transparence parlementaire et municipale : Open Civic Data (le

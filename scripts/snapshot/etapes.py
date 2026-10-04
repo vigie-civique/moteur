@@ -16,7 +16,7 @@ from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
-from scripts.snapshot.territoire import etape_environnement
+from scripts.snapshot.territoire import etape_environnement, etape_territoire
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
 #: (lecture seule), le répertoire de sortie, l'heure de la construction, et le
@@ -74,4 +74,6 @@ ETAPES: list[Etape] = [
                    "dvf_data", "marches_data", "approbations_data")),
     Etape("environnement", etape_environnement,
           lit=("conn", "out"), ecrit=("environnement.json",)),
+    Etape("territoire", etape_territoire,
+          lit=("conn", "out"), ecrit=("territoire.json",)),
 ]
