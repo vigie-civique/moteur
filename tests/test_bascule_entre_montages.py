@@ -338,12 +338,39 @@ SCENARIO = textwrap.dedent("""
     p.revenir_a_la_version_precedente(p.SITE)
     print(json.dumps({"a": a["ok"], "b": b["ok"],
                       "site": json.loads((p.SITE / "stats.json").read_text())["marque"]}))
+    # Lancé en root par `sudo` : rendre l'arbre à son propriétaire, sans quoi le
+    # nettoyage des répertoires temporaires de pytest ne peut plus l'effacer.
+    if len(sys.argv) > 3:
+        subprocess.run(["chown", "-R", sys.argv[3], str(racine)], check=True)
 """)
 
 
-@pytest.mark.skipif(os.geteuid() != 0 or shutil.which("unshare") is None,
-                    reason="monter exige root et unshare")
+def _de_quoi_monter() -> list[str] | None:
+    """Le préfixe de commande qui ouvre un espace de montages privé, ou `None`.
+
+    Root d'abord ; sinon `sudo -n` (les exécuteurs GitHub l'ont, sans mot de
+    passe) ; sinon un espace de noms utilisateur (`unshare -r`), souvent refusé
+    aux comptes ordinaires. Chaque candidat est ESSAYÉ : un `unshare` présent ne
+    veut pas dire qu'on a le droit de monter."""
+    candidats = [["unshare", "-m", "--propagation", "private"]]
+    if os.geteuid() != 0:
+        candidats = [["sudo", "-n", "-E", *candidats[0]],
+                     ["unshare", "-r", "-m", "--propagation", "private"]]
+    for c in candidats:
+        if shutil.which(c[0]) is None:
+            continue
+        sonde = subprocess.run(
+            [*c, "sh", "-c", "d=$(mktemp -d) && mount --bind $d $d"],
+            capture_output=True)
+        if sonde.returncode == 0:
+            return c
+    return None
+
+
 def test_dans_de_vrais_montages(tmp_path):
+    prefixe = _de_quoi_monter()
+    if prefixe is None:
+        pytest.skip("aucun moyen de monter (ni root, ni sudo -n, ni espace de noms)")
     racine = tmp_path / "vigie"
     for m in MONTAGES_DE_L_UNITE:
         (racine / m).mkdir(parents=True)
@@ -352,12 +379,10 @@ def test_dans_de_vrais_montages(tmp_path):
     scenario = tmp_path / "scenario.py"
     scenario.write_text(SCENARIO, encoding="utf-8")
     r = subprocess.run(
-        ["unshare", "-m", "--propagation", "private", sys.executable,
-         str(scenario), str(racine), str(ROOT / "scripts" / "publication.py")],
+        [*prefixe, sys.executable, str(scenario), str(racine),
+         str(ROOT / "scripts" / "publication.py"),
+         f"{os.getuid()}:{os.getgid()}"],
         capture_output=True, text=True)
-    if r.returncode != 0 and ("mount:" in r.stderr or "Operation not permitted" in r.stderr
-                              or "permission denied" in r.stderr.lower()):
-        pytest.skip(f"l'exécuteur ne laisse pas monter : {r.stderr.strip()[-200:]}")
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout.strip().splitlines()[-1]) == \
         {"a": True, "b": True, "site": "en ligne"}
