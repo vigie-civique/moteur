@@ -125,8 +125,10 @@ fi
 echo "3/5 — Build du site (adapter-static → public/build)"
 # Les libellés du site sont dérivés de la même instance que le snapshot : les
 # régénérer ici évite qu'un site publie le nom d'une commune et les chiffres
-# d'une autre.
-"$PY" "$ROOT/scripts/generer_libelles.py" | tail -3
+# d'une autre. Le site seulement (`--site`) : la mise en ligne n'a aucune raison
+# de réécrire les libellés du tableau de bord de l'atelier, qu'elle ne publie
+# pas — et l'unité systemd qui la lance ne peut pas écrire dans `dashboard/src`.
+"$PY" "$ROOT/scripts/generer_libelles.py" --site | tail -3
 nettoyer_finder
 # `npm run build` échoue si une page est livrée sans son contenu :
 # cf. public/scripts/verifier_build.mjs.

@@ -51,4 +51,10 @@ UMask=0027
 ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public /opt/vigie/config
 ReadWritePaths=-/opt/vigie/territoire -/opt/vigie/decisions -/opt/vigie/dossiers -/opt/vigie/public-data
 ReadWritePaths=-/srv/vigie/national-store
+# La passe publie (`collecte.sh` → `publier-site.sh` → `publication.py publier`),
+# et publier remplace `dashboard/static/public_api` par renommage : écrire dans
+# son parent est le minimum. Sans cette ligne, la promotion échoue en lecture
+# seule APRÈS que le contrôle a réussi. `dashboard/src` reste fermé : la mise en
+# ligne ne régénère que les libellés du site (`generer_libelles.py --site`).
+ReadWritePaths=-/opt/vigie/dashboard/static
 #ReadWritePaths=/srv/www/macommune

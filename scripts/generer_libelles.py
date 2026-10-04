@@ -24,10 +24,12 @@ instance peut imposer ses formes dans `config/instance.json` :
 Lancé automatiquement par `build_public_snapshot.py`. À relancer à la main
 après avoir changé le nom public du site ou le courriel de contact :
 
-    python3 scripts/generer_libelles.py
+    python3 scripts/generer_libelles.py          # le site ET l'atelier
+    python3 scripts/generer_libelles.py --site   # le site seul (mise en ligne)
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -53,6 +55,13 @@ CIBLES = [
     ROOT / "dashboard" / "src" / "lib" / "instance.js",
 ]
 CIBLE = CIBLES[0]
+# Le site public seul : ce que la mise en ligne (`deploy/publier-site.sh`) a le
+# droit de réécrire. Le tableau de bord de l'atelier n'est pas du site : son
+# `instance.js` se régénère à l'installation et quand l'instance change, pas à
+# chaque publication — et l'unité systemd qui publie ne lui ouvre pas
+# `dashboard/src` (`ProtectSystem=strict`), d'où une mise en ligne en échec sur
+# `OSError: [Errno 30] Read-only file system`.
+CIBLES_SITE = [CIBLE]
 
 VOYELLES = "aeiouyàâäéèêëîïôöûüÿ"
 
@@ -195,7 +204,7 @@ def construire() -> dict:
     }
 
 
-def ecrire(valeurs: dict) -> None:
+def ecrire(valeurs: dict, cibles: list[Path] | None = None) -> None:
     lignes = [
         "// Fichier GÉNÉRÉ par scripts/generer_libelles.py — ne pas éditer.",
         "//",
@@ -225,15 +234,21 @@ def ecrire(valeurs: dict) -> None:
         "",
     ]
     contenu = "\n".join(lignes)
-    for cible in CIBLES:
+    for cible in (CIBLES if cibles is None else cibles):
         cible.parent.mkdir(parents=True, exist_ok=True)
         cible.write_text(contenu, encoding="utf-8")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
+    parser.add_argument("--site", action="store_true",
+                        help="n'écrire que le module du site public, pas celui "
+                             "du tableau de bord de l'atelier")
+    args = parser.parse_args(argv)
+    cibles = CIBLES_SITE if args.site else CIBLES
     valeurs = construire()
-    ecrire(valeurs)
-    for cible in CIBLES:
+    ecrire(valeurs, cibles)
+    for cible in cibles:
         print(f"✓ {cible.relative_to(ROOT)}")
     for cle in ("COMMUNE", "COMMUNE_DE", "COMMUNE_A", "EPCI", "EPCI_COURT",
                 "SITE_NOM", "CONTACT_EMAIL", "STATUT_LIBELLE"):

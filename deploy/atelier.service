@@ -62,16 +62,22 @@ UMask=0027
 # En écriture : les DONNÉES, pas le code. Avec l'arbre entier inscriptible, une
 # faille de l'application lui laissait réécrire `api.py` — donc survivre au
 # redémarrage. Le service écrit la base, les documents, les aperçus et le
-# snapshot ; `public/` parce que la publication y construit le site ;
-# `dashboard/static/api` parce que les synthèses y sont déposées. Le reste est
-# lu, et appartient à un autre compte que celui du service.
+# snapshot ; `public/` parce que la publication y construit le site. Le reste
+# est lu, et appartient à un autre compte que celui du service.
 #
 # ⚠️ `config/` y est à regret : `saisies.json` s'y écrit (par un temporaire
 # renommé, donc le répertoire entier doit être inscriptible), à côté de
 # `publication_rules.json` — le filtre de publication. Tant que les saisies
 # vivent là, le service peut réécrire les règles qui le contiennent.
 ReadWritePaths=/opt/vigie/db /opt/vigie/data /opt/vigie/audits /opt/vigie/public /opt/vigie/config
-ReadWritePaths=-/opt/vigie/public-data -/opt/vigie/decisions -/opt/vigie/dashboard/static/api
+ReadWritePaths=-/opt/vigie/public-data -/opt/vigie/decisions
+# `dashboard/static` et non `dashboard/static/public_api` : « Publier » met le
+# snapshot en service par renommage (`scripts/publication.py::basculer`), et
+# renommer un répertoire demande d'écrire dans son PARENT — un point de montage
+# lui-même ne se renomme pas. Ni `dashboard/` ni `dashboard/src` : le code du
+# tableau de bord reste en lecture seule. Avant le 04/10/2026, cette ligne
+# nommait `dashboard/static/api`, qui n'est écrit par rien.
+ReadWritePaths=-/opt/vigie/dashboard/static
 # Les dossiers thématiques s'écrivent depuis l'atelier (`dossiers/<slug>.md`).
 ReadWritePaths=-/opt/vigie/dossiers
 # Avec la cible de publication « local » (config/instance.json), « Mettre en
