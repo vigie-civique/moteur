@@ -12,10 +12,12 @@ import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
+from pathlib import Path
 
 from collectors.citations import acte_de_ligne, index_de, lignes_en_base
 from scripts.snapshot.revue import TYPES_REVUS, appliquer_revue
-from scripts.snapshot.socle import RULES, URL_COMMUNE, URL_EPCI, rows, safe_url
+from scripts.snapshot.socle import (RULES, URL_COMMUNE, URL_EPCI, rows, safe_url,
+                                    write_json_compact)
 from scripts.snapshot.textes import (convocation_publique, masquer_donnees_personnelles,
                                      nettoyer_titre_evenement, texte_publiable)
 
@@ -287,6 +289,39 @@ def portee_evenement(event_type: str | None, perimetres: set[str],
 PORTEE_PAR_PERIMETRE = {"C1": "commune", "C2": "intercommunalite"}
 
 
+def write_act_extracts(out: Path, textes: dict[int, str]) -> int:
+    """Un fichier par délibération publiée : `extrait/<id>.json`, son texte.
+
+    La page d'un millésime ne montrait d'un acte que son titre, et renvoyait au
+    PDF de la séance entière — une liasse de quarante pages où retrouver la
+    sienne. Le texte de chaque délibération est pourtant en base depuis la
+    collecte : le lecteur le déplie désormais sous le titre.
+
+    Un fichier par acte plutôt que le texte dans `events.json` : chaque page de
+    millésime embarque ses actes dans son HTML, et les 578 Ko de texte d'une
+    seule année y seraient partis pour un lecteur qui n'en ouvre qu'un. Même
+    motif que `entite/<id>.json`.
+
+    Le texte est celui que `texte_publiable` rend : les noms y sont, domicile et
+    naissance y sont masqués. Il garde la forme et les fautes de l'extraction :
+    c'est une LECTURE du document, et la page le dit — la pièce qui fait foi
+    reste celle de la collectivité.
+    """
+    dest = out / "extrait"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # PURGE AVANT ÉCRITURE, pour la raison écrite dans `write_entity_bundles` :
+    # un acte retiré de la publication garderait sinon son texte en ligne.
+    attendus = {f"{i}.json" for i in textes}
+    for f in dest.glob("*.json"):
+        if f.name not in attendus:
+            f.unlink()
+
+    for i, texte in textes.items():
+        write_json_compact(dest / f"{i}.json", {"id": i, "texte": texte})
+    return len(textes)
+
+
 def etape_actes(conn, revue, noms_publics, redige, exclusions) -> dict:
     # Un acte de marché ne se publie pas si son marché n'est pas publiable.
     #
@@ -504,3 +539,8 @@ def etape_cles_actes(conn, public_events) -> dict:
     }
 
     return {"index_actes": index_actes, "affiches": affiches, "cles_stats": cles_stats}
+
+
+def etape_extraits(out, textes_extraits) -> dict:
+    """Le texte de chaque délibération qui peut sortir, un fichier par acte."""
+    return {"extraits_actes": write_act_extracts(out, textes_extraits)}

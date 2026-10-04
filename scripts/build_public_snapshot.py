@@ -155,6 +155,7 @@ from scripts.snapshot.corrections import (  # noqa: E402,F401
 from scripts.snapshot.en_clair import export_dossiers, export_en_clair  # noqa: E402,F401
 from scripts.snapshot.conflits import deports_par_deliberation, export_conflits  # noqa: E402,F401
 from scripts.snapshot.fiches import comptes_syndicats_par_entite, write_entity_bundles  # noqa: E402,F401
+from scripts.snapshot.actes import write_act_extracts  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
 from collectors.verdict import ecarte, verdict_de  # noqa: E402
@@ -164,39 +165,6 @@ from collectors.verdict import ecarte, verdict_de  # noqa: E402
 # un export, une API, un moissonneur, un lecteur de flux.
 from collectors.config import STATUT  # noqa: E402
 from collectors.etat_flux import etat_du_flux  # noqa: E402
-
-
-def write_act_extracts(out: Path, textes: dict[int, str]) -> int:
-    """Un fichier par délibération publiée : `extrait/<id>.json`, son texte.
-
-    La page d'un millésime ne montrait d'un acte que son titre, et renvoyait au
-    PDF de la séance entière — une liasse de quarante pages où retrouver la
-    sienne. Le texte de chaque délibération est pourtant en base depuis la
-    collecte : le lecteur le déplie désormais sous le titre.
-
-    Un fichier par acte plutôt que le texte dans `events.json` : chaque page de
-    millésime embarque ses actes dans son HTML, et les 578 Ko de texte d'une
-    seule année y seraient partis pour un lecteur qui n'en ouvre qu'un. Même
-    motif que `entite/<id>.json`.
-
-    Le texte est celui que `texte_publiable` rend : les noms y sont, domicile et
-    naissance y sont masqués. Il garde la forme et les fautes de l'extraction :
-    c'est une LECTURE du document, et la page le dit — la pièce qui fait foi
-    reste celle de la collectivité.
-    """
-    dest = out / "extrait"
-    dest.mkdir(parents=True, exist_ok=True)
-
-    # PURGE AVANT ÉCRITURE, pour la raison écrite dans `write_entity_bundles` :
-    # un acte retiré de la publication garderait sinon son texte en ligne.
-    attendus = {f"{i}.json" for i in textes}
-    for f in dest.glob("*.json"):
-        if f.name not in attendus:
-            f.unlink()
-
-    for i, texte in textes.items():
-        write_json_compact(dest / f"{i}.json", {"id": i, "texte": texte})
-    return len(textes)
 
 
 def write_search_index(out: Path, public_entities, communes: dict[int, str],
@@ -481,7 +449,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         # ── Un fichier par acteur + index de recherche ────────────────────────
         bundles = faits["bundles"]
-        stats["extraits_actes"] = write_act_extracts(out, textes_extraits)
+        stats["extraits_actes"] = faits["extraits_actes"]
         stats["extraits_masquages"] = dict(masquages)
         communes = {r["id"]: r.get("commune") for r in entity_rows}
         liens_count = Counter(l["entity_id"] for l in public_links)
