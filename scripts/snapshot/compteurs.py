@@ -11,7 +11,7 @@ from collections import Counter
 
 from collectors.config import STATUT
 from scripts.snapshot.actes import TYPES_DELIBERES
-from scripts.snapshot.socle import ROOT, rows, table_exists
+from scripts.snapshot.socle import ROOT, rows, table_exists, write_json
 
 
 def mesurer_replicabilite() -> dict:
@@ -192,3 +192,41 @@ def etape_bilan_revue(exclusions, revue_annotations, public_events, public_flows
     }
 
     return {"exclusions_publiees": exclusions_publiees, "revue_atelier": revue_atelier}
+
+
+def etape_stats(out, exclusions_publiees, revue_atelier, stats_en_clair, stats_dossiers,
+                stats_graphe, cles_stats, corrections, actualite, a_venir, redactions,
+                conflits, elections, fiscalite, elus, urbanisme_public, adresses_retirees,
+                croisement_foncier, extraits_actes, masquages, bundles, indexed,
+                recherche, stats) -> None:
+    """`stats.json` complet, réécrit en dernier : ce que chaque étape a compté,
+    rangé dans l'ordre où le code l'a toujours rangé."""
+    stats["exclusions"] = exclusions_publiees
+    stats["revue_atelier"] = revue_atelier
+    stats["conseils_en_clair"] = stats_en_clair
+    stats["dossiers"] = stats_dossiers
+    stats["graphe"] = stats_graphe
+    stats["graphe"]["cles"] = cles_stats
+    stats["corrections_site"] = len(corrections["site"])
+    stats["actualite_items"] = min(len(actualite), 400)
+    stats["actualite_a_venir"] = len(a_venir)
+    stats["actualite_par_genre"] = dict(Counter(i["genre"] for i in actualite))
+    stats["redactions_personnes"] = redactions.get("remplacements", 0)
+
+    stats["conflits_cas"] = conflits["total"]
+    stats["conflits_par_statut"] = dict(
+        Counter(c["statut"] for c in conflits["cas"]))
+
+    stats["elections_communes"] = len(elections.get("resultats", []))
+    stats["fiscalite_taux"] = len(fiscalite)
+    stats["elus_rne"] = len(elus)
+    stats["urbanisme_autorisations"] = len(urbanisme_public)
+    stats["urbanisme_adresses_retirees"] = adresses_retirees
+    stats["croisement_foncier"] = len(croisement_foncier)
+
+    stats["extraits_actes"] = extraits_actes
+    stats["extraits_masquages"] = dict(masquages)
+    stats["entity_bundles"] = bundles
+    stats["search_index_entries"] = indexed
+    stats["recherche_index_entries"] = recherche
+    write_json(out / "stats.json", stats)   # réécrit avec les 2 compteurs

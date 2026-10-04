@@ -12,7 +12,7 @@ from scripts.snapshot.actes import (etape_actes, etape_cles_actes, etape_extrait
                                     etape_liens_actes)
 from scripts.snapshot.actualite import etape_actualite
 from scripts.snapshot.argent import etape_finances, etape_flux
-from scripts.snapshot.compteurs import etape_bilan_revue, etape_compteurs
+from scripts.snapshot.compteurs import etape_bilan_revue, etape_compteurs, etape_stats
 from scripts.snapshot.conflits import etape_conflits
 from scripts.snapshot.corrections import etape_corrections
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
@@ -180,4 +180,11 @@ ETAPES: list[Etape] = [
                "marches_data", "public_flows"),
           produit=("indexed", "recherche"),
           ecrit=("entity_index.json", "recherche_index.json")),
+    Etape("stats", etape_stats,
+          lit=("out", "exclusions_publiees", "revue_atelier", "stats_en_clair",
+               "stats_dossiers", "stats_graphe", "cles_stats", "corrections", "actualite",
+               "a_venir", "redactions", "conflits", "elections", "fiscalite", "elus",
+               "urbanisme_public", "adresses_retirees", "croisement_foncier",
+               "extraits_actes", "masquages", "bundles", "indexed", "recherche"),
+          complete=("stats",), ecrit=("stats.json",)),
 ]

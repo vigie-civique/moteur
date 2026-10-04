@@ -316,42 +316,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         actualite = faits["actualite"]
         a_venir = faits["a_venir"]
-        stats["exclusions"] = faits["exclusions_publiees"]
-        stats["revue_atelier"] = faits["revue_atelier"]
-        corrections = faits["corrections"]
         graphe = faits["graphe"]
-        stats["conseils_en_clair"] = faits["stats_en_clair"]
-        stats["dossiers"] = faits["stats_dossiers"]
-        stats["graphe"] = faits["stats_graphe"]
-        stats["graphe"]["cles"] = cles_stats
-        stats["corrections_site"] = len(corrections["site"])
-        stats["actualite_items"] = min(len(actualite), 400)
-        stats["actualite_a_venir"] = len(a_venir)
-        stats["actualite_par_genre"] = dict(Counter(i["genre"] for i in actualite))
-        stats["redactions_personnes"] = redactions.get("remplacements", 0)
-
-        conflits = faits["conflits"]
-        stats["conflits_cas"] = conflits["total"]
-        stats["conflits_par_statut"] = dict(
-            Counter(c["statut"] for c in conflits["cas"]))
-
-        stats["elections_communes"] = len(elections.get("resultats", []))
-        stats["fiscalite_taux"] = len(fiscalite)
-        stats["elus_rne"] = len(elus)
-        stats["urbanisme_autorisations"] = len(urbanisme_public)
-        stats["urbanisme_adresses_retirees"] = adresses_retirees
-        stats["croisement_foncier"] = len(croisement_foncier)
-
-        # ── Un fichier par acteur + index de recherche ────────────────────────
-        bundles = faits["bundles"]
-        stats["extraits_actes"] = faits["extraits_actes"]
-        stats["extraits_masquages"] = dict(masquages)
-        indexed = faits["indexed"]
-        recherche = faits["recherche"]
-        stats["entity_bundles"] = bundles
-        stats["search_index_entries"] = indexed
-        stats["recherche_index_entries"] = recherche
-        write_json(out / "stats.json", stats)   # réécrit avec les 2 compteurs
 
         # Rapport QA interne — JAMAIS dans le bundle public (contient les
         # exclusions nominatives = exactement les données filtrées). Écrit hors `out`.
