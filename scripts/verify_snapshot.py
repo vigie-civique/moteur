@@ -578,6 +578,16 @@ def check_dir(base, rep):
         rel = fp.relative_to(base)
         if "node_modules" in rel.parts:
             continue
+        # Un répertoire caché n'a rien à faire dans un répertoire publié : un
+        # site statique n'en sert aucun (hors `.well-known`). C'est ainsi que le
+        # retour arrière `.data.precedent/` a été servi le 16/09/2026, et que
+        # le transit de la publication (`.bascule/`) le serait s'il s'y
+        # retrouvait. Le fichier caché, lui, reste affaire de `FORBIDDEN_FILENAMES`.
+        cache = next((p for p in rel.parts[:-1]
+                      if p.startswith(".") and p != ".well-known"), None)
+        if cache:
+            rep.error("répertoire caché dans le répertoire publié", str(rel))
+            continue
         if FORBIDDEN_FILENAMES.search(fp.name):
             rep.error("fichier interdit dans le répertoire publié", str(rel))
             continue  # inutile de scanner : il doit disparaître

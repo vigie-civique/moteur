@@ -24,7 +24,12 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import json
+import os
+
 import pytest
+
+from montages import Montages, reloger
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -135,3 +140,42 @@ def test_l_option_site_n_ecrit_pas_le_tableau_de_bord(tmp_path):
 
     assert gl.main([]) == 0          # sans option : les deux, comme à l'installation
     assert atelier.is_file()
+
+
+@pytest.mark.parametrize("unite", UNITES)
+def test_un_renommage_de_la_publication_ne_traverse_pas_deux_readwritepaths(
+        publication, unite, tmp_path, monkeypatch):
+    """Chaque `ReadWritePaths` est un montage « bind » à part : `rename(2)` de
+    l'un à l'autre rend `EXDEV`, et hors de tous, `EROFS`. La promotion et le
+    retour arrière sont joués sur un arbre dont les montages sont ceux de
+    l'unité, les chemins ceux de `publication.py` : le renommage qui franchirait
+    deux `ReadWritePaths` (le défaut du 04/10/2026) échoue ici, sans systemd.
+
+    Ce que cet essai ne sait pas dire : il simule le code d'erreur du noyau, il
+    ne monte rien — `test_bascule_entre_montages.py` joue de vrais montages
+    quand l'exécuteur le permet, la commande `systemd-run` de la PR le joue
+    sous l'unité."""
+    racine = tmp_path / "vigie"
+    lieux = reloger(publication, racine, monkeypatch)
+    ouverts = [racine / o.relative_to(ROOT) for o in autorises(unite)]
+    for o in ouverts:
+        o.mkdir(parents=True, exist_ok=True)
+    Montages(ouverts).installer(monkeypatch)
+
+    def snap(dossier, marque, entites):
+        (dossier / "entite").mkdir(parents=True)
+        (dossier / "stats.json").write_text(json.dumps({"marque": marque}))
+        for i in entites:
+            (dossier / "entite" / f"{i}.json").write_text("{}")
+
+    snap(lieux["BROUILLON"], "neuf", [1, 2])
+    snap(lieux["PUBLIE"], "en ligne", [1])
+    snap(lieux["SITE"], "en ligne", [1])
+    ok = lambda cible: {"ok": True}
+
+    with publication.verrou_de_publication():
+        assert publication.basculer(lieux["BROUILLON"], lieux["PUBLIE"], ok)["ok"]
+        assert publication.basculer(lieux["PUBLIE"], lieux["SITE"], ok)["ok"]
+        for dest in (lieux["SITE"], lieux["PUBLIE"]):
+            publication.revenir_a_la_version_precedente(dest)
+    assert json.loads((lieux["SITE"] / "stats.json").read_text())["marque"] == "en ligne"

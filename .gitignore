@@ -29,6 +29,12 @@ dashboard/static/public_api/
 # règle écrite pour un chemin ne couvre pas ce que le code écrit À CÔTÉ.
 .*.precedent/
 .*.neuf/
+# Le transit de la publication : la version neuve y est amenée dans le montage
+# de sa destination le temps d'un renommage, puis le répertoire disparaît
+# (scripts/publication.py::_logement). Vide au repos ; ignoré au cas où un
+# plantage en laisserait des traces avant l'opération suivante.
+public/.bascule/
+dashboard/static/.bascule/
 public/static/docs/
 config/profils_locaux.json
 config/seed_local.json

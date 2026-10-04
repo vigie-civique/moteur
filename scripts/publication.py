@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import errno
 import fcntl
 import getpass
 import hashlib
@@ -102,6 +103,19 @@ VERSIONS_GARDEES = 1
 # le snapshot du 23/08 au complet, contrôlé selon les règles du 23/08, trois
 # semaines après que ces règles avaient été resserrées.
 VERSIONS = ROOT / "audits" / "versions"
+
+# Mais `VERSIONS` n'est pas dans le montage des destinations. Sous systemd
+# (`ProtectSystem=strict`), chaque `ReadWritePaths` est un montage « bind » à
+# part : `audits`, `dashboard/static` et `public` sont trois montages, et
+# `rename(2)` de l'un à l'autre rend `EXDEV`. Le 04/10/2026, ni « Publier » ni
+# la passe planifiée ne pouvaient promouvoir un snapshot.
+#
+# La mise en service doit pourtant rester un renommage, seul geste atomique :
+# elle se fait donc DANS le montage de la destination, depuis un répertoire de
+# transit voisin (`_logement`) où la version neuve a été COPIÉE puis vérifiée.
+# Le transit est vidé à la fin de chaque opération, et au début de la suivante
+# si un plantage l'a laissé. Rien de ce qui dure (`.precedent`) n'y habite.
+LOGEMENT = ".bascule"
 
 # Écrit dans chaque répertoire mis en service, et emporté par le déploiement.
 # C'est la pièce qui distingue « publié » de « en ligne » : sans elle, l'atelier
@@ -704,16 +718,142 @@ def _vider(dossier: Path) -> None:
         dossier.unlink()
 
 
+def _cle(dest: Path) -> str:
+    """Le nom d'un emplacement servi, assez précis pour ne pas en confondre deux.
+
+    Une empreinte du chemin : deux emplacements servis qui s'appelleraient
+    pareil (`outputs.public_snapshot_dir` est réglable) s'écraseraient sinon
+    leur retour arrière.
+    """
+    return f"{dest.name}-{hashlib.sha256(str(Path(dest).resolve()).encode()).hexdigest()[:8]}"
+
+
 def _voisins(dest: Path) -> tuple[Path, Path]:
     """La version en construction et la version d'avant d'un emplacement servi.
 
     Dans `VERSIONS`, jamais à côté de `dest` : cf. la définition de `VERSIONS`.
-    Le nom porte une empreinte du chemin : deux emplacements servis qui
-    s'appelleraient pareil (`outputs.public_snapshot_dir` est réglable)
-    s'écraseraient sinon leur retour arrière.
     """
-    cle = f"{dest.name}-{hashlib.sha256(str(Path(dest).resolve()).encode()).hexdigest()[:8]}"
+    cle = _cle(dest)
     return VERSIONS / f"{cle}.neuf", VERSIONS / f"{cle}.precedent"
+
+
+def _logement(dest: Path) -> Path:
+    """Le répertoire de transit d'un emplacement : DANS le montage de `dest`.
+
+    Un renommage ne traverse pas deux `ReadWritePaths` : le transit doit être
+    écrit dans celui de la destination — et nulle part qu'un build recopie.
+      - le site (`public/static/data`) : `public/.bascule/`, au-dessus de
+        `static/`. `public` est un seul montage, et SvelteKit ne recopie que
+        `static/` : un build concurrent ne le voit pas. Il le faut — le build de
+        `publier-site.sh` ne prend aucun verrou du moteur ;
+      - l'emplacement de l'atelier (`dashboard/static/public_api`) : le montage
+        EST `dashboard/static`, il n'y a pas d'au-dessus. Le transit y est à
+        côté, et n'existe que le temps d'une opération, sous le verrou de
+        publication. Rien dans le moteur ne construit le tableau de bord.
+    """
+    dest = Path(dest)
+    if dest.resolve() == SITE.resolve():
+        return SITE.parent.parent / LOGEMENT
+    return dest.parent / LOGEMENT
+
+
+def _transit(dest: Path) -> tuple[Path, Path, Path]:
+    """`(entrant, sortant, rangement)` : la version neuve amenée dans le montage,
+    l'ancienne écartée dans le montage, et l'ancienne en route vers `VERSIONS`."""
+    cle = _cle(Path(dest))
+    return (_logement(dest) / f"{cle}.entrant", _logement(dest) / f"{cle}.sortant",
+            VERSIONS / f"{cle}.rangement")
+
+
+def _nettoyer_le_transit(dest: Path, *en_plus: Path) -> None:
+    """Retire ce qu'un plantage a pu laisser : au début de chaque opération.
+
+    Un plantage entre les deux renommages de la mise en service laisse `dest`
+    absent et l'ancienne version dans `sortant` : la remettre AVANT de vider,
+    sans quoi le nettoyage effacerait la seule version qui existe.
+    """
+    _, sortant, _ = _transit(dest)
+    if sortant.is_dir() and not Path(dest).exists():
+        sortant.rename(dest)
+    for trace in (*_transit(dest), *en_plus):
+        _vider(trace)
+    _retirer_le_logement(dest)
+
+
+def _retirer_le_logement(dest: Path) -> None:
+    """Le transit n'existe que pendant une opération : au repos, il n'y a rien."""
+    try:
+        _logement(dest).rmdir()
+    except OSError:
+        pass                              # absent, ou occupé par un autre emplacement
+
+
+def _mettre_en_service(dest: Path, entrant: Path, sortant: Path) -> None:
+    """Les deux renommages, dans le montage de `dest`. Un échec remet l'ancienne."""
+    try:
+        if dest.exists():
+            dest.rename(sortant)
+        entrant.rename(dest)
+    except OSError:
+        # Le renommage a échoué alors que l'ancien est peut-être déjà écarté : le
+        # remettre en service vaut mieux que laisser l'emplacement vide. On ne
+        # vide que l'entrant — `sortant` est peut-être la seule version qui reste.
+        if sortant.exists() and not dest.exists():
+            sortant.rename(dest)
+        _vider(entrant)
+        _retirer_le_logement(dest)
+        raise
+
+
+def _amener(src: Path, dst: Path, *, garder: bool = False) -> bool:
+    """Place le répertoire `src` sous le nom `dst`, quel que soit le montage.
+
+    Renommage quand le noyau l'accepte. Sinon (`EXDEV`) une copie, dont
+    l'empreinte est comparée à celle de la source avant que celle-ci ne soit
+    retirée : une copie tronquée ne remplace jamais la version qu'elle copie.
+    `garder` : la source reste, et on copie même quand un renommage passerait.
+    Rend vrai si c'était une copie.
+    """
+    if not garder:
+        try:
+            src.rename(dst)
+            return False
+        except OSError as e:
+            if e.errno != errno.EXDEV:
+                raise
+    _vider(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    miroir(src, dst)
+    if empreinte(dst) != empreinte(src):
+        _vider(dst)
+        raise OSError(errno.EIO, f"copie de {src.name} différente de sa source")
+    if not garder:
+        _vider(src)
+    return True
+
+
+def _garder_comme_precedent(sortant: Path, precedent: Path, rangement: Path) -> str | None:
+    """L'ancienne version servie devient la version précédente, dans `VERSIONS`.
+
+    Le montage de `VERSIONS` n'est pas celui de `sortant` : c'est une copie. Elle
+    passe par `rangement` et ne remplace l'ancienne précédente que par un
+    renommage dans `VERSIONS`. Si elle échoue (disque plein), la promotion
+    reste faite — ce qui est servi est entier — mais l'ancienne précédente, qui
+    ne serait plus celle d'avant, est retirée : mieux vaut « aucune version
+    précédente » qu'un retour arrière vers une version vieille de deux
+    publications. Rend le message d'échec, ou `None`.
+    """
+    if not sortant.is_dir():
+        return None                         # première publication : rien d'avant
+    try:
+        _amener(sortant, rangement)
+        _vider(precedent)
+        rangement.rename(precedent)
+        return None
+    except OSError as e:
+        _vider(rangement)
+        _vider(precedent)
+        return f"{type(e).__name__}: {e}"
 
 
 def basculer(src: Path, dest: Path, controleur) -> dict:
@@ -727,24 +867,32 @@ def basculer(src: Path, dest: Path, controleur) -> dict:
 
     Ici, `dest` n'est touché qu'une fois la version neuve complète et contrôlée,
     et le changement se fait par deux renommages de répertoire — l'ancien
-    s'efface au profit de `.precedent`, le neuf prend sa place. Un renommage est
+    s'efface au profit du transit, le neuf prend sa place. Un renommage est
     atomique pour le système de fichiers ; il reste une fenêtre de l'ordre de la
     microseconde entre les deux où `dest` n'existe pas, contre plusieurs
     secondes de contenu incohérent auparavant.
 
     Ce qui est servi reste donc toujours une version entière : soit l'ancienne,
     soit la nouvelle, jamais un mélange des deux.
+
+    Trois lieux, parce que trois montages sous systemd : la version neuve est
+    construite et contrôlée dans `VERSIONS` ; elle est amenée par copie
+    vérifiée dans le transit du montage de `dest` (`_logement`), d'où le
+    renommage final est possible ; l'ancienne version, écartée par un renommage
+    dans ce même montage, est enfin rangée dans `VERSIONS` comme version
+    précédente. L'appelant tient `verrou_de_publication`.
     """
     dest = Path(dest)
     neuf, precedent = _voisins(dest)
+    entrant, sortant, rangement = _transit(dest)
     # L'ancien emplacement, à côté du répertoire servi : une instance publiée
     # avant le 16/09/2026 y garde une version que chaque build remet en ligne.
     # Il est remplacé par la version courante ci-dessous, donc rien ne s'y perd.
     for ancien in (dest.parent / f".{dest.name}.neuf",
                    dest.parent / f".{dest.name}.precedent"):
         _vider(ancien)
+    _nettoyer_le_transit(dest, neuf)
 
-    _vider(neuf)
     neuf.mkdir(parents=True)
     copie = miroir(src, neuf)
 
@@ -765,22 +913,21 @@ def basculer(src: Path, dest: Path, controleur) -> dict:
         "empreinte": marque, "mise_en_service_le": maintenant(),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    _vider(precedent)
-    # Sur une instance neuve, le parent du répertoire servi n'existe pas
-    # encore : la version neuve, construite à côté, le créait par accident.
+    # Sur une instance neuve, le parent du répertoire servi n'existe pas encore.
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        dest.rename(precedent)
+    _logement(dest).mkdir(parents=True, exist_ok=True)
     try:
-        neuf.rename(dest)
-    except OSError:
-        # Le renommage a échoué alors que l'ancien est déjà écarté : le remettre
-        # en service vaut mieux que laisser l'emplacement vide.
-        if precedent.exists() and not dest.exists():
-            precedent.rename(dest)
+        _amener(neuf, entrant)              # dans le montage de `dest`
+    except Exception:
+        _nettoyer_le_transit(dest, neuf)    # `dest` n'a pas été touché
         raise
+    _mettre_en_service(dest, entrant, sortant)
+
+    perdu = _garder_comme_precedent(sortant, precedent, rangement)
+    _nettoyer_le_transit(dest)
     return {"ok": True, "controle": controle, "empreinte": marque,
             "precedent": str(precedent) if precedent.exists() else None,
+            **({"precedent_perdu": perdu} if perdu else {}),
             **copie, "dest": str(dest)}
 
 
@@ -791,6 +938,11 @@ def revenir_a_la_version_precedente(dest: Path) -> dict:
     il garantit qu'elle est étanche. Un chiffre faux, un découpage raté, une
     page vide passent le contrôle. Quelqu'un doit pouvoir revenir en arrière
     sans reconstruire.
+
+    Même parcours que `basculer`, même raison : la version d'avant vit dans
+    `VERSIONS`, elle est COPIÉE dans le transit du montage de `dest` — et reste
+    où elle est tant que la mise en service n'a pas eu lieu. L'appelant tient
+    `verrou_de_publication` (l'API le fait ; ce verrou n'est pas réentrant).
     """
     dest = Path(dest)
     _, precedent = _voisins(dest)
@@ -798,16 +950,21 @@ def revenir_a_la_version_precedente(dest: Path) -> dict:
         raise PublicationRefusee(
             f"Aucune version précédente conservée pour {dest.name} — "
             "rien à remettre en service.")
-    courant = precedent.with_suffix(".repris")
-    _vider(courant)
-    if dest.exists():
-        dest.rename(courant)
-    precedent.rename(dest)
+    entrant, sortant, rangement = _transit(dest)
+    _nettoyer_le_transit(dest)
+    _logement(dest).mkdir(parents=True, exist_ok=True)
+    try:
+        _amener(precedent, entrant, garder=True)
+    except Exception:
+        _nettoyer_le_transit(dest)
+        raise
+    _mettre_en_service(dest, entrant, sortant)
     # L'ancienne courante devient la précédente : revenir deux fois de suite
     # doit ramener là d'où l'on vient, pas creuser.
-    if courant.exists():
-        courant.rename(precedent)
-    return {"dest": str(dest), "empreinte": empreinte(dest)}
+    perdu = _garder_comme_precedent(sortant, precedent, rangement)
+    _nettoyer_le_transit(dest)
+    return {"dest": str(dest), "empreinte": empreinte(dest),
+            **({"precedent_perdu": perdu} if perdu else {})}
 
 
 def miroir(src: Path, dest: Path) -> dict:
