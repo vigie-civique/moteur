@@ -91,7 +91,9 @@ def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
                                  "assemblee": s["assemblee_court"],
                                  "fichier": f"conseils/{nom}.html"})
         (dossier / f"{nom}.html").write_text(document(
-            f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
+            # Le nom de la rubrique, le même que l'en-tête et /conseils
+            # (docs/refonte-du-contenu.md, décision 2).
+            f"Les conseils en clair · {s['assemblee_court']} · {s['date']}",
             feuilles(r, relu=relu, liens={n: x.url for n, x in actes_lies.items()})
             + page_erreurs(r),
             retour=("/conseils", "Toutes les séances")), encoding="utf-8")

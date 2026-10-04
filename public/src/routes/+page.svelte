@@ -237,9 +237,10 @@
                fiche. La seule cible utile est la source d'origine. -->
           <span class="titre">
             {#if item.nb_actes != null}
-              <!-- Une séance renvoie vers /deliberations, où ses actes se lisent
-                   un par un ; ses PIÈCES renvoient vers l'archive d'origine. -->
-              <a href="/deliberations">{assemblee(item.titre)}</a>
+              <!-- Une séance renvoie vers sa feuille en clair si elle est relue,
+                   sinon vers l'année de ses actes (cf. +page.server.js) ; ses
+                   PIÈCES renvoient vers l'archive d'origine. -->
+              <a href={item.lien || '/deliberations'}>{assemblee(item.titre)}</a>
               <span class="compte">— {compte(item.nb_actes)}</span>
               {#if item.pieces?.length}
                 <span class="pieces">

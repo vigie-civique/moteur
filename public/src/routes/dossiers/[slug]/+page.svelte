@@ -47,7 +47,7 @@
 </svelte:head>
 
 <article>
-  <nav class="fil" aria-label="Fil d'Ariane"><a href="/dossiers">Dossiers</a> › {d.titre}</nav>
+  <nav class="fil" aria-label="Fil d'Ariane"><a href="/dossiers">Dossiers thématiques</a> › {d.titre}</nav>
   {#if d.statut === 'brouillon'}
     <p class="bandeau">Brouillon — aperçu local, cette page n'est pas publiée.</p>
   {/if}

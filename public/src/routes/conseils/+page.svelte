@@ -13,13 +13,13 @@
 </script>
 
 <svelte:head>
-  <title>Le conseil en clair — {SITE_NOM}</title>
+  <title>Les conseils en clair — {SITE_NOM}</title>
   <meta name="description" content="Chaque séance du conseil municipal et du conseil communautaire en trois feuilles : ce qui était annoncé, ce qui a été décidé, et ce que les documents publics ont de faux ou d'incomplet." />
 </svelte:head>
 
 <section>
-  <p class="fil"><a href="/qui-decide">Qui décide</a> › Le conseil en clair</p>
-  <h1>Le conseil en clair</h1>
+  <p class="fil"><a href="/qui-decide">Qui décide</a> › Les conseils en clair</p>
+  <h1>Les conseils en clair</h1>
   <p class="chapeau">
     Chaque séance en trois feuilles A4&nbsp;: ce qui était annoncé, ce qui a été
     décidé, et ce que les documents publics ont de faux ou d'incomplet. Chaque

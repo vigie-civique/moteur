@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { SITE_URL } from '$lib/instance.js'
 import { INSTITUTIONAL, anneeDe } from '$lib/actes.js'
 import { DATA_DIR } from '$lib/donnees.server.js'
+import { lireDossiers } from '$lib/dossiers.server.js'
 
 export const prerender = true
 
@@ -43,7 +44,8 @@ const adresseXml = (url) => encodeURI(url)
 // navigation pure (hub) portent une priorité plus haute que les listes.
 const PAGES = [
   ['/', 1.0], ['/qui-decide', 0.9], ['/argent', 0.9], ['/comprendre', 0.8],
-  ['/methode', 0.8], ['/couverture', 0.7], ['/corrections', 0.5], ['/conseils', 0.8], ['/nouveautes', 0.8], ['/deliberations', 0.8],
+  ['/methode', 0.8], ['/couverture', 0.7], ['/corrections', 0.5], ['/conseils', 0.8],
+  ['/dossiers', 0.8], ['/nouveautes', 0.8], ['/deliberations', 0.8],
   ['/marches', 0.7], ['/elus', 0.7], ['/budgets', 0.7], ['/finances', 0.7],
   ['/impots', 0.7], ['/elus-et-structures', 0.7], ['/elections', 0.7],
   ['/com-com', 0.7], ['/acteurs-publics', 0.6], ['/urbanisme', 0.6],
@@ -61,6 +63,11 @@ export function GET() {
   const maj = (stats.generated_at || new Date().toISOString()).slice(0, 10)
 
   const urls = PAGES.map(([loc, prio]) => ({ loc, prio }))
+
+  // Les dossiers publiés : la seule écriture du site, et ils manquaient au
+  // plan (relevé du 04/10/2026, docs/refonte-du-contenu.md § 1.5). Ce sont les
+  // mêmes que ceux qui ont une page — `lireDossiers` décide pour les deux.
+  for (const d of lireDossiers()) urls.push({ loc: `/dossiers/${d.slug}`, prio: 0.8 })
 
   // Un millésime d'actes par page.
   const actes = (lire('events.json', { events: [] }).events || [])

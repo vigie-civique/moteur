@@ -42,10 +42,16 @@
   // avant suit le contenu : sans séance relue, l'entrée reste ordinaire ; sans
   // dossier publié, « Dossiers » ne monte pas dans l'en-tête et reste au pied
   // de page.
+  //
+  // 04/10/2026 : un libellé par page, le même partout — en-tête, `<title>`,
+  // `<h1>`, fil d'Ariane, pied de page (docs/refonte-du-contenu.md, décisions
+  // 2 et 3). L'en-tête disait « Conseils en clair » et la page « Le conseil en
+  // clair », l'en-tête « Dossiers thématiques » et la page « Dossiers » : le
+  // lecteur qui cherche le mot cliqué ne le retrouvait pas en arrivant.
   $: nav = [
     { href: '/nouveautes',      label: 'Récent',         icone: 'recent', titre: 'Ce qui a changé' },
     { href: '/qui-decide',      label: 'Qui décide',     icone: 'decide' },
-    { href: '/conseils',        label: 'Conseils en clair', icone: 'conseil', fort: data?.aConseils },
+    { href: '/conseils',        label: 'Les conseils en clair', icone: 'conseil', fort: data?.aConseils },
     data?.aDossiers && { href: '/dossiers', label: 'Dossiers thématiques', icone: 'document', fort: true },
     { href: '/argent',          label: "Où va l'argent", icone: 'argent' },
     { href: '/acteurs-publics', label: 'Qui agit',       icone: 'acteurs', titre: 'Qui agit ?',
@@ -136,7 +142,7 @@
       <div class="separateur"></div>
       <a href="/territoire"><Icon name="territoire" size={18} />Le territoire</a>
       <a href="/environnement"><Icon name="environnement" size={18} />Environnement</a>
-      {#if !data?.aDossiers}<a href="/dossiers"><Icon name="document" size={18} />Dossiers</a>{/if}
+      {#if !data?.aDossiers}<a href="/dossiers"><Icon name="document" size={18} />Dossiers thématiques</a>{/if}
       <a href="/vie-locale"><Icon name="vie" size={18} />Vie locale</a>
       <form class="recherche mobile" on:submit={chercher} role="search">
         <Icon name="recherche" size={15} />
@@ -159,7 +165,7 @@
       <a href="/territoire">Le territoire</a>
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
-      <a href="/dossiers">Dossiers</a>
+      <a href="/dossiers">Dossiers thématiques</a>
       <a href="/methode">Méthode &amp; sources</a>
       <a href="/corrections">Corrections</a>
       <a href="/repliquer">Répliquer</a>

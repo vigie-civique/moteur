@@ -25,6 +25,10 @@
     { icone: 'intercommunalite', titre: `L'intercommunalité (${EPCI_COURT})`, href: '/com-com',
       sub: `Délégués ${COMMUNE_DE}, compétences, délibérations communautaires.`,
       valeur: nombre(data.deliberationsInterco), unite: 'actes votés par la CC' },
+    { icone: 'conseil', titre: 'Les conseils en clair', href: '/conseils',
+      sub: 'Chaque séance relue en trois feuilles : ce qui était annoncé, ce qui a été décidé, ce que les documents ont de faux.',
+      // Zéro dit quelque chose ici : aucune séance n'est encore relue.
+      valeur: nombre(data.seancesRelues), unite: data.seancesRelues > 1 ? 'séances relues' : 'séance relue' },
     { icone: 'document', titre: 'Délibérations & décisions', href: '/deliberations',
       sub: 'La chronologie des votes du conseil municipal.',
       valeur: nombre(data.deliberations), unite: 'actes du conseil municipal' },
