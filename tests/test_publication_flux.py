@@ -1240,9 +1240,14 @@ def test_lapercu_sert_les_donnees_du_brouillon(publication, emplacements, tmp_pa
     """01/10/2026 : une feuille « en clair » retenue n'existait que dans le
     brouillon ; l'aperçu servait `/data/` depuis ce qui est en ligne, et son
     lien menait au 404. L'aperçu montre ce qui SERA publié."""
-    snapshot(emplacements["brouillon"], [1])
-    (emplacements["brouillon"] / "conseils").mkdir()
-    (emplacements["brouillon"] / "conseils" / "seance.html").write_text("feuille")
+    def avec_feuille(out):
+        stats = snapshot(out, [1])
+        (out / "conseils").mkdir()
+        (out / "conseils" / "seance.html").write_text("feuille")
+        return stats
+
+    publication.generer_apercu(builder=avec_feuille,
+                               controleur=lambda cible: controle(True))
     build = tmp_path / "apercu_build"
 
     def npm_vert(cmd, cwd, env, stdout, stderr):
@@ -1347,3 +1352,115 @@ def test_la_passe_decide_sur_les_corrections_comme_sur_les_ajouts():
     texte = script.read_text(encoding="utf-8")
     assert "corrections_depuis_la_publication" in texte
     assert '"${ajouts:-0}" -eq 0 ] && [ "${corrections:-0}" -eq 0' in texte
+
+
+# ── Un brouillon n'est généré que si la génération est allée au bout ─────────
+#
+# 04/10/2026 : `stats.json` est le premier fichier de `build_snapshot`. Un
+# plantage en cours de route le laissait derrière lui, l'atelier construisait
+# le site sur ce brouillon tronqué et affichait « 404 /entite/1129 » — la cause
+# était la génération, pas le build.
+
+def _plantage(out):
+    """Un builder qui écrit `stats.json` puis meurt, comme le vrai."""
+    snapshot(out, [1])
+    raise RuntimeError("plantage en cours de génération")
+
+
+def test_un_brouillon_tronque_par_un_plantage_ne_se_construit_pas(
+        publication, emplacements, monkeypatch):
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    with pytest.raises(RuntimeError):
+        publication.generer_apercu(builder=_plantage,
+                                   controleur=lambda cible: controle(True))
+    assert (emplacements["brouillon"] / "stats.json").is_file()   # le piège
+    monkeypatch.setattr(publication, "_vite", lambda: Path("/absent"))
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.construire_apercu()
+
+    assert "pas allée au bout" in str(refus.value)
+    assert publication.etape(publication.lire_etat()) == "aucun_apercu"
+
+
+def test_un_brouillon_tronque_ne_se_publie_pas(publication, emplacements):
+    snapshot(emplacements["publie"], [1], marque="en ligne")
+    avant = empreinte(emplacements["publie"])
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    with pytest.raises(RuntimeError):
+        publication.generer_apercu(builder=_plantage,
+                                   controleur=lambda cible: controle(True))
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.publier(auteur="admin@exemple", role="admin",
+                            controleur=lambda cible: controle(True))
+
+    assert "pas allée au bout" in str(refus.value)
+    assert empreinte(emplacements["publie"]) == avant
+
+
+def test_une_generation_menee_au_bout_se_construit(publication, emplacements,
+                                                   monkeypatch):
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    monkeypatch.setattr(publication, "_vite", lambda: Path("/absent"))
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.construire_apercu()
+
+    # Refusé plus loin, pour les dépendances du site — pas pour la génération.
+    assert "pas allée au bout" not in str(refus.value)
+    assert "npm install" in str(refus.value)
+
+
+def test_un_brouillon_anterieur_a_la_regle_est_refuse_et_se_regenere(
+        publication, emplacements):
+    """Compat : un état écrit avant `complet` ne dit pas si le répertoire est
+    entier. Refusé, puis une régénération suffit."""
+    snapshot(emplacements["brouillon"], [1, 2])
+    publication.ecrire_etat({"brouillon": {
+        "genere_le": "2026-09-30T10:00:00+00:00", "controle": controle(True),
+        "repertoire": str(emplacements["brouillon"]), "existe": True}})
+
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.publier(auteur="admin@exemple", role="admin",
+                            controleur=lambda cible: controle(True))
+    assert "pas allée au bout" in str(refus.value)
+
+    publication.generer_apercu(builder=builder([1, 2]),
+                               controleur=lambda cible: controle(True))
+    publication.publier(auteur="admin@exemple", role="admin",
+                        controleur=lambda cible: controle(True))
+
+
+def test_l_etat_d_un_brouillon_ne_vaut_pas_pour_un_autre_repertoire(
+        publication, emplacements, tmp_path):
+    publication.generer_apercu(builder=builder([1]),
+                               controleur=lambda cible: controle(True))
+    autre = tmp_path / "ailleurs"
+    snapshot(autre, [1])
+    assert publication._generation_aboutie(emplacements["brouillon"]) is True
+    assert publication._generation_aboutie(autre) is False
+
+
+def test_un_apercu_de_compte_tronque_ne_se_construit_ni_ne_se_publie(
+        publication, emplacements, tmp_path, monkeypatch):
+    monkeypatch.setattr(publication, "APERCUS", tmp_path / "apercus")
+    monkeypatch.setattr(publication, "VERROU", tmp_path / "publication.lock")
+    publication.generer_apercu_du_compte(
+        7, "x", builder=builder([1, 2]), controleur=lambda cible: controle(True))
+    with pytest.raises(RuntimeError):
+        publication.generer_apercu_du_compte(
+            7, "x", builder=_plantage, controleur=lambda cible: controle(True))
+    apercu = publication.apercu_du_compte(7)
+    monkeypatch.setattr(publication, "_vite", lambda: Path("/absent"))
+
+    assert apercu["existe"] is False        # la fiche a été retirée avant le builder
+    with pytest.raises(publication.PublicationRefusee) as refus:
+        publication.construire_apercu(Path(apercu["repertoire"]))
+    assert "pas allée au bout" in str(refus.value)
+    with pytest.raises(publication.PublicationRefusee):
+        publication.publier(auteur="a", role="admin", apercu=apercu,
+                            controleur=lambda cible: controle(True))

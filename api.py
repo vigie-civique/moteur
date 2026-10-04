@@ -107,13 +107,37 @@ async def _api_auth_guard(request, call_next):
     from api_auth import jeton_de, utilisateur_du_jeton
     jeton = jeton_de(request)
     if jeton:
+        # Seul le JUGEMENT du jeton est dans le `try` : `call_next` en sort. Avec
+        # la route dedans, toute exception qu'elle levait (un fichier absent, un
+        # disque en lecture seule) était avalée et ressortait en 401
+        # « Authentification requise », sans trace au journal — trois pannes
+        # différentes, un seul message, le 04/10/2026.
         try:
             utilisateur_du_jeton(jeton, "access")
+        except HTTPException as refus:
+            # 401 : jeton refusé. Un autre statut (503 « JWT_SECRET manquant »)
+            # est une panne de configuration, pas un refus : il garde son code.
+            if refus.status_code != 401:
+                return _JSONResponse({"detail": refus.detail},
+                                     status_code=refus.status_code)
+        else:
             return await call_next(request)
-        except Exception:
-            pass
+        # Toute autre exception (base illisible, disque plein) n'est PAS rattrapée :
+        # 500, pile au journal du service — jamais un refus d'accès.
 
     return _JSONResponse({"detail": "Authentification requise"}, status_code=401)
+
+
+@app.exception_handler(Exception)
+async def _panne_non_prevue(request, exc):
+    """500 en JSON, que l'atelier sait lire (`echec()` du client), au lieu du
+    texte « Internal Server Error ». La pile part au journal du service : le
+    gestionnaire d'`Exception` de Starlette relève l'exception après la réponse.
+    Seul le NOM de l'erreur sort — son message peut citer un chemin du serveur."""
+    return _JSONResponse(
+        {"detail": f"Erreur interne du serveur ({type(exc).__name__}) : "
+                   "la cause est au journal du service."},
+        status_code=500)
 
 # CORS — restreint aux origines autorisées (env ALLOWED_ORIGINS ou localhost en dev)
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:4173")
