@@ -12,6 +12,7 @@ from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_ac
 from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.compteurs import etape_compteurs
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
+from scripts.snapshot.democratie import etape_elections
 from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrire_acteurs,
                                         etape_ecrire_couches, etape_ecrire_finances,
                                         etape_ecrire_flux)
@@ -122,4 +123,6 @@ ETAPES: list[Etape] = [
     Etape("popolo", etape_popolo,
           lit=("out", "public_entities", "public_relations", "horloge"),
           ecrit=("popolo.json",)),
+    Etape("elections", etape_elections,
+          lit=("conn", "out"), produit=("elections",), ecrit=("elections.json",)),
 ]
