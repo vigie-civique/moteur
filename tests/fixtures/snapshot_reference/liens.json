@@ -1,0 +1,91 @@
+{
+ "actes": {
+  "c-2021-04-14": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "Qui décide",
+    "ancre": "qui-decide",
+    "precis": false
+   }
+  ],
+  "c-2021-41": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "L'essentiel",
+    "ancre": "l-essentiel",
+    "precis": true
+   },
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "La frise",
+    "ancre": "la-frise",
+    "precis": true
+   }
+  ],
+  "c-2021-42": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "Qui décide",
+    "ancre": "qui-decide",
+    "precis": true
+   }
+  ],
+  "c-2022-41": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "Le prix",
+    "ancre": "le-prix",
+    "precis": true
+   }
+  ],
+  "c-2023-03-06-t42d6b626": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "Qui décide",
+    "ancre": "qui-decide",
+    "precis": true
+   }
+  ],
+  "cc-2025-12": [
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "L'essentiel",
+    "ancre": "l-essentiel",
+    "precis": true
+   },
+   {
+    "type": "dossier",
+    "slug": "eau",
+    "titre": "L'eau à Testonville",
+    "section": "La frise",
+    "ancre": "la-frise",
+    "precis": true
+   }
+  ]
+ },
+ "total": 6,
+ "alias": {
+  "a8": "cc-2025-12",
+  "a3": "cc-2025-04-02",
+  "a9": "cc-2024-12",
+  "a6": "c-2022-41",
+  "a5": "c-2021-42",
+  "a4": "c-2021-41",
+  "a2": "c-2021-04-14"
+ },
+ "_alias": "Anciennes ancres #a{id} → clé datée de l'acte. Servies un cycle de publication après le 03/10/2026, puis retirées."
+}

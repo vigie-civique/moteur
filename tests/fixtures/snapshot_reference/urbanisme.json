@@ -1,0 +1,33 @@
+{
+  "documents": [],
+  "zonage": [],
+  "statut": [],
+  "autorisations": [
+    {
+      "num_dau": "99001260001",
+      "insee": "99001",
+      "commune": "Testonville",
+      "categorie": "logements",
+      "type_dau": "PC",
+      "type_label": "Permis de construire",
+      "date_depot": "2026-01-01",
+      "date_autorisation": null,
+      "date_achevement": null,
+      "demandeur_nom": "Commerce de Voisinbourg",
+      "demandeur_siren": null,
+      "demandeur_entity_id": null,
+      "adresse": null,
+      "lieu_dit": null,
+      "cadastre_ref": null,
+      "superficie_terrain": null,
+      "nb_logements": null,
+      "surface_hab_creee": null,
+      "surface_loc_creee": null,
+      "residence": null,
+      "date_precision": "annee"
+    }
+  ],
+  "total": 1,
+  "note_dates": "Dates ramenées à l'année pour les petites communes (contrôle de divulgation statistique du SDES).",
+  "renvois_demandeur_retires": 1
+}

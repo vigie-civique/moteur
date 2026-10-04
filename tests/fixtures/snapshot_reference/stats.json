@@ -1,0 +1,204 @@
+{
+  "generated_at": "2026-10-04T10:01:09",
+  "statut": {
+    "type": "demonstration",
+    "libelle": "Portage de démonstration",
+    "tenue_par": null,
+    "texte": "Ce site a été produit pour éprouver le moteur de Vigie Civique sur un autre territoire. Les données viennent des mêmes registres publics que partout ailleurs, mais aucun collectif local ne tient ce site : rien n'y est relu par quelqu'un d'ici, et il n'est pas mis à jour au rythme de la commune.",
+    "mention": "Vigie Civique est une expérimentation ouverte. Ce qu'elle ne sait pas faire est écrit sur la page « Couverture et lacunes », et ce qui est faux se corrige : écrivez-nous.",
+    "depuis": null,
+    "derniere_collecte": null
+  },
+  "entities_total_private": 6,
+  "entities_public": 3,
+  "entities_public_par_perimetre": {
+    "C1": 3
+  },
+  "entities_privees_par_perimetre": {
+    "C1": 4,
+    "C2": 2
+  },
+  "entities_sans_perimetre": 0,
+  "conseil_communautaire": 0,
+  "relations_total_private": 1,
+  "relations_public": 1,
+  "events_total_private": 9,
+  "events_public": 9,
+  "deliberations_public": 6,
+  "deliberations_public_par_portee": {
+    "intercommunalite": 2,
+    "commune": 4
+  },
+  "events_public_par_portee": {
+    "commune": 6,
+    "intercommunalite": 3
+  },
+  "entities_public_par_activite": {
+    "business": {
+      "inconnu": 1
+    },
+    "association": {}
+  },
+  "entreprises_publiques_par_nature": {
+    "societe": 1
+  },
+  "events_public_par_type": {
+    "election": 1,
+    "deliberation_cc": 2,
+    "conseil_communautaire": 1,
+    "deliberation": 4,
+    "conseil_municipal": 1
+  },
+  "replicabilite": {
+    "commune": "Testonville",
+    "moteur_fichiers": 0,
+    "moteur_occurrences": 0,
+    "site_fichiers": 0,
+    "site_occurrences": 0,
+    "atelier_fichiers": 0,
+    "atelier_occurrences": 0,
+    "noms_recherches": [
+      "Aigoual",
+      "Aouste-sur-Sye",
+      "Brassac",
+      "Causse-Bégon",
+      "Corbès",
+      "Crest",
+      "Cévennes",
+      "Lasalle",
+      "Les Essarts-d'Épreuve",
+      "Réunies",
+      "Saillans",
+      "Saint-André-de-Majencoules",
+      "Sidobre",
+      "Soudorgues",
+      "Testonville",
+      "Thoiras",
+      "Trèves",
+      "Vabres",
+      "Val-d'Aigoual",
+      "Voisinbourg",
+      "Épreuves"
+    ]
+  },
+  "provenance": {
+    "provenance": {
+      "primaire": 1,
+      "secondaire": 8
+    },
+    "document": {
+      "aucun": 1,
+      "acte": 8
+    },
+    "traitement": {
+      "structure": 4,
+      "extraction": 5
+    }
+  },
+  "flows_total_private": 0,
+  "flows_public": 0,
+  "flows_par_etat": {},
+  "budget_annuel_rows": 0,
+  "budget_annexe_rows": 0,
+  "ofgl_rows": 0,
+  "dvf_rows": 0,
+  "marches_rows": 0,
+  "approbations_rows": 0,
+  "urls_public_confirmed": 0,
+  "map_features_public": 0,
+  "location_quality": {
+    "missing": 2,
+    "hidden_person": 1
+  },
+  "exclusions": {
+    "entities": {
+      "hors_fiche_perimetre_C2": 1,
+      "person_without_public_civic_role": 2
+    },
+    "event_links": {
+      "endpoint_not_public": 0
+    },
+    "flows": {
+      "private_confidence": 0,
+      "private_cession": 0,
+      "private_person_endpoint": 0,
+      "endpoint_not_public": 0,
+      "duplicates": 0
+    },
+    "marches": {
+      "rejete_en_atelier": 0,
+      "renvoi_vers_fiche_non_publiee": 0
+    }
+  },
+  "entities_cited": 3,
+  "entities_registres_muets": {
+    "total": 1,
+    "sans_aucune_trace": 0,
+    "par_derniere_trace": {
+      "2026": 1
+    }
+  },
+  "revue_atelier": {
+    "annotations": 1,
+    "rejetes": 0,
+    "corriges": 0
+  },
+  "conseils_en_clair": {
+    "publiees": 0,
+    "non_retenus": 0,
+    "en_faute": [],
+    "sans_seance": [],
+    "modifies": []
+  },
+  "dossiers": {
+    "publies": 1,
+    "non_retenus": [],
+    "modifies": [],
+    "citations": {
+      "precis": 7,
+      "imprecis": 1,
+      "non_resolu": 2
+    },
+    "perimes": [
+      "eau"
+    ]
+  },
+  "graphe": {
+    "actes_cites": 6,
+    "renvois": 8,
+    "alias": 7,
+    "lacunes": {
+      "question": 2,
+      "citation": 2
+    },
+    "citations_non_resolues": 2,
+    "actes_avec_personne_morale": 1,
+    "cles": {
+      "stables": 7,
+      "faibles": 1,
+      "en_collision": 0
+    }
+  },
+  "corrections_site": 0,
+  "actualite_items": 9,
+  "actualite_a_venir": 0,
+  "actualite_par_genre": {
+    "acte": 9
+  },
+  "redactions_personnes": 0,
+  "conflits_cas": 0,
+  "conflits_par_statut": {},
+  "elections_communes": 0,
+  "fiscalite_taux": 0,
+  "elus_rne": 2,
+  "urbanisme_autorisations": 1,
+  "urbanisme_adresses_retirees": 0,
+  "croisement_foncier": 0,
+  "extraits_actes": 6,
+  "extraits_masquages": {
+    "courriel": 0
+  },
+  "entity_bundles": 3,
+  "search_index_entries": 3,
+  "recherche_index_entries": 12
+}

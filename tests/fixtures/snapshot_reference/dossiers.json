@@ -1,0 +1,124 @@
+{
+  "dossiers": [
+    {
+      "slug": "eau",
+      "texte": "---\ntitre: L'eau à Testonville\nchapeau: Deux services d'eau dans une commune qui n'existe pas, et ce qu'on en sait par les actes.\nmaj: 2026-09-30\n---\n\n## L'essentiel\n\n- Le bourg est servi par une régie communale, les hameaux par un syndicat.\n- La commune a voté la « protection à 80 % de la ressource » ([CM du 14/04/2021](/deliberations/2021#c-2021-41 \"Délibération n°41 — Conseil municipal du 14/04/2021 — Protection des captages : périmètres et servitudes\")).\n- L'intercommunalité verse 2 064 € de redevance à l'Agence de l'eau ([délibération CC du 02/04/2025](/deliberations/2025#cc-2025-12 \"Délibération n°12 — Conseil communautaire du 02/04/2025 — Redevance pour pollution domestique\")).\n\n## Qui décide\n\nLa régie relève du conseil municipal ; son [budget primitif](/deliberations/2021#c-2021-42 \"Délibération n°42 — Conseil municipal du 14/04/2021 — Budget primitif 2021 du service de l'eau (relu)\") est voté chaque printemps. Le [CM du 14/04/2021](/deliberations/2021#c-2021-04-14 \"Séance — Conseil municipal du 14/04/2021 (renvoi imprécis : la séance a pris 2 actes publiés, la phrase ne dit pas lequel)\") a aussi désigné les délégués au syndicat.\n\n<details class=\"plus\">\n<summary>Pour aller plus loin : le compte administratif</summary>\n\nLe service a coûté 27 980 € en 2022 (compte administratif, [CM du 06/03/2023](/deliberations/2023#a7 \"Délibération — Conseil municipal du 06/03/2023 — Compte administratif 2022 de la régie de l'eau\")). Le chiffre de 2019 est cité de mémoire (CM du 12/12/2019) : aucun acte de cette séance n'est publié.\n\n</details>\n\n## Le prix\n\nLe tarif de l'abonnement a été revu par la [délibération n°41/2022](/deliberations/2022#c-2022-41 \"Délibération n°41 — Conseil municipal du 11/05/2022 — Tarifs de l'eau : abonnement et part variable\").\n\n## La frise\n\n| Date | Acte | Assemblée |\n|------|------|-----------|\n| [14/04/2021](/deliberations/2021#c-2021-41 \"Délibération n°41 — Conseil municipal du 14/04/2021 — Protection des captages : périmètres et servitudes\") | Protection des captages : périmètres et servitudes | CM |\n| [02/04/2025](/deliberations/2025#cc-2025-12 \"Délibération n°12 — Conseil communautaire du 02/04/2025 — Redevance pour pollution domestique\") | Redevance pour pollution domestique | CC |\n| 17/02/2016 | Motion pour le maintien du syndicat au-delà du 01/01/2020 | CM |\n\n## Ce qu'on ne sait pas\n\n| Question | Où on en est | Comment le savoir |\n|----------|--------------|-------------------|\n| Le contrat du syndicat avec son exploitant | **en partie** : dates et part de l'exploitant connues ; forme, conditions du renouvellement de 2025, avenants et rapports inconnus | courrier au syndicat, puis demande à la CADA |\n| La date effective du transfert à l'intercommunalité | **ouvert** : aucun acte publié ne la fixe | lecture des délibérations CC de 2022 et 2023 |\n\n## Les mots du dossier\n\n- **Régie** : un service public géré directement par la collectivité.\n- **CADA** : Commission d'accès aux documents administratifs.\n",
+      "empreinte": "225039eef0a5c23d",
+      "relu_le": "2026-10-01",
+      "citations": [
+        {
+          "url": "/deliberations/2021#c-2021-41",
+          "statut": "precis",
+          "type": "acte",
+          "cle": "c-2021-41",
+          "assemblee": "Conseil municipal",
+          "date": "2021-04-14",
+          "titre": "Protection des captages : périmètres et servitudes",
+          "numero": "41",
+          "vote": {
+            "pour": 13,
+            "contre": 0,
+            "abstention": 2,
+            "unanimite": false
+          },
+          "source_url": "https://exemple.invalid/actes/2021-04-14-41.pdf",
+          "raison": "citation retrouvée dans le texte de l'acte"
+        },
+        {
+          "url": "/deliberations/2025#cc-2025-12",
+          "statut": "precis",
+          "type": "acte",
+          "cle": "cc-2025-12",
+          "assemblee": "Conseil communautaire",
+          "date": "2025-04-02",
+          "titre": "Redevance pour pollution domestique",
+          "numero": "12",
+          "vote": {
+            "pour": null,
+            "contre": null,
+            "abstention": null,
+            "unanimite": true
+          },
+          "source_url": "https://epci.exemple.invalid/actes/2025-04-02-12.pdf"
+        },
+        {
+          "url": "/deliberations/2021#c-2021-42",
+          "statut": "precis",
+          "type": "acte",
+          "cle": "c-2021-42",
+          "assemblee": "Conseil municipal",
+          "date": "2021-04-14",
+          "titre": "Budget primitif 2021 du service de l'eau (relu)",
+          "numero": "42",
+          "vote": {
+            "pour": null,
+            "contre": null,
+            "abstention": null,
+            "unanimite": true
+          },
+          "source_url": "https://exemple.invalid/actes/2021-04-14-42.pdf"
+        },
+        {
+          "url": "/deliberations/2021#c-2021-04-14",
+          "statut": "imprecis",
+          "type": "seance",
+          "cle": "c-2021-04-14",
+          "assemblee": "Conseil municipal",
+          "date": "2021-04-14",
+          "titre": "Conseil municipal du 14 avril 2021",
+          "source_url": "https://exemple.invalid/pv/2021-04-14.pdf",
+          "raison": "la séance a pris 2 actes publiés, la phrase ne dit pas lequel"
+        },
+        {
+          "url": "/deliberations/2023#a7",
+          "statut": "precis",
+          "type": "acte",
+          "cle": "c-2023-03-06-t42d6b626",
+          "assemblee": "Conseil municipal",
+          "date": "2023-03-06",
+          "titre": "Compte administratif 2022 de la régie de l'eau",
+          "vote": {
+            "pour": null,
+            "contre": null,
+            "abstention": null,
+            "unanimite": true
+          },
+          "source_url": "https://exemple.invalid/actes/2023-03-06-sn.pdf",
+          "cle_faible": true
+        },
+        {
+          "url": "/deliberations/2022#c-2022-41",
+          "statut": "precis",
+          "type": "acte",
+          "cle": "c-2022-41",
+          "assemblee": "Conseil municipal",
+          "date": "2022-05-11",
+          "titre": "Tarifs de l'eau : abonnement et part variable",
+          "numero": "41",
+          "vote": {
+            "pour": null,
+            "contre": null,
+            "abstention": null,
+            "unanimite": true
+          },
+          "source_url": "https://exemple.invalid/actes/2022-05-11-41.pdf"
+        }
+      ],
+      "perime": {
+        "relu_le": "2026-10-01",
+        "elements": [
+          {
+            "cle": "c-2021-42",
+            "libelle": "la délibération n°42 du 14/04/2021 (Conseil municipal)",
+            "quoi": "modifie",
+            "champs": [
+              "le titre"
+            ],
+            "titre": "Budget primitif 2021 du service de l'eau (relu)"
+          }
+        ]
+      }
+    }
+  ],
+  "total": 1
+}

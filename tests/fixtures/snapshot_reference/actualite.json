@@ -1,0 +1,152 @@
+{
+  "items": [
+    {
+      "date": "2026-01-15",
+      "genre": "acte",
+      "type": "election",
+      "titre": "Scrutin d'épreuve",
+      "url": null,
+      "montant": null,
+      "montant_indicatif": null,
+      "categorie": null,
+      "id": 1,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2025-04-02",
+      "genre": "acte",
+      "type": "conseil_communautaire",
+      "titre": "Conseil communautaire du 2 avril 2025",
+      "url": "https://epci.exemple.invalid/pv/2025-04-02.pdf",
+      "montant": null,
+      "montant_indicatif": null,
+      "categorie": null,
+      "id": 3,
+      "portee": "intercommunalite",
+      "corrige": null,
+      "note_revue": null,
+      "nb_actes": 1,
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2025-04-02",
+          "url": "https://epci.exemple.invalid/pv/2025-04-02.pdf"
+        }
+      ],
+      "convocation": null
+    },
+    {
+      "date": "2025-04-02",
+      "genre": "acte",
+      "type": "deliberation_cc",
+      "titre": "Redevance pour pollution domestique",
+      "url": "https://epci.exemple.invalid/actes/2025-04-02-12.pdf",
+      "montant": 2064.0,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 8,
+      "portee": "intercommunalite",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2024-06-20",
+      "genre": "acte",
+      "type": "deliberation_cc",
+      "titre": "Adhésion au service commun d'instruction",
+      "url": "https://epci.exemple.invalid/actes/2024-06-20-12.pdf",
+      "montant": null,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 9,
+      "portee": "intercommunalite",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2023-03-06",
+      "genre": "acte",
+      "type": "deliberation",
+      "titre": "Compte administratif 2022 de la régie de l'eau",
+      "url": "https://exemple.invalid/actes/2023-03-06-sn.pdf",
+      "montant": 27980.0,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 7,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2022-05-11",
+      "genre": "acte",
+      "type": "deliberation",
+      "titre": "Tarifs de l'eau : abonnement et part variable",
+      "url": "https://exemple.invalid/actes/2022-05-11-41.pdf",
+      "montant": 45.0,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 6,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2021-04-14",
+      "genre": "acte",
+      "type": "deliberation",
+      "titre": "Budget primitif 2021 du service de l'eau (relu)",
+      "url": "https://exemple.invalid/actes/2021-04-14-42.pdf",
+      "montant": 61500.0,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 5,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
+      "date": "2021-04-14",
+      "genre": "acte",
+      "type": "conseil_municipal",
+      "titre": "Conseil municipal du 14 avril 2021",
+      "url": "https://exemple.invalid/pv/2021-04-14.pdf",
+      "montant": null,
+      "montant_indicatif": null,
+      "categorie": null,
+      "id": 2,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null,
+      "nb_actes": 2,
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2021-04-14",
+          "url": "https://exemple.invalid/pv/2021-04-14.pdf"
+        }
+      ],
+      "convocation": null
+    },
+    {
+      "date": "2021-04-14",
+      "genre": "acte",
+      "type": "deliberation",
+      "titre": "Protection des captages : périmètres et servitudes",
+      "url": "https://exemple.invalid/actes/2021-04-14-41.pdf",
+      "montant": null,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 4,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    }
+  ],
+  "total": 9,
+  "arrete_le": "2026-10-04",
+  "genere_le": "2026-10-04T10:01:09",
+  "note": "Flux construit à partir des dates des actes publiés. Les flux financiers n'ont qu'une année : ils portent `date_approx` et sont regroupés par année, hors de la frise mensuelle. Les éléments datés après `arrete_le` sont des événements à venir."
+}

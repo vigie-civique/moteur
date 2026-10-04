@@ -1,0 +1,15 @@
+{
+  "links": [
+    {
+      "event_id": 1,
+      "entity_id": 1,
+      "role": "sujet"
+    },
+    {
+      "event_id": 8,
+      "entity_id": 1,
+      "role": "beneficiaire"
+    }
+  ],
+  "total": 2
+}

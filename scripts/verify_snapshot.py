@@ -571,6 +571,64 @@ def check_sens_flux(base, rep):
             f"{fp.name}: {len(ids)} flux attendus « {attendu} » — ex. {ids[:5]}")
 
 
+# ── Le manifeste : la construction est-elle allée au bout ? ──────────────────
+#
+# Le 04/10/2026, un plantage du builder a laissé un brouillon tronqué —
+# `stats.json` présent, `entite/` et `entity_index.json` absents — et l'atelier
+# a construit le site dessus : aucune règle d'étanchéité ne voit ce qui MANQUE.
+# Le builder écrit désormais `manifeste.json` en dernier, avec l'empreinte de
+# chaque fichier. Sa règle est relue ICI, sans rien importer du builder :
+#   - un répertoire qui porte `stats.json` (un snapshot) sans manifeste est une
+#     construction interrompue ;
+#   - tout fichier présent est au manifeste, tout fichier du manifeste est
+#     présent, et son empreinte SHA-256 et sa taille concordent.
+# Hors manifeste, comme hors de l'empreinte de la publication : `version.json`
+# (écrit par la publication APRÈS le contrôle) et les rebuts du poste, qu'une
+# autre règle refuse déjà.
+MANIFESTE = "manifeste.json"
+HORS_MANIFESTE = {MANIFESTE, "version.json"}
+REBUTS = re.compile(r"^(\.DS_Store|\._.*|Thumbs\.db)$", re.I)
+
+
+def check_manifeste(base, rep):
+    import hashlib
+    chemin = base / MANIFESTE
+    if not chemin.is_file():
+        if (base / "stats.json").is_file():
+            rep.error("snapshot sans manifeste — construction interrompue ou incomplète",
+                      f"{MANIFESTE}: absent alors que stats.json est là")
+        return
+    try:
+        manifeste = json.loads(chemin.read_text(encoding="utf-8"))
+        listes = {f["chemin"]: f for f in manifeste["fichiers"]}
+    except (ValueError, KeyError, TypeError) as e:
+        rep.error("manifeste illisible", f"{MANIFESTE}: {e}")
+        return
+    if manifeste.get("total") != len(manifeste["fichiers"]):
+        rep.error("manifeste incohérent",
+                  f"{MANIFESTE}: total {manifeste.get('total')} pour "
+                  f"{len(manifeste['fichiers'])} fichiers listés")
+    presents = {}
+    for fp in sorted(base.rglob("*")):
+        rel = fp.relative_to(base).as_posix()
+        if fp.is_file() and rel not in HORS_MANIFESTE and not REBUTS.match(fp.name):
+            presents[rel] = fp
+    for rel in sorted(set(presents) - set(listes)):
+        rep.error("fichier absent du manifeste", f"{rel}: présent, non déclaré")
+    for rel in sorted(set(listes) - set(presents)):
+        rep.error("fichier du manifeste manquant", f"{rel}: déclaré, absent")
+    for rel in sorted(set(listes) & set(presents)):
+        brut = presents[rel].read_bytes()
+        attendu = listes[rel]
+        if (hashlib.sha256(brut).hexdigest() != attendu.get("sha256")
+                or len(brut) != attendu.get("octets")):
+            rep.error("empreinte différente de celle du manifeste",
+                      f"{rel}: le fichier a changé depuis la construction")
+        elif attendu.get("etape") is None:
+            rep.warn("fichier qu'aucune étape de la construction n'a écrit",
+                     f"{rel}: laissé par une construction précédente ?")
+
+
 def check_dir(base, rep):
     for fp in sorted(base.rglob("*")):
         if not fp.is_file():
@@ -599,6 +657,7 @@ def check_dir(base, rep):
     check_fiches_orphelines(base, rep)
     check_renvois_sortants(base, rep)
     check_sens_flux(base, rep)
+    check_manifeste(base, rep)
 
 
 def main(argv):

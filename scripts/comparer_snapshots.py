@@ -76,6 +76,23 @@ VOLATILS = (
             "le rendu d'une séance en clair date sa vérification du jour de la "
             "construction (`collectors/en_clair/rendu.py`), pas de l'horloge "
             "du builder"),
+    # Le manifeste ne dit rien que les autres fichiers ne disent : il en porte
+    # l'empreinte. Celle d'un fichier qui a un champ volatil change avec lui ;
+    # la révision du moteur change à chaque commit. Le reste — quels fichiers,
+    # quelle étape, combien d'objets — est comparé.
+    Volatil("manifeste.json", "genere_le", None,
+            "recopie de `stats.generated_at`"),
+    Volatil("manifeste.json", "revision_moteur", None,
+            "le commit du moteur qui construit : il change d'une version à "
+            "l'autre, c'est ce qu'on compare"),
+    Volatil("manifeste.json", "moteur_modifie", None,
+            "l'état de l'arbre du moteur, pas du snapshot"),
+    Volatil("manifeste.json", None,
+            r'"chemin": "(?:stats\.json|popolo\.json|actualite\.json|couverture\.json'
+            r'|README\.md|conseils/[^"]+\.html)", "etape": "[^"]*", "objets": [^,]+, '
+            r'(?P<volatil>"octets": \d+, "sha256": "[0-9a-f]+")',
+            "taille et empreinte d'un fichier qui porte lui-même un champ volatil "
+            "(cf. ci-dessus) ; seule la partie nommée `volatil` est neutralisée"),
 )
 
 NEUTRE = "<volatil>"
@@ -114,6 +131,13 @@ def _poser_au_chemin(donnees, cle: str, valeur) -> None:
     noeud[derniere] = valeur
 
 
+def _neutraliser_groupe(m: re.Match) -> str:
+    if "volatil" not in m.re.groupindex:
+        return NEUTRE
+    debut, fin = m.span("volatil")
+    return m.string[m.start():debut] + NEUTRE + m.string[fin:m.end()]
+
+
 def neutraliser_texte(texte: str, donnees, volatils: list[Volatil]) -> str:
     """Le texte du fichier, ses champs volatils remplacés par un jeton.
 
@@ -124,7 +148,10 @@ def neutraliser_texte(texte: str, donnees, volatils: list[Volatil]) -> str:
     """
     for v in volatils:
         if v.motif:
-            texte = re.sub(v.motif, NEUTRE, texte)
+            # Un motif qui nomme un groupe `volatil` ne neutralise que lui : le
+            # reste de ce qu'il reconnaît (le chemin d'un fichier, son étape)
+            # continue d'être comparé.
+            texte = re.sub(v.motif, lambda m: _neutraliser_groupe(m), texte)
         elif v.cle and donnees is not None:
             try:
                 valeur = _valeur_au_chemin(donnees, v.cle)

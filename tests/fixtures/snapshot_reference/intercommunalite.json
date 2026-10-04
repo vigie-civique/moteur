@@ -1,0 +1,38 @@
+{
+  "nom": "CC des Épreuves Réunies",
+  "siren": "209900019",
+  "population": 1550,
+  "competences": [],
+  "competences_obligatoires": 0,
+  "delegues": [],
+  "membres": [
+    {
+      "insee": "99001",
+      "nom": "Testonville",
+      "population": 900,
+      "sieges": 0,
+      "est_commune_du_site": true
+    },
+    {
+      "insee": "99002",
+      "nom": "Voisinbourg",
+      "population": 400,
+      "sieges": 0,
+      "est_commune_du_site": false
+    },
+    {
+      "insee": "99003",
+      "nom": "Les Essarts-d'Épreuve",
+      "population": 250,
+      "sieges": 0,
+      "est_commune_du_site": false
+    }
+  ],
+  "syndicats": [],
+  "sieges_source": "BANATIC (répartition arrêtée le 15/10/2025)",
+  "delegues_source": "Répertoire National des Élus (publication du 11/08/2026)",
+  "delegues_ecartes": 0,
+  "delegues_ecartes_motif": "",
+  "delegues_a_confirmer": 0,
+  "note_sources": "Les délégués sont ceux du Répertoire National des Élus, postérieur aux élections municipales de mars 2026. La répartition des sièges par commune vient de BANATIC : elle est fixée par arrêté préfectoral et ne change pas avec le scrutin. La commune de chaque délégué est celle de son mandat municipal au RNE : le fichier RNE des conseillers communautaires, lui, rattache 22 des 27 délégués au siège de l'intercommunalité et non à leur commune d'élection."
+}
