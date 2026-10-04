@@ -942,56 +942,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         fiscalite = faits["fiscalite"]
 
-        # Élus : source autoritaire DGCL. `birth_year` et la CSP restent privés
-        # (`publication_rules.people.publish_birth_year = false`).
-        #
-        # Filtrage sur les 15 communes de l'EPCI. `elus_rne` en contient
-        # davantage : la collecte du 26/07/2026 portait sur l'ancien périmètre —
-        # les 7 communes du vallon de la Salindrenque — et le recadrage du
-        # 11/08 a délibérément conservé ces lignes en base (elles servent à
-        # détecter les mandats croisés, cf. activeContext). Publiées telles
-        # quelles, elles faisaient apparaître 20 conseils municipaux dont ceux
-        # de Colognac, Vabres, Thoiras-Corbès, Sainte-Croix-de-Caderle et
-        # Saint-Bonnet-de-Salendrinque, qui relèvent d'autres EPCI. Le filtre va
-        # ici, pas dans une purge : la donnée reste exploitable en interne.
-        elus = rows(conn, f"""
-            SELECT mandat, insee, commune, nom, prenom, fonction,
-                   date_debut_mandat, date_debut_fonction, epci_nom, entity_id
-            FROM elus_rne
-            WHERE insee IN ({",".join("?" * len(COMMUNES_EPCI))})
-            ORDER BY commune, mandat, nom
-        """, tuple(COMMUNES_EPCI)) if table_exists(conn, "elus_rne") else []
-
-        # `fiche` : cet élu a-t-il une page `/entite/<id>` sur le site ?
-        #
-        # NON pour la plupart. `publiable_dans_perimetre()` n'accorde de fiche à
-        # une personne C2 que si elle SIÈGE au conseil communautaire ; les
-        # conseillers municipaux des autres communes membres n'en ont pas, et
-        # c'est délibéré (leur fiche agrégerait mandats, sociétés et marchés
-        # pour des élus sans pouvoir de décision sur la commune).
-        #
-        # L'export les portait quand même avec leur `entity_id`, et la page en
-        # faisait un lien : 152 liens morts sur Lasalle, 176 sur Brassac, 191
-        # sur Saillans — soit 78 à 90 % des élus affichés, en production, vers
-        # un 404. Relevé par un audit externe le 21/08/2026.
-        #
-        # La composition d'un conseil municipal reste publiée : c'est une donnée
-        # du Répertoire National des Élus, registre public rediffusable. C'est
-        # la FICHE qui est refusée, pas le nom. Seul cet endroit connaît
-        # `public_ids` — la page ne peut pas recalculer ce booléen, et ne doit
-        # pas essayer.
-        elus = [{**e, "fiche": e.get("entity_id") in public_ids} for e in elus]
-        write_json(out / "elus_rne.json", {
-            "elus": elus,
-            "total": len(elus),
-            "total_avec_fiche": sum(1 for e in elus if e["fiche"]),
-            "note_fiche": (
-                "`fiche: false` signale un élu publié sans page dédiée : sa "
-                "commune relève de l'intercommunalité et il ne siège pas au "
-                "conseil communautaire. Ne pas construire de lien "
-                "/entite/<entity_id> pour ces lignes."
-            ),
-        })
+        elus = faits["elus"]
 
         urbanisme_rows = rows(conn, """
             SELECT num_dau, insee, commune, categorie, type_dau, type_label,
