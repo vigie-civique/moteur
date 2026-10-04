@@ -139,8 +139,21 @@ def _instance(chemin: Path) -> Path:
 def verifier(chemin: Path) -> list[str]:
     releve = json.loads(chemin.read_text())
     inst = _instance(chemin)
-    sources = {k: _norm((inst / v).read_text(errors="replace"))
-               for k, v in releve["sources"].items()}
+    # Une source absente ou illisible est une faute de LA séance, pas une panne
+    # du générateur : un cache de texte non porté lors d'un déménagement
+    # d'instance (PV-du-04.02.2026.pdf.txt) levait FileNotFoundError, qui
+    # arrêtait toute la génération du snapshot au milieu. Sans la pièce rien
+    # ne se vérifie : on rend les fautes tout de suite, en nommant le fichier.
+    sources, absentes = {}, []
+    for k, v in releve["sources"].items():
+        try:
+            sources[k] = _norm((inst / v).read_text(errors="replace"))
+        except OSError as e:
+            absentes.append(f"SOURCE « {k} » absente ou illisible : {v} "
+                            f"({type(e).__name__}) — la séance ne peut pas être vérifiée")
+    if absentes:
+        verifier.avis = []
+        return absentes
     pv = sources[releve.get("source_actes", "pv")]
     actes = releve["actes"]
     fautes: list[str] = []
