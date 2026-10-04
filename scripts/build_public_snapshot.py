@@ -79,6 +79,19 @@ from scripts.snapshot.textes import (  # noqa: E402,F401
     texte_publiable,
     TITRES_VIDES,
 )
+from scripts.snapshot.perimetre import (  # noqa: E402,F401
+    exiger_perimetre_classe,
+    PerimetreNonClasse,
+    publiable_dans_perimetre,
+    TYPES_INSTITUTIONNELS,
+)
+from scripts.snapshot.revue import (  # noqa: E402,F401
+    appliquer_revue,
+    charger_revue,
+    TYPES_REVUS,
+)
+from scripts.snapshot.etapes import ETAPES  # noqa: E402
+from scripts.snapshot.registre import executer  # noqa: E402
 # Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
 # sans lui, elle jugeait tout le monde au même seuil (45 jours), et la source
 # qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
@@ -92,25 +105,6 @@ from collectors.verdict import ecarte, verdict_de  # noqa: E402
 from collectors.config import STATUT  # noqa: E402
 from collectors.etat_flux import etat_du_flux  # noqa: E402
 
-
-# ── Couche de revue : ce que l'atelier a rejeté ou rectifié ──────────────────
-# La table `annotations` existait, les endpoints existaient, l'écran de revue
-# existait — mais la publication ne la lisait pas. Rejeter ou corriger une
-# donnée dans l'atelier n'avait donc aucun effet sur le site : toute correction
-# passait par un script Python. C'est ce qui rendait la boucle interminable.
-#
-# Les corrections ne sont PAS écrites dans les tables sources (règle n°1 :
-# jamais écraser). Elles sont appliquées ici, à la sortie, sur une copie.
-
-# Depuis le 21/09/2026 la table porte aussi le verdict des FICHES (`entity`) et
-# des RELATIONS (`relation`), lus plus bas dans `build_snapshot`. Jusque-là le
-# jugement d'une fiche vivait dans `entities.validation_status`, que rien ici ne
-# lisait : cf. `collectors/verdict.py`.
-#
-# `annotations.object_type` ↔ table source.
-TYPES_REVUS = {
-    "deliberation": ("deliberation", "conseil_municipal", "délibérations_cc", "pv_cc"),
-}
 
 # Ce qu'un conseil a effectivement délibéré — communal et intercommunal. Sert
 # le compteur affiché à l'accueil : un site de contrôle de l'action publique
@@ -202,61 +196,6 @@ def portee_evenement(event_type: str | None, perimetres: set[str],
 
 
 PORTEE_PAR_PERIMETRE = {"C1": "commune", "C2": "intercommunalite"}
-
-
-def charger_revue(conn) -> dict[str, dict[int, dict]]:
-    """{object_type: {object_id: {statut, confidence, note, corrections}}}."""
-    if not table_exists(conn, "annotations"):
-        return {}
-    colonnes = {r["name"] for r in rows(conn, "PRAGMA table_info(annotations)")}
-    champ_corr = "corrections" if "corrections" in colonnes else "NULL AS corrections"
-    revue: dict[str, dict[int, dict]] = defaultdict(dict)
-    for a in rows(conn, f"""SELECT object_type, object_id, review_status,
-                                   confidence, note, {champ_corr}
-                            FROM annotations"""):
-        try:
-            corr = json.loads(a["corrections"]) if a["corrections"] else {}
-        except (json.JSONDecodeError, TypeError):
-            corr = {}
-        revue[a["object_type"]][a["object_id"]] = {
-            # Normalisé : une base non migrée garde `rejected` ou `validated`,
-            # un export d'avant le 21/09 aussi. Un mot inconnu ne retire rien —
-            # retirer du site exige que quelqu'un l'ait décidé.
-            "statut": verdict_de(a["review_status"]) or "jamais_relu",
-            "confidence": a["confidence"],
-            "note": (a["note"] or "").strip(),
-            "corrections": corr if isinstance(corr, dict) else {},
-        }
-    return revue
-
-
-def appliquer_revue(ligne: dict, verdict: dict | None) -> dict | None:
-    """Renvoie la ligne corrigée, ou None si l'atelier l'a rejetée.
-
-    Une correction porte le nom du champ dans la table source ; on la pose sur
-    la copie publiée et on garde trace de la valeur d'origine, pour que la page
-    puisse dire « rectifié » plutôt que d'afficher un chiffre changé en silence.
-    """
-    if not verdict:
-        return ligne
-    if ecarte(verdict["statut"]):
-        return None
-    ligne = dict(ligne)
-    corrigees = set()
-    for champ, valeur in (verdict["corrections"] or {}).items():
-        # Le champ peut être ABSENT de la ligne source : le montant d'un acte
-        # est calculé depuis `metadata`, il n'existe pas comme colonne. Une
-        # correction reste une correction même sans valeur d'origine en face.
-        if ligne.get(champ) != valeur:
-            corrigees.add(champ)
-        ligne[champ] = valeur
-    if corrigees:
-        ligne["corrige"] = sorted(corrigees)
-    if verdict["confidence"]:
-        ligne["confidence"] = verdict["confidence"]
-    if verdict["note"]:
-        ligne["note_revue"] = verdict["note"]
-    return ligne
 
 
 # Fourchette de montants publiables pour un acte local : en dessous, c'est un
@@ -479,86 +418,6 @@ def load_confirmed_urls() -> dict[int, list[dict]]:
             "source": "sites_locaux.confirmed",
         })
     return by_entity
-
-
-# Types d'entités publiés en fiche pour les communes de l'intercommunalité.
-# Une mairie, l'EPCI, un syndicat d'eau : ce sont les institutions qui décident,
-# elles doivent être identifiables. Pas les entreprises, associations et lieux
-# des 14 autres communes — cf. `publiable_dans_perimetre`.
-TYPES_INSTITUTIONNELS = {"service"}
-
-
-def publiable_dans_perimetre(perimetre: str | None, entity_type: str | None,
-                             siege_a_l_epci: bool) -> bool:
-    """Le périmètre autorise-t-il une FICHE publique pour cette entité ?
-
-    Le site public est celui de la commune. La collecte, elle, porte sur toute
-    l'intercommunalité : sur une instance ordinaire la base contient deux à
-    quatre fois plus d'entités C2 que de C1. Les publier toutes ferait passer un
-    annuaire intercommunal pour l'annuaire communal, et un lecteur croirait que
-    la boulangerie d'une commune membre est dans la commune-siège.
-
-    Sont publiées en fiche :
-      - C1   tout ce que les autres règles autorisent ;
-      - C2   les institutions (mairies, EPCI, syndicats) et les seules
-             personnes qui SIÈGENT au conseil communautaire — celles-là votent
-             le budget et les compétences qui s'appliquent à la commune, les
-             masquer amputerait la chaîne de décision de sa moitié
-             intercommunale. En revanche, publier les conseils municipaux
-             entiers des autres communes membres serait à la fois hors sujet et
-             difficilement justifiable au regard du RGPD : ces élus n'ont
-             aucun pouvoir de décision sur la commune ;
-      - C3   les institutions supra-communales, même raison ;
-      - lien les entités rattachées à un acteur de la commune (SCI d'élus,
-             titulaires de marchés) : matériau du graphe d'influence, les
-             règles de pertinence existantes s'appliquent inchangées.
-
-    Les données des communes C2 restent publiées de façon AGRÉGÉE
-    (`intercommunalite.json`, `fiscalite.json`, `territoire.json`) : comparer
-    la commune à ses pairs informe, lister leurs commerces non.
-
-    NULL n'est pas C1. Une entité non classée est une entité dont on ignore si
-    elle appartient au territoire : la publier par défaut, c'est publier toute
-    l'intercommunalité le jour où le classement n'a pas tourné. Mesuré le
-    14/08/2026 sur deux instances neuves : 4 944 fiches publiées au lieu de
-    1 807, et un site de commune dont 57 % des fiches relevaient d'une voisine.
-    Le classement absent doit produire un site vide et un message, pas un
-    annuaire de vallée — `exiger_perimetre_classe()` s'en charge en amont.
-    """
-    if perimetre in ("C1", "lien"):
-        return True
-    if perimetre in ("C2", "C3"):
-        return entity_type in TYPES_INSTITUTIONNELS or siege_a_l_epci
-    return False
-
-
-class PerimetreNonClasse(RuntimeError):
-    """`entities.perimetre` n'a jamais été renseignée sur cette base."""
-
-
-def exiger_perimetre_classe(conn) -> int:
-    """Refuse de construire un snapshot sur une base jamais classée.
-
-    Retourne le nombre d'entités sans périmètre (exclues silencieusement de la
-    publication, ce qui est le comportement sûr). Lève si AUCUNE ne l'a : ce
-    n'est plus une lacune, c'est une étape qui n'a pas eu lieu, et le snapshot
-    produit serait vide sans que rien ne le dise.
-    """
-    total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
-    if not total:
-        return 0
-    classees = conn.execute(
-        "SELECT COUNT(*) FROM entities WHERE perimetre IS NOT NULL").fetchone()[0]
-    if not classees:
-        raise PerimetreNonClasse(
-            f"{total} entités en base, aucune classée par périmètre.\n"
-            "  Le snapshot serait vide : sans classement, aucune entité n'est\n"
-            "  publiable (et le défaut inverse publierait l'intercommunalité).\n"
-            "  Lancer :  python3 scripts/classer_perimetre.py\n"
-            "  Le step `perimetre` de `python3 -m collectors.run_all` le fait\n"
-            "  en fin de collecte."
-        )
-    return total - classees
 
 
 # ── Ce qu'une fiche ne disait pas d'elle-même ────────────────────────────────
@@ -2337,22 +2196,19 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
     horloge = horloge or lire_horloge()
     conn = get_db()
     try:
-        # Avant toute lecture : une base non classée ne produit pas un snapshot,
-        # elle produit une erreur. Cf. `publiable_dans_perimetre`.
-        sans_perimetre = exiger_perimetre_classe(conn)
+        # Les étapes déclarées dans `scripts/snapshot/etapes.py`, dans l'ordre
+        # de la liste. Ce qui suit leur exécution n'est pas encore découpé : il
+        # reprend leurs produits sous les noms qu'il leur a toujours donnés.
+        faits = executer(ETAPES, {"conn": conn, "out": out, "horloge": horloge,
+                                  "exclusions": defaultdict(Counter)})
+        revue = faits["revue"]
+        relations_ecartees = faits["relations_ecartees"]
+        exclusions = faits["exclusions"]
 
         confirmed_urls = load_confirmed_urls()
         counters = Counter()
-        counters["entities_sans_perimetre"] = sans_perimetre
-        exclusions = defaultdict(Counter)
-        revue = charger_revue(conn)
-        counters["revue_annotations"] = sum(len(v) for v in revue.values())
-        # Une relation écartée par l'atelier ne se publie pas — et ne JUSTIFIE
-        # plus rien : un mandat jugé faux ne peut pas continuer de rendre une
-        # personne publiable au titre de son rôle civique. Passée en JSON aux
-        # requêtes ci-dessous (`json_each`), vide dans le cas courant.
-        relations_ecartees = json.dumps(sorted(
-            rid for rid, v in revue.get("relation", {}).items() if ecarte(v["statut"])))
+        counters["entities_sans_perimetre"] = faits["sans_perimetre"]
+        counters["revue_annotations"] = faits["revue_annotations"]
         pas_ecartee = "AND r.id NOT IN (SELECT value FROM json_each(?))"
 
         entity_rows = rows(conn, """
