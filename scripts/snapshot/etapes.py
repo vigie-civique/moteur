@@ -18,6 +18,7 @@ from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrir
 from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
+from scripts.snapshot.popolo import etape_popolo
 from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
@@ -118,4 +119,7 @@ ETAPES: list[Etape] = [
           lit=("conn", "out"), ecrit=("environnement.json",)),
     Etape("territoire", etape_territoire,
           lit=("conn", "out"), ecrit=("territoire.json",)),
+    Etape("popolo", etape_popolo,
+          lit=("out", "public_entities", "public_relations", "horloge"),
+          ecrit=("popolo.json",)),
 ]

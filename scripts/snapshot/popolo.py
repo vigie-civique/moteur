@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from scripts.snapshot.socle import RULES
+from scripts.snapshot.socle import RULES, write_json
 
 
 # ── Popolo ───────────────────────────────────────────────────────────────────
@@ -128,3 +128,30 @@ def build_popolo(entities: list[dict], relations: list[dict],
         "areas": [{"id": f"area/{a}", "name": a, "classification": "commune"}
                   for a in areas],
     }
+
+
+def etape_popolo(out, public_entities, public_relations, horloge) -> None:
+    # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
+    # Popolo (popoloproject.com) est le vocabulaire commun des projets de
+    # transparence parlementaire et municipale : Open Civic Data (le
+    # standard derrière Councilmatic à Chicago, NYC et Philadelphie),
+    # EveryPolitician, mySociety. Il décrit exactement ce que cette base
+    # contient déjà — des personnes, des organisations, et des mandats
+    # datés qui relient les deux.
+    #
+    # Pourquoi l'exporter en plus de `entities.json` : nos noms de champs
+    # (`from_id`, `relation_type`, `since`) ne veulent rien dire hors du
+    # projet. Un chercheur ou une autre commune qui veut comparer doit
+    # d'abord lire notre code. En Popolo, `memberships[].person_id` et
+    # `start_date` se lisent sans documentation, et les outils existants
+    # consomment le fichier tel quel. C'est la contrepartie de l'objectif
+    # de réplication : un modèle qui s'exporte doit sortir dans un format
+    # que d'autres parlent déjà.
+    #
+    # Ce qui n'y est PAS : les votes nominatifs (`VoteEvent`/`Vote`). Les
+    # procès-verbaux publiés ne donnent pas le détail des votes par élu, et
+    # inventer un `Vote` à partir d'un « adopté à l'unanimité » serait une
+    # affirmation que la source ne porte pas. Le jour où les PV nominatifs
+    # existeront, la classe s'ajoute sans toucher au reste.
+    write_json(out / "popolo.json", build_popolo(
+        public_entities, public_relations, RULES, horloge))
