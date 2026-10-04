@@ -672,3 +672,29 @@ Tranchées par le porteur le 04/10/2026.
   dans les données ouvertes (lot 3) ? Par défaut, oui.
 - **Reporté** : les noms de personnes physiques dans les titres BODACC de
   l'index de recherche (§ 4) ne sont pas traités pour le moment (décision 14).
+
+---
+
+## 7. Avancement
+
+Lots livrés le 04/10/2026 sur la même branche, un commit par lot. Ce qui
+s'écarte du plan du § 5 est dit ici.
+
+| Lot | État | Écart au plan |
+|---|---|---|
+| 0 | livré | — |
+| 1 | livré | « Qui agit ? » aligné aussi (titre de page). |
+| 2 | livré | `stats.json` change aussi (compteur d'entrées). Un événement sans adresse d'origine s'affiche sans lien. Le job `site` vérifie que chaque adresse interne de l'index existe, ancre comprise. |
+| 3 | livré | Identique au comparateur sur la base de CI, qui n'a aucun marché : couvert par deux tests unitaires. |
+| 4 a | livré | `couverture.collecteurs[*].a_rapporte` ; la phrase en dur est remplacée sur l'accueil et /marches. |
+| 4 b | **non commencé** | Attend que l'extraction dépose ses candidats en base. |
+| 5 | livré | `couverture.json` gagne `financeurs` ; les fiches (`entite/*.json`) ne changent pas. |
+| 6 | livré | `actualite.json` ne change pas : l'accueil calcule l'adresse de la séance. `conseils.json` est gardé (un cycle). |
+| 7 | livré | Mesuré sur les données de Lasalle : accueil 37,2 Ko (8,3 Ko gzip) contre 27,7 Ko (6,4 Ko gzip) — le critère « pas plus lourd » n'est **pas** tenu, à cause des chapeaux des huit dossiers. L'en-tête se replie en menu sous 1 216 px ; le premier écran à 520 px montre les deux dernières séances, pas les dossiers. |
+| 8 | livré | Un dossier se rattache à son sujet par son nom de fichier ; l'en-tête `sujet:` n'est utile que pour un autre nom. La section logement a reçu l'ancre `#logement`. |
+| 9 | livré en partie | `event_links.json` et `croisement_foncier.json` retirés ; le builder et la recopie vers le site retirent désormais un JSON qu'aucune étape ne déclare. Restent, après leur cycle : `conseils.json` et la table d'alias de `liens.json`. |
+
+Mesures sur les données de Lasalle (snapshot en ligne du 04/10/2026, pages
+reconstruites avec ce code) : /conseils 118 Ko (10,2 Ko gzip) pour 216
+séances ; une page de séance 16 à 23 Ko (4,5 à 5,5 Ko gzip) ; ≈ 432 fichiers
+de plus (une page et son `__data.json` par séance).
