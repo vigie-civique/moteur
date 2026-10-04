@@ -11,7 +11,7 @@ from __future__ import annotations
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
 from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.compteurs import etape_compteurs
-from scripts.snapshot.fiches import etape_couches, etape_fiches
+from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.registre import Etape
@@ -83,6 +83,11 @@ ETAPES: list[Etape] = [
                "dvf_data", "marches_data", "approbations_data", "public_layers",
                "location_quality", "exclusions"),
           produit=("stats",)),
+    # APRÈS `couches` : ce que l'étape ajoute aux fiches n'entre pas dans la carte.
+    Etape("citations", etape_citations,
+          lit=("public_events", "public_links", "public_relations", "public_flows",
+               "marches_data"),
+          complete=("public_entities", "stats")),
     Etape("environnement", etape_environnement,
           lit=("conn", "out"), ecrit=("environnement.json",)),
     Etape("territoire", etape_territoire,
