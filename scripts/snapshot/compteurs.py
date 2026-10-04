@@ -172,3 +172,23 @@ def etape_compteurs(conn, horloge, sans_perimetre, entity_rows, public_entities,
     }
 
     return {"stats": stats}
+
+
+def etape_bilan_revue(exclusions, revue_annotations, public_events, public_flows,
+                      marches_data) -> dict:
+    """Le relevé des exclusions tel que `stats.json` le publie, et ce que la
+    revue de l'atelier a changé — arrêtés une fois le fil d'actualité filtré,
+    dernière étape qui écarte quelque chose."""
+    # `stats["exclusions"]` est figé plus haut, avant que le flux d'actualité
+    # n'ait écarté ses doublons : on le réactualise, sinon le rapport de
+    # revue tait précisément ce qui vient d'être filtré.
+    exclusions_publiees = {s: dict(c) for s, c in exclusions.items()}
+    revue_atelier = {
+        "annotations": revue_annotations,
+        "rejetes": sum(c.get("rejete_en_atelier", 0) for c in exclusions.values()),
+        "corriges": sum(1 for e in public_events if e.get("corrige"))
+                  + sum(1 for f in public_flows if f.get("corrige"))
+                  + sum(1 for m in marches_data if m.get("corrige")),
+    }
+
+    return {"exclusions_publiees": exclusions_publiees, "revue_atelier": revue_atelier}

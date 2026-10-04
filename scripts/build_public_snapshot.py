@@ -951,17 +951,8 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         actualite = faits["actualite"]
         a_venir = faits["a_venir"]
-        # `stats["exclusions"]` est figé plus haut, avant que le flux d'actualité
-        # n'ait écarté ses doublons : on le réactualise, sinon le rapport de
-        # revue tait précisément ce qui vient d'être filtré.
-        stats["exclusions"] = {s: dict(c) for s, c in exclusions.items()}
-        stats["revue_atelier"] = {
-            "annotations": faits["revue_annotations"],
-            "rejetes": sum(c.get("rejete_en_atelier", 0) for c in exclusions.values()),
-            "corriges": sum(1 for e in public_events if e.get("corrige"))
-                      + sum(1 for f in public_flows if f.get("corrige"))
-                      + sum(1 for m in marches_data if m.get("corrige")),
-        }
+        stats["exclusions"] = faits["exclusions_publiees"]
+        stats["revue_atelier"] = faits["revue_atelier"]
         corrections = export_corrections(public_events, public_flows, marches_data,
                                          lire_journal_corrections())
         write_json(out / "corrections.json", corrections)

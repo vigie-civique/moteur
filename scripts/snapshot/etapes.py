@@ -11,7 +11,7 @@ from __future__ import annotations
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
 from scripts.snapshot.actualite import etape_actualite
 from scripts.snapshot.argent import etape_finances, etape_flux
-from scripts.snapshot.compteurs import etape_compteurs
+from scripts.snapshot.compteurs import etape_bilan_revue, etape_compteurs
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
 from scripts.snapshot.democratie import etape_elections, etape_elus, etape_intercommunalite
 from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrire_acteurs,
@@ -144,4 +144,8 @@ ETAPES: list[Etape] = [
                "perimetre_par_entite"),
           complete=("exclusions",),
           produit=("actualite", "a_venir"), ecrit=("actualite.json",)),
+    Etape("bilan_revue", etape_bilan_revue,
+          lit=("exclusions", "revue_annotations", "public_events", "public_flows",
+               "marches_data"),
+          produit=("exclusions_publiees", "revue_atelier")),
 ]
