@@ -331,11 +331,13 @@ def test_deux_heures_du_meme_jour_ne_different_que_par_les_volatils(base_ci, mat
     d, db = base_ci
     soir = _construire(db, d / "soir", "2026-10-04T18:30:05")
     assert _fichiers_differents(matin, soir) == [
-        "README.md", "actualite.json", "couverture.json", "popolo.json", "stats.json"]
+        "README.md", "actualite.json", "couverture.json", "manifeste.json",
+        "popolo.json", "stats.json"]
     r = C.comparer_snapshots(matin, soir)
     assert r["identiques"], r["modifies"]
     assert sorted(r["identiques_apres_neutralisation"]) == [
-        "README.md", "actualite.json", "couverture.json", "popolo.json", "stats.json"]
+        "README.md", "actualite.json", "couverture.json", "manifeste.json",
+        "popolo.json", "stats.json"]
 
 
 def test_une_autre_date_change_la_sortie_et_le_comparateur_le_dit(base_ci, matin):
