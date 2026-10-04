@@ -316,36 +316,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         actualite = faits["actualite"]
         a_venir = faits["a_venir"]
-        graphe = faits["graphe"]
-
-        # Rapport QA interne — JAMAIS dans le bundle public (contient les
-        # exclusions nominatives = exactement les données filtrées). Écrit hors `out`.
-        review_out = ROOT / "audits"
-        review_out.mkdir(parents=True, exist_ok=True)
-        graphe.ecrire_releve(review_out)
-        write_json(review_out / "public_snapshot_review.json", {
-            "stats": {**stats, "source_db": str(DB_PATH)},
-            "entity_exclusions_sample": entity_exclusions[:250],
-            "relation_exclusions_sample": relation_exclusions[:250],
-            "event_exclusions_sample": event_exclusions[:250],
-            "rules": {
-                "public_confidence": sorted(RULES["confidence"]["public"]),
-                "public_person_relation_types": sorted(RULES["people"]["publish_only_with_relation_types"]),
-                "public_relation_types": sorted(RULES["relations"]["public_allowlist"]),
-                "relevance_relation_types": sorted(
-                    RULES["relations"].get("relevance_allowlist", [])),
-                "public_money_relation_types": sorted(
-                    RULES["relations"].get("public_money_relation_types", [])),
-                "public_event_sources": sorted(RULES["events"]["public_sources"]),
-                "generic_url_domains_excluded": sorted(RULES["urls"]["exclude_generic_domains"]),
-                "location_policy": {
-                    "person": "coordinates always hidden",
-                    "outside_bbox": "coordinates hidden",
-                    "center_fallback": "hidden except places/services",
-                },
-            },
-        })
-
         # ── Dictionnaire de données ──────────────────────────────────────────
         # Servi À CÔTÉ des JSON, et régénéré à chaque exécution : un README
         # écrit à la main se périme en silence — celui d'avant le 12/08/2026

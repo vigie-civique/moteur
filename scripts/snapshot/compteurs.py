@@ -11,7 +11,7 @@ from collections import Counter
 
 from collectors.config import STATUT
 from scripts.snapshot.actes import TYPES_DELIBERES
-from scripts.snapshot.socle import ROOT, rows, table_exists, write_json
+from scripts.snapshot.socle import DB_PATH, ROOT, RULES, rows, table_exists, write_json
 
 
 def mesurer_replicabilite() -> dict:
@@ -230,3 +230,34 @@ def etape_stats(out, exclusions_publiees, revue_atelier, stats_en_clair, stats_d
     stats["search_index_entries"] = indexed
     stats["recherche_index_entries"] = recherche
     write_json(out / "stats.json", stats)   # réécrit avec les 2 compteurs
+
+
+def etape_revue_interne(graphe, stats, entity_exclusions, relation_exclusions,
+                        event_exclusions) -> None:
+    # Rapport QA interne — JAMAIS dans le bundle public (contient les
+    # exclusions nominatives = exactement les données filtrées). Écrit hors `out`.
+    review_out = ROOT / "audits"
+    review_out.mkdir(parents=True, exist_ok=True)
+    graphe.ecrire_releve(review_out)
+    write_json(review_out / "public_snapshot_review.json", {
+        "stats": {**stats, "source_db": str(DB_PATH)},
+        "entity_exclusions_sample": entity_exclusions[:250],
+        "relation_exclusions_sample": relation_exclusions[:250],
+        "event_exclusions_sample": event_exclusions[:250],
+        "rules": {
+            "public_confidence": sorted(RULES["confidence"]["public"]),
+            "public_person_relation_types": sorted(RULES["people"]["publish_only_with_relation_types"]),
+            "public_relation_types": sorted(RULES["relations"]["public_allowlist"]),
+            "relevance_relation_types": sorted(
+                RULES["relations"].get("relevance_allowlist", [])),
+            "public_money_relation_types": sorted(
+                RULES["relations"].get("public_money_relation_types", [])),
+            "public_event_sources": sorted(RULES["events"]["public_sources"]),
+            "generic_url_domains_excluded": sorted(RULES["urls"]["exclude_generic_domains"]),
+            "location_policy": {
+                "person": "coordinates always hidden",
+                "outside_bbox": "coordinates hidden",
+                "center_fallback": "hidden except places/services",
+            },
+        },
+    })

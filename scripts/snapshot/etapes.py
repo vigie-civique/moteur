@@ -12,7 +12,8 @@ from scripts.snapshot.actes import (etape_actes, etape_cles_actes, etape_extrait
                                     etape_liens_actes)
 from scripts.snapshot.actualite import etape_actualite
 from scripts.snapshot.argent import etape_finances, etape_flux
-from scripts.snapshot.compteurs import etape_bilan_revue, etape_compteurs, etape_stats
+from scripts.snapshot.compteurs import (etape_bilan_revue, etape_compteurs, etape_revue_interne,
+                                        etape_stats)
 from scripts.snapshot.conflits import etape_conflits
 from scripts.snapshot.corrections import etape_corrections
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
@@ -187,4 +188,9 @@ ETAPES: list[Etape] = [
                "urbanisme_public", "adresses_retirees", "croisement_foncier",
                "extraits_actes", "masquages", "bundles", "indexed", "recherche"),
           complete=("stats",), ecrit=("stats.json",)),
+    # Hors du snapshot : `audits/`, sous la racine du moteur. Le rapport porte
+    # les exclusions NOMINATIVES — exactement ce que le filtre retient.
+    Etape("revue_interne", etape_revue_interne,
+          lit=("graphe", "stats", "entity_exclusions", "relation_exclusions",
+               "event_exclusions")),
 ]
