@@ -276,17 +276,26 @@ GENERATION_INACHEVEE = (
 
 def _generation_aboutie(cible: Path) -> bool:
     cible = Path(cible).resolve()
-    if APERCUS.resolve() in cible.parents:       # l'aperçu d'un compte
+    racine = APERCUS.resolve()
+    if racine in cible.parents:                  # l'aperçu d'un compte
+        # La fiche se retrouve par le NUMÉRO du compte, validé entier par
+        # `dossier_apercu`, et non par un chemin dérivé de `cible` : un chemin
+        # qui vient de l'appelant n'a pas à devenir un chemin lu (CodeQL,
+        # path-injection, relevé sur la première version de cette fonction).
+        numero = cible.relative_to(racine).parts[0]
+        if not numero.isdigit() or int(numero) <= 0:
+            return False
         try:
-            fiche = json.loads((cible.parent / "apercu.json").read_text(encoding="utf-8"))
+            fiche = json.loads(_fiche_apercu(int(numero)).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return False
         return fiche.get("complet") is True
     brouillon = lire_etat().get("brouillon") or {}
     # Le répertoire est comparé : l'état ne décrit qu'UN brouillon, il ne
     # vaut pas pour un autre répertoire passé en argument.
-    return (brouillon.get("complet") is True and bool(brouillon.get("repertoire"))
-            and Path(brouillon["repertoire"]).resolve() == cible)
+    declare = brouillon.get("repertoire")
+    return (brouillon.get("complet") is True and isinstance(declare, str)
+            and declare != "" and os.path.realpath(declare) == str(cible))
 
 
 # Les cinq étapes, dans l'ordre. Le mot « publié » recouvrait les deux
