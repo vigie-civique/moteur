@@ -9,7 +9,7 @@ cette liste ; le manifeste du snapshot pourra dire, pour chaque fichier, quelle
 from __future__ import annotations
 
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
-from scripts.snapshot.argent import etape_flux
+from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.fiches import etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -66,4 +66,9 @@ ETAPES: list[Etape] = [
     # AVANT `citations` : les couches copient les fiches telles qu'elles sont.
     Etape("couches", etape_couches,
           lit=("public_entities",), produit=("public_layers",)),
+    Etape("finances", etape_finances,
+          lit=("conn", "revue", "public_ids", "perimetre_par_entite"),
+          complete=("exclusions",),
+          produit=("budget_annuel", "budget_annexe", "ofgl_data", "budget_vote",
+                   "dvf_data", "marches_data", "approbations_data")),
 ]

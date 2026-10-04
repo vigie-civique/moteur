@@ -130,6 +130,7 @@ from scripts.snapshot.argent import (  # noqa: E402,F401
     _commune_entity_id,
     dedupliquer_flux,
     delier_extremites,
+    delier_renvois_morts,
     flux_extremites_publiees,
     statut_extremites,
 )
@@ -514,35 +515,6 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
                              "encore été exploité.",
         },
     }
-
-
-def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
-    """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
-
-    Un flux financier est ÉCARTÉ dans ce cas (cf. `flux_extremites_publiees`) :
-    un montant versé à quelqu'un qui n'a pas de fiche nomme une entité sans le
-    contexte qui la rendrait lisible. Un marché, lui, reste — et c'est une
-    différence de nature, pas une inconséquence. La pièce décrit un ACHAT de la
-    collectivité : son objet, son montant, sa procédure informent même quand
-    l'attributaire est une entreprise de Valence qui n'a rien d'autre à voir avec
-    la commune. Le nom du titulaire vient du BOAMP ou des DECP, il est public, et
-    l'effacer reviendrait à cacher qui a été payé.
-
-    Seul le LIEN tombe. `/marches` et `/entite/<id>` affichent déjà le nom nu
-    quand l'identifiant manque.
-
-    Relevé sur Saillans le 23/08/2026, à la première collecte de marchés : deux
-    titulaires d'un marché de la communauté de communes, écartés des fiches par
-    `hors_fiche_perimetre_C2`, et l'invariant « renvoi vers une fiche non
-    publiée » refusait le snapshot entier — trois fichiers, quatre renvois.
-    """
-    morts = 0
-    for marche in marches:
-        for cle in ("acheteur_id", "titulaire_id"):
-            if marche.get(cle) is not None and marche[cle] not in public_ids:
-                marche[cle] = None
-                morts += 1
-    return morts
 
 
 JOURNAL_PATH = Path(os.environ.get("VIGIE_JOURNAL_CORRECTIONS")
@@ -1513,74 +1485,13 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         public_layers = faits["public_layers"]
 
-        # ── Données financières & foncières officielles (open data) ───────────
-        # DGFiP, OFGL, Cerema (DVF), DECP : faits publics par nature → export complet.
-        budget_annuel = rows(conn, """
-            SELECT year, categorie, compte, libelle, montant, source
-            FROM budget_annuel ORDER BY year DESC, categorie, montant DESC
-        """)
-        budget_annexe = rows(conn, """
-            SELECT ba.year, ba.section, ba.sens, ba.libelle, ba.montant, ba.source,
-                   ba.entity_id, e.name AS entity_name
-            FROM budget_annexe ba LEFT JOIN entities e ON e.id = ba.entity_id
-            ORDER BY ba.year DESC, ba.section
-        """)
-        ofgl_data = rows(conn, """
-            SELECT year, agregat, montant, euros_par_habitant, population
-            FROM ofgl_agregats ORDER BY year DESC, agregat
-        """)
-        # Budgets primitifs VOTÉS (prévisionnel) extraits des CR — comble le trou
-        # après OFGL (>2024). Fait public (délibération) → export complet.
-        budget_vote = rows(conn, """
-            SELECT year, scope, agregat, value, unit, approx, note, source, source_url
-            FROM budget_vote ORDER BY year DESC, scope, id
-        """) if table_exists(conn, "budget_vote") else []
-        dvf_data = rows(conn, """
-            SELECT id, date, cadastre_ref, lieu_dit, nature_mutation, nature_bien,
-                   surface_terrain, surface_bati, price, price_per_m2, lat, lng
-            FROM dvf_transactions ORDER BY date DESC
-        """)
-        # Le filtre de confiance manquait ici, alors qu'il s'applique partout
-        # ailleurs : la table publiait TOUT. Un marché dont l'acheteur n'a pas
-        # pu être établi affirmait donc qu'une collectivité avait acheté ce
-        # qu'elle n'avait pas acheté. `probable` reste en base et attend
-        # l'atelier ; il ne sort pas.
-        colonnes_mp = {r["name"] for r in rows(conn, "PRAGMA table_info(marches_publics)")}
-        filtre_mp = ("WHERE confidence IN ('verified', 'confirmed')"
-                     if "confidence" in colonnes_mp else "")
-        marches_data = rows(conn, f"""
-            SELECT id, acheteur_id, acheteur_nom, titulaire_id, titulaire_nom, objet, nature,
-                   procedure, montant, cpv_label, date_notif, lieu_exec, source, source_url
-            FROM marches_publics {filtre_mp} ORDER BY date_notif DESC, montant DESC
-        """)
-        revue_marches = revue.get("marche", {})
-        avant_revue = len(marches_data)
-        marches_data = [m for m in (appliquer_revue(m, revue_marches.get(m["id"]))
-                                    for m in marches_data) if m is not None]
-        exclusions["marches"]["rejete_en_atelier"] = avant_revue - len(marches_data)
-
-        # Le marché reste, le lien vers une fiche non publiée tombe.
-        exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \
-            delier_renvois_morts(marches_data, public_ids)
-
-        # La portée d'un marché est celle de son ACHETEUR. Un marché de la
-        # communauté de communes n'est pas un marché de la commune, même quand
-        # il est exécuté sur son territoire — et sans ce champ, la page des
-        # marchés les additionnait sans le dire.
-        for m in marches_data:
-            m["portee"] = PORTEE_PAR_PERIMETRE.get(
-                perimetre_par_entite.get(m.get("acheteur_id")) or "") or "territoire"
-
-        # Plans de financement votés (participations aux opérations du syndicat
-        # d'électrification). Exportés à part des marchés : aucune entreprise
-        # n'est retenue, les mêler fausserait le décompte des attributions.
-        approbations_data = rows(conn, """
-            SELECT id, event_id, date, objet, montant_ht, montant_ttc,
-                   maitre_ouvrage, citation, source, source_url
-            FROM approbations_projets
-            WHERE confidence IN ('verified', 'confirmed')
-            ORDER BY date DESC
-        """) if table_exists(conn, "approbations_projets") else []
+        budget_annuel = faits["budget_annuel"]
+        budget_annexe = faits["budget_annexe"]
+        ofgl_data = faits["ofgl_data"]
+        budget_vote = faits["budget_vote"]
+        dvf_data = faits["dvf_data"]
+        marches_data = faits["marches_data"]
+        approbations_data = faits["approbations_data"]
 
         # ── Environnement : qualité de l'eau, risques, installations classées ──
         # 27 652 analyses, 75 risques recensés et 3 ICPE dormaient en base sans
