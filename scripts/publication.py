@@ -256,6 +256,39 @@ def _stats_du_repertoire(dossier: Path) -> dict | None:
         return None
 
 
+# Un brouillon n'est « généré » que si la génération est allée au bout.
+# `stats.json` est le PREMIER fichier que `build_snapshot` écrit : sa présence ne
+# dit donc rien de l'achèvement. Constaté : un plantage en cours de génération a
+# laissé un brouillon tronqué, l'atelier a construit le site dessus, et
+# l'utilisateur a lu « Le build de l'aperçu a échoué — 404 /entite/1129 » — une
+# fausse piste, la cause était la génération. L'achèvement se déclare donc
+# APRÈS le retour du builder (`complet: True`, dans l'état du brouillon ou la
+# fiche de l'aperçu — jamais dans le snapshot, qui part chez l'hébergeur), et se
+# retire AVANT de l'appeler : un plantage laisse un brouillon non déclaré.
+#
+# Compat : un brouillon écrit avant cette règle n'a pas `complet`, et rien ne
+# permet de savoir s'il est entier (c'est précisément ce qu'on ne savait pas
+# dire). Il est refusé : une régénération, un clic, le remet en état.
+GENERATION_INACHEVEE = (
+    "La dernière génération n'est pas allée au bout — le brouillon est peut-être "
+    "tronqué. Générer un nouvel aperçu.")
+
+
+def _generation_aboutie(cible: Path) -> bool:
+    cible = Path(cible).resolve()
+    if APERCUS.resolve() in cible.parents:       # l'aperçu d'un compte
+        try:
+            fiche = json.loads((cible.parent / "apercu.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        return fiche.get("complet") is True
+    brouillon = lire_etat().get("brouillon") or {}
+    # Le répertoire est comparé : l'état ne décrit qu'UN brouillon, il ne
+    # vaut pas pour un autre répertoire passé en argument.
+    return (brouillon.get("complet") is True and bool(brouillon.get("repertoire"))
+            and Path(brouillon["repertoire"]).resolve() == cible)
+
+
 # Les cinq étapes, dans l'ordre. Le mot « publié » recouvrait les deux
 # dernières : la page annonçait « Ce qui est publié », puis expliquait plus bas
 # que le build et la mise en ligne restaient à faire. Un exploitant qui lit
@@ -463,6 +496,9 @@ def generer_apercu(auteur: str | None = None, cible: Path | None = None,
     # ferait lire au contrôleur un brouillon en train d'être réécrit.
     with verrou_de_publication():
         cible.mkdir(parents=True, exist_ok=True)
+        etat = lire_etat()
+        etat.pop("brouillon", None)         # avant le builder : cf. GENERATION_INACHEVEE
+        ecrire_etat(etat)
         stats = builder(cible)
         retirer_rebuts(cible)
         controle = controleur(cible)
@@ -470,6 +506,7 @@ def generer_apercu(auteur: str | None = None, cible: Path | None = None,
         resume = {
             "genere_le": maintenant(),
             "genere_par": auteur,
+            "complet": True,
             "repertoire": str(cible),
             "stats": stats,
             "exclusions": (stats or {}).get("exclusions", {}),
@@ -580,6 +617,8 @@ def generer_apercu_du_compte(compte: int, auteur: str | None = None,
     # Attente plus longue que pour la ligne de commande : plusieurs personnes
     # peuvent demander un aperçu dans la même minute.
     with verrou_de_publication(delai=300.0):
+        # La fiche d'abord : sans elle, le répertoire n'est plus un aperçu.
+        _fiche_apercu(compte).unlink(missing_ok=True)
         if donnees.exists():
             shutil.rmtree(donnees)          # écrasé, jamais complété
         donnees.mkdir(parents=True)
@@ -589,6 +628,7 @@ def generer_apercu_du_compte(compte: int, auteur: str | None = None,
         resume = {
             "genere_le": maintenant(),
             "genere_par": auteur,
+            "complet": True,
             "compte": compte,
             "stats": stats,
             "exclusions": (stats or {}).get("exclusions", {}),
@@ -855,6 +895,8 @@ def _publier_sous_verrou(auteur, source, controleur, apercu=None) -> dict:
     if not (source / "stats.json").is_file():
         raise PublicationRefusee(
             "Aucun aperçu à publier — générer un aperçu d'abord.")
+    if not _generation_aboutie(source):
+        raise PublicationRefusee(GENERATION_INACHEVEE)
 
     # 1. Le brouillon, à l'instant de publier. Un contrôle vert d'il y a une
     #    heure ne dit rien du répertoire d'aujourd'hui.
@@ -1170,6 +1212,8 @@ def construire_apercu(cible: Path | None = None, build: Path | None = None) -> d
     if not (cible / "stats.json").is_file():
         raise PublicationRefusee(
             "Aucun aperçu à construire — générer un aperçu d'abord.")
+    if not _generation_aboutie(cible):
+        raise PublicationRefusee(GENERATION_INACHEVEE)
     if not _vite().exists():
         raise PublicationRefusee(
             "Le site public n'a pas ses dépendances : `cd public && npm install`. "
