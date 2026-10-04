@@ -2,8 +2,8 @@
 
 > Brouillon, 04/10/2026. Rien n'est codé : cette note décrit ce qui est publié
 > aujourd'hui, ce que le site fait faire à ses lecteurs, et propose une forme
-> qui parte des séances et des dossiers. Les décisions qui reviennent au
-> porteur sont en fin de note (§ 6).
+> qui parte des séances et des dossiers. Les décisions du porteur ont été
+> prises le 04/10/2026 ; elles sont reportées au § 6 et dans les lots.
 
 ## 0. Comment cette note a été faite
 
@@ -353,9 +353,9 @@ sujet (le dossier). La donnée rangée devient le registre où l'on vérifie.
    trois portes, plus bas.
 
 **Navigation.** Six entrées, dont le libellé est le titre de la page d'arrivée :
-Séances · Dossiers · Qui décide · Où va l'argent · Qui agit · Comprendre.
-« Récent » reste sur l'accueil (« Tout le flux ») et passe au pied de page. Les
-mots exacts sont au porteur (§ 6).
+Les conseils en clair · Dossiers thématiques · Qui décide · Où va l'argent ·
+Qui agit · Comprendre. « Récent » quitte l'en-tête : il reste sur l'accueil
+(« Tout le flux ») et passe au pied de page (décisions 2, 3 et 11).
 
 **Les pages de séance.** Une page par séance publiée, dans le gabarit du site :
 `/conseils/2026-05-28_conseil-municipal` — le même nom que la feuille
@@ -409,7 +409,7 @@ collecté, affiche à la place de la liste la raison tirée de la couverture
 | Fichier | Changement |
 |---|---|
 | `seances.json` | **ajouté** : une ligne par séance publiée — identifiant, date, portée, assemblée, nombre d'actes publiés, pièces, et si relue `en_clair` {fichier, titre, relu_le, actes du relevé}. Nouvelle étape après `graphe`. |
-| `conseils.json` | redondant avec `seances.json` : gardé un cycle, puis retiré (§ 6) |
+| `conseils.json` | redondant avec `seances.json` : gardé un cycle, puis retiré (décision 12) |
 | `conseils/*.html` | lien retour vers `/conseils/<nom>` |
 | `actualite.json` | les items de séance gagnent `seance` (l'identifiant de page) |
 | `liens.json` | un retour « en clair » désigne la page de séance, plus le fichier |
@@ -475,11 +475,11 @@ trois instances est un chantier d'atelier qui n'existe pas.
 | # | Défaut | Ce que la forme règle | Ce qui relève d'autre chose |
 |---|---|---|---|
 | 1 | L'accueil s'ouvre sur des compteurs et trois portes ; conseils et dossiers cachés sur mobile | Accueil et navigation de B (lots 1 et 7) : séances et dossiers dans le corps de la page, pas seulement dans l'en-tête. | Rien. |
-| 2 | « 0 marché de la commune » alors que les PV en révèlent 77 | (a) La phrase « Ce n'est pas une lacune de collecte » est écrite en dur dans l'accueil et dans /marches [code] et s'affiche sur les trois instances [en ligne] : elle doit découler d'un état déclaré, pas d'un texte fixe. (b) Le snapshot calcule pour chaque compteur son état (`absente` / `vide` / `servie`) et sa raison, au lieu que chaque page le déduise en JavaScript. (c) Attention : `couverture.collecteurs[x].statut` est le statut du **dernier** passage — `marches` vaut `empty` sur les trois instances alors que `marches.json` porte 58 lignes [en ligne] ; l'état doit dire « a déjà rapporté », pas « a rapporté la dernière fois ». | Les 77 attributions lues dans les PV et jamais entrées en base : extraction et relecture à l'atelier. Le snapshot ne peut pas les voir. Les compter publiquement (« 77 lues, non relues ») est une décision (§ 6). |
-| 3 | Deux fiches pour une association, l'une vide | La fiche vide dit quelles sources ont été consultées (cf. 4). Option : « Autres fiches au nom proche », calculé entre fiches **déjà publiées**, marqué comme calcul, sans affirmer l'identité (§ 6). | La fusion : atelier. `scripts/rapprocher_entites.py` propose les paires en lecture seule ; l'arbitrage vit hors du dépôt (`~/Claude/scripts/vigie_arbitrage.py`, cité dans sa docstring) [code]. Les paires devraient entrer dans la file de tâches de l'atelier. |
+| 2 | « 0 marché de la commune » alors que les PV en révèlent 77 | (a) La phrase « Ce n'est pas une lacune de collecte » est écrite en dur dans l'accueil et dans /marches [code] et s'affiche sur les trois instances [en ligne] : elle doit découler d'un état déclaré, pas d'un texte fixe. (b) Le snapshot calcule pour chaque compteur son état (`absente` / `vide` / `servie`) et sa raison, au lieu que chaque page le déduise en JavaScript. (c) Attention : `couverture.collecteurs[x].statut` est le statut du **dernier** passage — `marches` vaut `empty` sur les trois instances alors que `marches.json` porte 58 lignes [en ligne] ; l'état doit dire « a déjà rapporté », pas « a rapporté la dernière fois ». | Les 77 attributions lues dans les PV et jamais entrées en base : extraction et relecture à l'atelier. Le snapshot ne peut pas les voir. Leur nombre sera publié (« 77 lues, non relues », décision 6) dès que l'extraction le dépose là où le snapshot le lit (lot 4 b). |
+| 3 | Deux fiches pour une association, l'une vide | La fiche vide dit quelles sources ont été consultées (cf. 4). Les fiches au nom proche ne sont **pas** signalées sur le site public (décision 7). | La détection et la fusion : atelier. `scripts/rapprocher_entites.py` propose les paires en lecture seule ; l'arbitrage vit hors du dépôt (`~/Claude/scripts/vigie_arbitrage.py`, cité dans sa docstring) [code]. Les paires devraient entrer dans la file de tâches de l'atelier. |
 | 4 | La fiche ne dit pas ce qu'on ne sait pas (subventions département, État) | Un bloc « Ce que cette fiche peut dire » : pour chaque financeur, collecté ou non. La table financeur → collecteur se publie **une fois** dans `couverture.json`, pas dans chaque fiche (×1 456 à Lasalle). Aujourd'hui la section « Flux financiers » n'apparaît que s'il y a des flux, et la fiche vide dit « dans les sources collectées à ce jour » sans les nommer [code]. | Le collecteur départemental n'existe pas [code : `collectors/` a `occitanie_region`, `subventions_etat`, `jaune_associations`, rien pour le département]. |
-| 5 | Un acheteur sous cinq graphies | Entièrement la forme : les 58 lignes de `marches.json` à Lasalle portent toutes `acheteur_id = 8631` [en ligne] ; la page liste les `acheteur_nom` bruts de chaque source [code : `marches/+page.svelte`]. Le snapshot publie le nom de la fiche publique de l'acheteur, garde la graphie de la source dans un champ à part, et la page groupe par identifiant. | Rien. |
-| 6 | Titres et en-tête divergents | Une table de libellés : libellé de navigation = `<title>` = `<h1>` = fil d'Ariane. Relevé [code] : « Conseils en clair » / « Le conseil en clair » ; « Dossiers thématiques » / « Dossiers » (titre, pied, menu mobile) ; « Qui agit » / titre « Acteurs publics » / h1 « Qui agit ? » ; « Récent » / « Ce qui a changé ». Le fil « Qui décide › Le conseil en clair » mène à une page qui ne cite pas /conseils. Un contrôle au build peut l'exiger. | Rien. |
+| 5 | Un acheteur sous cinq graphies | Entièrement la forme : les 58 lignes de `marches.json` à Lasalle portent toutes `acheteur_id = 8631` [en ligne] ; la page liste les `acheteur_nom` bruts de chaque source [code : `marches/+page.svelte`]. Le snapshot publie le nom de la fiche publique de l'acheteur, et la page groupe par identifiant ; seul ce nom s'affiche (décision 8). | Rien. |
+| 6 | Titres et en-tête divergents | Une table de libellés : libellé de navigation = `<title>` = `<h1>` = fil d'Ariane. Relevé [code] : « Conseils en clair » / « Le conseil en clair » ; « Dossiers thématiques » / « Dossiers » (titre, pied, menu mobile) ; « Qui agit » / titre « Acteurs publics » / h1 « Qui agit ? » ; « Récent » / « Ce qui a changé ». Le fil « Qui décide › Le conseil en clair » mène à une page qui ne cite pas /conseils. Libellés retenus : « Les conseils en clair » et « Dossiers thématiques » (décisions 2 et 3). Un contrôle au build peut exiger l'égalité. | Rien. |
 
 Deux constats hors des six, rencontrés en chemin :
 
@@ -511,47 +511,76 @@ délibératif cité par la recherche.
 - À décider avant : rien.
 
 **Lot 1 — Les mots et les liens qui manquent** (défaut 6, une part du 1).
-Libellés alignés ; carte « séances » sur /qui-decide ; /dossiers et les dossiers
-au sitemap ; dans « Ce que la commune vient de décider », une séance relue
-mène à sa feuille, les autres à leur année.
-- Comparateur : **identique** — c'est la preuve que le lot ne touche que le
-  site.
+Libellés alignés sur « Les conseils en clair » et « Dossiers thématiques » —
+en-tête, `<title>`, `<h1>`, fil d'Ariane, pied de page, menu mobile, et titre
+des feuilles (« Les conseils en clair · … », écrit par
+`collectors/en_clair/rendu.py` via `en_clair.py`) ; carte « Les conseils en
+clair » sur /qui-decide ; /dossiers et les dossiers au sitemap ; dans « Ce que
+la commune vient de décider », une séance relue mène à sa feuille, les autres à
+leur année.
+- Comparateur : seul le `<title>` des `conseils/*.html` change (une feuille
+  sur la base de CI après le lot 0) ; tout le reste est **identique** — c'est
+  la preuve que le lot ne touche que le site et ce titre.
 - En ligne : pour chaque entrée de l'en-tête, le `<title>` et le `<h1>` de la
   page d'arrivée reprennent son libellé ; `sitemap.xml` contient `/dossiers` ;
   le lien du 10 septembre sur l'accueil de Lasalle mène à la feuille.
-- À décider avant : les mots (§ 6, Q2 et Q3).
+- Tranché : décisions 2 et 3.
 
-**Lot 2 — Une recherche qui mène quelque part.** Adresse juste pour chaque
-événement non délibératif ; dossiers et séances relues dans l'index ;
-« un sujet, un nom, un montant ».
+**Lot 2 — Une recherche qui mène quelque part.** Un événement non délibératif
+(BODACC, permis, agenda) mène à sa source d'origine (décision 9) ; s'il n'a pas
+d'adresse d'origine, il s'affiche sans lien plutôt qu'avec un lien faux ;
+dossiers et séances relues dans l'index ; « un sujet, un nom, un montant ».
 - Comparateur : `recherche_index.json` seul — entrées `acte` modifiées
   (champ `u`), entrées `dossier` et `seance` ajoutées.
 - En ligne : un script parcourt `recherche_index.json` de chaque instance et
   vérifie que chaque `u` répond 200 et que son ancre existe dans la page (à
-  Lasalle aujourd'hui : ≈ 1 400 échecs).
-- À décider avant : Q9.
+  Lasalle aujourd'hui : ≈ 1 400 échecs) ; une adresse externe est seulement
+  vérifiée bien formée, pas interrogée.
+- Tranché : décision 9.
 
 **Lot 3 — L'acheteur sous son nom** (défaut 5).
-- Comparateur : `marches.json` seul — champ `acheteur_nom` modifié, champ de
-  graphie source ajouté ; nombre de lignes inchangé.
-- En ligne : /marches de Lasalle affiche « Acheteurs : 1 ».
-- À décider avant : Q8.
+- Comparateur : `marches.json` seul — champ `acheteur_nom` modifié ; nombre
+  de lignes inchangé.
+- En ligne : /marches de Lasalle affiche « Acheteurs : 1 », sous le nom de la
+  fiche.
+- Tranché : décision 8 (le nom de la fiche, seul).
+- Reste ouvert : la graphie de la source disparaît-elle aussi des données
+  ouvertes, ou reste-t-elle dans `marches.json` sans être affichée ? Par
+  défaut, elle reste, dans un champ `acheteur_libelle_source` : c'est ce qui
+  permet de retrouver la ligne dans sa source.
 
-**Lot 4 — Les zéros avec leur raison** (défaut 2, part de forme).
+**Lot 4 — Les zéros avec leur raison** (défaut 2, part de forme). En deux
+temps, parce que le second dépend d'ailleurs.
+
+*4 a — l'état et la raison.*
 - Comparateur : `couverture.json` gagne un état par domaine ; aucun autre
   fichier.
 - En ligne : la phrase « Ce n'est pas une lacune de collecte » n'apparaît plus
   sur un zéro dont la source n'a jamais rien rapporté ; sur les trois
   instances, chaque zéro de l'accueil et de /marches porte une raison.
-- À décider avant : Q6.
 
-**Lot 5 — Ce que la fiche ne sait pas** (défauts 4 et 3, part de forme).
-- Comparateur : `couverture.json` (table financeurs → collecteurs) ;
-  `entite/*.json` modifiés seulement si les fiches au nom proche sont retenues
-  (champ ajouté sur quelques fiches).
+*4 b — le nombre en attente de relecture* (décision 6 : il se publie).
+- Préalable, hors de ce chantier : les 77 attributions de Lasalle ne sont pas
+  en base [constat du porteur]. Le snapshot ne lit que la base : il faut que
+  l'extraction y dépose ses candidats, au statut non relu, pour qu'une étape
+  les **compte** sans les publier. Où et sous quelle forme : à concevoir avec
+  l'atelier [supposé : aucune table de ce genre n'existe aujourd'hui, non
+  vérifié dans `db/schema.sql`].
+- Comparateur : `couverture.json` gagne, par domaine, un nombre d'éléments
+  extraits non relus — un nombre, jamais une ligne.
+- En ligne : /marches de Lasalle dit « 0 marché relu ; 77 attributions lues
+  dans les procès-verbaux, en attente de relecture ».
+- Tranché : décision 6.
+
+**Lot 5 — Ce que la fiche ne sait pas** (défaut 4, et la part publique du 3).
+- Comparateur : `couverture.json` seul (table financeurs → collecteurs) ;
+  `entite/*.json` inchangés.
 - En ligne : la fiche de l'association de Lasalle dit « Département : non
-  collecté ».
-- À décider avant : Q7.
+  collecté » ; une fiche vide nomme les sources consultées.
+- Tranché : décision 7 — les fiches au nom proche ne vont qu'à l'atelier.
+  C'est un chantier d'atelier, hors de cette refonte : brancher
+  `scripts/rapprocher_entites.py` sur la file de tâches
+  (`collectors/taches.py`).
 
 **Lot 6 — Les pages de séance** (cœur de B). Étape `seances`, route
 `/conseils/[seance]`, /conseils liste tout, retours vers la page de séance.
@@ -561,15 +590,18 @@ mène à sa feuille, les autres à leur année.
 - En ligne : /conseils de Saillans liste ≈ 105 séances ; la page du 28 mai à
   Lasalle donne 39 et 27 et dit pourquoi ; les séances sont au sitemap ; le
   poids gzip de /conseils reste sous 10 Ko par année affichée.
-- À décider avant : Q1, Q4, Q5, Q10.
+- Tranché : décisions 1, 4, 5 et 10 — toutes les séances ont leur page, à
+  `/conseils/<date>_<assemblée>`, et une séance dont le relevé et la base ne
+  comptent pas pareil montre les deux nombres.
 
 **Lot 7 — L'accueil et l'en-tête de B** (défaut 1).
 - Comparateur : identique si le lot 6 est passé.
 - En ligne : le HTML de l'accueil ne dépasse pas les 27,7 Ko d'aujourd'hui
   (6,4 Ko gzip) ; à 360 px de large, le premier écran montre la dernière
   séance et les dossiers (capture par navigateur sans tête) ; Saillans et
-  Brassac affichent une séance, pas un vide.
-- À décider avant : Q11.
+  Brassac affichent une séance, pas un vide ; « Récent » n'est plus dans
+  l'en-tête.
+- Tranché : décision 11.
 
 **Lot 8 — Les sujets.** Registre générique, `sujet` dans l'en-tête des
 dossiers, liens dans les deux sens, /dossiers non vide pour une instance sans
@@ -586,31 +618,45 @@ dossier.
 `conseils.json` après le lot 6.
 - Comparateur : fichiers retirés, aucun autre changement.
 - En ligne : le nombre de fichiers du manifeste baisse d'autant ; aucune page
-  n'a bougé.
-- À décider avant : Q12.
+  n'a bougé ; `/methode`, `llms.txt` et le README ne citent plus les fichiers
+  retirés.
+- Tranché : décision 12.
 
 ---
 
-## 6. Décisions à prendre
+## 6. Décisions prises
 
-1. Retient-on l'architecture B (séances et dossiers comme unités, aucune URL
-   retirée) ?
-2. Le nom des séances, partout : « Séances du conseil » ou « Le conseil en
-   clair » ?
-3. Le nom des dossiers, partout : « Dossiers » ou « Dossiers thématiques » ?
-4. La page d'une séance vit-elle à `/conseils/<date>_<assemblée>`, le nom de sa
-   feuille actuelle ?
-5. Une séance non relue a-t-elle sa page, faite des actes déjà publiés ?
-6. Peut-on publier le **nombre** d'éléments extraits en attente de relecture
-   (« 77 attributions lues dans les PV, non relues ») ?
-7. Les fiches au nom proche sont-elles signalées sur le site public, ou
-   seulement à l'atelier ?
-8. L'acheteur s'affiche-t-il sous le seul nom de sa fiche, ou avec la graphie
-   de la source en dessous ?
-9. Un résultat de recherche BODACC, permis ou agenda mène-t-il à la source
-   d'origine (oui) ou à /nouveautes (non) ?
-10. Quand relevé et base comptent différemment, la page de séance montre-t-elle
-    les deux nombres ?
-11. « Récent » quitte-t-il l'en-tête pour l'accueil et le pied de page ?
-12. Retire-t-on du snapshot les fichiers qu'aucune page ne lit
-    (`event_links.json`, `croisement_foncier.json`, puis `conseils.json`) ?
+Tranchées par le porteur le 04/10/2026.
+
+| # | Question | Décision |
+|---|---|---|
+| 1 | Architecture | **B** : la séance et le dossier comme unités de lecture, aucune URL retirée |
+| 2 | Nom des séances, partout | **« Les conseils en clair »** |
+| 3 | Nom des dossiers, partout | **« Dossiers thématiques »** |
+| 4 | Adresse d'une séance | **`/conseils/<date>_<assemblée>`**, le nom de sa feuille |
+| 5 | Une séance non relue a-t-elle sa page ? | **Oui**, faite des actes déjà publiés |
+| 6 | Publier le nombre d'éléments extraits en attente de relecture ? | **Oui** — un nombre, jamais les lignes (lot 4 b) |
+| 7 | Fiches au nom proche | **À l'atelier seulement** |
+| 8 | Nom de l'acheteur | **Celui de sa fiche**, seul |
+| 9 | Résultat BODACC, permis, agenda | **Vers sa source d'origine** |
+| 10 | Relevé et base en désaccord | **Les deux nombres**, avec leur origine |
+| 11 | « Récent » | **Quitte l'en-tête** ; reste sur l'accueil et au pied de page |
+| 12 | Fichiers sans lecteur | **Retirés** : `event_links.json`, `croisement_foncier.json`, puis `conseils.json` après un cycle |
+
+### Ce que ces choix entraînent
+
+- **Une tension de mots (décisions 2 et 5).** Sous « Les conseils en clair »,
+  la liste comptera surtout des séances qui ne sont **pas** mises en clair :
+  105 sur 105 à Saillans, 200 sur 216 à Lasalle [en ligne]. Chaque ligne et
+  chaque page de séance doit donc dire son état — « mise en clair, relue le … »
+  ou « pas encore mise en clair : les délibérations telles que publiées » —
+  pour que le titre de la rubrique ne promette pas ce que la page ne donne pas.
+- **Une tension de largeur (décision 3).** « Dossiers thématiques » et « Les
+  conseils en clair » sont les deux libellés les plus longs de l'en-tête. Avec
+  six entrées au lieu de sept, l'en-tête reste sous le seuil actuel du menu
+  replié (`.sept`, 1 216 px) [code] ; à vérifier par capture au lot 1.
+- **Le nombre en attente (décision 6)** ne dépend pas que de la forme : il faut
+  d'abord que l'extraction dépose ses candidats en base (lot 4 b).
+- **Reste ouvert, sans urgence** : la graphie d'acheteur de la source reste-t-elle
+  dans les données ouvertes (lot 3) ? Et, hors chantier, les noms de personnes
+  physiques dans les titres BODACC de l'index (§ 4).
