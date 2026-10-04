@@ -1239,9 +1239,14 @@ def test_lapercu_sert_les_donnees_du_brouillon(publication, emplacements, tmp_pa
     """01/10/2026 : une feuille « en clair » retenue n'existait que dans le
     brouillon ; l'aperçu servait `/data/` depuis ce qui est en ligne, et son
     lien menait au 404. L'aperçu montre ce qui SERA publié."""
-    snapshot(emplacements["brouillon"], [1])
-    (emplacements["brouillon"] / "conseils").mkdir()
-    (emplacements["brouillon"] / "conseils" / "seance.html").write_text("feuille")
+    def avec_feuille(out):
+        stats = snapshot(out, [1])
+        (out / "conseils").mkdir()
+        (out / "conseils" / "seance.html").write_text("feuille")
+        return stats
+
+    publication.generer_apercu(builder=avec_feuille,
+                               controleur=lambda cible: controle(True))
     build = tmp_path / "apercu_build"
 
     def npm_vert(cmd, cwd, env, stdout, stderr):
@@ -1261,6 +1266,7 @@ def test_lapercu_sert_les_donnees_du_brouillon(publication, emplacements, tmp_pa
 
     assert (build / "data" / "conseils" / "seance.html").read_text() == "feuille"
     assert not (build / "data" / "en-ligne-seulement.json").exists()
+
 
 # ── Un brouillon n'est généré que si la génération est allée au bout ─────────
 #
