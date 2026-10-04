@@ -21,7 +21,8 @@ from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrir
                                         etape_ecrire_couches, etape_ecrire_finances,
                                         etape_ecrire_flux)
 from scripts.snapshot.en_clair import etape_graphe
-from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
+from scripts.snapshot.fiches import (etape_citations, etape_couches, etape_fiches,
+                                     etape_fiches_acteurs)
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.popolo import etape_popolo
@@ -165,4 +166,8 @@ ETAPES: list[Etape] = [
           lit=("conn", "out"), ecrit=("transparence.json",)),
     Etape("conflits", etape_conflits,
           lit=("conn", "out", "public_ids"), produit=("conflits",), ecrit=("conflits.json",)),
+    Etape("fiches_acteurs", etape_fiches_acteurs,
+          lit=("conn", "out", "public_entities", "public_relations", "public_events",
+               "public_links", "public_flows", "marches_data"),
+          produit=("bundles",), ecrit=("entite/*.json",)),
 ]

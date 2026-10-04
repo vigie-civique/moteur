@@ -154,6 +154,7 @@ from scripts.snapshot.corrections import (  # noqa: E402,F401
 )
 from scripts.snapshot.en_clair import export_dossiers, export_en_clair  # noqa: E402,F401
 from scripts.snapshot.conflits import deports_par_deliberation, export_conflits  # noqa: E402,F401
+from scripts.snapshot.fiches import comptes_syndicats_par_entite, write_entity_bundles  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
 from collectors.verdict import ecarte, verdict_de  # noqa: E402
@@ -196,115 +197,6 @@ def write_act_extracts(out: Path, textes: dict[int, str]) -> int:
     for i, texte in textes.items():
         write_json_compact(dest / f"{i}.json", {"id": i, "texte": texte})
     return len(textes)
-
-
-def comptes_syndicats_par_entite(conn) -> dict[int, list[dict]]:
-    """Les comptes d'un syndicat, par exercice puis par budget.
-
-    Écrits par `collectors/syndicats_comptes` depuis les balances DGFiP. Deux
-    budgets d'un même syndicat (principal, annexe) restent SÉPARÉS : les
-    additionner compterait deux fois ce que l'un reverse à l'autre. Une base
-    antérieure au 24/09/2026 n'a pas la table — la fiche n'a alors pas d'encart,
-    ce qui est exact : rien n'a été collecté.
-    """
-    try:
-        rows = conn.execute(
-            "SELECT entity_id, year, budget, libelle_budget, nomenclature, poste,"
-            " montant FROM comptes_syndicats WHERE entity_id IS NOT NULL"
-            " ORDER BY entity_id, year DESC, budget").fetchall()
-    except sqlite3.OperationalError:
-        return {}
-    par: dict[int, dict[int, dict[str, dict]]] = defaultdict(lambda: defaultdict(dict))
-    for r in rows:
-        bloc = par[r["entity_id"]][r["year"]].setdefault(r["budget"], {
-            "libelle": r["libelle_budget"], "nomenclature": r["nomenclature"],
-            "postes": {}})
-        bloc["postes"][r["poste"]] = round(r["montant"] or 0)
-    return {
-        eid: [{"year": an, "budgets": list(budgets.values())}
-              for an, budgets in sorted(annees.items(), reverse=True)]
-        for eid, annees in par.items()
-    }
-
-
-def write_entity_bundles(out: Path, public_entities, public_relations,
-                         public_events, public_links, public_flows,
-                         marches_data, comptes_syndicats=None) -> int:
-    """Un fichier par acteur : `entite/<id>.json`, tout pré-résolu.
-
-    Avant ça, afficher une fiche imposait de télécharger `entities.json`
-    (1,1 Mo) + `events.json` (1 Mo) + `event_links.json` (387 Ko) +
-    `relations.json` + `flows.json` + `marches.json` — près de 3 Mo pour lire
-    une association, et tout le filtrage fait dans le navigateur. Sur le réseau
-    des Cévennes c'est disqualifiant. Chaque bundle fait quelques kilo-octets et
-    contient exactement ce que la page affiche.
-
-    Ces fichiers alimentent aussi le prérendu (`+page.server.js`) : le contenu
-    part dans le HTML, donc les fiches sont enfin indexables et partageables.
-    """
-    names = {e["id"]: e["name"] for e in public_entities}
-    events_by_id = {e["id"]: e for e in public_events}
-
-    liens_par_entite: dict[int, list[dict]] = defaultdict(list)
-    for link in public_links:
-        event = events_by_id.get(link["event_id"])
-        if event:
-            liens_par_entite[link["entity_id"]].append({**event, "role": link["role"]})
-
-    relations_par_entite: dict[int, list[dict]] = defaultdict(list)
-    for rel in public_relations:
-        for side, autre_id in (("from_id", rel["to_id"]), ("to_id", rel["from_id"])):
-            eid = rel[side]
-            relations_par_entite[eid].append({
-                **rel,
-                "autre_id": autre_id,
-                "autre": names.get(autre_id),
-            })
-
-    flows_par_entite: dict[int, list[dict]] = defaultdict(list)
-    for flow in public_flows:
-        if flow.get("perimetre") == "agregat":
-            continue
-        for eid in {flow.get("from_id"), flow.get("to_id")} - {None}:
-            flows_par_entite[eid].append(flow)
-
-    marches_par_entite: dict[int, list[dict]] = defaultdict(list)
-    for marche in marches_data:
-        for eid in {marche.get("titulaire_id"), marche.get("acheteur_id")} - {None}:
-            marches_par_entite[eid].append(marche)
-
-    dest = out / "entite"
-    dest.mkdir(parents=True, exist_ok=True)
-
-    # PURGE AVANT ÉCRITURE. Sans elle, une entité retirée de la publication
-    # gardait sa fiche ici, et la synchro miroir la recopiait fidèlement vers le
-    # site : le 19/08/2026, deux sites en ligne servaient des fiches périmées en
-    # `/data/entite/<id>.json` — 1 229 sur l'un dont 80 personnes physiques,
-    # 9 697 sur l'autre dont 156 — alors que le filtre les avait écartées.
-    # Personne ne le voyait, parce que la page HTML de ces entités rendait bien
-    # 404 : seul le fichier de données restait accessible. Écrire par-dessus ne
-    # suffit pas, il faut retirer ce qui ne doit plus sortir.
-    attendus = {f"{e['id']}.json" for e in public_entities}
-    perimees = [f for f in dest.glob("*.json") if f.name not in attendus]
-    for f in perimees:
-        f.unlink()
-    if perimees:
-        print(f"   {len(perimees)} fiche(s) périmée(s) retirée(s) de {dest.name}/")
-
-    for entity in public_entities:
-        eid = entity["id"]
-        write_json_compact(dest / f"{eid}.json", {
-            "entity": entity,
-            "relations": relations_par_entite.get(eid, []),
-            "liens": sorted(liens_par_entite.get(eid, []),
-                            key=lambda e: (e.get("date") or ""), reverse=True),
-            "flows": sorted(flows_par_entite.get(eid, []),
-                            key=lambda f: (f.get("year") or 0), reverse=True),
-            "marches": marches_par_entite.get(eid, []),
-            **({"comptes_syndicat": (comptes_syndicats or {})[eid]}
-               if eid in (comptes_syndicats or {}) else {}),
-        })
-    return len(public_entities)
 
 
 def write_search_index(out: Path, public_entities, communes: dict[int, str],
@@ -588,10 +480,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         stats["croisement_foncier"] = len(croisement_foncier)
 
         # ── Un fichier par acteur + index de recherche ────────────────────────
-        bundles = write_entity_bundles(out, public_entities, public_relations,
-                                       public_events, public_links, public_flows,
-                                       marches_data,
-                                       comptes_syndicats_par_entite(conn))
+        bundles = faits["bundles"]
         stats["extraits_actes"] = write_act_extracts(out, textes_extraits)
         stats["extraits_masquages"] = dict(masquages)
         communes = {r["id"]: r.get("commune") for r in entity_rows}
