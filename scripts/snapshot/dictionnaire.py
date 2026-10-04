@@ -81,8 +81,6 @@ def etape_dictionnaire(out, stats, location_quality) -> None:
         "`persons`, `organizations`, `memberships`, `areas` |",
         "| `events.json` | Actes : délibérations, arrêtés, annonces | "
         "`events` |",
-        "| `event_links.json` | Quel acteur est cité dans quel acte | "
-        "`links` |",
         "| `flows.json` | Flux financiers publics (subventions, "
         "participations) | `flows` |",
         "| `marches.json` | Marchés publics et attributaires | `marches` |",

@@ -7,7 +7,7 @@
 
   // Fiche acteur. Jusqu'au 26/07/2026 elle n'affichait que nom, type, fiabilité
   // et un point sur la carte : les 6 154 liens acteur↔événement de la base
-  // n'étaient pas exportés. Ils le sont désormais (event_links.json), ce qui
+  // n'étaient pas exportés. Ils le sont désormais (dans `entite/<id>.json`), ce qui
   // permet enfin de répondre à la seule question qui compte sur une fiche :
   // « qu'est-ce que cet acteur a à voir avec les affaires de la commune ? »
 

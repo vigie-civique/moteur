@@ -36,7 +36,6 @@ Ce modèle est conçu pour être rejoué sur une autre commune. Le périmètre s
 | `relations.json` | Liens entre acteurs, datés et sourcés | `relations` |
 | `popolo.json` | Les **mandats** au format [Popolo](https://www.popoloproject.com/) — format d'interopérabilité | `persons`, `organizations`, `memberships`, `areas` |
 | `events.json` | Actes : délibérations, arrêtés, annonces | `events` |
-| `event_links.json` | Quel acteur est cité dans quel acte | `links` |
 | `flows.json` | Flux financiers publics (subventions, participations) | `flows` |
 | `marches.json` | Marchés publics et attributaires | `marches` |
 | `budget.json` · `budget_vote.json` · `ofgl.json` | Budgets votés et agrégats financiers | `annuel`/`annexe`, `budget_vote`, `ofgl` |

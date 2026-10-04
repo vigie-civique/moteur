@@ -38,7 +38,7 @@ from scripts.snapshot.revue import etape_revue
 from scripts.snapshot.seances import etape_seances
 from scripts.snapshot.sujets import etape_sujets
 from scripts.snapshot.territoire import etape_environnement, etape_fiscalite, etape_territoire
-from scripts.snapshot.urbanisme import etape_croisement_foncier, etape_urbanisme
+from scripts.snapshot.urbanisme import etape_urbanisme
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
 #: (lecture seule), le répertoire de sortie, l'heure de la construction, et le
@@ -122,8 +122,7 @@ ETAPES: list[Etape] = [
           lit=("out", "public_entities", "public_relations"),
           ecrit=("entities.json", "relations.json")),
     Etape("ecrire_actes", etape_ecrire_actes,
-          lit=("out", "public_events", "public_links"),
-          ecrit=("events.json", "event_links.json")),
+          lit=("out", "public_events"), ecrit=("events.json",)),
     Etape("ecrire_flux", etape_ecrire_flux,
           lit=("out", "public_flows"), ecrit=("flows.json",)),
     Etape("ecrire_couches", etape_ecrire_couches,
@@ -152,9 +151,6 @@ ETAPES: list[Etape] = [
     Etape("urbanisme", etape_urbanisme,
           lit=("conn", "out", "public_ids"),
           produit=("urbanisme_public", "adresses_retirees"), ecrit=("urbanisme.json",)),
-    Etape("croisement_foncier", etape_croisement_foncier,
-          lit=("conn", "out"), produit=("croisement_foncier",),
-          ecrit=("croisement_foncier.json",)),
     Etape("actualite", etape_actualite,
           lit=("out", "stats", "marches_data", "public_events", "public_flows",
                "perimetre_par_entite"),
@@ -204,7 +200,7 @@ ETAPES: list[Etape] = [
           lit=("out", "exclusions_publiees", "revue_atelier", "stats_en_clair",
                "stats_dossiers", "stats_graphe", "cles_stats", "corrections", "actualite",
                "a_venir", "redactions", "conflits", "elections", "fiscalite", "elus",
-               "urbanisme_public", "adresses_retirees", "croisement_foncier",
+               "urbanisme_public", "adresses_retirees",
                "extraits_actes", "masquages", "bundles", "indexed", "recherche",
                "stats_seances", "stats_sujets"),
           complete=("stats",), ecrit=("stats.json",)),

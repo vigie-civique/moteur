@@ -185,3 +185,16 @@ def test_une_reconstruction_retire_l_ancien_manifeste_avant_d_ecrire(construit, 
     premiere_ecriture = next(i for i, e in enumerate(ETAPES) if "out" in e.lit)
     assert noms[premiere_ecriture] == "retirer_manifeste"
     assert noms[-1] == "manifeste"
+
+
+def test_un_fichier_retire_du_registre_quitte_le_repertoire(tmp_path):
+    """04/10/2026 : `event_links.json` et `croisement_foncier.json` ne sont plus
+    écrits. Le répertoire de sortie gardait ceux d'une construction
+    précédente, et la recopie vers le site les servait encore."""
+    from scripts.build_public_snapshot import retirer_fichiers_non_declares
+    (tmp_path / "event_links.json").write_text("{}")
+    (tmp_path / "events.json").write_text("{}")
+    (tmp_path / "version.json").write_text("{}")
+
+    assert retirer_fichiers_non_declares(tmp_path) == ["event_links.json"]
+    assert sorted(f.name for f in tmp_path.iterdir()) == ["events.json", "version.json"]

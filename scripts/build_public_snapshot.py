@@ -181,6 +181,16 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
     for f in sorted(src.glob("*.json")):
         shutil.copy2(f, dest / f.name)
         copied.append(f.name)
+    # Les JSON de premier niveau aussi, en miroir : un fichier que le snapshot
+    # cesse d'écrire doit quitter le site. `event_links.json` et
+    # `croisement_foncier.json`, retirés le 04/10/2026, seraient sinon restés
+    # en ligne indéfiniment — le contrôleur ne fait qu'en avertir.
+    attendus_racine = {f.name for f in src.glob("*.json")}
+    retires_racine = []
+    for f in sorted(dest.glob("*.json")):
+        if f.name not in attendus_racine and f.name != "version.json":
+            f.unlink()
+            retires_racine.append(f.name)
     # Le README est le dictionnaire de données : il accompagne les JSON, il ne
     # reste pas dans le dépôt. Il était exclu de la synchro, si bien que
     # `public/static/data/README.md` annonçait des chiffres faux à côté de
@@ -210,7 +220,8 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
     return {"dest": str(dest), "files": copied, "count": len(copied),
             "fiches_retirees": retirees["entite"],
             "extraits_retires": retirees["extrait"],
-            "conseils_retires": retirees["conseils"]}
+            "conseils_retires": retirees["conseils"],
+            "fichiers_racine_retires": retires_racine}
 
 
 # Les indicateurs INSEE publiables — TOUS SAUF `DS_BPE`.
@@ -230,6 +241,23 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
 # et un `DELETE` à la main dans trois bases de production n'est pas un
 # correctif. Le jour où les migrations existent, ce filtre devient inutile —
 # et il ne fera alors que confirmer un jeu déjà propre.
+def retirer_fichiers_non_declares(out: Path) -> list[str]:
+    """Retire du répertoire de sortie les JSON de premier niveau qu'aucune
+    étape ne déclare : ceux d'une construction précédente, d'avant qu'un
+    fichier soit retiré du registre (`event_links.json`,
+    `croisement_foncier.json`, 04/10/2026). Le manifeste ne les déclare pas,
+    le contrôleur en avertit, mais ils restaient servis. Les familles
+    (`entite/`, `extrait/`, `conseils/`) sont déjà tenues en miroir par leurs
+    étapes ; `version.json` appartient à la publication."""
+    declares = {f for e in ETAPES for f in e.ecrit if "/" not in f}
+    retires = []
+    for f in sorted(out.glob("*.json")) if out.is_dir() else []:
+        if f.name not in declares and f.name != "version.json":
+            f.unlink()
+            retires.append(f.name)
+    return retires
+
+
 def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
     """Construit le snapshot public dans `out` ; rend ses compteurs (`stats.json`).
 
@@ -242,6 +270,9 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
     horloge = horloge or lire_horloge()
     conn = get_db()
     try:
+        # AVANT les étapes : le manifeste, écrit en dernier, énumère le
+        # répertoire — un fichier retiré après lui y resterait déclaré.
+        retirer_fichiers_non_declares(out)
         faits = executer(ETAPES, {"conn": conn, "out": out, "horloge": horloge,
                                   "exclusions": defaultdict(Counter)})
         return faits["stats"]
