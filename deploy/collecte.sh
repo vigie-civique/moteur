@@ -1,14 +1,16 @@
 #!/bin/bash
 # La passe de collecte d'une instance hébergée sur un serveur, puis sa
-# republication si elle a trouvé du neuf. Lancée par `deploy/collecte.timer`.
+# republication si elle a trouvé du neuf — ou si quelqu'un a corrigé la base
+# depuis la dernière publication. Lancée par `deploy/collecte.timer`.
 #
 # Le pendant, sur serveur, de la passe quotidienne qu'un poste de travail lance
 # par launchd ou cron — mêmes trois temps, même règle de publication :
 #
 #   1. les sources PÉRIMÉES seulement (`scripts/collect_loop.py`, qui lit la
 #      cadence de chaque collecteur dans `collector_runs`), jusqu'à stabilité ;
-#   2. ce que la passe a ajouté, compté dans `collector_runs` ;
-#   3. s'il y a du neuf : aperçu, contrôle d'étanchéité, promotion, build, mise
+#   2. ce que la passe a ajouté, compté dans `collector_runs`, et ce qui a été
+#      corrigé à la main depuis la dernière publication, lu dans `audit_log` ;
+#   3. s'il y a du neuf OU une correction : aperçu, contrôle d'étanchéité, promotion, build, mise
 #      en ligne, constat — `deploy/publier-site.sh --deployer`, le même chemin
 #      que le bouton de l'atelier. Une violation du contrôle arrête tout : une
 #      passe automatique publie sans relecture, la garde reste devant la porte.
@@ -53,10 +55,30 @@ PY
 )"
 echo "   total : ${ajouts:-0} élément(s) neufs"
 
+# Une correction faite en base hors collecte (fusion de fiches, verdict, saisie)
+# n'ajoute rien à `collector_runs` : la passe l'ignorait, et la correction
+# attendait la prochaine arrivée de données pour sortir — des semaines sur une
+# source rare. Le critère est le journal d'audit depuis la génération de
+# l'aperçu publié (`scripts/publication.py`, qui dit aussi pourquoi pas un
+# aperçu comparé). Ce qui part reste l'aperçu CONTRÔLÉ de `publier-site.sh` : le
+# journal décide s'il faut publier, jamais de ce qui est publié.
+corrections="$("$PY" - <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path.cwd()))
+from collectors.db import get_conn
+from scripts import publication
+par_table = publication.corrections_depuis_la_publication(get_conn(read_only=True))
+for table, n in par_table.items():
+    print(f"   ~ {n:>5}  {table}", file=sys.stderr)
+print(sum(par_table.values()))
+PY
+)"
+echo "   corrections depuis la dernière publication : ${corrections:-0} geste(s)"
+
 if [ "${VIGIE_SANS_PUBLIER:-0}" = "1" ]; then
     echo "3/3 — Publication passée (VIGIE_SANS_PUBLIER=1)"
-elif [ "${ajouts:-0}" -eq 0 ]; then
-    echo "3/3 — Rien de neuf : pas de republication."
+elif [ "${ajouts:-0}" -eq 0 ] && [ "${corrections:-0}" -eq 0 ]; then
+    echo "3/3 — Rien de neuf, rien de corrigé : pas de republication."
 else
     echo "3/3 — Aperçu, contrôle, promotion, build, mise en ligne, constat"
     PY="$PY" deploy/publier-site.sh --deployer || {

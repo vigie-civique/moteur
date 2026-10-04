@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1261,3 +1262,88 @@ def test_lapercu_sert_les_donnees_du_brouillon(publication, emplacements, tmp_pa
 
     assert (build / "data" / "conseils" / "seance.html").read_text() == "feuille"
     assert not (build / "data" / "en-ligne-seulement.json").exists()
+
+
+
+# ── La passe planifiée republie après une correction ─────────────────────────
+
+def _geste(base, table, at, entity_id=None, action="update"):
+    base.execute("INSERT INTO audit_log(table_name, action, entity_id, at) "
+                 "VALUES (?,?,?,?)", (table, action, entity_id, at))
+    base.commit()
+
+
+# Aperçu publié généré à 12:00 heure d'été française, soit 10:00 dans la base.
+PUBLIE_A_MIDI = {"publie": {"apercu_genere_le": "2026-10-03T12:00:00+02:00",
+                            "publie_le": "2026-10-03T12:05:00+02:00"}}
+
+
+def test_une_correction_apres_lapercu_publie_demande_une_republication(publication, base):
+    """Une fusion de fiches faite en base n'ajoute rien à `collector_runs` : la
+    passe disait « rien de neuf » et la correction restait hors ligne."""
+    _geste(base, "entities", "2026-10-03 10:30:00")
+    _geste(base, "entities", "2026-10-03 11:00:00")
+    _geste(base, "annotations", "2026-10-04 07:00:00")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {
+        "entities": 2, "annotations": 1}
+
+
+def test_un_geste_deja_dans_lapercu_publie_ne_republie_pas(publication, base):
+    _geste(base, "entities", "2026-10-03 09:59:59")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {}
+
+
+def test_la_borne_est_lheure_de_lapercu_pas_celle_de_la_promotion(publication, base):
+    """Un geste entre la génération (10:00) et la promotion (10:05) est dans la
+    base mais pas dans la version servie : le repère de promotion l'oublierait."""
+    _geste(base, "entities", "2026-10-03 10:03:00")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {
+        "entities": 1}
+
+
+def test_a_la_seconde_de_lapercu_on_republie_plutot_que_doublier(publication, base):
+    _geste(base, "entities", "2026-10-03 10:00:00")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {
+        "entities": 1}
+
+
+def test_les_gestes_de_publication_et_les_propositions_ne_republient_pas(publication, base):
+    """Republier à cause de la trace de sa propre publication ferait boucler la
+    passe ; une proposition de citoyen n'entre dans les données qu'une fois
+    validée, et la validation écrit son propre geste."""
+    _geste(base, "publication", "2026-10-03 10:06:00", action="publication")
+    _geste(base, "propositions", "2026-10-03 11:00:00", action="proposer")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {}
+
+
+def test_un_geste_sans_entite_republie(publication, base):
+    """Dossiers et saisies sont journalisés sans `entity_id` : filtrer sur lui
+    (comme la liste « fiches touchées ») les aurait laissés hors ligne."""
+    _geste(base, "dossiers", "2026-10-03 11:00:00", action="retenir")
+    _geste(base, "saisies", "2026-10-03 11:01:00", action="create")
+    assert publication.corrections_depuis_la_publication(base, PUBLIE_A_MIDI) == {
+        "dossiers": 1, "saisies": 1}
+
+
+def test_rien_na_jamais_ete_publie_la_passe_ne_publie_pas_la_premiere_fois(publication, base):
+    """La première mise en ligne d'une instance est un geste humain."""
+    _geste(base, "entities", "2026-10-03 11:00:00")
+    assert publication.corrections_depuis_la_publication(base, {}) == {}
+
+
+def test_sans_date_de_generation_on_se_replie_sur_la_promotion(publication, base):
+    etat = {"publie": {"publie_le": "2026-10-03T12:05:00+02:00"}}
+    _geste(base, "entities", "2026-10-03 10:03:00")
+    _geste(base, "entities", "2026-10-03 10:06:00")
+    assert publication.corrections_depuis_la_publication(base, etat) == {"entities": 1}
+
+
+def test_la_passe_decide_sur_les_corrections_comme_sur_les_ajouts():
+    """`collecte.sh` est du shell : le test garantit seulement qu'il se parse et
+    que la décision lit bien les deux compteurs (le jeu complet se joue sur le
+    serveur)."""
+    script = ROOT / "deploy" / "collecte.sh"
+    subprocess.run(["bash", "-n", str(script)], check=True)
+    texte = script.read_text(encoding="utf-8")
+    assert "corrections_depuis_la_publication" in texte
+    assert '"${ajouts:-0}" -eq 0 ] && [ "${corrections:-0}" -eq 0' in texte

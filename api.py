@@ -1665,16 +1665,7 @@ def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
     _check_admin(x_admin_key, user, role_min="contributor")
     etat = pub.etat_publication((user or {}).get("id"))
     depuis = (etat.get("publie") or {}).get("publie_le")
-    borne = None
-    if depuis:
-        try:
-            # `audit_log.at` est écrit par SQLite en UTC (`datetime('now')`) ;
-            # l'état porte une date locale avec décalage. Comparer les deux
-            # chaînes telles quelles décale la liste de deux heures l'été.
-            borne = (datetime.fromisoformat(depuis).astimezone(timezone.utc)
-                     .strftime("%Y-%m-%d %H:%M:%S"))
-        except ValueError:
-            borne = None
+    borne = pub.horodatage_base(depuis)
 
     conn = get_db()
     try:
