@@ -132,3 +132,31 @@ def test_une_troncature_reste_refusee_a_un_tiers():
 def test_le_suffixe_reste_accepte():
     """L'acquis d'avant : « CC Machin — service eau » est bien la CC."""
     assert attribue("CC Causses Aigoual Cévennes Terres Solidaires — service eau") == "epci"
+
+
+# ── Le nom affiché de l'acheteur (04/10/2026) ────────────────────────────────
+# Un même acheteur sous cinq graphies, une par source : /marches annonçait
+# « Acheteurs : 5 » pour une seule collectivité. Le snapshot publie le nom de
+# sa fiche et garde la graphie de la source à part.
+
+def test_l_acheteur_porte_le_nom_de_sa_fiche():
+    from scripts.snapshot.argent import nommer_acheteurs
+    marches = [{"acheteur_id": 7, "acheteur_nom": "COM COMMUNES CAUSSES AIGOUAL CEVENNES"},
+               {"acheteur_id": 7, "acheteur_nom": "CC Causes Aigoual Cévennes"},
+               {"acheteur_id": 7, "acheteur_nom": EPCI}]
+
+    assert nommer_acheteurs(marches, {7: EPCI}) == 2
+
+    assert {m["acheteur_nom"] for m in marches} == {EPCI}
+    assert [m["acheteur_libelle_source"] for m in marches] == [
+        "COM COMMUNES CAUSSES AIGOUAL CEVENNES", "CC Causes Aigoual Cévennes", EPCI]
+
+
+def test_un_acheteur_sans_fiche_garde_le_nom_de_sa_source():
+    from scripts.snapshot.argent import nommer_acheteurs
+    marches = [{"acheteur_id": None, "acheteur_nom": "Département d'épreuve"}]
+
+    assert nommer_acheteurs(marches, {7: EPCI}) == 0
+
+    assert marches[0]["acheteur_nom"] == marches[0]["acheteur_libelle_source"] \
+        == "Département d'épreuve"

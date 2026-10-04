@@ -88,7 +88,7 @@ ETAPES: list[Etape] = [
     Etape("couches", etape_couches,
           lit=("public_entities",), produit=("public_layers",)),
     Etape("finances", etape_finances,
-          lit=("conn", "revue", "public_ids", "perimetre_par_entite"),
+          lit=("conn", "revue", "public_ids", "public_entities", "perimetre_par_entite"),
           complete=("exclusions",),
           produit=("budget_annuel", "budget_annexe", "ofgl_data", "budget_vote",
                    "dvf_data", "marches_data", "approbations_data")),
