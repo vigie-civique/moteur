@@ -277,6 +277,19 @@ def test_un_verdict_sans_empreinte_ne_publie_pas(base, instance, tmp_path):
     assert export_en_clair(base, tmp_path / "snapshot", instance)["publiees"] == 0
 
 
+def test_une_source_absente_est_une_faute_de_la_seance_pas_une_panne(base, instance, tmp_path):
+    """Constaté : un cache de texte non porté arrêtait tout le snapshot."""
+    from scripts.build_public_snapshot import export_en_clair
+    _verdict(base, _seance(base), "retenu", instance)
+    (instance / "data" / "pv.txt").unlink()
+
+    assert any("data/pv.txt" in f for f in verifier(_chemin(instance)))
+    r = export_en_clair(base, tmp_path / "snapshot", instance)
+
+    assert r["publiees"] == 0
+    assert r["en_faute"] == ["2026-01-10-cm"]
+
+
 # ── l'atelier ────────────────────────────────────────────────────────────────
 
 VALIDEUR = {"id": 1, "email": "v@fictiville.invalid", "role": "validator"}
@@ -361,3 +374,12 @@ def test_lapercu_porte_les_trois_feuilles(atelier):
     assert r.status_code == 200
     assert r.text.count('class="sheet"') == 3
     assert atelier["en_tant_que"](CONTRIB).get("/api/atelier/en-clair/..%2Fetc/apercu").status_code in (404, 422)
+
+
+def test_la_file_nomme_la_source_absente(atelier):
+    """L'atelier montre les fautes : la file doit répondre, et dire quel fichier manque."""
+    (atelier["instance"] / "data" / "pv.txt").unlink()
+    r = atelier["en_tant_que"](CONTRIB).get("/api/atelier/en-clair")
+    assert r.status_code == 200, r.text
+    [s] = r.json()
+    assert any("data/pv.txt" in f for f in s["fautes"])
