@@ -12,7 +12,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { error } from '@sveltejs/kit'
-import { DATA_DIR } from '$lib/donnees.server.js'
+import { DATA_DIR, lireJSON } from '$lib/donnees.server.js'
+
+// Qui peut verser de l'argent public, et si notre collecte le relève : la même
+// table pour toutes les fiches, lue une fois par build (couverture.json).
+const FINANCEURS = (lireJSON('couverture.json', {}) || {}).financeurs || []
 
 export const prerender = true
 
@@ -40,7 +44,7 @@ export function entries() {
 export function load({ params }) {
   try {
     const bundle = readFileSync(join(DATA_DIR, 'entite', `${params.id}.json`), 'utf8')
-    return JSON.parse(bundle)
+    return { ...JSON.parse(bundle), financeurs: FINANCEURS }
   } catch {
     throw error(404, 'Acteur introuvable ou non publié.')
   }

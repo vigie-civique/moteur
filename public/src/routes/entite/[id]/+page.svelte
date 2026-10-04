@@ -2,6 +2,7 @@
   import { COMMUNE, SITE_NOM } from '$lib/instance.js'
   import { onMount } from 'svelte'
   import { TYPE_LABELS, euros } from '$lib/data.js'
+  import { enumerer } from '$lib/couverture.js'
   import { poserFond } from '$lib/carte/fond.js'
 
   // Fiche acteur. Jusqu'au 26/07/2026 elle n'affichait que nom, type, fiabilité
@@ -17,6 +18,10 @@
   export let data
 
   $: ({ entity, relations, liens, flows, marches } = data)
+  // Les financeurs relevés ou non par la collecte (cf. +page.server.js).
+  $: releves = (data.financeurs || []).filter((f) => f.releve)
+  $: nonReleves = (data.financeurs || []).filter((f) => !f.releve)
+  const minuscule = (f) => f.libelle[0].toLowerCase() + f.libelle.slice(1)
 
   // Comptes d'un syndicat auquel l'intercommunalité adhère (balances DGFiP).
   // Le dernier exercice publié, budget par budget — jamais additionnés — et,
@@ -491,6 +496,26 @@
           <p class="empty">
             Aucun acte public ni flux financier n'est rattaché à cet acteur dans
             les sources collectées à ce jour.
+          </p>
+        {/if}
+
+        <!-- Ce que la fiche ne peut pas dire. Une association sans subvention
+             du département ne disait pas qu'aucun collecteur ne lit le
+             département : le lecteur concluait à l'absence d'aide, alors que
+             c'est une absence de collecte (docs/refonte-du-contenu.md,
+             défaut 4). Les personnes n'en ont pas : elles ne sont publiées
+             qu'au titre d'un rôle, pas pour l'argent reçu. -->
+        {#if entity.type !== 'person' && nonReleves.length}
+          <h2>Ce que cette fiche ne peut pas dire</h2>
+          <p class="note">
+            {#if releves.length}L'argent public versé par {enumerer(releves.map(minuscule))}
+              est relevé par ce site&nbsp;; celui que verse{nonReleves.length > 1 ? 'nt' : ''}
+              {enumerer(nonReleves.map(minuscule))} ne l'est pas.
+            {:else}L'argent public versé par {enumerer(nonReleves.map(minuscule))}
+              n'est pas relevé par ce site.{/if} Qu'aucun
+            versement de {nonReleves.length > 1 ? 'leur' : 'sa'} part n'apparaisse
+            ici ne veut pas dire qu'il n'y en a pas.
+            <a href="/couverture">Ce que le site couvre</a>
           </p>
         {/if}
       </div>

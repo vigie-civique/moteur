@@ -90,3 +90,16 @@ def test_un_collecteur_incremental_vide_a_la_derniere_passe_a_deja_rapporte():
     c = export_couverture(conn, [], STATS)["collecteurs"]
     assert (c["marches"]["statut"], c["marches"]["a_rapporte"]) == ("empty", True)
     assert (c["dvf"]["statut"], c["dvf"]["a_rapporte"]) == ("empty", False)
+
+
+def test_un_financeur_sans_collecteur_n_est_jamais_dit_releve():
+    """Le département n'a pas de collecteur : aucune fiche ne doit laisser
+    croire qu'il n'a rien versé."""
+    from scripts.snapshot.couverture import financeurs
+    f = {x["financeur"]: x for x in financeurs({
+        "jaune": {"statut": "ok", "a_rapporte": True},
+        "region": {"statut": "empty", "a_rapporte": False}})}
+    assert f["departement"] == {"financeur": "departement", "libelle": "Le département",
+                                "collecteurs": [], "releve": False}
+    assert f["etat"]["releve"] is True
+    assert f["region"]["releve"] is False, "un collecteur qui n'a jamais rapporté ne relève rien"

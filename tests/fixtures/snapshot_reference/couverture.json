@@ -30,6 +30,50 @@
     }
   ],
   "collecteurs": {},
+  "financeurs": [
+    {
+      "financeur": "commune",
+      "libelle": "La commune",
+      "collecteurs": [
+        "cm",
+        "cm_archive",
+        "subv_ouvertes"
+      ],
+      "releve": false
+    },
+    {
+      "financeur": "intercommunalite",
+      "libelle": "L'intercommunalité",
+      "collecteurs": [
+        "cc_epci",
+        "subv_ouvertes"
+      ],
+      "releve": false
+    },
+    {
+      "financeur": "departement",
+      "libelle": "Le département",
+      "collecteurs": [],
+      "releve": false
+    },
+    {
+      "financeur": "region",
+      "libelle": "La région",
+      "collecteurs": [
+        "region"
+      ],
+      "releve": false
+    },
+    {
+      "financeur": "etat",
+      "libelle": "L'État",
+      "collecteurs": [
+        "jaune",
+        "subventions"
+      ],
+      "releve": false
+    }
+  ],
   "actes_avec_piece": 8,
   "actes_total": 9,
   "part_avec_piece": 88.9,

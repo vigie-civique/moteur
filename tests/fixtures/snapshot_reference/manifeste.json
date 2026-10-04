@@ -14,7 +14,7 @@
     {"chemin": "conseils/2021-04-14_conseil-municipal.html", "etape": "graphe", "objets": null, "octets": 14838, "sha256": "2c1295d9ef06dbb24d582b2f2a2f7a81ff4fde5b5c51090f2ac81533656d3c45"},
     {"chemin": "conseils.json", "etape": "graphe", "objets": 1, "octets": 324, "sha256": "815bc671f68c5b33682bbe6b29c2b5d27126a1f7589c60e022ae4e52ebb2ef42"},
     {"chemin": "corrections.json", "etape": "corrections", "objets": 0, "octets": 33, "sha256": "7106e09d96123aa30284286c88b8b20134cd42c1090205fb4fc0dbaa11e06064"},
-    {"chemin": "couverture.json", "etape": "couverture", "objets": 7, "octets": 1850, "sha256": "4b9d75d9a506cf7634338fc3644126a10cff6a877b22422a8c468038166b55a5"},
+    {"chemin": "couverture.json", "etape": "couverture", "objets": 12, "octets": 2684, "sha256": "b6481b74056b275fceff708d12d4b4d4ae769fbd3e9f105d3f2f1bcf352e6de8"},
     {"chemin": "croisement_foncier.json", "etape": "croisement_foncier", "objets": 0, "octets": 35, "sha256": "d601ef54a72b423f559ba6082734c59b92c939877c2a9ba13b1fd64f56160d12"},
     {"chemin": "dossiers.json", "etape": "graphe", "objets": 1, "octets": 7026, "sha256": "944ce9b3f0f4778e5ac5094b8258b74a9828d215508bc27d55958cedc13423f4"},
     {"chemin": "dvf.json", "etape": "ecrire_finances", "objets": 0, "octets": 29, "sha256": "fa7f63c269dc166a61fde7629f4e7563d4d3bad3e7aff670af37bfbd14d07200"},
