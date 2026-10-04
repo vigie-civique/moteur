@@ -23,7 +23,7 @@ from scripts.snapshot.popolo import etape_popolo
 from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
-from scripts.snapshot.territoire import etape_environnement, etape_territoire
+from scripts.snapshot.territoire import etape_environnement, etape_fiscalite, etape_territoire
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
 #: (lecture seule), le répertoire de sortie, l'heure de la construction, et le
@@ -125,4 +125,6 @@ ETAPES: list[Etape] = [
           ecrit=("popolo.json",)),
     Etape("elections", etape_elections,
           lit=("conn", "out"), produit=("elections",), ecrit=("elections.json",)),
+    Etape("fiscalite", etape_fiscalite,
+          lit=("conn", "out"), produit=("fiscalite",), ecrit=("fiscalite.json",)),
 ]

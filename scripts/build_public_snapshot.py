@@ -136,6 +136,7 @@ from scripts.snapshot.argent import (  # noqa: E402,F401
 )
 from scripts.snapshot.territoire import (  # noqa: E402,F401
     DECHETS_INDICATEURS,
+    export_reperes_fiscaux,
     export_enfance,
     export_telecoms,
     INSEE_PUBLIABLES,
@@ -664,19 +665,6 @@ def write_recherche_index(out: Path, public_entities, public_events,
     return len(idx)
 
 
-def export_reperes_fiscaux(conn) -> list[dict]:
-    """Où se place un taux parmi les communes qui lèvent la même taxe."""
-    if not table_exists(conn, "fiscalite_reperes"):
-        return []
-    reperes = rows(conn, """
-        SELECT insee, annee, indicateur, portee, code, taux, communes, mediane, au_moins_autant
-          FROM fiscalite_reperes ORDER BY insee, indicateur, annee, portee DESC""")
-    for r in reperes:
-        r["part_au_moins_autant"] = (round(100 * r["au_moins_autant"] / r["communes"], 1)
-                                     if r["communes"] and r["au_moins_autant"] is not None else None)
-    return reperes
-
-
 # ── Le conseil en clair : ce que l'atelier a RETENU, et rien d'autre ─────────
 #
 # Une feuille « en clair » est un texte rédigé sur une séance — souvent par un
@@ -952,14 +940,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         elections = faits["elections"]
 
-        # `portee` distingue la part votée par la commune du total acquitté :
-        # attribuer le taux global au conseil municipal serait faux.
-        fiscalite = rows(conn, """
-            SELECT insee, commune, annee, indicateur, libelle, portee, taux, epci
-            FROM fiscalite_taux ORDER BY annee DESC, commune, indicateur
-        """) if table_exists(conn, "fiscalite_taux") else []
-        write_json(out / "fiscalite.json", {"taux": fiscalite, "total": len(fiscalite),
-                                            "reperes": export_reperes_fiscaux(conn)})
+        fiscalite = faits["fiscalite"]
 
         # ── L'intercommunalité (périmètre C2) ────────────────────────────────
         # Réponse publique à « qu'est-ce qui ne se décide plus à la mairie ? ».

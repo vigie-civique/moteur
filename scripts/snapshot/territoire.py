@@ -395,6 +395,19 @@ INSEE_PUBLIABLES = """
 """
 
 
+def export_reperes_fiscaux(conn) -> list[dict]:
+    """Où se place un taux parmi les communes qui lèvent la même taxe."""
+    if not table_exists(conn, "fiscalite_reperes"):
+        return []
+    reperes = rows(conn, """
+        SELECT insee, annee, indicateur, portee, code, taux, communes, mediane, au_moins_autant
+          FROM fiscalite_reperes ORDER BY insee, indicateur, annee, portee DESC""")
+    for r in reperes:
+        r["part_au_moins_autant"] = (round(100 * r["au_moins_autant"] / r["communes"], 1)
+                                     if r["communes"] and r["au_moins_autant"] is not None else None)
+    return reperes
+
+
 def etape_environnement(conn, out) -> None:
     # ── Environnement : qualité de l'eau, risques, installations classées ──
     # 27 652 analyses, 75 risques recensés et 3 ICPE dormaient en base sans
@@ -563,3 +576,16 @@ def etape_territoire(conn, out) -> None:
         "telecoms": export_telecoms(conn, INSEE_C1, DEPARTEMENT, TELECOMS_RAYON_KM),
         "enfance": export_enfance(conn, INSEE_C1, EPCI_SIREN_C2, DEPARTEMENT),
     })
+
+
+def etape_fiscalite(conn, out) -> dict:
+    # `portee` distingue la part votée par la commune du total acquitté :
+    # attribuer le taux global au conseil municipal serait faux.
+    fiscalite = rows(conn, """
+        SELECT insee, commune, annee, indicateur, libelle, portee, taux, epci
+        FROM fiscalite_taux ORDER BY annee DESC, commune, indicateur
+    """) if table_exists(conn, "fiscalite_taux") else []
+    write_json(out / "fiscalite.json", {"taux": fiscalite, "total": len(fiscalite),
+                                        "reperes": export_reperes_fiscaux(conn)})
+
+    return {"fiscalite": fiscalite}
