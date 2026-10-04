@@ -487,8 +487,8 @@ Deux constats hors des six, rencontrés en chemin :
   forme du snapshot (`recherche.py` donne à tout événement une adresse sous
   /deliberations). Lot 2.
 - **Hors chantier, à trancher** : les titres BODACC de l'index de recherche
-  portent des noms de personnes physiques (« … — AIGOUAL LOCATIONS BTP,
-  FLORES, Jean-Luc, Bernard — … ») [en ligne]. La règle admet « une mention
+  portent des noms de personnes physiques (« BODACC Créations — <raison
+  sociale>, <nom>, <prénoms> — <commune> ») [en ligne]. La règle admet « une mention
   dans un acte » ; qu'une annonce BODACC en soit un est à confirmer.
 
 ---
