@@ -41,7 +41,7 @@ REFERENCE = Path(__file__).resolve().parent / "fixtures" / "snapshot_reference"
 COPIE = ("collectors", "scripts", "installateur", "api.py", "api_auth.py",
          "db/schema.sql", "config/publication_rules.exemple.json",
          "tests/amorcer_base_ci.py", "tests/instance_test.json",
-         "tests/fixtures/dossiers")
+         "tests/fixtures/dossiers", "tests/fixtures/conseils")
 
 # Variables qui changeraient la construction si le poste les porte.
 _A_RETIRER = ("VIGIE_RULES", "VIGIE_HORLOGE", "VIGIE_JOURNAL_CORRECTIONS")

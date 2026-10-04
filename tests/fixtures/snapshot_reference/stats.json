@@ -139,12 +139,12 @@
     }
   },
   "revue_atelier": {
-    "annotations": 1,
+    "annotations": 2,
     "rejetes": 0,
     "corriges": 0
   },
   "conseils_en_clair": {
-    "publiees": 0,
+    "publiees": 1,
     "non_retenus": 0,
     "en_faute": [],
     "sans_seance": [],
@@ -165,7 +165,7 @@
   },
   "graphe": {
     "actes_cites": 6,
-    "renvois": 8,
+    "renvois": 10,
     "alias": 7,
     "lacunes": {
       "question": 2,

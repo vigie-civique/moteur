@@ -1,4 +1,15 @@
 {
-  "seances": [],
-  "total": 0
+  "seances": [
+    {
+      "date": "2021-04-14",
+      "assemblee": "Conseil municipal",
+      "code": "cm",
+      "titre": "L'eau protégée et son budget voté",
+      "actes": 2,
+      "unanimite": 1,
+      "fichier": "conseils/2021-04-14_conseil-municipal.html",
+      "relu_le": "2026-10-01"
+    }
+  ],
+  "total": 1
 }

@@ -98,11 +98,13 @@ def main() -> int:
     n_actes = amorcer_deliberations(conn, publiable)
     regles = ecrire_regles_ci()
     n_dossiers = amorcer_dossiers(conn, regles) if os.environ.get("VIGIE_CI_DOSSIERS") else 0
+    n_seances = amorcer_conseils(conn) if os.environ.get("VIGIE_CI_DOSSIERS") else 0
 
     total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
     conn.close()
     print(f"[ci] {DB_PATH} amorcée — {total} entités, dont 1 seule publiable ; "
           f"{n_actes} actes d'assemblée ; {n_dossiers} dossiers retenus ; "
+          f"{n_seances} séance relue ; "
           f"règles : {regles}")
     return 0
 
@@ -241,6 +243,40 @@ def amorcer_dossiers(conn, regles_chemin: Path) -> int:
     conn.execute("UPDATE events SET title = 'Budget primitif 2021 du service de l''eau (relu)' "
                  "WHERE type='deliberation' AND date='2021-04-14' "
                  "AND json_extract(metadata, '$.numero_acte') = '42'")
+    conn.commit()
+    return n
+
+
+# ─── Les conseils en clair ───────────────────────────────────────────────────
+# Ajouté le 04/10/2026 (lot 0 de docs/refonte-du-contenu.md). La base de la CI
+# n'avait AUCUNE séance relue : `conseils.json` sortait vide, aucune feuille
+# n'était écrite, et tout ce que la refonte construit sur les séances — la page
+# de séance, ses deux nombres, les retours depuis les actes — n'aurait été
+# éprouvé nulle part. Une séance municipale inventée (tests/fixtures/conseils/),
+# qui relève les deux actes du 14/04/2021 ci-dessus, RETENUE comme l'atelier
+# la retient : le verdict signe l'empreinte du relevé lu.
+#
+# Même condition que les dossiers, et pour la même raison : la copie va dans
+# `data/conseils/`, le répertoire d'une instance.
+
+def amorcer_conseils(conn) -> int:
+    import shutil
+    from collectors.dossiers import assurer_schema
+    from collectors.en_clair.seances import dossier, releves, seance_id
+    from collectors.verdict import empreinte
+    assurer_schema(conn)        # la colonne `empreinte` des verdicts
+    cible = dossier(ROOT)
+    shutil.copytree(ROOT / "tests" / "fixtures" / "conseils", cible, dirs_exist_ok=True)
+    n = 0
+    for chemin, releve in releves(ROOT):
+        sid = seance_id(conn, releve)
+        if sid is None:
+            continue
+        conn.execute(
+            "INSERT INTO annotations(object_type, object_id, review_status, reviewed_by, "
+            "reviewed_at, empreinte) VALUES('en_clair', ?, 'retenu', 'ci', "
+            "'2026-10-01 10:00:00', ?)", (sid, empreinte(chemin.read_bytes())))
+        n += 1
     conn.commit()
     return n
 
