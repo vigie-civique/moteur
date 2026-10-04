@@ -18,6 +18,7 @@ from scripts.snapshot.democratie import etape_elections, etape_elus, etape_inter
 from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrire_acteurs,
                                         etape_ecrire_couches, etape_ecrire_finances,
                                         etape_ecrire_flux)
+from scripts.snapshot.en_clair import etape_graphe
 from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -152,4 +153,10 @@ ETAPES: list[Etape] = [
     Etape("corrections", etape_corrections,
           lit=("out", "public_events", "public_flows", "marches_data"),
           produit=("corrections",), ecrit=("corrections.json",)),
+    Etape("graphe", etape_graphe,
+          lit=("conn", "out", "index_actes", "affiches", "public_events", "public_links",
+               "public_entities"),
+          produit=("graphe", "stats_en_clair", "stats_dossiers", "stats_graphe"),
+          ecrit=("conseils.json", "conseils/*.html", "dossiers.json", "liens.json",
+                 "lacunes.json", "personnes_morales.json")),
 ]
