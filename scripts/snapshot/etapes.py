@@ -8,7 +8,7 @@ cette liste ; le manifeste du snapshot pourra dire, pour chaque fichier, quelle
 """
 from __future__ import annotations
 
-from scripts.snapshot.actes import etape_actes
+from scripts.snapshot.actes import etape_actes, etape_liens_actes
 from scripts.snapshot.fiches import etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -45,4 +45,11 @@ ETAPES: list[Etape] = [
           complete=("exclusions",),
           produit=("event_rows", "public_events", "event_exclusions",
                    "textes_extraits", "masquages")),
+    # Après les liens, la portée : un acte sans type d'assemblée connu a besoin
+    # de ses acteurs pour dire de qui il parle. L'étape l'écrit dans chaque
+    # acte publié.
+    Etape("liens_actes", etape_liens_actes,
+          lit=("conn", "public_ids", "public_entities"),
+          complete=("public_events", "exclusions"),
+          produit=("public_links", "perimetre_par_entite")),
 ]

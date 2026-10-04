@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 
 from scripts.snapshot.revue import TYPES_REVUS, appliquer_revue
-from scripts.snapshot.socle import RULES, rows, safe_url
+from scripts.snapshot.socle import RULES, URL_COMMUNE, URL_EPCI, rows, safe_url
 from scripts.snapshot.textes import (convocation_publique, masquer_donnees_personnelles,
                                      nettoyer_titre_evenement, texte_publiable)
 
@@ -206,6 +206,86 @@ def provenance(event: dict, source: str | None, event_type: str | None,
     return {"provenance": origine, "document": document, "traitement": traitement}
 
 
+# ── Portée d'un acte : la commune, ou l'intercommunalité qui décide pour elle ─
+#
+# Un site communal qui mélange les deux sur sa page de garde dit au lecteur que
+# tout se vaut. Or ce ne sont pas les mêmes élus, pas le même budget, pas le
+# même bulletin de vote : c'est la distinction la plus utile qu'un habitant
+# puisse faire, et elle disparaissait dans un compteur unique.
+#
+# Trois valeurs seulement, et la troisième est une honnêteté :
+#   commune           la commune l'a décidé, ou l'acte la concerne directement ;
+#   intercommunalite  l'EPCI l'a décidé, ou l'acte concerne une autre commune
+#                     membre — ce sont des compétences transférées, pas
+#                     confisquées, et le lecteur a le droit de les voir à part ;
+#   territoire        ni l'un ni l'autre n'agit : une annonce BODACC, une
+#                     autorisation d'urbanisme, un fait qui SE PASSE ici sans
+#                     que personne d'élu l'ait voté. Les ranger sous « commune »
+#                     gonflerait le compteur de l'action publique avec la vie
+#                     des entreprises.
+PORTEE_PAR_TYPE = {
+    "deliberation":          "commune",
+    "conseil_municipal":     "commune",
+    "deliberation_cc":       "intercommunalite",
+    "conseil_communautaire": "intercommunalite",
+}
+
+
+def domaine(url: str | None) -> str:
+    """Domaine nu d'une adresse ou d'un libellé de source, sans `www.`."""
+    d = (url or "").strip().lower()
+    d = d.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+    return d[4:] if d.startswith("www.") else d
+
+
+def _annee_de_trace(valeur) -> int | None:
+    """Année d'une date ou d'un millésime, None si la valeur n'en porte pas.
+
+    L'ANNÉE, et pas la date : un flux financier n'a que son millésime. Lui
+    donner un jour le ferait passer pour plus précis qu'il n'est.
+    """
+    texte = str(valeur or "")[:4]
+    return int(texte) if texte.isdigit() else None
+
+
+def portee_evenement(event_type: str | None, perimetres: set[str],
+                     source: str | None = None) -> str:
+    """Portée d'un acte : son assemblée, sinon son éditeur, sinon ses acteurs.
+
+    L'assemblée prime : une délibération du conseil communautaire est
+    intercommunale même quand elle ne cite que des acteurs de la commune —
+    c'est l'EPCI qui l'a votée.
+
+    Vient ensuite L'ÉDITEUR, et c'est ce qui manquait : les 39 annonces
+    d'agenda publiées par la mairie sur son propre site n'ont aucun acteur
+    rattaché, et sortaient donc en « territoire ». L'agenda communal a
+    disparu de la page de garde le jour où elle est devenue communale — un
+    filtre correct sur une donnée incomplète. Ce que la mairie publie
+    elle-même concerne la commune, c'est le sens même de le publier.
+
+    En dernier ressort, les acteurs rattachés disent de qui l'acte parle, et
+    C1 l'emporte sur C2 : un acte qui touche la commune et une voisine
+    intéresse d'abord la commune.
+    """
+    connue = PORTEE_PAR_TYPE.get(event_type or "")
+    if connue:
+        return connue
+    src = domaine(source)
+    if src:
+        if src == domaine(URL_COMMUNE):
+            return "commune"
+        if src == domaine(URL_EPCI):
+            return "intercommunalite"
+    if "C1" in perimetres:
+        return "commune"
+    if "C2" in perimetres:
+        return "intercommunalite"
+    return "territoire"
+
+
+PORTEE_PAR_PERIMETRE = {"C1": "commune", "C2": "intercommunalite"}
+
+
 def etape_actes(conn, revue, noms_publics, redige, exclusions) -> dict:
     # Un acte de marché ne se publie pas si son marché n'est pas publiable.
     #
@@ -351,3 +431,41 @@ def etape_actes(conn, revue, noms_publics, redige, exclusions) -> dict:
         "textes_extraits": textes_extraits,
         "masquages": masquages,
     }
+
+
+def etape_liens_actes(conn, public_ids, public_entities, public_events,
+                      exclusions) -> dict:
+    # ── Croisements acteur ↔ événement ───────────────────────────────────
+    # 6 154 liens existaient en base sans jamais être exportés : la fiche
+    # publique d'un acteur n'affichait donc ni les délibérations qui le
+    # concernent, ni les annonces le visant. On ne publie un lien que si
+    # ses deux extrémités sont elles-mêmes publiques.
+    public_event_ids = {e["id"] for e in public_events}
+    link_rows = rows(conn, """
+        SELECT ee.event_id, ee.entity_id, ee.role
+        FROM event_entities ee
+        ORDER BY ee.event_id
+    """)
+    public_links = [
+        {"event_id": l["event_id"], "entity_id": l["entity_id"], "role": l["role"]}
+        for l in link_rows
+        if l["event_id"] in public_event_ids and l["entity_id"] in public_ids
+    ]
+    exclusions["event_links"]["endpoint_not_public"] = len(link_rows) - len(public_links)
+
+    # ── Portée de chaque acte ────────────────────────────────────────────
+    # Après les liens, parce que c'est un acte SANS type d'assemblée connu
+    # qui a besoin de ses acteurs pour dire de qui il parle. Une annonce
+    # BODACC visant une entreprise de Lasalle est communale ; la même
+    # visant Val-d'Aigoual ne l'est pas.
+    perimetre_par_entite = {e["id"]: e.get("perimetre") for e in public_entities}
+    perimetres_par_acte: dict[int, set[str]] = defaultdict(set)
+    for l in public_links:
+        per = perimetre_par_entite.get(l["entity_id"])
+        if per:
+            perimetres_par_acte[l["event_id"]].add(per)
+    for e in public_events:
+        e["portee"] = portee_evenement(e["type"], perimetres_par_acte[e["id"]],
+                                       e.get("source"))
+
+    return {"public_links": public_links, "perimetre_par_entite": perimetre_par_entite}
