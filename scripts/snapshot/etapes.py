@@ -27,6 +27,7 @@ from scripts.snapshot.fiches import (etape_citations, etape_couches, etape_fiche
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.popolo import etape_popolo
+from scripts.snapshot.recherche import etape_index_recherche
 from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
@@ -174,4 +175,9 @@ ETAPES: list[Etape] = [
     Etape("extraits", etape_extraits,
           lit=("out", "textes_extraits"), produit=("extraits_actes",),
           ecrit=("extrait/*.json",)),
+    Etape("index_recherche", etape_index_recherche,
+          lit=("out", "entity_rows", "public_entities", "public_events", "public_links",
+               "marches_data", "public_flows"),
+          produit=("indexed", "recherche"),
+          ecrit=("entity_index.json", "recherche_index.json")),
 ]
