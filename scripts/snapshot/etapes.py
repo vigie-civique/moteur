@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
 from scripts.snapshot.argent import etape_finances, etape_flux
+from scripts.snapshot.compteurs import etape_compteurs
 from scripts.snapshot.fiches import etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -72,6 +73,16 @@ ETAPES: list[Etape] = [
           complete=("exclusions",),
           produit=("budget_annuel", "budget_annexe", "ofgl_data", "budget_vote",
                    "dvf_data", "marches_data", "approbations_data")),
+    # Tout est sélectionné : les compteurs de `stats.json` se calculent. Le
+    # relevé des exclusions y est recopié tel qu'il est à ce moment-là.
+    Etape("compteurs", etape_compteurs,
+          lit=("conn", "horloge", "sans_perimetre", "entity_rows", "public_entities",
+               "ids_conseil_communautaire", "relation_rows", "public_relations",
+               "event_rows", "public_events", "flow_rows", "public_flows",
+               "flows_par_etat", "budget_annuel", "budget_annexe", "ofgl_data",
+               "dvf_data", "marches_data", "approbations_data", "public_layers",
+               "location_quality", "exclusions"),
+          produit=("stats",)),
     Etape("environnement", etape_environnement,
           lit=("conn", "out"), ecrit=("environnement.json",)),
     Etape("territoire", etape_territoire,

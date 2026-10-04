@@ -144,6 +144,7 @@ from scripts.snapshot.territoire import (  # noqa: E402,F401
     export_eau_potable,
     export_incendie,
 )
+from scripts.snapshot.compteurs import mesurer_replicabilite  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
 # Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
@@ -769,70 +770,6 @@ def write_recherche_index(out: Path, public_entities, public_events,
     return len(idx)
 
 
-def mesurer_replicabilite() -> dict:
-    """Compte ce qui reste attaché à la commune, et le publie.
-
-    /methode annonçait que « changer de commune tient dans un seul fichier de
-    configuration » et que « ce site n'a pas à être modifié ». C'était faux, et
-    publier le dépôt rendait l'écart vérifiable en trente secondes. Plutôt que
-    de réécrire une promesse en la datant — elle dériverait à son tour — la page
-    affiche une mesure refaite à chaque build.
-
-    Le moteur est analysé par AST et non par expression régulière : documenter
-    un piège oblige à écrire le nom de la commune dans une docstring, et un
-    contrôle qui ne sait pas distinguer la doc du code se signale lui-même.
-    Le site, lui, est du texte éditorial : toute occurrence y compte.
-    """
-    import importlib.util
-
-    from collectors.config import COMMUNE_NAME
-
-    # La mesure est déléguée à `verifier_generique.py`, qui est le contrôle
-    # d'admission du kit : deux définitions du mot « moteur » finiraient par
-    # diverger, et c'est arrivé. Celle d'ici listait `build_public_db.py`,
-    # `migrate_perimetre.py` et `pipeline.py`, absents du dépôt depuis la
-    # généricisation, sautés en silence par un `if not f.exists(): continue` —
-    # la page /methode publiait donc une dette mesurée sur les trois quarts du
-    # moteur. Elle ne comptait par ailleurs que le nom de la commune COURANTE,
-    # là où le risque réel est le nom de la commune d'ORIGINE.
-    chemin = ROOT / "scripts" / "verifier_generique.py"
-    spec = importlib.util.spec_from_file_location("verifier_generique", chemin)
-    vg = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(vg)
-
-    communes = vg.communes_locales()
-    constats_moteur = [c for f in vg._fichiers(vg.MOTEUR)
-                       for c in vg.analyser(f, communes)
-                       if c["motif"] == "nom_commune"]
-    textes = [c for f in vg._fichiers_texte()
-              for c in vg.analyser_texte(f, communes)]
-    # Le site public et l'atelier sont deux dettes distinctes : l'une part en
-    # production, l'autre non. Les additionner gonflerait le chiffre publié
-    # d'un travail que le lecteur du site ne voit jamais.
-    constats_site = [c for c in textes if c["fichier"].startswith("public/")]
-    constats_atelier = [c for c in textes if c["fichier"].startswith("dashboard/")]
-
-    def _compte(constats):
-        return len({c["fichier"] for c in constats}), len(constats)
-
-    moteur_f, moteur_o = _compte(constats_moteur)
-    site_f, site_o = _compte(constats_site)
-    atelier_f, atelier_o = _compte(constats_atelier)
-
-    return {
-        "commune": COMMUNE_NAME,
-        "moteur_fichiers": moteur_f,
-        "moteur_occurrences": moteur_o,
-        "site_fichiers": site_f,
-        "site_occurrences": site_o,
-        "atelier_fichiers": atelier_f,
-        "atelier_occurrences": atelier_o,
-        # Ce que la mesure couvre, publié avec elle : un chiffre de dette sans
-        # son périmètre se lit comme une garantie qu'il n'est pas.
-        "noms_recherches": sorted(communes),
-    }
-
-
 def export_reperes_fiscaux(conn) -> list[dict]:
     """Où se place un taux parmi les communes qui lèvent la même taxe."""
     if not table_exists(conn, "fiscalite_reperes"):
@@ -1070,9 +1007,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         revue = faits["revue"]
         exclusions = faits["exclusions"]
 
-        counters = Counter()
-        counters["entities_sans_perimetre"] = faits["sans_perimetre"]
-        counters["revue_annotations"] = faits["revue_annotations"]
 
         civic_person_ids = faits["civic_person_ids"]
         beneficiaires = faits["beneficiaires"]
@@ -1109,7 +1043,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         flow_rows = faits["flow_rows"]
         public_flows = faits["public_flows"]
-        counters["flows_par_etat"] = faits["flows_par_etat"]
 
         public_layers = faits["public_layers"]
 
@@ -1121,92 +1054,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         marches_data = faits["marches_data"]
         approbations_data = faits["approbations_data"]
 
-        # Un statut déclaré est une promesse ; la date de dernière collecte est
-        # un fait. C'est elle qui permet à un lecteur de vérifier le statut sans
-        # croire personne : au bout de six mois, un portage de démonstration
-        # affiche six mois. On prend la collecte, JAMAIS la publication — une
-        # republication ne recollecte rien et ferait passer un site figé pour
-        # un site vivant.
-        derniere_collecte = None
-        if table_exists(conn, "collector_runs"):
-            _r = rows(conn, "SELECT MAX(started_at) AS d FROM collector_runs")
-            derniere_collecte = (_r[0]["d"] or "")[:10] or None if _r else None
-
-        stats = {
-            "generated_at": horloge.isoformat(timespec="seconds"),
-            "statut": {**STATUT, "derniere_collecte": derniere_collecte},
-            "entities_total_private": len(entity_rows),
-            "entities_public": len(public_entities),
-            # Contrôle de publication : un site communal qui publierait
-            # massivement du C2 aurait changé de nature sans qu'on le décide.
-            "entities_public_par_perimetre": dict(
-                Counter(e.get("perimetre") or "non_classe" for e in public_entities)),
-            "entities_privees_par_perimetre": dict(
-                Counter(e.get("perimetre") or "non_classe" for e in entity_rows)),
-            # Entités jamais classées : exclues de la publication, comptées ici
-            # pour que la lacune se voie au lieu de se deviner.
-            "entities_sans_perimetre": counters["entities_sans_perimetre"],
-            "conseil_communautaire": len(ids_conseil_communautaire),
-            "relations_total_private": len(relation_rows),
-            "relations_public": len(public_relations),
-            "events_total_private": len(event_rows),
-            "events_public": len(public_events),
-            # « 5 377 décisions » à l'accueil : le mot promettait un registre
-            # des décisions locales et livrait le total des événements publics,
-            # dont 3 061 annonces BODACC — la vie des entreprises, que personne
-            # n'a votée — et 440 autorisations d'urbanisme individuelles. Un
-            # habitant lisait « le conseil a pris 5 377 décisions ».
-            # Ce qui a été délibéré se compte à part, et c'est ce chiffre-là que
-            # l'accueil affiche. Le total reste publié, sous son vrai nom.
-            "deliberations_public": sum(
-                1 for e in public_events if e["type"] in TYPES_DELIBERES),
-            # Le compteur unique disait « 1 997 délibérations » sur la page de
-            # garde d'un site COMMUNAL, dont 833 votées par une autre assemblée.
-            # Les deux chiffres existent, ils n'ont pas à être additionnés pour
-            # être annoncés.
-            "deliberations_public_par_portee": dict(Counter(
-                e["portee"] for e in public_events if e["type"] in TYPES_DELIBERES)),
-            "events_public_par_portee": dict(
-                Counter(e.get("portee") for e in public_events)),
-            # « 744 entreprises » comptait 377 fiches cessées. Le volume d'un
-            # annuaire n'est pas l'état d'un territoire : les deux se comptent.
-            "entities_public_par_activite": {
-                t: dict(Counter(
-                    "en_activite" if e.get("actif") is True
-                    else "cessee" if e.get("actif") is False else "inconnu"
-                    for e in public_entities if e["type"] == t))
-                for t in ("business", "association")},
-            "entreprises_publiques_par_nature": dict(Counter(
-                e.get("nature") for e in public_entities
-                if e["type"] == "business")),
-            "events_public_par_type": dict(
-                Counter(e["type"] for e in public_events)),
-            # Dette de réplication, mesurée et non promise (cf. /methode).
-            "replicabilite": mesurer_replicabilite(),
-            # Répartition sur les trois axes de provenance. C'est ce qui rend
-            # la promesse mesurable : sans ces compteurs, « source primaire »
-            # serait une affirmation de plus, invérifiable de l'extérieur.
-            "provenance": {
-                axe: dict(Counter(e.get(axe) for e in public_events))
-                for axe in ("provenance", "document", "traitement")
-            },
-            "flows_total_private": len(flow_rows),
-            "flows_public": len(public_flows),
-            # Ce que les pièces attestent, en un coup d'oeil : sur Lasalle,
-            # 123 votés, 36 payés, 2 engagés. Le compteur était calculé mais
-            # restait dans un `Counter` local, donc invisible.
-            "flows_par_etat": dict(counters["flows_par_etat"]),
-            "budget_annuel_rows": len(budget_annuel),
-            "budget_annexe_rows": len(budget_annexe),
-            "ofgl_rows": len(ofgl_data),
-            "dvf_rows": len(dvf_data),
-            "marches_rows": len(marches_data),
-            "approbations_rows": len(approbations_data),
-            "urls_public_confirmed": sum(len(e["urls"]) for e in public_entities),
-            "map_features_public": sum(len(v) for v in public_layers.values()),
-            "location_quality": dict(location_quality),
-            "exclusions": {section: dict(counts) for section, counts in exclusions.items()},
-        }
+        stats = faits["stats"]
 
         # ── Citations : l'acteur est-il nommé dans un acte public ? ───────────
         # « Cité » = nommé dans une décision publique : délibération, conseil,
@@ -1822,7 +1670,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         # revue tait précisément ce qui vient d'être filtré.
         stats["exclusions"] = {s: dict(c) for s, c in exclusions.items()}
         stats["revue_atelier"] = {
-            "annotations": counters["revue_annotations"],
+            "annotations": faits["revue_annotations"],
             "rejetes": sum(c.get("rejete_en_atelier", 0) for c in exclusions.values()),
             "corriges": sum(1 for e in public_events if e.get("corrige"))
                       + sum(1 for f in public_flows if f.get("corrige"))
