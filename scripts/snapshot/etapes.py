@@ -12,6 +12,9 @@ from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_ac
 from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.compteurs import etape_compteurs
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
+from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrire_acteurs,
+                                        etape_ecrire_couches, etape_ecrire_finances,
+                                        etape_ecrire_flux)
 from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -95,6 +98,22 @@ ETAPES: list[Etape] = [
           lit=("out", "stats")),
     Etape("couverture", etape_couverture,
           lit=("conn", "out", "public_events", "stats"), ecrit=("couverture.json",)),
+    Etape("ecrire_acteurs", etape_ecrire_acteurs,
+          lit=("out", "public_entities", "public_relations"),
+          ecrit=("entities.json", "relations.json")),
+    Etape("ecrire_actes", etape_ecrire_actes,
+          lit=("out", "public_events", "public_links"),
+          ecrit=("events.json", "event_links.json")),
+    Etape("ecrire_flux", etape_ecrire_flux,
+          lit=("out", "public_flows"), ecrit=("flows.json",)),
+    Etape("ecrire_couches", etape_ecrire_couches,
+          lit=("out", "public_layers"),
+          ecrit=tuple(f"layers/{c}.geojson" for c in COUCHES)),
+    Etape("ecrire_finances", etape_ecrire_finances,
+          lit=("out", "budget_annuel", "budget_annexe", "budget_vote", "ofgl_data",
+               "dvf_data", "marches_data", "approbations_data"),
+          ecrit=("budget.json", "budget_vote.json", "ofgl.json", "dvf.json",
+                 "marches.json", "approbations.json")),
     Etape("environnement", etape_environnement,
           lit=("conn", "out"), ecrit=("environnement.json",)),
     Etape("territoire", etape_territoire,

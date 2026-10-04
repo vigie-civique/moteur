@@ -950,24 +950,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         stats = faits["stats"]
 
-        write_json(out / "entities.json", {"entities": public_entities, "total": len(public_entities)})
-        write_json(out / "relations.json", {"relations": public_relations, "total": len(public_relations)})
-        write_json(out / "events.json", {"events": public_events, "total": len(public_events)})
-        write_json(out / "event_links.json",
-                   {"links": public_links, "total": len(public_links)})
-        write_json(out / "flows.json", {"flows": public_flows, "total": len(public_flows)})
-        for layer, features in public_layers.items():
-            write_json(out / "layers" / f"{layer}.geojson", {
-                "type": "FeatureCollection",
-                "features": features,
-            })
-        write_json(out / "budget.json", {"annuel": budget_annuel, "annexe": budget_annexe})
-        write_json(out / "budget_vote.json", {"budget_vote": budget_vote, "total": len(budget_vote)})
-        write_json(out / "ofgl.json", {"ofgl": ofgl_data, "total": len(ofgl_data)})
-        write_json(out / "dvf.json", {"dvf": dvf_data, "total": len(dvf_data)})
-        write_json(out / "marches.json", {"marches": marches_data, "total": len(marches_data)})
-        write_json(out / "approbations.json",
-                   {"approbations": approbations_data, "total": len(approbations_data)})
         # ── Export Popolo — l'interopérabilité, pas un doublon ────────────────
         # Popolo (popoloproject.com) est le vocabulaire commun des projets de
         # transparence parlementaire et municipale : Open Civic Data (le
