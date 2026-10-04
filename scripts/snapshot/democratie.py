@@ -263,3 +263,36 @@ def etape_elus(conn, out, public_ids) -> dict:
     })
 
     return {"elus": elus}
+
+
+def etape_transparence(conn, out) -> None:
+    # ── Transparence : qui doit déclarer, et où en est sa déclaration ────
+    # ⚖️ Ce fichier NOMME des personnes. Elles y figurent au titre d'une
+    # fonction publique et d'un registre que la loi ordonne de publier —
+    # c'est le même registre qui les nomme, et le lien y renvoie. Le contenu
+    # des déclarations n'est pas collecté, donc pas publié.
+    # Une absence de ligne ne dit pas « personne n'a déclaré » : sous
+    # 20 000 habitants, la loi n'exige rien. La page doit l'écrire.
+    hatvp = rows(conn, """
+        SELECT portee, prenom, nom, qualite, type_document, statut,
+               date_depot, date_publication, url
+          FROM hatvp_declarations ORDER BY portee, nom
+    """) if table_exists(conn, "hatvp_declarations") else []
+    # Les décisions de justice administrative citant la commune. Le TITRE,
+    # la juridiction, la date, le numéro et le lien vers Légifrance — jamais
+    # l'extrait conservé en base. Les textes de JADE sont pseudonymisés, mais
+    # un extrait de quatre cents caractères reste du récit d'affaire : le
+    # lien renvoie au texte intégral chez celui qui l'établit.
+    justice = rows(conn, """
+        SELECT portee, juridiction, date_dec, numero, titre, type_recours, url
+          FROM justice_decisions ORDER BY date_dec DESC
+    """) if table_exists(conn, "justice_decisions") else []
+    write_json(out / "transparence.json", {
+        "hatvp": hatvp,
+        "justice": justice,
+        "total": len(hatvp),
+        "note": "Liste des responsables publics soumis à l'obligation de "
+                "déclaration (HATVP). Sous 20 000 habitants, l'obligation ne "
+                "s'applique généralement pas : une liste vide ne signale "
+                "aucun manquement.",
+    })
