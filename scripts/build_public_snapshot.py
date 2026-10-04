@@ -21,7 +21,7 @@ import sqlite3
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -72,6 +72,48 @@ def load_rules(path: Path = RULES_PATH) -> dict:
 
 RULES = load_rules()
 DEFAULT_OUT = ROOT / RULES["outputs"]["public_snapshot_dir"]
+
+
+# ── L'horloge d'une construction ─────────────────────────────────────────────
+#
+# Le snapshot lisait l'heure à trois endroits — `stats.json`, l'export Popolo,
+# et `date('now')` dans la requête des délégués — si bien que deux fichiers
+# d'une même construction ne portaient pas la même heure, et qu'aucune
+# construction ne pouvait être rejouée : comparer la sortie de deux versions du
+# code revenait à comparer deux instants.
+#
+# Elle se lit désormais UNE fois, au début de `build_snapshot`, et se donne :
+# `--horloge` ou `VIGIE_HORLOGE`, au format ISO (`2026-10-04T09:45:04`). Sans
+# l'un ni l'autre, c'est l'heure qu'il est, comme avant.
+VARIABLE_HORLOGE = "VIGIE_HORLOGE"
+
+
+def lire_horloge(valeur: str | None = None) -> datetime:
+    """L'heure de la construction : donnée, ou lue — une seule fois.
+
+    Rend une heure LOCALE sans fuseau, la forme que `generated_at` a toujours
+    eue. Une valeur donnée avec son fuseau est ramenée à l'heure locale.
+    """
+    brut = valeur or os.environ.get(VARIABLE_HORLOGE)
+    if not brut:
+        return datetime.now()
+    try:
+        horloge = datetime.fromisoformat(brut)
+    except ValueError:
+        raise ValueError(
+            f"{VARIABLE_HORLOGE} illisible : {brut!r} — attendu une date ISO, "
+            "par exemple 2026-10-04T09:45:04") from None
+    if horloge.tzinfo is not None:
+        horloge = horloge.astimezone().replace(tzinfo=None)
+    return horloge
+
+
+def jour_utc(horloge: datetime) -> str:
+    """Le jour que SQLite appelle `date('now')` à cette heure-là : il compte en
+    temps universel, pas en heure locale. Entre minuit et deux heures du matin,
+    les deux ne sont pas le même jour — et c'est le jour UTC que la requête des
+    délégués a toujours comparé à la fin d'un mandat."""
+    return horloge.astimezone(timezone.utc).date().isoformat()
 
 
 def get_db() -> sqlite3.Connection:
@@ -840,7 +882,7 @@ POPOLO_ORG_CLASS = {
 
 
 def build_popolo(entities: list[dict], relations: list[dict],
-                 rules: dict = RULES) -> dict:
+                 rules: dict = RULES, horloge: datetime | None = None) -> dict:
     """Vue Popolo des mandats publiés — personnes, organisations, appartenances.
 
     Ne recalcule aucun filtrage : on part des listes DÉJÀ filtrées pour la
@@ -904,7 +946,7 @@ def build_popolo(entities: list[dict], relations: list[dict],
     areas = sorted({e["commune"] for e in entities if e.get("commune")})
     return {
         "@context": "https://www.popoloproject.com/contexts/organization.jsonld",
-        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "generated_at": (horloge or datetime.now()).isoformat(timespec="seconds"),
         # Licence et attributions : lues dans la config, jamais écrites ici.
         # Le raisonnement qui a conduit à l'ODbL est consigné dans
         # `config/publication_rules.json → outputs._license_note`.
@@ -2951,7 +2993,10 @@ INSEE_PUBLIABLES = """
 """
 
 
-def build_snapshot(out: Path) -> dict:
+def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
+    # Avant toute lecture de la base : l'heure de cette construction, pour
+    # tous les fichiers. Cf. `lire_horloge`.
+    horloge = horloge or lire_horloge()
     conn = get_db()
     try:
         # Avant toute lecture : une base non classée ne produit pas un snapshot,
@@ -3727,7 +3772,7 @@ def build_snapshot(out: Path) -> dict:
             derniere_collecte = (_r[0]["d"] or "")[:10] or None if _r else None
 
         stats = {
-            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "generated_at": horloge.isoformat(timespec="seconds"),
             "statut": {**STATUT, "derniere_collecte": derniere_collecte},
             "entities_total_private": len(entity_rows),
             "entities_public": len(public_entities),
@@ -3958,7 +4003,7 @@ def build_snapshot(out: Path) -> dict:
         # affirmation que la source ne porte pas. Le jour où les PV nominatifs
         # existeront, la classe s'ajoute sans toucher au reste.
         write_json(out / "popolo.json", build_popolo(
-            public_entities, public_relations, RULES))
+            public_entities, public_relations, RULES, horloge))
 
         # ── Lot 2 : élections, fiscalité, élus officiels, urbanisme ───────────
         # Publication arbitrée le 26/07/2026. Aucune de ces sources ne portait de
@@ -4019,13 +4064,13 @@ def build_snapshot(out: Path) -> dict:
             WHERE r.relation_type IN ('élu_cc','vice_président_cc','président_cc')
               AND r.confidence IN ('verified','confirmed')
               AND e.confidence IN ('verified','confirmed')
-              AND (r.until IS NULL OR r.until > date('now'))
+              AND (r.until IS NULL OR r.until > ?)
             ORDER BY CASE r.source WHEN 'rne' THEN 0
                                    WHEN 'élections_2026' THEN 1 ELSE 2 END,
                      CASE r.relation_type
                        WHEN 'président_cc' THEN 0
                        WHEN 'vice_président_cc' THEN 1 ELSE 2 END
-        """)
+        """, (jour_utc(horloge),))
         # Commune d'élection du délégué, prise dans le fichier RNE des
         # conseillers MUNICIPAUX — pas dans le fichier EPCI, qui rattache 22 des
         # 27 délégués à Val-d'Aigoual, commune du siège de l'intercommunalité.
@@ -4729,7 +4774,16 @@ def main() -> None:
                         help="ne pas recopier le snapshot vers public/static/data "
                              "(la recopie n'a lieu que si --out est le répertoire "
                              "publié : un brouillon ne se sert jamais)")
+    parser.add_argument("--horloge", metavar="ISO",
+                        help="l'heure de la construction, au lieu de celle qu'il "
+                             f"est (ou variable {VARIABLE_HORLOGE}) : rejouer une "
+                             "construction pour la comparer à une autre, cf. "
+                             "scripts/comparer_snapshots.py")
     args = parser.parse_args()
+    try:
+        horloge = lire_horloge(args.horloge)
+    except ValueError as e:
+        parser.error(str(e))
 
     # Les libellés du site sont dérivés de la même instance que le snapshot :
     # les régénérer ici évite qu'un site publie le nom d'une commune et les
@@ -4743,7 +4797,7 @@ def main() -> None:
     # Une étape de collecte qui manque n'est pas une panne du programme : elle
     # se dit en une phrase, pas en pile d'appels.
     try:
-        stats = build_snapshot(args.out)
+        stats = build_snapshot(args.out, horloge)
     except PerimetreNonClasse as e:
         print(f"\n✖ snapshot refusé — {e}", file=sys.stderr)
         return 2
