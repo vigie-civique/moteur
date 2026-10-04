@@ -24,7 +24,7 @@ from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
 from scripts.snapshot.territoire import etape_environnement, etape_fiscalite, etape_territoire
-from scripts.snapshot.urbanisme import etape_urbanisme
+from scripts.snapshot.urbanisme import etape_croisement_foncier, etape_urbanisme
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
 #: (lecture seule), le répertoire de sortie, l'heure de la construction, et le
@@ -135,4 +135,7 @@ ETAPES: list[Etape] = [
     Etape("urbanisme", etape_urbanisme,
           lit=("conn", "out", "public_ids"),
           produit=("urbanisme_public", "adresses_retirees"), ecrit=("urbanisme.json",)),
+    Etape("croisement_foncier", etape_croisement_foncier,
+          lit=("conn", "out"), produit=("croisement_foncier",),
+          ecrit=("croisement_foncier.json",)),
 ]
