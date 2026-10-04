@@ -13,6 +13,7 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 
+from collectors.citations import acte_de_ligne, index_de, lignes_en_base
 from scripts.snapshot.revue import TYPES_REVUS, appliquer_revue
 from scripts.snapshot.socle import RULES, URL_COMMUNE, URL_EPCI, rows, safe_url
 from scripts.snapshot.textes import (convocation_publique, masquer_donnees_personnelles,
@@ -469,3 +470,37 @@ def etape_liens_actes(conn, public_ids, public_entities, public_events,
                                        e.get("source"))
 
     return {"public_links": public_links, "perimetre_par_entite": perimetre_par_entite}
+
+
+def etape_cles_actes(conn, public_events) -> dict:
+    public_event_ids = {e["id"] for e in public_events}
+    # ── L'identité datée de chaque acte et séance ────────────────────────
+    # `events.id` change à chaque rejeu : l'ancre publique d'un acte est sa
+    # clé (`collectors/cle_acte.py`), calculée sur la ligne BRUTE de la base
+    # — la même lecture que l'atelier au moment de sceller un dossier.
+    # Une clé faible (date + titre) ou portée par deux actes publiés garde
+    # l'ancre `a{id}` : elle n'est jamais présentée comme stable.
+    lignes_actes = lignes_en_base(conn)
+    index_actes = index_de(lignes_actes, public_event_ids)
+    cles_brutes = {l["id"]: a for l in lignes_actes
+                   if l["id"] in public_event_ids and (a := acte_de_ligne(l))}
+    for e in public_events:
+        a = cles_brutes.get(e["id"])
+        if not a:
+            continue
+        e["cle"] = a.cle
+        if a.faible:
+            e["cle_faible"] = True
+        e["ancre"] = a.ancre if a.cle not in index_actes.collisions else f"a{e['id']}"
+    affiches = {e["id"]: e for e in public_events}
+    for a in index_actes.par_cle.values():
+        # Le titre affiché par le résolveur (infobulles) est le titre PUBLIÉ,
+        # masques compris — jamais celui de la base.
+        a.titre = affiches[a.id].get("title") or a.titre
+    cles_stats = {
+        "stables": sum(1 for e in public_events if e.get("cle") and e.get("ancre") == e["cle"]),
+        "faibles": sum(1 for e in public_events if e.get("cle_faible")),
+        "en_collision": len(index_actes.collisions),
+    }
+
+    return {"index_actes": index_actes, "affiches": affiches, "cles_stats": cles_stats}

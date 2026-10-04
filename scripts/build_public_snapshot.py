@@ -1630,35 +1630,9 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         public_links = faits["public_links"]
         perimetre_par_entite = faits["perimetre_par_entite"]
 
-        # ── L'identité datée de chaque acte et séance ────────────────────────
-        # `events.id` change à chaque rejeu : l'ancre publique d'un acte est sa
-        # clé (`collectors/cle_acte.py`), calculée sur la ligne BRUTE de la base
-        # — la même lecture que l'atelier au moment de sceller un dossier.
-        # Une clé faible (date + titre) ou portée par deux actes publiés garde
-        # l'ancre `a{id}` : elle n'est jamais présentée comme stable.
-        from collectors.citations import acte_de_ligne, index_de, lignes_en_base
-        lignes_actes = lignes_en_base(conn)
-        index_actes = index_de(lignes_actes, public_event_ids)
-        cles_brutes = {l["id"]: a for l in lignes_actes
-                       if l["id"] in public_event_ids and (a := acte_de_ligne(l))}
-        for e in public_events:
-            a = cles_brutes.get(e["id"])
-            if not a:
-                continue
-            e["cle"] = a.cle
-            if a.faible:
-                e["cle_faible"] = True
-            e["ancre"] = a.ancre if a.cle not in index_actes.collisions else f"a{e['id']}"
-        affiches = {e["id"]: e for e in public_events}
-        for a in index_actes.par_cle.values():
-            # Le titre affiché par le résolveur (infobulles) est le titre PUBLIÉ,
-            # masques compris — jamais celui de la base.
-            a.titre = affiches[a.id].get("title") or a.titre
-        cles_stats = {
-            "stables": sum(1 for e in public_events if e.get("cle") and e.get("ancre") == e["cle"]),
-            "faibles": sum(1 for e in public_events if e.get("cle_faible")),
-            "en_collision": len(index_actes.collisions),
-        }
+        index_actes = faits["index_actes"]
+        affiches = faits["affiches"]
+        cles_stats = faits["cles_stats"]
 
         flow_rows = rows(conn, """
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,

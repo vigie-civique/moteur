@@ -8,7 +8,7 @@ cette liste ; le manifeste du snapshot pourra dire, pour chaque fichier, quelle
 """
 from __future__ import annotations
 
-from scripts.snapshot.actes import etape_actes, etape_liens_actes
+from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
 from scripts.snapshot.fiches import etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -52,4 +52,9 @@ ETAPES: list[Etape] = [
           lit=("conn", "public_ids", "public_entities"),
           complete=("public_events", "exclusions"),
           produit=("public_links", "perimetre_par_entite")),
+    # La clé datée de chaque acte publié, son ancre, et l'index que le graphe
+    # des liens résoudra. Écrites dans les actes en place.
+    Etape("cles_actes", etape_cles_actes,
+          lit=("conn",), complete=("public_events",),
+          produit=("index_actes", "affiches", "cles_stats")),
 ]
