@@ -145,13 +145,9 @@ from scripts.snapshot.territoire import (  # noqa: E402,F401
     export_incendie,
 )
 from scripts.snapshot.compteurs import mesurer_replicabilite  # noqa: E402,F401
+from scripts.snapshot.couverture import STEP_META, export_couverture  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
-# Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
-# sans lui, elle jugeait tout le monde au même seuil (45 jours), et la source
-# qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
-# seuil couvrait le moins.
-from collectors.config import STEP_META  # noqa: E402
 from collectors.verdict import ecarte, verdict_de  # noqa: E402
 # Ce que ce site EST, pour un lecteur qui y arrive sans rien savoir. Publié
 # DANS LES DONNÉES et pas seulement dans le gabarit : une mention qui
@@ -598,108 +594,6 @@ def export_corrections(public_events: list[dict], public_flows: list[dict],
     return {"site": journal, "donnees": donnees}
 
 
-def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
-    """Ce que la collecte couvre, et surtout ce qu'elle ne couvre pas.
-
-    Un observatoire qui n'affiche que ce qu'il sait ressemble à une boîte
-    noire : le lecteur ne peut pas distinguer « il ne s'est rien passé en
-    2019 » de « nous n'avons pas collecté 2019 ». Publier les trous coûte peu
-    et vaut mieux que de paraître complet.
-
-    Trois choses différentes, à ne pas confondre :
-      - la PÉRIODE réellement couverte par source ;
-      - la FRAÎCHEUR, c'est-à-dire la dernière collecte et son issue ;
-      - les EXCLUSIONS délibérées (périmètre, vie privée), qui ne sont pas
-        des lacunes mais des choix, et qui sont déjà dans `stats`.
-    """
-    # La période couverte s'arrête à la date d'arrêt : un concert annoncé pour
-    # le 14/11 faisait « couvrir » lasalle.fr jusqu'en novembre, deux mois après
-    # la collecte (audit du 24/09/2026). L'agenda à venir est compté à part.
-    arret = (stats.get("generated_at") or datetime.now().isoformat())[:10]
-    par_source: dict[str, dict] = {}
-    for e in public_events:
-        src = e.get("source") or "inconnue"
-        d = par_source.setdefault(src, {"source": src, "actes": 0,
-                                        "debut": None, "fin": None,
-                                        "avec_document": 0,
-                                        "a_venir": 0, "annonce_jusqu_au": None})
-        d["actes"] += 1
-        if e.get("document") == "acte":
-            d["avec_document"] += 1
-        date = e.get("date")
-        if date and date[:10] > arret:
-            d["a_venir"] += 1
-            if d["annonce_jusqu_au"] is None or date > d["annonce_jusqu_au"]:
-                d["annonce_jusqu_au"] = date
-        elif date:
-            if d["debut"] is None or date < d["debut"]:
-                d["debut"] = date
-            if d["fin"] is None or date > d["fin"]:
-                d["fin"] = date
-
-    # Dernier passage de chaque collecteur : un collecteur muet depuis des mois
-    # est une lacune en formation, pas encore visible dans les compteurs.
-    derniers = {}
-    if table_exists(conn, "collector_runs"):
-        for r in rows(conn, """
-            SELECT collector, status, MAX(started_at) AS dernier
-            FROM collector_runs GROUP BY collector
-        """):
-            derniers[r["collector"]] = {
-                "statut": r["status"],
-                "dernier": r["dernier"],
-                # Le seuil vient de la source unique de vérité, jamais d'un
-                # nombre écrit dans la page : un collecteur dont on change le
-                # rythme change de seuil le jour même.
-                "ttl": STEP_META[r["collector"]][0] if r["collector"] in STEP_META else None,
-            }
-
-    doc = stats.get("provenance", {}).get("document", {})
-    total_actes = sum(doc.values()) or 1
-
-    return {
-        "arrete_le": stats.get("generated_at"),
-        "sources": sorted(par_source.values(), key=lambda d: -d["actes"]),
-        "collecteurs": derniers,
-        # Le chiffre le plus inconfortable du site, donc celui qu'il faut donner
-        # en premier : la proportion d'actes dont la pièce elle-même est
-        # consultable, par opposition à la page qui la contient.
-        "actes_avec_piece": doc.get("acte", 0),
-        "actes_total": total_actes,
-        "part_avec_piece": round(100 * doc.get("acte", 0) / total_actes, 1),
-        "lacunes_connues": [
-            {
-                "sujet": "Documents des délibérations",
-                "etat": "partiel",
-                "detail": ("La très grande majorité des actes renvoient vers la page du "
-                           "compte rendu qui les contient, et non vers la délibération "
-                           "elle-même. Il faut donc chercher le passage dans le document."),
-            },
-            {
-                "sujet": "Mandatures antérieures à 2020",
-                "etat": "incomplet",
-                "detail": ("L'historique des mandats est lacunaire avant 2020, ce qui empêche "
-                           "de dire si une personne était élue à la date d'un versement "
-                           "ancien. Les situations concernées sont signalées comme telles."),
-            },
-            {
-                "sujet": "Dirigeants d'associations",
-                "etat": "incomplet",
-                "detail": ("Aucune source ouverte ne publie les dirigeants d'associations. "
-                           "Ceux qui figurent ici proviennent de documents publics les "
-                           "nommant, jamais d'un registre exhaustif."),
-            },
-            {
-                "sujet": "Recoupement entre sources",
-                "etat": "absent",
-                "detail": ("Aucune donnée n'est aujourd'hui confirmée par deux sources "
-                           "indépendantes : la chaîne ne sait pas encore le faire."),
-            },
-        ],
-    }
-
-
-
 def write_recherche_index(out: Path, public_entities, public_events,
                           marches_data, public_flows, communes: dict[int, str],
                           liens_count: dict[int, int]) -> int:
@@ -1056,9 +950,6 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
 
         stats = faits["stats"]
 
-        out.mkdir(parents=True, exist_ok=True)
-        write_json(out / "stats.json", stats)
-        write_json(out / "couverture.json", export_couverture(conn, public_events, stats))
         write_json(out / "entities.json", {"entities": public_entities, "total": len(public_entities)})
         write_json(out / "relations.json", {"relations": public_relations, "total": len(public_relations)})
         write_json(out / "events.json", {"events": public_events, "total": len(public_events)})

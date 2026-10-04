@@ -11,6 +11,7 @@ from __future__ import annotations
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
 from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.compteurs import etape_compteurs
+from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
 from scripts.snapshot.fiches import etape_citations, etape_couches, etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
@@ -88,6 +89,12 @@ ETAPES: list[Etape] = [
           lit=("public_events", "public_links", "public_relations", "public_flows",
                "marches_data"),
           complete=("public_entities", "stats")),
+    # Le premier fichier écrit. L'étape `stats` le réécrit en dernier : c'est
+    # elle qui le déclare.
+    Etape("compteurs_provisoires", etape_compteurs_provisoires,
+          lit=("out", "stats")),
+    Etape("couverture", etape_couverture,
+          lit=("conn", "out", "public_events", "stats"), ecrit=("couverture.json",)),
     Etape("environnement", etape_environnement,
           lit=("conn", "out"), ecrit=("environnement.json",)),
     Etape("territoire", etape_territoire,
