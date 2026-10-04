@@ -8,6 +8,7 @@ cette liste ; le manifeste du snapshot pourra dire, pour chaque fichier, quelle
 """
 from __future__ import annotations
 
+from scripts.snapshot.fiches import etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.registre import Etape
@@ -28,4 +29,9 @@ ETAPES: list[Etape] = [
           lit=("conn", "relations_ecartees"),
           produit=("civic_person_ids", "beneficiaires", "public_person_ids",
                    "redige", "redactions", "noms_publics", "ids_conseil_communautaire")),
+    Etape("fiches", etape_fiches,
+          lit=("conn", "revue", "public_person_ids", "ids_conseil_communautaire"),
+          complete=("exclusions",),
+          produit=("entity_rows", "ei_ids", "public_entities", "entity_exclusions",
+                   "ecartees_du_perimetre", "location_quality", "public_ids")),
 ]
