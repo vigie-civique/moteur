@@ -127,10 +127,19 @@ const texteAffiche = (html) => html
 
 const pages = []
 const servis = []
+const caches = []
 ;(function parcourir(dir) {
   for (const f of readdirSync(dir)) {
     const p = join(dir, f)
-    if (statSync(p).isDirectory()) parcourir(p)
+    if (statSync(p).isDirectory()) {
+      // Un site statique n'a aucun répertoire caché à servir, hormis
+      // `.well-known`. Le 16/09/2026, `/.data.precedent/` — le retour arrière de
+      // la publication, rangé dans `static/` — était servi avec le snapshot du
+      // 23/08. `publier-site.sh` le refuse déjà, mais après ce script : un
+      // aperçu construit par l'atelier ne passe que par ici.
+      if (f.startsWith('.') && f !== '.well-known') caches.push(p.slice(BUILD.length + 1))
+      else parcourir(p)
+    }
     else {
       if (f.endsWith('.html')) pages.push(p)
       if (EXT_SERVIES.test(f)) servis.push(p)
@@ -139,6 +148,11 @@ const servis = []
 })(BUILD)
 
 const problemes = []
+
+for (const c of caches) {
+  problemes.push(`${c}/ : répertoire caché dans le build — il partirait en ligne `
+    + "(retirer de public/static/ ce qui n'y a pas sa place)")
+}
 
 for (const p of pages) {
   const rel = p.slice(BUILD.length + 1)
