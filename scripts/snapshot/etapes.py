@@ -9,6 +9,7 @@ cette liste ; le manifeste du snapshot pourra dire, pour chaque fichier, quelle
 from __future__ import annotations
 
 from scripts.snapshot.actes import etape_actes, etape_cles_actes, etape_liens_actes
+from scripts.snapshot.actualite import etape_actualite
 from scripts.snapshot.argent import etape_finances, etape_flux
 from scripts.snapshot.compteurs import etape_compteurs
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
@@ -138,4 +139,9 @@ ETAPES: list[Etape] = [
     Etape("croisement_foncier", etape_croisement_foncier,
           lit=("conn", "out"), produit=("croisement_foncier",),
           ecrit=("croisement_foncier.json",)),
+    Etape("actualite", etape_actualite,
+          lit=("out", "stats", "marches_data", "public_events", "public_flows",
+               "perimetre_par_entite"),
+          complete=("exclusions",),
+          produit=("actualite", "a_venir"), ecrit=("actualite.json",)),
 ]
