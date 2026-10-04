@@ -225,6 +225,11 @@ jobs:
           grep -q 'id="c-2021-41"' build/deliberations/2021.html
           grep -q 'Cité dans' build/deliberations/2021.html
           grep -q 'Un élément cité a changé' build/dossiers/eau.html
+          # Chaque séance a sa page, relue ou non ; la séance relue mène à sa
+          # feuille, et l'accueil mène à la page de séance (lot 6).
+          grep -q 'Mise en clair' build/conseils/2021-04-14_conseil-municipal.html
+          grep -q 'Pas encore mise en clair' build/conseils/2025-04-02_conseil-communautaire.html
+          grep -q 'href="/conseils/2021-04-14_conseil-municipal"' build/deliberations/2021.html
           # Chaque résultat de recherche mène à une page qui l'affiche : avant
           # le 04/10/2026, ≈ 1 400 résultats de Lasalle visaient une ancre
           # absente de /deliberations/<année>, ou une année sans page.

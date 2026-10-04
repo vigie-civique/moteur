@@ -89,14 +89,17 @@ def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
         for acte in actes_lies.values():
             graphe.citer(acte.cle, {"type": "en_clair", "date": s["date"],
                                  "assemblee": s["assemblee_court"],
-                                 "fichier": f"conseils/{nom}.html"})
+                                 "fichier": f"conseils/{nom}.html",
+                                 # La page de la séance, dans le site : la
+                                 # feuille reste sa version imprimable.
+                                 "page": f"/conseils/{nom}"})
         (dossier / f"{nom}.html").write_text(document(
             # Le nom de la rubrique, le même que l'en-tête et /conseils
             # (docs/refonte-du-contenu.md, décision 2).
             f"Les conseils en clair · {s['assemblee_court']} · {s['date']}",
             feuilles(r, relu=relu, liens={n: x.url for n, x in actes_lies.items()})
             + page_erreurs(r),
-            retour=("/conseils", "Toutes les séances")), encoding="utf-8")
+            retour=(f"/conseils/{nom}", "La séance")), encoding="utf-8")
         ap = r["en_clair"]["apres"]
         index.append({
             "date": s["date"],

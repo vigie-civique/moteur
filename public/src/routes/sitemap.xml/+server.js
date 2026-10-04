@@ -69,6 +69,12 @@ export function GET() {
   // mêmes que ceux qui ont une page — `lireDossiers` décide pour les deux.
   for (const d of lireDossiers()) urls.push({ loc: `/dossiers/${d.slug}`, prio: 0.8 })
 
+  // Une page par séance publiée, relue ou non (lot 6) : plus prioritaire quand
+  // elle est mise en clair.
+  for (const s of (lire('seances.json', { seances: [] }).seances || [])) {
+    urls.push({ loc: `/conseils/${s.id}`, prio: s.en_clair ? 0.8 : 0.5 })
+  }
+
   // Un millésime d'actes par page.
   const actes = (lire('events.json', { events: [] }).events || [])
     .filter((e) => INSTITUTIONAL[e.type])

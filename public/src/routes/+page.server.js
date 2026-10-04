@@ -71,15 +71,18 @@ export function load() {
   const ACTES_DE_SEANCE = new Set(['deliberation', 'deliberation_cc'])
 
   // ── Où mène une séance ─────────────────────────────────────────────────
-  // Vers sa feuille « en clair » quand elle est relue, sinon vers l'année de
-  // ses actes. Toutes menaient au sommaire de /deliberations (632 Ko à
-  // Lasalle, toutes années confondues), y compris le 10 septembre 2026 dont
-  // la feuille relue existait (docs/refonte-du-contenu.md § 2.1).
-  const CODE_DE_SEANCE = { conseil_municipal: 'cm', conseil_communautaire: 'cc' }
-  const feuilles = new Map(((lire('conseils.json', {}).seances) || [])
-    .map((s) => [`${s.date}|${s.code}`, `/data/${s.fichier}`]))
-  const lienDeSeance = (i) =>
-    feuilles.get(`${i.date}|${CODE_DE_SEANCE[i.type]}`) || `/deliberations/${i.date.slice(0, 4)}`
+  // Vers sa page (`/conseils/<date>_<assemblée>`), qui porte ses délibérations
+  // et, si elle est relue, sa feuille en clair. Toutes menaient au sommaire de
+  // /deliberations (632 Ko à Lasalle, toutes années confondues), y compris le
+  // 10 septembre 2026 dont la feuille relue existait
+  // (docs/refonte-du-contenu.md § 2.1). Un snapshot sans `seances.json` garde
+  // le renvoi vers l'année.
+  const ASSEMBLEE = { conseil_municipal: 'conseil-municipal', conseil_communautaire: 'conseil-communautaire' }
+  const pages = new Set(((lire('seances.json', {}).seances) || []).map((s) => s.id))
+  const lienDeSeance = (i) => {
+    const id = `${i.date}_${ASSEMBLEE[i.type]}`
+    return pages.has(id) ? `/conseils/${id}` : `/deliberations/${i.date.slice(0, 4)}`
+  }
   const recents = passes
     .filter((i) => GOUVERNANCE.has(i.genre))
     .filter(communal)

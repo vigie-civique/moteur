@@ -179,6 +179,10 @@
       "en_collision": 0
     }
   },
+  "seances": {
+    "seances": 2,
+    "relues": 1
+  },
   "corrections_site": 0,
   "actualite_items": 9,
   "actualite_a_venir": 0,

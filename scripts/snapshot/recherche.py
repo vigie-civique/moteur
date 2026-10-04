@@ -88,8 +88,9 @@ def write_recherche_index(out: Path, public_entities, public_events,
         idx.append({"k": "dossier", "t": d["titre"], "u": f"/dossiers/{d['slug']}",
                     "n": 2000})
     for s in seances_relues:
+        page = s["fichier"].removeprefix("conseils/").removesuffix(".html")
         idx.append({"k": "seance", "t": f"{s['assemblee']} — {s['titre']}",
-                    "u": f"/data/{s['fichier']}", "d": s["date"], "n": 1900})
+                    "u": f"/conseils/{page}", "d": s["date"], "n": 1900})
     for ev in public_events:
         annee = (ev.get("date") or "")[:4] or "sans-date"
         # Seuls les actes d'assemblée ont une ligne sur /deliberations/<année>.

@@ -56,6 +56,7 @@ Ce modèle est conçu pour être rejoué sur une autre commune. Le périmètre s
 | `liens.json` | Clé datée d'un acte (`c-2021-41`) → les dossiers et séances en clair qui le citent ; table d'alias `#a{id}` → clé | `actes`, `alias` |
 | `lacunes.json` | Questions ouvertes des dossiers publiés et citations sans acte publié | `lacunes` |
 | `personnes_morales.json` | Par clé d'acte, les personnes morales publiées qu'il concerne (SIREN) | `actes` |
+| `seances.json` | Une ligne par séance publiée, relue ou non : date, assemblée, délibérations publiées, pièces, et la feuille en clair si elle existe | `seances` |
 
 Chaque fichier à liste porte aussi un `total`.
 

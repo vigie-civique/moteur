@@ -117,6 +117,9 @@ def etape_dictionnaire(out, stats, location_quality) -> None:
         "citations sans acte publié | `lacunes` |",
         "| `personnes_morales.json` | Par clé d'acte, les personnes morales "
         "publiées qu'il concerne (SIREN) | `actes` |",
+        "| `seances.json` | Une ligne par séance publiée, relue ou non : date, "
+        "assemblée, délibérations publiées, pièces, et la feuille en clair si "
+        "elle existe | `seances` |",
         "",
         "Chaque fichier à liste porte aussi un `total`.",
         "",
