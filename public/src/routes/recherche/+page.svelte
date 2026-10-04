@@ -38,6 +38,8 @@
   const LIMITE = 60   // au-delà, affiner la requête vaut mieux que dérouler
 
   const CATEGORIES = {
+    dossier: 'Dossier thématique',
+    seance: 'Conseil en clair',
     acteur: 'Acteur',
     acte: 'Acte',
     marche: 'Marché',
@@ -90,7 +92,8 @@
 <section class="rech">
   <h1>Rechercher</h1>
   <p class="sub">
-    Acteurs, délibérations, marchés publics et versements — tout en même temps.
+    Dossiers thématiques, conseils en clair, acteurs, délibérations, marchés
+    publics et versements — tout en même temps.
     Cherchez un nom, mais aussi un sujet («&nbsp;voirie&nbsp;», «&nbsp;école&nbsp;»),
     un montant ou une année.
   </p>
@@ -99,11 +102,13 @@
     <input
       type="search"
       bind:value={q}
-      placeholder="Nom d'une association, d'une entreprise, d'un lieu…"
-      aria-label="Rechercher un acteur, un acte, un montant ou une année"
+      placeholder="Un sujet, un nom, un montant…"
+      aria-label="Rechercher un sujet, un nom, un montant ou une année"
       autocomplete="off" />
     <select bind:value={categorie} aria-label="Filtrer par catégorie">
       <option value="">Tout</option>
+      <option value="dossier">Dossiers thématiques</option>
+      <option value="seance">Conseils en clair</option>
       <option value="acteur">Acteurs</option>
       <option value="acte">Actes et délibérations</option>
       <option value="marche">Marchés publics</option>
@@ -135,14 +140,20 @@
     </p>
     <ul class="liste">
       {#each affiches as e, i (e.u + i)}
+        <!-- Un événement que le site n'affiche pas acte par acte (BODACC,
+             permis, agenda) mène à sa source d'origine, dans un nouvel onglet ;
+             sans source, il s'affiche sans lien plutôt qu'avec un lien faux. -->
         <li>
-          <a href={e.u}>
+          <svelte:element this={e.u ? 'a' : 'div'} class="ligne" href={e.u}
+            target={e.u?.startsWith('http') ? '_blank' : undefined}
+            rel={e.u?.startsWith('http') ? 'noopener' : undefined}>
             <span class="badge {e.k}">{CATEGORIES[e.k] || e.k}</span>
             <span class="nom">{e.t}</span>
+            {#if e.u?.startsWith('http')}<span class="externe">source ↗</span>{/if}
             {#if e.d}<span class="commune">{e.d}</span>{/if}
             {#if e.c}<span class="commune">{e.c}</span>{/if}
             {#if e.m != null}<span class="actes">{euros(e.m)}</span>{/if}
-          </a>
+          </svelte:element>
         </li>
       {/each}
     </ul>
@@ -175,12 +186,12 @@
   .compte em { font-style: normal; color: var(--gris-clair); }
 
   .liste { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }
-  .liste a {
+  .liste .ligne {
     display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
     padding: .6rem .8rem; background: #fff; border: 1px solid var(--trait);
     border-radius: 10px; color: inherit; text-decoration: none;
   }
-  .liste a:hover { border-color: var(--ardoise); box-shadow: 0 3px 10px rgba(37,99,235,.1); text-decoration: none; }
+  a.ligne:hover { border-color: var(--ardoise); box-shadow: 0 3px 10px rgba(37,99,235,.1); text-decoration: none; }
   .nom { font-weight: 600; color: var(--encre); }
   .alias { font-size: .8rem; color: var(--gris-clair); }
   .commune { font-size: .78rem; color: var(--gris); margin-left: auto; }
@@ -195,6 +206,8 @@
   .badge.service { background: var(--ardoise-pale); color: var(--ardoise-fonce); }
   .badge.place { background: var(--ardoise-pale); color: #5b21b6; }
   .badge.person { background: #f6e7e5; color: var(--depense); }
+  .badge.dossier, .badge.seance { background: var(--ardoise); color: var(--blanc); }
+  .externe { font-size: .72rem; color: var(--gris); }
 
   @media (max-width: 620px) {
     .commune { margin-left: 0; }

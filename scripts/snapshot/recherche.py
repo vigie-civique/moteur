@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from scripts.snapshot.actes import PORTEE_PAR_PERIMETRE
+from scripts.snapshot.actes import PORTEE_PAR_PERIMETRE, TYPES_DELIBERES, TYPES_SEANCE
 from scripts.snapshot.socle import write_json_compact
 
 
@@ -51,7 +51,8 @@ def write_search_index(out: Path, public_entities, communes: dict[int, str],
 
 def write_recherche_index(out: Path, public_entities, public_events,
                           marches_data, public_flows, communes: dict[int, str],
-                          liens_count: dict[int, int]) -> int:
+                          liens_count: dict[int, int], seances_relues=(),
+                          dossiers_publies=()) -> int:
     """Index de recherche transversal : acteurs, actes, marchés, versements.
 
     La recherche ne portait que sur les acteurs. Or on ne cherche pas seulement
@@ -63,11 +64,13 @@ def write_recherche_index(out: Path, public_entities, public_events,
     Format court volontaire (`k`, `t`, `n`, `d`, `u`, `m`) : l'index est
     embarqué dans la page et chaque clé est répétée à chaque ligne.
     Les champs :
-      k  catégorie  acteur | acte | marche | versement
+      k  catégorie  acteur | acte | marche | versement | dossier | seance
       t  titre affiché
       n  poids de tri (plus grand = remonte)
       d  date, quand elle existe
-      u  URL interne de destination
+      u  destination : une page du site, ou l'adresse d'origine d'un
+         événement que le site n'affiche pas acte par acte ; absente quand il
+         n'y en a aucune — jamais une adresse qui ne montre pas le résultat
       m  montant, quand il y en a un
       c  commune ou contexte
     """
@@ -80,13 +83,29 @@ def write_recherche_index(out: Path, public_entities, public_events,
             "n": 1000 + liens_count.get(e["id"], 0),
         })
 
+    # Les textes relus d'abord : ce sont eux qui répondent à une question.
+    for d in dossiers_publies:
+        idx.append({"k": "dossier", "t": d["titre"], "u": f"/dossiers/{d['slug']}",
+                    "n": 2000})
+    for s in seances_relues:
+        idx.append({"k": "seance", "t": f"{s['assemblee']} — {s['titre']}",
+                    "u": f"/data/{s['fichier']}", "d": s["date"], "n": 1900})
     for ev in public_events:
         annee = (ev.get("date") or "")[:4] or "sans-date"
-        idx.append({
-            "k": "acte", "t": ev.get("title") or "(sans titre)",
+        # Seuls les actes d'assemblée ont une ligne sur /deliberations/<année>.
+        # Les autres événements (BODACC, permis, agenda) y pointaient aussi :
+        # ≈ 1 400 résultats à Lasalle menaient à une ancre absente, parfois à
+        # une année sans page (relevé du 04/10/2026). Ils mènent désormais à
+        # leur source d'origine (docs/refonte-du-contenu.md, décision 9).
+        if ev.get("type") in TYPES_DELIBERES + TYPES_SEANCE:
             # L'ancre est la clé datée de l'acte quand elle est stable : un
             # résultat de recherche copié et partagé doit survivre au rejeu.
-            "u": f"/deliberations/{annee}#{ev.get('ancre') or 'a' + str(ev['id'])}",
+            u = f"/deliberations/{annee}#{ev.get('ancre') or 'a' + str(ev['id'])}"
+        else:
+            u = ev.get("source_url") or ev.get("page_url")
+        idx.append({
+            "k": "acte", "t": ev.get("title") or "(sans titre)",
+            **({"u": u} if u else {}),
             "d": ev.get("date"), "m": ev.get("montant_principal"),
             "c": ev.get("source"),
             # Un acte portant un montant est plus souvent ce qu'on cherche.
@@ -120,11 +139,13 @@ def write_recherche_index(out: Path, public_entities, public_events,
 
 
 def etape_index_recherche(out, entity_rows, public_entities, public_events,
-                          public_links, marches_data, public_flows) -> dict:
+                          public_links, marches_data, public_flows,
+                          seances_relues, dossiers_publies) -> dict:
     communes = {r["id"]: r.get("commune") for r in entity_rows}
     liens_count = Counter(l["entity_id"] for l in public_links)
     indexed = write_search_index(out, public_entities, communes, liens_count)
     recherche = write_recherche_index(out, public_entities, public_events,
                                       marches_data, public_flows,
-                                      communes, liens_count)
+                                      communes, liens_count, seances_relues,
+                                      dossiers_publies)
     return {"indexed": indexed, "recherche": recherche}

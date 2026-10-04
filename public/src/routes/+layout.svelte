@@ -120,8 +120,8 @@
 
     <form class="recherche" on:submit={chercher} role="search">
       <Icon name="recherche" size={15} />
-      <input type="search" bind:value={q} placeholder="Rechercher un acteur…"
-             aria-label="Rechercher un acteur" autocomplete="off" />
+      <input type="search" bind:value={q} placeholder="Un sujet, un nom, un montant…"
+             aria-label="Rechercher un sujet, un nom, un montant" autocomplete="off" />
       <button type="submit">Chercher</button>
     </form>
 
@@ -146,8 +146,8 @@
       <a href="/vie-locale"><Icon name="vie" size={18} />Vie locale</a>
       <form class="recherche mobile" on:submit={chercher} role="search">
         <Icon name="recherche" size={15} />
-        <input type="search" bind:value={q} placeholder="Rechercher un acteur…"
-               aria-label="Rechercher un acteur" autocomplete="off" />
+        <input type="search" bind:value={q} placeholder="Un sujet, un nom, un montant…"
+                 aria-label="Rechercher un sujet, un nom, un montant" autocomplete="off" />
       </form>
     </div>
   {/if}

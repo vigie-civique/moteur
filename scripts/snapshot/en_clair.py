@@ -170,5 +170,15 @@ def etape_graphe(conn, out, index_actes, affiches, public_events, public_links,
                if e.get("ancre") and e["ancre"] != f"a{e['id']}"},
         personnes_morales=personnes_morales_par_acte(
             conn, public_events, public_links, public_entities))
+    # Ce qui est publié, et seulement cela — relu dans ce que l'étape vient
+    # d'écrire : la recherche en fait des entrées (docs/refonte-du-contenu.md,
+    # lot 2).
+    import json
+    from collectors.dossiers import entete
+    seances_relues = json.loads((out / "conseils.json").read_text())["seances"]
+    dossiers_publies = [
+        {"slug": d["slug"], "titre": entete(d["texte"])[0].get("titre") or d["slug"]}
+        for d in json.loads((out / "dossiers.json").read_text())["dossiers"]]
     return {"graphe": graphe, "stats_en_clair": stats_en_clair,
-            "stats_dossiers": stats_dossiers, "stats_graphe": stats_graphe}
+            "stats_dossiers": stats_dossiers, "stats_graphe": stats_graphe,
+            "seances_relues": seances_relues, "dossiers_publies": dossiers_publies}

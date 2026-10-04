@@ -47,9 +47,9 @@
     {"chemin": "ofgl.json", "etape": "ecrire_finances", "objets": 0, "octets": 30, "sha256": "e2c495237e33183f05e0d84b039a7601b6eae9f1b50a0b8ee1cd803bb3339e7c"},
     {"chemin": "personnes_morales.json", "etape": "graphe", "objets": 1, "octets": 327, "sha256": "8d4691b43570eca38ea98dac05982160bfaa4e378b4c17c50ac9fbb4969ae261"},
     {"chemin": "popolo.json", "etape": "popolo", "objets": 8, "octets": 2446, "sha256": "bbc425fa7cf9dc570aa6eab8dcd2b79aab74e01359e6bf942a39df1ea2f8fd45"},
-    {"chemin": "recherche_index.json", "etape": "index_recherche", "objets": 12, "octets": 1652, "sha256": "ee85045793902d8ae86df25f2cf68399933be1df238fa998ff4cbe718a5b7be7"},
+    {"chemin": "recherche_index.json", "etape": "index_recherche", "objets": 14, "octets": 1856, "sha256": "a73b0922f8cb609f586cff6a0d6feefd2e26f7669a5f132da6e01d05f6474952"},
     {"chemin": "relations.json", "etape": "ecrire_acteurs", "objets": 1, "octets": 311, "sha256": "103f897f1e956e8a0bc1509b22e54edfc348d218bf5060a443d41621cca7a098"},
-    {"chemin": "stats.json", "etape": "stats", "objets": 1, "octets": 4671, "sha256": "86e57d3840205f5964a0220a6194a5e5c99b1c9cd955a3c4164284c60ed07386"},
+    {"chemin": "stats.json", "etape": "stats", "objets": 1, "octets": 4671, "sha256": "62e8a184aee0f9e5c719bf77622fe62d92f133b5e7e68e3225a3a7dfd2de2420"},
     {"chemin": "territoire.json", "etape": "territoire", "objets": 0, "octets": 219, "sha256": "c2a7f5ddb729a135ef4076d024e443eec30e9560ac40b84e25c0d96866d09b82"},
     {"chemin": "transparence.json", "etape": "transparence", "objets": 0, "octets": 255, "sha256": "24f31e25d244271a34789328850a68d3ffdef2c86562aefd0456029097bf862c"},
     {"chemin": "urbanisme.json", "etape": "urbanisme", "objets": 1, "octets": 922, "sha256": "13724a447a04731881ff05336ef608950f957e022e5738eddc9de43409a4b540"}
