@@ -28,9 +28,10 @@ Il est écrasé par le prochain aperçu du même compte et effacé au bout de
 aperçu, qui doit passer les contrôles. Le brouillon unique ci-dessus reste le
 chemin de la ligne de commande (`deploy/publier-site.sh`, passe quotidienne).
 
-Ce fichier ne touche pas à la base : l'auditabilité (qui a généré, qui a publié)
-est écrite par `api.py`, qui a les utilisateurs. Ici, tout est chemin et
-processus — c'est ce qui permet aux tests de rejouer le flux sur des répertoires
+Ce fichier n'ouvre pas la base : l'auditabilité (qui a généré, qui a publié)
+est écrite par `api.py`, qui a les utilisateurs. Seule exception, en lecture :
+`corrections_depuis_la_publication` reçoit la connexion de son appelant. Ici,
+tout est chemin et processus — c'est ce qui permet aux tests de rejouer le flux sur des répertoires
 jetables.
 """
 from __future__ import annotations
@@ -188,6 +189,70 @@ def peut_publier(role: str | None) -> bool:
 
 def maintenant() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+# ── Ce qui a changé en base depuis la publication ────────────────────────────
+
+# Ce que le journal d'audit contient sans que cela change une ligne du site : les
+# gestes de publication eux-mêmes (republier à cause de sa propre trace
+# boucle), et les propositions de citoyens, qui n'entrent dans les données
+# qu'une fois validées — la validation, elle, écrit son propre geste. La liste
+# est une EXCLUSION et non une liste de tables à surveiller : un nouveau geste
+# journalisé doit republier par défaut. Le défaut inverse, c'est la panne
+# d'origine — une correction qui reste en base sans jamais être mise en ligne.
+GESTES_SANS_EFFET_SUR_LE_SITE = ("publication", "propositions")
+
+
+def horodatage_base(iso_local: str | None) -> str | None:
+    """Une date de l'état en heure de la base.
+
+    `audit_log.at` est écrit par SQLite en UTC (`datetime('now')`) ; l'état porte
+    une date locale avec décalage. Comparer les deux chaînes telles quelles
+    décale la liste de deux heures l'été.
+    """
+    if not iso_local:
+        return None
+    try:
+        return (datetime.fromisoformat(iso_local).astimezone(timezone.utc)
+                .strftime("%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
+
+
+def corrections_depuis_la_publication(conn, etat: dict | None = None) -> dict[str, int]:
+    """Les gestes journalisés depuis que le contenu publié a été figé, par table.
+
+    Sert à la passe planifiée (`deploy/collecte.sh`) : sans collecte neuve, elle
+    ne republiait pas, et une fusion de fiches, un verdict ou une saisie faits en
+    base restaient hors ligne jusqu'à la prochaine arrivée de données.
+
+    Pourquoi le JOURNAL et non un aperçu comparé au publié : un aperçu coûte une
+    minute de snapshot, et surtout il n'est pas comparable — il porte sa date de
+    génération et des états qui dépendent du jour (péremption d'un dossier), donc
+    il différerait chaque matin et la passe republierait chaque jour. Le journal
+    ne bouge que lorsqu'un humain a agi. Ce qui part ensuite reste l'aperçu
+    contrôlé de `publier-site.sh`, jamais la base telle quelle.
+
+    Le repère est la génération de l'aperçu PUBLIÉ, pas l'heure de promotion : un
+    geste fait entre les deux est dans la base mais pas dans la version servie.
+    Borne incluse — à la seconde près on ne sait pas de quel côté tombe un geste,
+    et republier pour rien coûte une minute, là où l'oublier coûte la panne.
+
+    Rien n'a jamais été publié par ce flux : `{}`. La première mise en ligne
+    d'une instance reste un geste humain, pas une conséquence d'un journal.
+    """
+    publie = (lire_etat() if etat is None else etat).get("publie") or {}
+    borne = horodatage_base(publie.get("apercu_genere_le") or publie.get("publie_le"))
+    if borne is None:
+        return {}
+    exclus = ",".join("?" * len(GESTES_SANS_EFFET_SUR_LE_SITE))
+    lignes = conn.execute(
+        "SELECT COALESCE(table_name, '?') AS table_name, COUNT(*) AS n"
+        " FROM audit_log WHERE at >= ?"
+        f" AND COALESCE(table_name, '') NOT IN ({exclus})"
+        " GROUP BY 1 ORDER BY n DESC",
+        (borne, *GESTES_SANS_EFFET_SUR_LE_SITE)).fetchall()
+    return {r[0]: r[1] for r in lignes}
 
 
 # ── Contrôle d'étanchéité ────────────────────────────────────────────────────
