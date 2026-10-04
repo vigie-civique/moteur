@@ -26,6 +26,8 @@ from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrir
 from scripts.snapshot.en_clair import etape_graphe
 from scripts.snapshot.fiches import (etape_citations, etape_couches, etape_fiches,
                                      etape_fiches_acteurs)
+from scripts.snapshot.manifeste import NOM as MANIFESTE
+from scripts.snapshot.manifeste import etape_manifeste, etape_retirer_manifeste
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.popolo import etape_popolo
@@ -105,6 +107,9 @@ ETAPES: list[Etape] = [
           lit=("public_events", "public_links", "public_relations", "public_flows",
                "marches_data"),
           complete=("public_entities", "stats")),
+    # Juste avant la première écriture : tant que la construction n'est pas
+    # allée au bout, le répertoire ne déclare plus aucun contenu.
+    Etape("retirer_manifeste", etape_retirer_manifeste, lit=("out",)),
     # Le premier fichier écrit. L'étape `stats` le réécrit en dernier : c'est
     # elle qui le déclare.
     Etape("compteurs_provisoires", etape_compteurs_provisoires,
@@ -196,4 +201,8 @@ ETAPES: list[Etape] = [
                "event_exclusions")),
     Etape("dictionnaire", etape_dictionnaire,
           lit=("out", "stats", "location_quality"), ecrit=("README.md",)),
+    # TOUJOURS la dernière : un snapshot sans manifeste est une construction
+    # interrompue, et `verify_snapshot.py` le refuse.
+    Etape("manifeste", etape_manifeste,
+          lit=("out", "stats"), ecrit=(MANIFESTE,)),
 ]
