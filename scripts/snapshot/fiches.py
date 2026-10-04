@@ -335,3 +335,37 @@ def etape_fiches(conn, revue, public_person_ids, ids_conseil_communautaire,
         "location_quality": location_quality,
         "public_ids": public_ids,
     }
+
+
+def etape_couches(public_entities) -> dict:
+    """Les points de la carte, une couche par type d'acteur localisé.
+
+    Chaque point emporte une COPIE des propriétés de sa fiche, prise ici :
+    ce qu'une étape ajoute aux fiches plus tard (`citations`) n'entre pas dans
+    les couches. C'est la sortie telle qu'elle a toujours été ; l'ordre du
+    registre la garde.
+    """
+    public_layers = {
+        "businesses": [],
+        "associations": [],
+        "places": [],
+        "services": [],
+    }
+    for entity in public_entities:
+        if not entity.get("has_public_location"):
+            continue
+        layer_key = {
+            "business": "businesses",
+            "association": "associations",
+            "place": "places",
+            "service": "services",
+        }.get(entity["type"])
+        if not layer_key:
+            continue
+        public_layers[layer_key].append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [entity["lng"], entity["lat"]]},
+            "properties": {k: v for k, v in entity.items() if k not in {"lat", "lng"}},
+        })
+
+    return {"public_layers": public_layers}

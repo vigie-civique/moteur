@@ -1511,28 +1511,7 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         public_flows = faits["public_flows"]
         counters["flows_par_etat"] = faits["flows_par_etat"]
 
-        public_layers = {
-            "businesses": [],
-            "associations": [],
-            "places": [],
-            "services": [],
-        }
-        for entity in public_entities:
-            if not entity.get("has_public_location"):
-                continue
-            layer_key = {
-                "business": "businesses",
-                "association": "associations",
-                "place": "places",
-                "service": "services",
-            }.get(entity["type"])
-            if not layer_key:
-                continue
-            public_layers[layer_key].append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [entity["lng"], entity["lat"]]},
-                "properties": {k: v for k, v in entity.items() if k not in {"lat", "lng"}},
-            })
+        public_layers = faits["public_layers"]
 
         # ── Données financières & foncières officielles (open data) ───────────
         # DGFiP, OFGL, Cerema (DVF), DECP : faits publics par nature → export complet.
