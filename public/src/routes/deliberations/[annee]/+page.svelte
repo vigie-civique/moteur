@@ -138,7 +138,7 @@
         {#if e.cite?.length}
           <p class="cite">
             Cité dans&nbsp;:
-            {#each e.cite as c, i}{#if i}, {/if}{#if c.type === 'dossier'}<a href="/dossiers/{c.slug}{c.ancre ? `#${c.ancre}` : ''}">le dossier « {c.titre} »{#if c.section} (§&nbsp;{c.section}){/if}</a>{#if !c.precis} <span class="imprecis" title="Le dossier cite la séance, sans dire lequel de ses actes">(la séance)</span>{/if}{:else}<a href="/data/{c.fichier}">la séance en clair du {fmtDate(c.date)}</a>{/if}{/each}
+            {#each e.cite as c, i}{#if i}, {/if}{#if c.type === 'dossier'}<a href="/dossiers/{c.slug}{c.ancre ? `#${c.ancre}` : ''}">le dossier « {c.titre} »{#if c.section} (§&nbsp;{c.section}){/if}</a>{#if !c.precis} <span class="imprecis" title="Le dossier cite la séance, sans dire lequel de ses actes">(la séance)</span>{/if}{:else}<a href={c.page || `/data/${c.fichier}`}>la séance en clair du {fmtDate(c.date)}</a>{/if}{/each}
           </p>
         {/if}
 

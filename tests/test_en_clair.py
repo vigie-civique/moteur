@@ -267,7 +267,8 @@ def test_les_numeros_d_actes_menent_a_l_acte_publie_par_sa_cle(base, instance, t
     assert 'href="/deliberations/2026#c-2026-2"' not in html, "jamais un lien vers un acte non publié"
     assert graphe.retours["c-2026-1"] == [{"type": "en_clair", "date": "2026-01-10",
                                            "assemblee": "Conseil municipal de Fictiville",
-                                           "fichier": "conseils/2026-01-10_conseil-municipal.html"}]
+                                           "fichier": "conseils/2026-01-10_conseil-municipal.html",
+                                           "page": "/conseils/2026-01-10_conseil-municipal"}]
 
 
 def test_un_verdict_sans_empreinte_ne_publie_pas(base, instance, tmp_path):
@@ -383,3 +384,36 @@ def test_la_file_nomme_la_source_absente(atelier):
     assert r.status_code == 200, r.text
     [s] = r.json()
     assert any("data/pv.txt" in f for f in s["fautes"])
+
+
+# ── Les pages de séance (04/10/2026) ─────────────────────────────────────────
+def test_chaque_seance_publiee_a_sa_ligne_relue_ou_non():
+    """Une séance a sa page dès que son événement est publié (décision 5) ; si
+    elle est relue, la ligne porte sa feuille et le nombre d'actes du relevé,
+    à côté du nombre de délibérations publiées (décision 10)."""
+    from scripts.snapshot.seances import index_des_seances
+    evts = [
+        {"type": "conseil_municipal", "date": "2026-05-28", "portee": "commune",
+         "title": "Conseil municipal du 28 mai 2026", "pieces": [{"nature": "proces_verbal"}]},
+        # Le compte rendu, collecté à part : la même séance.
+        {"type": "conseil_municipal", "date": "2026-05-28", "portee": "commune",
+         "title": "Compte rendu", "pieces": [{"nature": "compte_rendu"}]},
+        {"type": "conseil_communautaire", "date": "2026-05-28", "portee": "intercommunalite",
+         "title": "Conseil communautaire du 28 mai 2026"},
+        *({"type": "deliberation", "date": "2026-05-28", "portee": "commune"} for _ in range(3)),
+        {"type": "deliberation_cc", "date": "2026-05-28", "portee": "intercommunalite"},
+        {"type": "bodacc_creation", "date": "2026-05-28", "portee": "commune"},
+    ]
+    relues = [{"date": "2026-05-28", "code": "cm", "titre": "L'enveloppe baisse",
+               "actes": 2, "fichier": "conseils/2026-05-28_conseil-municipal.html",
+               "relu_le": "2026-10-01"}]
+
+    index = {s["id"]: s for s in index_des_seances(evts, relues)}
+
+    assert set(index) == {"2026-05-28_conseil-municipal", "2026-05-28_conseil-communautaire"}
+    cm = index["2026-05-28_conseil-municipal"]
+    assert cm["nb_actes"] == 3 and cm["en_clair"]["nb_actes"] == 2
+    assert [p["nature"] for p in cm["pieces"]] == ["proces_verbal", "compte_rendu"]
+    cc = index["2026-05-28_conseil-communautaire"]
+    assert cc["nb_actes"] == 1 and "en_clair" not in cc, \
+        "les actes des deux assemblées ne s'additionnent pas"

@@ -36,7 +36,6 @@ Ce modèle est conçu pour être rejoué sur une autre commune. Le périmètre s
 | `relations.json` | Liens entre acteurs, datés et sourcés | `relations` |
 | `popolo.json` | Les **mandats** au format [Popolo](https://www.popoloproject.com/) — format d'interopérabilité | `persons`, `organizations`, `memberships`, `areas` |
 | `events.json` | Actes : délibérations, arrêtés, annonces | `events` |
-| `event_links.json` | Quel acteur est cité dans quel acte | `links` |
 | `flows.json` | Flux financiers publics (subventions, participations) | `flows` |
 | `marches.json` | Marchés publics et attributaires | `marches` |
 | `budget.json` · `budget_vote.json` · `ofgl.json` | Budgets votés et agrégats financiers | `annuel`/`annexe`, `budget_vote`, `ofgl` |
@@ -56,6 +55,8 @@ Ce modèle est conçu pour être rejoué sur une autre commune. Le périmètre s
 | `liens.json` | Clé datée d'un acte (`c-2021-41`) → les dossiers et séances en clair qui le citent ; table d'alias `#a{id}` → clé | `actes`, `alias` |
 | `lacunes.json` | Questions ouvertes des dossiers publiés et citations sans acte publié | `lacunes` |
 | `personnes_morales.json` | Par clé d'acte, les personnes morales publiées qu'il concerne (SIREN) | `actes` |
+| `seances.json` | Une ligne par séance publiée, relue ou non : date, assemblée, délibérations publiées, pièces, et la feuille en clair si elle existe | `seances` |
+| `sujets.json` | Pour chaque sujet (l'eau, les déchets…) : ses sections de données, s'il en a ici, et son dossier publié | `sujets` |
 
 Chaque fichier à liste porte aussi un `total`.
 

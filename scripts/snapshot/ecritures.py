@@ -13,10 +13,12 @@ def etape_ecrire_acteurs(out, public_entities, public_relations) -> None:
     write_json(out / "relations.json", {"relations": public_relations, "total": len(public_relations)})
 
 
-def etape_ecrire_actes(out, public_events, public_links) -> None:
+def etape_ecrire_actes(out, public_events) -> None:
+    # `event_links.json` (quel acteur dans quel acte, 493 Ko à Lasalle) n'est
+    # plus écrit depuis le 04/10/2026 : aucune page ne le lisait depuis que
+    # chaque fiche porte ses actes (`entite/<id>.json`), et le retirer est la
+    # décision 12 de docs/refonte-du-contenu.md.
     write_json(out / "events.json", {"events": public_events, "total": len(public_events)})
-    write_json(out / "event_links.json",
-               {"links": public_links, "total": len(public_links)})
 
 
 def etape_ecrire_flux(out, public_flows) -> None:

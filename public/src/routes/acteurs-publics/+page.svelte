@@ -84,7 +84,7 @@
   const annee = (d) => (d || '').slice(0, 4)
 </script>
 
-<svelte:head><title>Acteurs publics — {SITE_NOM}</title>
+<svelte:head><title>Qui agit ? — {SITE_NOM}</title>
   <meta name="description" content="Annuaire des services publics, associations et lieux {COMMUNE_DE} et des institutions qui décident pour elle." /></svelte:head>
 
 <section>

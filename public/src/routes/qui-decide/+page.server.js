@@ -40,6 +40,9 @@ export function load() {
     (e) => (e.commune || '').toLowerCase() === COMMUNE.toLowerCase()).length
 
   const transparence = lire('transparence.json', {})
+  // Les séances relues. /conseils se présentait par son fil d'Ariane comme une
+  // page de « Qui décide », qui ne la citait pas (relevé du 04/10/2026).
+  const conseils = lire('conseils.json', {})
 
   return {
     hatvp: transparence.hatvp || [],
@@ -50,6 +53,7 @@ export function load() {
     deliberationsInterco,
     relations: listeRel.length || stats.relations_public || null,
     conflits: listeConflits.length || null,
+    seancesRelues: (conseils.seances || []).length,
     // Compté sur le snapshot, jamais écrit en dur : la carte a annoncé « 7
     // communes » jusqu'au 12/08/2026, chiffre hérité de l'ancien périmètre du
     // ancien périmètre, plus étroit que celui de l'intercommunalité.

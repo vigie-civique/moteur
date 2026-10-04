@@ -89,12 +89,17 @@ def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
         for acte in actes_lies.values():
             graphe.citer(acte.cle, {"type": "en_clair", "date": s["date"],
                                  "assemblee": s["assemblee_court"],
-                                 "fichier": f"conseils/{nom}.html"})
+                                 "fichier": f"conseils/{nom}.html",
+                                 # La page de la séance, dans le site : la
+                                 # feuille reste sa version imprimable.
+                                 "page": f"/conseils/{nom}"})
         (dossier / f"{nom}.html").write_text(document(
-            f"Le conseil en clair · {s['assemblee_court']} · {s['date']}",
+            # Le nom de la rubrique, le même que l'en-tête et /conseils
+            # (docs/refonte-du-contenu.md, décision 2).
+            f"Les conseils en clair · {s['assemblee_court']} · {s['date']}",
             feuilles(r, relu=relu, liens={n: x.url for n, x in actes_lies.items()})
             + page_erreurs(r),
-            retour=("/conseils", "Toutes les séances")), encoding="utf-8")
+            retour=(f"/conseils/{nom}", "La séance")), encoding="utf-8")
         ap = r["en_clair"]["apres"]
         index.append({
             "date": s["date"],
@@ -168,5 +173,19 @@ def etape_graphe(conn, out, index_actes, affiches, public_events, public_links,
                if e.get("ancre") and e["ancre"] != f"a{e['id']}"},
         personnes_morales=personnes_morales_par_acte(
             conn, public_events, public_links, public_entities))
+    # Ce qui est publié, et seulement cela — relu dans ce que l'étape vient
+    # d'écrire : la recherche en fait des entrées (docs/refonte-du-contenu.md,
+    # lot 2).
+    import json
+    from collectors.dossiers import entete
+    seances_relues = json.loads((out / "conseils.json").read_text())["seances"]
+    dossiers_publies = []
+    for d in json.loads((out / "dossiers.json").read_text())["dossiers"]:
+        meta = entete(d["texte"])[0]
+        dossiers_publies.append({"slug": d["slug"], "titre": meta.get("titre") or d["slug"],
+                                 # Le sujet du registre (`sujets.py`) : son nom
+                                 # de fichier, sauf en-tête `sujet:` contraire.
+                                 "sujet": meta.get("sujet") or d["slug"]})
     return {"graphe": graphe, "stats_en_clair": stats_en_clair,
-            "stats_dossiers": stats_dossiers, "stats_graphe": stats_graphe}
+            "stats_dossiers": stats_dossiers, "stats_graphe": stats_graphe,
+            "seances_relues": seances_relues, "dossiers_publies": dossiers_publies}

@@ -70,3 +70,36 @@ def test_une_donnee_rectifiee_entre_au_journal_avec_son_motif():
     assert j["site"] == []
     assert [(d["id"], d["champs"], d["motif"]) for d in j["donnees"]] == [
         (7, ["montant"], "article 12 lu comme montant")]
+
+
+# ── Un collecteur qui a déjà rapporté (04/10/2026) ───────────────────────────
+# `statut` est celui de la dernière passe. `marches` valait `empty` sur les trois
+# instances, à côté de 58 marchés publiés : jugé sur ce seul statut, le zéro
+# d'une page se serait dit « collecte vide » alors qu'elle avait rapporté.
+
+def test_un_collecteur_incremental_vide_a_la_derniere_passe_a_deja_rapporte():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE collector_runs (collector TEXT, started_at TEXT, "
+                 "status TEXT, items_added INTEGER)")
+    conn.executemany("INSERT INTO collector_runs VALUES (?,?,?,?)", [
+        ("marches", "2026-08-01 07:00", "ok", 58),
+        ("marches", "2026-09-30 07:00", "empty", 0),
+        ("dvf", "2026-09-30 07:00", "empty", 0),
+    ])
+    c = export_couverture(conn, [], STATS)["collecteurs"]
+    assert (c["marches"]["statut"], c["marches"]["a_rapporte"]) == ("empty", True)
+    assert (c["dvf"]["statut"], c["dvf"]["a_rapporte"]) == ("empty", False)
+
+
+def test_un_financeur_sans_collecteur_n_est_jamais_dit_releve():
+    """Le département n'a pas de collecteur : aucune fiche ne doit laisser
+    croire qu'il n'a rien versé."""
+    from scripts.snapshot.couverture import financeurs
+    f = {x["financeur"]: x for x in financeurs({
+        "jaune": {"statut": "ok", "a_rapporte": True},
+        "region": {"statut": "empty", "a_rapporte": False}})}
+    assert f["departement"] == {"financeur": "departement", "libelle": "Le département",
+                                "collecteurs": [], "releve": False}
+    assert f["etat"]["releve"] is True
+    assert f["region"]["releve"] is False, "un collecteur qui n'a jamais rapporté ne relève rien"

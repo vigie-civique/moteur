@@ -21,7 +21,11 @@ export function load() {
     // L'en-tête met en avant les séances relues et les dossiers — seulement
     // s'il y en a : une instance qui n'a encore rien publié ne pousse pas le
     // lecteur vers une page vide.
-    aConseils: ((lireJSON('conseils.json', {}) || {}).seances || []).length > 0,
+    // Depuis le 04/10/2026, toute séance publiée a sa page : la rubrique est
+    // mise en avant dès qu'il y a une séance, relue ou non (`seances.json`,
+    // `conseils.json` pour un snapshot plus ancien).
+    aConseils: ((lireJSON('seances.json', null) || lireJSON('conseils.json', {}) || {})
+      .seances || []).length > 0,
     aDossiers: lireDossiers().length > 0,
   }
 }

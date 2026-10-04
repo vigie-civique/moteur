@@ -72,19 +72,7 @@ def etape_urbanisme(conn, out, public_ids) -> dict:
     return {"urbanisme_public": urbanisme_public, "adresses_retirees": adresses_retirees}
 
 
-def etape_croisement_foncier(conn, out) -> dict:
-    # Parcelles portant à la fois une mutation DVF et une autorisation.
-    croisement_foncier = rows(conn, """
-        SELECT u.cadastre_ref, u.commune, u.num_dau, u.date_depot,
-               u.demandeur_nom, u.nb_logements, COUNT(d.id) AS mutations,
-               MIN(d.date) AS premiere_mutation, MAX(d.date) AS derniere_mutation
-        FROM urbanisme_autorisations u
-        JOIN dvf_transactions d ON d.cadastre_ref = u.cadastre_ref
-        WHERE u.cadastre_ref IS NOT NULL
-        GROUP BY u.id ORDER BY u.date_depot DESC
-    """) if (table_exists(conn, "urbanisme_autorisations")
-             and table_exists(conn, "dvf_transactions")) else []
-    write_json(out / "croisement_foncier.json", {
-        "parcelles": croisement_foncier, "total": len(croisement_foncier)})
-
-    return {"croisement_foncier": croisement_foncier}
+# `croisement_foncier.json` (parcelles portant une mutation DVF et une
+# autorisation) n'est plus écrit depuis le 04/10/2026 : aucune page ne le
+# lisait, ni le lien de réutilisation, ni llms.txt — et il portait le nom du
+# demandeur de chaque autorisation (docs/refonte-du-contenu.md, décision 12).

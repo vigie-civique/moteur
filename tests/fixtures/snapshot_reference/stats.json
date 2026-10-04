@@ -139,12 +139,12 @@
     }
   },
   "revue_atelier": {
-    "annotations": 1,
+    "annotations": 2,
     "rejetes": 0,
     "corriges": 0
   },
   "conseils_en_clair": {
-    "publiees": 0,
+    "publiees": 1,
     "non_retenus": 0,
     "en_faute": [],
     "sans_seance": [],
@@ -165,7 +165,7 @@
   },
   "graphe": {
     "actes_cites": 6,
-    "renvois": 8,
+    "renvois": 10,
     "alias": 7,
     "lacunes": {
       "question": 2,
@@ -178,6 +178,14 @@
       "faibles": 1,
       "en_collision": 0
     }
+  },
+  "seances": {
+    "seances": 2,
+    "relues": 1
+  },
+  "sujets": {
+    "avec_donnees": 0,
+    "avec_dossier": 1
   },
   "corrections_site": 0,
   "actualite_items": 9,
@@ -193,12 +201,11 @@
   "elus_rne": 2,
   "urbanisme_autorisations": 1,
   "urbanisme_adresses_retirees": 0,
-  "croisement_foncier": 0,
   "extraits_actes": 6,
   "extraits_masquages": {
     "courriel": 0
   },
   "entity_bundles": 3,
   "search_index_entries": 3,
-  "recherche_index_entries": 12
+  "recherche_index_entries": 14
 }

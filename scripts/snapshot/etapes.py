@@ -35,8 +35,10 @@ from scripts.snapshot.recherche import etape_index_recherche
 from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
+from scripts.snapshot.seances import etape_seances
+from scripts.snapshot.sujets import etape_sujets
 from scripts.snapshot.territoire import etape_environnement, etape_fiscalite, etape_territoire
-from scripts.snapshot.urbanisme import etape_croisement_foncier, etape_urbanisme
+from scripts.snapshot.urbanisme import etape_urbanisme
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
 #: (lecture seule), le répertoire de sortie, l'heure de la construction, et le
@@ -88,7 +90,7 @@ ETAPES: list[Etape] = [
     Etape("couches", etape_couches,
           lit=("public_entities",), produit=("public_layers",)),
     Etape("finances", etape_finances,
-          lit=("conn", "revue", "public_ids", "perimetre_par_entite"),
+          lit=("conn", "revue", "public_ids", "public_entities", "perimetre_par_entite"),
           complete=("exclusions",),
           produit=("budget_annuel", "budget_annexe", "ofgl_data", "budget_vote",
                    "dvf_data", "marches_data", "approbations_data")),
@@ -120,8 +122,7 @@ ETAPES: list[Etape] = [
           lit=("out", "public_entities", "public_relations"),
           ecrit=("entities.json", "relations.json")),
     Etape("ecrire_actes", etape_ecrire_actes,
-          lit=("out", "public_events", "public_links"),
-          ecrit=("events.json", "event_links.json")),
+          lit=("out", "public_events"), ecrit=("events.json",)),
     Etape("ecrire_flux", etape_ecrire_flux,
           lit=("out", "public_flows"), ecrit=("flows.json",)),
     Etape("ecrire_couches", etape_ecrire_couches,
@@ -150,9 +151,6 @@ ETAPES: list[Etape] = [
     Etape("urbanisme", etape_urbanisme,
           lit=("conn", "out", "public_ids"),
           produit=("urbanisme_public", "adresses_retirees"), ecrit=("urbanisme.json",)),
-    Etape("croisement_foncier", etape_croisement_foncier,
-          lit=("conn", "out"), produit=("croisement_foncier",),
-          ecrit=("croisement_foncier.json",)),
     Etape("actualite", etape_actualite,
           lit=("out", "stats", "marches_data", "public_events", "public_flows",
                "perimetre_par_entite"),
@@ -168,9 +166,20 @@ ETAPES: list[Etape] = [
     Etape("graphe", etape_graphe,
           lit=("conn", "out", "index_actes", "affiches", "public_events", "public_links",
                "public_entities"),
-          produit=("graphe", "stats_en_clair", "stats_dossiers", "stats_graphe"),
+          produit=("graphe", "stats_en_clair", "stats_dossiers", "stats_graphe",
+                   "seances_relues", "dossiers_publies"),
           ecrit=("conseils.json", "conseils/*.html", "dossiers.json", "liens.json",
                  "lacunes.json", "personnes_morales.json")),
+    # Une page par séance publiée, relue ou non (docs/refonte-du-contenu.md,
+    # lot 6). Après `graphe` : les séances relues y sont établies.
+    Etape("seances", etape_seances,
+          lit=("out", "public_events", "seances_relues"), produit=("stats_seances",),
+          ecrit=("seances.json",)),
+    # Les sujets : quel dossier, quelles données (lot 8). Lit les fichiers
+    # qu'`environnement` et `territoire` ont écrits plus haut.
+    Etape("sujets", etape_sujets,
+          lit=("out", "dossiers_publies"), produit=("stats_sujets",),
+          ecrit=("sujets.json",)),
     Etape("transparence", etape_transparence,
           lit=("conn", "out"), ecrit=("transparence.json",)),
     Etape("conflits", etape_conflits,
@@ -184,15 +193,16 @@ ETAPES: list[Etape] = [
           ecrit=("extrait/*.json",)),
     Etape("index_recherche", etape_index_recherche,
           lit=("out", "entity_rows", "public_entities", "public_events", "public_links",
-               "marches_data", "public_flows"),
+               "marches_data", "public_flows", "seances_relues", "dossiers_publies"),
           produit=("indexed", "recherche"),
           ecrit=("entity_index.json", "recherche_index.json")),
     Etape("stats", etape_stats,
           lit=("out", "exclusions_publiees", "revue_atelier", "stats_en_clair",
                "stats_dossiers", "stats_graphe", "cles_stats", "corrections", "actualite",
                "a_venir", "redactions", "conflits", "elections", "fiscalite", "elus",
-               "urbanisme_public", "adresses_retirees", "croisement_foncier",
-               "extraits_actes", "masquages", "bundles", "indexed", "recherche"),
+               "urbanisme_public", "adresses_retirees",
+               "extraits_actes", "masquages", "bundles", "indexed", "recherche",
+               "stats_seances", "stats_sujets"),
           complete=("stats",), ecrit=("stats.json",)),
     # Hors du snapshot : `audits/`, sous la racine du moteur. Le rapport porte
     # les exclusions NOMINATIVES — exactement ce que le filtre retient.

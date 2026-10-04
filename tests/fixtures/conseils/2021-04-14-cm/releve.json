@@ -1,0 +1,37 @@
+{
+  "code": "cm",
+  "seance": {"assemblee": "Conseil municipal de Testonville",
+             "assemblee_court": "Conseil municipal",
+             "date": "2021-04-14", "votants": 15,
+             "citation_quorum": "Présents : 15. Votants : 15."},
+  "origine": {"releve": "épreuve de la CI", "le": "2021-04-20", "statut": "relu",
+              "relu_par": "ci"},
+  "sources": {"pv": "data/conseils/pv-2021-04-14.txt"},
+  "sources_url": {"pv": "https://exemple.invalid/pv/2021-04-14.pdf"},
+  "marque_acte": "Délibération n°{n}/2021",
+  "actes": [
+    {"n": 41, "objet": "Protection des captages",
+     "vote": {"pour": 13, "contre": 0, "abstention": 2, "unanimite": false},
+     "citation": "décide la protection à 80 % de la ressource en eau du captage du bourg"},
+    {"n": 42, "objet": "Budget primitif 2021 du service de l'eau",
+     "vote": {"unanimite": true},
+     "citation": "équilibré en section d'exploitation à 61 500 €", "montants": ["61 500"]}
+  ],
+  "anomalies_seance": ["Le procès-verbal ne dit pas qui préside la séance."],
+  "calculs": [{"valeur": "2", "formule": "n_actes", "dit": "délibérations"}],
+  "en_clair": {
+    "avant": {"statut": "non_publie", "avertissement": "Aucune convocation publiée.",
+              "titre": "Mercredi 14 avril, à la mairie", "chapeau": "Séance publique.",
+              "ordre_du_jour": ["Captages", "Budget de l'eau"],
+              "pied": "Ordre du jour reconstitué depuis les actes."},
+    "apres": {"titre": "L'eau protégée et son budget voté",
+              "chapeau": "Une séance consacrée à l'eau.",
+              "chiffres": [{"valeur": "2", "dit": "délibérations"}],
+              "items": [{"titre": "Les captages protégés",
+                         "texte": "La commune protège 80 % de la ressource du captage du bourg.",
+                         "actes": [41]}],
+              "aussi": [{"texte": "Le budget de la régie de l'eau est voté à 61 500 €.",
+                         "actes": [42]}],
+              "pied": "Source : procès-verbal."}
+  }
+}

@@ -2,6 +2,7 @@
 // pas d'URL, pas même une 404 qui trahirait son existence.
 import { error } from '@sveltejs/kit'
 import { lireDossiers } from '$lib/dossiers.server.js'
+import { lireSujets } from '$lib/sujets.server.js'
 
 // Sans dossier publiable, la route n'a aucune page à produire, et SvelteKit
 // refuse un build où une route prégénérée n'en produit aucune — c'est ce qui a
@@ -17,5 +18,8 @@ export function entries() {
 export function load({ params }) {
   const dossier = lireDossiers().find((d) => d.slug === params.slug)
   if (!dossier) throw error(404, 'Dossier introuvable.')
-  return { dossier }
+  // Les sections de données du même sujet, quand cette instance en publie :
+  // le dossier renvoyait aux actes, jamais aux données (lot 8).
+  const sujet = lireSujets().find((s) => s.dossier?.slug === dossier.slug)
+  return { dossier, donnees: sujet?.donnees ? sujet.sections : [] }
 }

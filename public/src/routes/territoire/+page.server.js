@@ -3,6 +3,7 @@ import { COMMUNE_DE, INSEE } from '$lib/instance.js'
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dossiersDeLaPage } from '$lib/sujets.server.js'
 import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
@@ -136,5 +137,7 @@ export function load() {
     // Qualifié au build (`export_enfance`) : effectifs par ÉCOLE, accueil des
     // moins de 3 ans par INTERCOMMUNALITÉ, repères à année égale.
     enfance: fichier.enfance || null,
+    // Section → dossier thématique publié sur le même sujet (lot 8).
+    dossiers: dossiersDeLaPage('/territoire'),
   }
 }

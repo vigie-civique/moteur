@@ -1,0 +1,43 @@
+{
+  "seances": [
+    {
+      "id": "2025-04-02_conseil-communautaire",
+      "date": "2025-04-02",
+      "code": "cc",
+      "assemblee": "Conseil communautaire",
+      "portee": "intercommunalite",
+      "titre": "Conseil communautaire du 2 avril 2025",
+      "nb_actes": 1,
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2025-04-02",
+          "url": "https://epci.exemple.invalid/pv/2025-04-02.pdf"
+        }
+      ]
+    },
+    {
+      "id": "2021-04-14_conseil-municipal",
+      "date": "2021-04-14",
+      "code": "cm",
+      "assemblee": "Conseil municipal",
+      "portee": "commune",
+      "titre": "Conseil municipal du 14 avril 2021",
+      "nb_actes": 2,
+      "en_clair": {
+        "fichier": "conseils/2021-04-14_conseil-municipal.html",
+        "titre": "L'eau protégée et son budget voté",
+        "relu_le": "2026-10-01",
+        "nb_actes": 2
+      },
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2021-04-14",
+          "url": "https://exemple.invalid/pv/2021-04-14.pdf"
+        }
+      ]
+    }
+  ],
+  "total": 2
+}

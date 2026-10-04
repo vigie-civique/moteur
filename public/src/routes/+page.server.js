@@ -6,6 +6,9 @@ import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
 import { estAttribue } from '$lib/marches.js'
 import { TYPES_ACTEURS } from '$lib/actes.js'
+import { etatSource } from '$lib/couverture.js'
+import { lireDossiers } from '$lib/dossiers.server.js'
+import { lireSujets } from '$lib/sujets.server.js'
 
 export const prerender = true
 
@@ -68,12 +71,39 @@ export function load() {
   // ligne-là ne le dit pas. Elle reste entière sur /deliberations et
   // /nouveautes — elle n'est pas effacée, elle n'est pas mise en avant.
   const ACTES_DE_SEANCE = new Set(['deliberation', 'deliberation_cc'])
+
+  // ── Où mène une séance ─────────────────────────────────────────────────
+  // Vers sa page (`/conseils/<date>_<assemblée>`), qui porte ses délibérations
+  // et, si elle est relue, sa feuille en clair. Toutes menaient au sommaire de
+  // /deliberations (632 Ko à Lasalle, toutes années confondues), y compris le
+  // 10 septembre 2026 dont la feuille relue existait
+  // (docs/refonte-du-contenu.md § 2.1). Un snapshot sans `seances.json` garde
+  // le renvoi vers l'année.
+  const ASSEMBLEE = { conseil_municipal: 'conseil-municipal', conseil_communautaire: 'conseil-communautaire' }
+  const seances = (lire('seances.json', {}).seances) || []
+  const pages = new Set(seances.map((s) => s.id))
+
+  // ── Au conseil : la dernière séance de chaque assemblée ─────────────────
+  // Une par assemblée, jamais deux de la même : la commune et
+  // l'intercommunalité ne votent ni les mêmes actes ni avec les mêmes élus.
+  // `seances.json` est trié du plus récent au plus ancien ; une séance datée
+  // après l'arrêt des données n'a pas encore eu lieu.
+  const dernieres = ['cm', 'cc']
+    .map((code) => seances.find((s) => s.code === code && s.date <= aujourdhui))
+    .filter(Boolean)
+    .map(({ id, date, code, assemblee, nb_actes, en_clair }) =>
+      ({ id, date, code, assemblee, nb_actes, en_clair: en_clair || null }))
+  const lienDeSeance = (i) => {
+    const id = `${i.date}_${ASSEMBLEE[i.type]}`
+    return pages.has(id) ? `/conseils/${id}` : `/deliberations/${i.date.slice(0, 4)}`
+  }
   const recents = passes
     .filter((i) => GOUVERNANCE.has(i.genre))
     .filter(communal)
     .filter((i) => !ACTES_DE_SEANCE.has(i.type))
     .filter((i) => i.nb_actes == null || i.nb_actes > 0)
     .slice(0, 6)
+    .map((i) => (i.nb_actes != null ? { ...i, lien: lienDeSeance(i) } : i))
   const agenda = passes.filter((i) => i.genre === 'vie').filter(communal).slice(0, 4)
 
   // ── Le prochain conseil ────────────────────────────────────────────────
@@ -153,6 +183,15 @@ export function load() {
 
   return {
     prochains,
+    dernieres,
+    // Les dossiers publiés, sans leur corps : l'accueil n'en montre que le titre
+    // et le chapeau. Un dossier « à développer » attend sur /dossiers.
+    dossiers: lireDossiers().filter((d) => d.statut !== 'a_developper')
+      .map(({ slug, titre, chapeau }) => ({ slug, titre, chapeau })),
+    // Sans dossier écrit, ce que les données disent déjà des mêmes sujets :
+    // une instance neuve a un accueil qui part des sujets, sans rien à relire.
+    sujets: lireSujets().filter((s) => s.donnees && !s.dossier)
+      .map(({ titre, sections }) => ({ titre, lien: `${sections[0].page}${sections[0].ancre ? `#${sections[0].ancre}` : ''}` })),
     chiffres: {
       acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
@@ -184,6 +223,9 @@ export function load() {
       recents: ailleurs,
     },
     budget,
+    // Ce que vaut un zéro de marchés : une question non posée (collecte
+    // absente) n'est pas un résultat (cf. $lib/couverture.js).
+    sourceMarches: etatSource(lire('couverture.json', {}), 'marches').etat,
     recents,
     agenda,
     arreteLe: actualite.arrete_le || null,

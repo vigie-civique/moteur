@@ -151,6 +151,29 @@ def _commune_entity_id(conn) -> int | None:
     return row["id"] if row else None
 
 
+def nommer_acheteurs(marches: list[dict], noms: dict[int, str]) -> int:
+    """L'acheteur porte le nom de SA FICHE, pas la graphie de chaque source.
+
+    À Lasalle, les 58 marchés publiés avaient le même acheteur
+    (`acheteur_id` identique) sous cinq noms — « COM COMMUNES CAUSSES AIGOUAL
+    CEVENNES », « CC Causes Aigoual Cévennes »… — et /marches annonçait
+    « Acheteurs : 5 » (relevé du 04/10/2026, docs/refonte-du-contenu.md,
+    défaut 5 et décision 8). La graphie de la source n'est pas perdue : elle
+    reste dans `acheteur_libelle_source`, pour retrouver la ligne dans sa
+    source. Un acheteur sans fiche publiée garde le nom que la source donne.
+
+    Rend le nombre de marchés renommés.
+    """
+    renommes = 0
+    for m in marches:
+        nom = noms.get(m.get("acheteur_id"))
+        m["acheteur_libelle_source"] = m.get("acheteur_nom")
+        if nom and nom != m.get("acheteur_nom"):
+            m["acheteur_nom"] = nom
+            renommes += 1
+    return renommes
+
+
 def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
     """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
 
@@ -303,7 +326,8 @@ def etape_flux(conn, revue, entity_rows, public_person_ids, public_ids,
             "flows_par_etat": flows_par_etat}
 
 
-def etape_finances(conn, revue, public_ids, perimetre_par_entite, exclusions) -> dict:
+def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entite,
+                   exclusions) -> dict:
     # ── Données financières & foncières officielles (open data) ───────────
     # DGFiP, OFGL, Cerema (DVF), DECP : faits publics par nature → export complet.
     budget_annuel = rows(conn, """
@@ -353,6 +377,7 @@ def etape_finances(conn, revue, public_ids, perimetre_par_entite, exclusions) ->
     # Le marché reste, le lien vers une fiche non publiée tombe.
     exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \
         delier_renvois_morts(marches_data, public_ids)
+    nommer_acheteurs(marches_data, {e["id"]: e["name"] for e in public_entities})
 
     # La portée d'un marché est celle de son ACHETEUR. Un marché de la
     # communauté de communes n'est pas un marché de la commune, même quand

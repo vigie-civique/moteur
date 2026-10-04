@@ -201,8 +201,8 @@ def etape_bilan_revue(exclusions, revue_annotations, public_events, public_flows
 def etape_stats(out, exclusions_publiees, revue_atelier, stats_en_clair, stats_dossiers,
                 stats_graphe, cles_stats, corrections, actualite, a_venir, redactions,
                 conflits, elections, fiscalite, elus, urbanisme_public, adresses_retirees,
-                croisement_foncier, extraits_actes, masquages, bundles, indexed,
-                recherche, stats) -> None:
+                extraits_actes, masquages, bundles, indexed,
+                recherche, stats_seances, stats_sujets, stats) -> None:
     """`stats.json` complet, réécrit en dernier : ce que chaque étape a compté,
     rangé dans l'ordre où le code l'a toujours rangé."""
     stats["exclusions"] = exclusions_publiees
@@ -211,6 +211,8 @@ def etape_stats(out, exclusions_publiees, revue_atelier, stats_en_clair, stats_d
     stats["dossiers"] = stats_dossiers
     stats["graphe"] = stats_graphe
     stats["graphe"]["cles"] = cles_stats
+    stats["seances"] = stats_seances
+    stats["sujets"] = stats_sujets
     stats["corrections_site"] = len(corrections["site"])
     stats["actualite_items"] = min(len(actualite), 400)
     stats["actualite_a_venir"] = len(a_venir)
@@ -226,7 +228,6 @@ def etape_stats(out, exclusions_publiees, revue_atelier, stats_en_clair, stats_d
     stats["elus_rne"] = len(elus)
     stats["urbanisme_autorisations"] = len(urbanisme_public)
     stats["urbanisme_adresses_retirees"] = adresses_retirees
-    stats["croisement_foncier"] = len(croisement_foncier)
 
     stats["extraits_actes"] = extraits_actes
     stats["extraits_masquages"] = dict(masquages)

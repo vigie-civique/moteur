@@ -16,6 +16,36 @@ from collectors.config import STEP_META
 from scripts.snapshot.socle import rows, table_exists, write_json
 
 
+# Qui peut verser de l'argent public à un acteur, et quels collecteurs le
+# relèvent. Une fiche d'association sans subvention du département ne disait
+# pas qu'AUCUN collecteur ne lit le département : le lecteur concluait à
+# l'absence d'aide, alors qu'il s'agit d'une absence de collecte
+# (docs/refonte-du-contenu.md, défaut 4). Publiée une fois ici, pas dans chaque
+# fiche : la table est la même pour toutes.
+FINANCEURS = (
+    ("commune", "La commune", ("cm", "cm_archive", "subv_ouvertes")),
+    ("intercommunalite", "L'intercommunalité", ("cc_epci", "subv_ouvertes")),
+    ("departement", "Le département", ()),
+    ("region", "La région", ("region",)),
+    ("etat", "L'État", ("jaune", "subventions")),
+)
+
+
+def financeurs(collecteurs: dict) -> list[dict]:
+    """Pour chaque financeur : relevé ou non, et par quoi.
+
+    `releve` : un de ses collecteurs a déjà rapporté quelque chose sur cette
+    instance. Sans collecteur, ou sans passe utile, le financeur n'est pas
+    relevé — et une fiche qui n'en montre rien ne dit rien de lui.
+    """
+    sortie = []
+    for cle, libelle, noms in FINANCEURS:
+        utiles = [n for n in noms if (collecteurs.get(n) or {}).get("a_rapporte")]
+        sortie.append({"financeur": cle, "libelle": libelle,
+                       "collecteurs": list(noms), "releve": bool(utiles)})
+    return sortie
+
+
 def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
     """Ce que la collecte couvre, et surtout ce qu'elle ne couvre pas.
 
@@ -60,12 +90,20 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
     derniers = {}
     if table_exists(conn, "collector_runs"):
         for r in rows(conn, """
-            SELECT collector, status, MAX(started_at) AS dernier
+            SELECT collector, status, MAX(started_at) AS dernier,
+                   SUM(CASE WHEN status = 'ok' OR items_added > 0 THEN 1 ELSE 0 END)
+                       AS passes_utiles
             FROM collector_runs GROUP BY collector
         """):
             derniers[r["collector"]] = {
                 "statut": r["status"],
                 "dernier": r["dernier"],
+                # `statut` est celui de la DERNIÈRE passe : un collecteur
+                # incrémental qui n'a rien trouvé de neuf vaut `empty` alors
+                # que ses lignes sont publiées — `marches` valait `empty` sur
+                # les trois instances à côté de 58 marchés (04/10/2026). Un
+                # zéro se juge sur « a déjà rapporté », pas sur la dernière fois.
+                "a_rapporte": bool(r["passes_utiles"]),
                 # Le seuil vient de la source unique de vérité, jamais d'un
                 # nombre écrit dans la page : un collecteur dont on change le
                 # rythme change de seuil le jour même.
@@ -79,6 +117,7 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
         "arrete_le": stats.get("generated_at"),
         "sources": sorted(par_source.values(), key=lambda d: -d["actes"]),
         "collecteurs": derniers,
+        "financeurs": financeurs(derniers),
         # Le chiffre le plus inconfortable du site, donc celui qu'il faut donner
         # en premier : la proportion d'actes dont la pièce elle-même est
         # consultable, par opposition à la page qui la contient.

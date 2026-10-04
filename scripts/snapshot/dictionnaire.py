@@ -81,8 +81,6 @@ def etape_dictionnaire(out, stats, location_quality) -> None:
         "`persons`, `organizations`, `memberships`, `areas` |",
         "| `events.json` | Actes : délibérations, arrêtés, annonces | "
         "`events` |",
-        "| `event_links.json` | Quel acteur est cité dans quel acte | "
-        "`links` |",
         "| `flows.json` | Flux financiers publics (subventions, "
         "participations) | `flows` |",
         "| `marches.json` | Marchés publics et attributaires | `marches` |",
@@ -117,6 +115,11 @@ def etape_dictionnaire(out, stats, location_quality) -> None:
         "citations sans acte publié | `lacunes` |",
         "| `personnes_morales.json` | Par clé d'acte, les personnes morales "
         "publiées qu'il concerne (SIREN) | `actes` |",
+        "| `seances.json` | Une ligne par séance publiée, relue ou non : date, "
+        "assemblée, délibérations publiées, pièces, et la feuille en clair si "
+        "elle existe | `seances` |",
+        "| `sujets.json` | Pour chaque sujet (l'eau, les déchets…) : ses sections "
+        "de données, s'il en a ici, et son dossier publié | `sujets` |",
         "",
         "Chaque fichier à liste porte aussi un `total`.",
         "",

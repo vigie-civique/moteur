@@ -211,7 +211,24 @@ def test_l_alias_des_anciennes_ancres_et_la_recherche(snapshot):
     e41 = next(e for e in evts if e.get("cle") == "c-2021-41")
     assert liens["alias"][f"a{e41['id']}"] == "c-2021-41"
     recherche = json.loads((snapshot / "recherche_index.json").read_text())["index"]
-    assert "/deliberations/2021#c-2021-41" in {r["u"] for r in recherche}
+    assert "/deliberations/2021#c-2021-41" in {r.get("u") for r in recherche}
+
+
+def test_la_recherche_ne_mene_jamais_a_une_ancre_absente(snapshot):
+    """04/10/2026 : tout événement publié menait à /deliberations/<année>, qui
+    n'affiche que les actes d'assemblée — ≈ 1 400 résultats de Lasalle visaient
+    une ancre absente. Une adresse /deliberations désigne désormais un acte
+    d'assemblée publié ; les autres mènent à leur source, ou nulle part."""
+    evts = json.loads((snapshot / "events.json").read_text())["events"]
+    assemblee = {"deliberation", "deliberation_cc", "conseil_municipal", "conseil_communautaire"}
+    ancres = {f"/deliberations/{(e.get('date') or '')[:4] or 'sans-date'}"
+              f"#{e.get('ancre') or 'a' + str(e['id'])}"
+              for e in evts if e["type"] in assemblee}
+    recherche = json.loads((snapshot / "recherche_index.json").read_text())["index"]
+    vers_actes = {r["u"] for r in recherche if r.get("u", "").startswith("/deliberations/")}
+    assert vers_actes and vers_actes <= ancres
+    assert all(r.get("u") for r in recherche if r["k"] != "acte"), \
+        "seul un événement sans source peut être sans adresse"
 
 
 def test_le_snapshot_ecrit_les_trois_tables_meme_sans_dossier(snapshot):

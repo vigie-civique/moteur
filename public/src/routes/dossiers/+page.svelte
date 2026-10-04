@@ -12,12 +12,12 @@
 </script>
 
 <svelte:head>
-  <title>Dossiers — {SITE_NOM}</title>
+  <title>Dossiers thématiques — {SITE_NOM}</title>
   <meta name="description" content="Dossiers thématiques : des faits sourcés reliés autour d'une question d'intérêt public, avec ce que nous ne savons pas encore." />
 </svelte:head>
 
 <section>
-  <h1>Dossiers</h1>
+  <h1>Dossiers thématiques</h1>
   <p class="chapeau">
     Le reste du site est de la donnée publique, rangée. Ici, nous écrivons&nbsp;:
     un dossier relie des faits épars autour d'une question — ce que l'on paie,
@@ -39,6 +39,18 @@
           {#if d.statut === 'brouillon'}<span class="brouillon">brouillon</span>{/if}
           {#if d.chapeau}<p>{d.chapeau}</p>{/if}
           {#if d.maj}<p class="maj">Mis à jour le {fmt(d.maj)}</p>{/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  {#if data.sujets?.length}
+    <h2>{data.dossiers.length ? 'Sans dossier écrit' : 'Ce que les données disent de…'}</h2>
+    <p class="aide">Des sujets que personne n'a encore instruits ici, mais sur lesquels les sources publiques ont déjà des faits&nbsp;: les voici, sans commentaire.</p>
+    <ul class="liste">
+      {#each data.sujets as s}
+        <li><b>{s.titre}</b>
+          <p>{#each s.sections as sec, i}{#if i} · {/if}<a href="{sec.page}{sec.ancre ? `#${sec.ancre}` : ''}">{sec.titre}</a>{/each}</p>
         </li>
       {/each}
     </ul>
