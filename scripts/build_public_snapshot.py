@@ -90,6 +90,7 @@ from scripts.snapshot.revue import (  # noqa: E402,F401
     charger_revue,
     TYPES_REVUS,
 )
+from scripts.snapshot.personnes import beneficiaires_argent_public  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
 # Le rythme attendu de chaque collecteur. La page `/couverture` le publie :
@@ -951,42 +952,6 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
                              "encore été exploité.",
         },
     }
-
-
-def beneficiaires_argent_public(conn) -> set[int]:
-    """Entités ayant reçu de l'argent public : subvention, marché, bail.
-
-    Base de la règle de pertinence : le lien économique d'une personne avec une
-    structure qui touche de l'argent public est d'intérêt général, celui avec une
-    société sans rapport avec la commune ne l'est pas.
-
-    Les flux sont sommés sur `perimetre='detail'` seulement, demandes et
-    annulations écartées : les agrégats OFGL englobent la DGF présente en détail
-    (double compte), et `statut='demande'` désigne une subvention **sollicitée**,
-    pas obtenue. Le filtre nommait la valeur retenue (`= 'realise'`) plutôt que
-    celles qu'il écarte — étendre la liste des statuts saisissables l'aurait
-    vidé sans un mot d'erreur.
-    """
-    ids: set[int] = set()
-    for r in rows(conn, """
-        SELECT DISTINCT to_id AS id FROM financial_flows
-         WHERE to_id IS NOT NULL
-           AND COALESCE(perimetre,'detail') = 'detail'
-           AND COALESCE(statut,'realise') NOT IN ('demande','annule')
-    """):
-        ids.add(r["id"])
-    if table_exists(conn, "marches_publics"):
-        for r in rows(conn, "SELECT DISTINCT titulaire_id AS id FROM marches_publics"
-                            " WHERE titulaire_id IS NOT NULL"):
-            ids.add(r["id"])
-    types = sorted(RULES["relations"]["public_money_relation_types"])
-    for r in rows(conn, f"""
-        SELECT DISTINCT from_id AS a, to_id AS b FROM relations
-         WHERE relation_type IN ({",".join("?" for _ in types)})
-           AND confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
-    """, [*types, *sorted(RULES["confidence"]["public"])]):
-        ids.update({r["a"], r["b"]} - {None})
-    return ids
 
 
 def relation_pertinente(rel: dict, civic_ids: set[int],
@@ -2202,14 +2167,12 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
         faits = executer(ETAPES, {"conn": conn, "out": out, "horloge": horloge,
                                   "exclusions": defaultdict(Counter)})
         revue = faits["revue"]
-        relations_ecartees = faits["relations_ecartees"]
         exclusions = faits["exclusions"]
 
         confirmed_urls = load_confirmed_urls()
         counters = Counter()
         counters["entities_sans_perimetre"] = faits["sans_perimetre"]
         counters["revue_annotations"] = faits["revue_annotations"]
-        pas_ecartee = "AND r.id NOT IN (SELECT value FROM json_each(?))"
 
         entity_rows = rows(conn, """
             SELECT
@@ -2234,80 +2197,15 @@ def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
             ORDER BY e.name
         """)
 
-        # 1) Personnes à rôle civique : élus, candidats, membres de commission.
-        civic_person_ids = {
-            r["entity_id"] for r in rows(conn, f"""
-                SELECT DISTINCT e.id AS entity_id
-                FROM entities e
-                JOIN relations r ON r.from_id = e.id OR r.to_id = e.id
-                WHERE e.type = 'person'
-                  AND e.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
-                  AND r.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
-                  AND r.relation_type IN ({",".join("?" for _ in RULES["people"]["publish_only_with_relation_types"])})
-                  {pas_ecartee}
-            """, [
-                *sorted(RULES["confidence"]["public"]),
-                *sorted(RULES["confidence"]["public"]),
-                *sorted(RULES["people"]["publish_only_with_relation_types"]),
-                relations_ecartees,
-            ])
-        }
-
-        # 2) Règle de pertinence (arbitrage du 26/07/2026) : une personne devient
-        # publiable si elle dirige une structure ayant reçu de l'argent public.
-        # Publier « qui a touché » sans pouvoir dire « qui la dirige » n'informe
-        # personne ; à l'inverse, le gérant d'une société sans lien avec la
-        # commune reste privé.
-        beneficiaires = beneficiaires_argent_public(conn)
         # Entreprises individuelles : le lien « dirigeant » y est tautologique.
         ei_ids = {r["id"] for r in entity_rows
                   if str(r.get("legal_form_code") or "") == "1000"}
-        eco_types = sorted(RULES["relations"].get("relevance_allowlist", []))
-        pertinent_person_ids: set[int] = set()
-        if eco_types and beneficiaires:
-            marks = ",".join("?" for _ in eco_types)
-            benes = ",".join("?" for _ in beneficiaires)
-            pertinent_person_ids = {
-                r["entity_id"] for r in rows(conn, f"""
-                    SELECT DISTINCT e.id AS entity_id
-                    FROM entities e
-                    JOIN relations r ON r.from_id = e.id OR r.to_id = e.id
-                    WHERE e.type = 'person'
-                      AND e.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
-                      AND r.confidence IN ({",".join("?" for _ in RULES["confidence"]["public"])})
-                      AND r.relation_type IN ({marks})
-                      AND (r.from_id IN ({benes}) OR r.to_id IN ({benes}))
-                      AND r.from_id NOT IN (SELECT entity_id FROM businesses
-                                             WHERE legal_form_code = '1000')
-                      AND r.to_id   NOT IN (SELECT entity_id FROM businesses
-                                             WHERE legal_form_code = '1000')
-                      {pas_ecartee}
-                """, [
-                    *sorted(RULES["confidence"]["public"]),
-                    *sorted(RULES["confidence"]["public"]),
-                    *eco_types,
-                    *sorted(beneficiaires), *sorted(beneficiaires),
-                    relations_ecartees,
-                ])
-            }
-
-        public_person_ids = civic_person_ids | pertinent_person_ids
-        redige, redactions = compilateur_redaction(conn, public_person_ids)
-        noms_publics = noms_des_personnes_publiques(conn, public_person_ids)
-        counters["persons_civic"] = len(civic_person_ids)
-        counters["persons_par_pertinence"] = len(pertinent_person_ids - civic_person_ids)
-        counters["beneficiaires_argent_public"] = len(beneficiaires)
-
-        # Ceux qui siègent au conseil communautaire : seules personnes des
-        # communes C2 publiables en fiche (cf. `publiable_dans_perimetre`).
-        ids_conseil_communautaire = {
-            r["entity_id"] for r in rows(conn, f"""
-                SELECT DISTINCT from_id AS entity_id FROM relations r
-                WHERE relation_type IN ('élu_cc','vice_président_cc','président_cc')
-                  AND confidence IN ('verified','confirmed')
-                  {pas_ecartee}
-            """, [relations_ecartees])
-        }
+        civic_person_ids = faits["civic_person_ids"]
+        beneficiaires = faits["beneficiaires"]
+        public_person_ids = faits["public_person_ids"]
+        redige, redactions = faits["redige"], faits["redactions"]
+        noms_publics = faits["noms_publics"]
+        ids_conseil_communautaire = faits["ids_conseil_communautaire"]
 
         public_entities: list[dict] = []
         entity_exclusions: list[dict] = []
