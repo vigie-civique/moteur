@@ -489,7 +489,9 @@ Deux constats hors des six, rencontrés en chemin :
 - **Hors chantier, à trancher** : les titres BODACC de l'index de recherche
   portent des noms de personnes physiques (« BODACC Créations — <raison
   sociale>, <nom>, <prénoms> — <commune> ») [en ligne]. La règle admet « une mention
-  dans un acte » ; qu'une annonce BODACC en soit un est à confirmer.
+  dans un acte » ; qu'une annonce BODACC en soit un reste à confirmer. Reporté
+  par le porteur le 04/10/2026 (décision 14) : le lot 2 ne change pas ces
+  titres.
 
 ---
 
@@ -609,9 +611,16 @@ dossier.
 - Comparateur : `dossiers.json` (champ `sujet`), `sujets.json` ajouté.
 - En ligne : `/environnement#eau-du-robinet` à Lasalle mène à /dossiers/eau ;
   /dossiers à Saillans liste des sujets.
-- À décider avant : la liste des sujets et leurs identifiants, qui doivent être
-  ceux des dossiers de Lasalle (`dechets`, `eau`, `enfance`, `incendie`,
-  `logement`, `mourir`, `sante`, `telecoms`) ou les remplacer.
+- Tranché : décision 13 — les sujets du registre sont ceux des dossiers de
+  Lasalle, sous leurs identifiants : `dechets`, `eau`, `enfance`, `incendie`,
+  `logement`, `mourir`, `sante`, `telecoms`.
+- Ce que cela demande [code] : cinq sujets ont déjà leur section ancrée
+  (`/environnement#eau-du-robinet`, `#dechets`, `#foret-et-feu` pour
+  `incendie` ; `/territoire#enfance`, `#telecoms`). `logement` a des sections
+  sans ancre (/territoire, « Logement : la part des résidences secondaires »,
+  et /urbanisme) : il faut leur en poser une. `sante` et `mourir` n'ont aucune
+  section de données : le registre doit admettre un sujet sans section, et
+  une instance sans dossier ne les liste pas.
 
 **Lot 9 — Les fichiers sans lecteur.** `event_links.json`,
 `croisement_foncier.json`, la table d'alias de `liens.json` après son cycle,
@@ -642,6 +651,8 @@ Tranchées par le porteur le 04/10/2026.
 | 10 | Relevé et base en désaccord | **Les deux nombres**, avec leur origine |
 | 11 | « Récent » | **Quitte l'en-tête** ; reste sur l'accueil et au pied de page |
 | 12 | Fichiers sans lecteur | **Retirés** : `event_links.json`, `croisement_foncier.json`, puis `conseils.json` après un cycle |
+| 13 | Sujets du registre (lot 8) | **Ceux des dossiers de Lasalle** : `dechets`, `eau`, `enfance`, `incendie`, `logement`, `mourir`, `sante`, `telecoms` |
+| 14 | Noms de personnes dans les titres BODACC de la recherche | **Pas pour le moment** : reporté, hors de cette refonte |
 
 ### Ce que ces choix entraînent
 
@@ -658,5 +669,6 @@ Tranchées par le porteur le 04/10/2026.
 - **Le nombre en attente (décision 6)** ne dépend pas que de la forme : il faut
   d'abord que l'extraction dépose ses candidats en base (lot 4 b).
 - **Reste ouvert, sans urgence** : la graphie d'acheteur de la source reste-t-elle
-  dans les données ouvertes (lot 3) ? Et, hors chantier, les noms de personnes
-  physiques dans les titres BODACC de l'index (§ 4).
+  dans les données ouvertes (lot 3) ? Par défaut, oui.
+- **Reporté** : les noms de personnes physiques dans les titres BODACC de
+  l'index de recherche (§ 4) ne sont pas traités pour le moment (décision 14).
