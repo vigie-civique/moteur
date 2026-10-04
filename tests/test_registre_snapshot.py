@@ -8,10 +8,16 @@ laisser le registre dire autre chose que le code.
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
-from scripts.snapshot.etapes import ETAPES, FOURNIS
-from scripts.snapshot.registre import Etape, RegistreIncoherent, executer, incoherences
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from scripts.snapshot.etapes import ETAPES, FOURNIS  # noqa: E402
+from scripts.snapshot.registre import (Etape, RegistreIncoherent, executer,  # noqa: E402
+                                       incoherences)
 
 
 def test_le_registre_du_snapshot_est_coherent():
@@ -50,3 +56,19 @@ def test_l_executeur_donne_a_chaque_etape_exactement_ce_qu_elle_declare():
                       Etape("b", b, lit=("a",), complete=("journal",), produit=("b",))],
                      {"journal": vus})
     assert faits["b"] == 2 and vus == [1]
+
+
+def test_chaque_fichier_du_snapshot_de_reference_a_une_etape_et_une_seule():
+    """Le registre dit quelle étape écrit chaque fichier : le manifeste du
+    snapshot s'appuiera dessus. Un fichier que personne ne revendique, ou que
+    deux étapes revendiquent, est un registre qui ment."""
+    from fnmatch import fnmatchcase
+
+    from snapshot_reference import REFERENCE
+
+    for f in sorted(REFERENCE.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(REFERENCE).as_posix()
+        auteurs = [e.nom for e in ETAPES if any(fnmatchcase(rel, m) for m in e.ecrit)]
+        assert len(auteurs) == 1, f"{rel} : {auteurs or 'aucune étape'}"
