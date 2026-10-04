@@ -12,6 +12,7 @@ from scripts.snapshot.fiches import etape_fiches
 from scripts.snapshot.perimetre import etape_perimetre
 from scripts.snapshot.personnes import etape_personnes_publiques
 from scripts.snapshot.registre import Etape
+from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
 
 #: Les faits que `build_snapshot()` donne à la première étape : la connexion
@@ -34,4 +35,8 @@ ETAPES: list[Etape] = [
           complete=("exclusions",),
           produit=("entity_rows", "ei_ids", "public_entities", "entity_exclusions",
                    "ecartees_du_perimetre", "location_quality", "public_ids")),
+    Etape("relations", etape_relations,
+          lit=("conn", "revue", "public_ids", "civic_person_ids", "beneficiaires", "ei_ids"),
+          complete=("exclusions",),
+          produit=("relation_rows", "public_relations", "relation_exclusions")),
 ]
