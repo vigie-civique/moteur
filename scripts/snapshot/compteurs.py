@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from collections import Counter
 
+# Ce que ce site EST, pour un lecteur qui y arrive sans rien savoir. Publié
+# DANS LES DONNÉES et pas seulement dans le gabarit : une mention qui
+# n'existe que dans la page disparaît de tout ce qui n'est pas la page —
+# un export, une API, un moissonneur, un lecteur de flux.
 from collectors.config import STATUT
 from scripts.snapshot.actes import TYPES_DELIBERES
 from scripts.snapshot.socle import DB_PATH, ROOT, RULES, rows, table_exists, write_json

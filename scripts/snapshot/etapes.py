@@ -19,6 +19,7 @@ from scripts.snapshot.corrections import etape_corrections
 from scripts.snapshot.couverture import etape_compteurs_provisoires, etape_couverture
 from scripts.snapshot.democratie import (etape_elections, etape_elus, etape_intercommunalite,
                                          etape_transparence)
+from scripts.snapshot.dictionnaire import etape_dictionnaire
 from scripts.snapshot.ecritures import (COUCHES, etape_ecrire_actes, etape_ecrire_acteurs,
                                         etape_ecrire_couches, etape_ecrire_finances,
                                         etape_ecrire_flux)
@@ -193,4 +194,6 @@ ETAPES: list[Etape] = [
     Etape("revue_interne", etape_revue_interne,
           lit=("graphe", "stats", "entity_exclusions", "relation_exclusions",
                "event_exclusions")),
+    Etape("dictionnaire", etape_dictionnaire,
+          lit=("out", "stats", "location_quality"), ecrit=("README.md",)),
 ]

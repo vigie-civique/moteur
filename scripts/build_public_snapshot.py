@@ -13,26 +13,95 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 import json
-import re
-import sqlite3
 import sys
-import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 
-# Le socle — périmètre, règles, horloge, lecture de la base, écriture d'un
-# fichier — vit dans `scripts/snapshot/socle.py`. Ses noms restent importables
-# d'ici : `api.py`, `scripts/publication.py` et les essais les y cherchent.
+# Le code du snapshot vit dans le paquet `scripts/snapshot/` : une étape par
+# sortie ou famille de sorties, déclarées dans l'ordre dans
+# `scripts/snapshot/etapes.py`. Ce fichier en reste la façade : `api.py`,
+# `scripts/publication.py` et les essais continuent d'importer d'ici les noms
+# qu'ils y ont toujours trouvés, réexportés ci-dessous.
+from scripts.snapshot.actes import (  # noqa: E402,F401
+    ACCORDE_RE,
+    _annee_de_trace,
+    DEMANDE_RE,
+    domaine,
+    montant_de_la_decision,
+    MONTANT_MAX,
+    MONTANT_MIN,
+    portee_evenement,
+    PORTEE_PAR_PERIMETRE,
+    PORTEE_PAR_TYPE,
+    provenance,
+    public_event_detail,
+    TYPES_DELIBERES,
+    TYPES_SEANCE,
+    write_act_extracts,
+)
+from scripts.snapshot.argent import (  # noqa: E402,F401
+    beneficiaire_inconnu,
+    _commune_entity_id,
+    dedupliquer_flux,
+    delier_extremites,
+    delier_renvois_morts,
+    flux_extremites_publiees,
+    statut_extremites,
+)
+from scripts.snapshot.compteurs import mesurer_replicabilite  # noqa: E402,F401
+from scripts.snapshot.conflits import deports_par_deliberation, export_conflits  # noqa: E402,F401
+from scripts.snapshot.corrections import (  # noqa: E402,F401
+    export_corrections,
+    JOURNAL_PATH,
+    lire_journal_corrections,
+)
+from scripts.snapshot.couverture import export_couverture, STEP_META  # noqa: E402,F401
+from scripts.snapshot.en_clair import export_dossiers, export_en_clair  # noqa: E402,F401
+from scripts.snapshot.fiches import (  # noqa: E402,F401
+    comptes_syndicats_par_entite,
+    domain_for,
+    etat_activite,
+    FIN_DACTIVITE,
+    in_center_box,
+    in_commune_bbox,
+    load_confirmed_urls,
+    NAF_IMMOBILIER,
+    nature_entreprise,
+    public_entity,
+    write_entity_bundles,
+)
+from scripts.snapshot.perimetre import (  # noqa: E402,F401
+    exiger_perimetre_classe,
+    PerimetreNonClasse,
+    publiable_dans_perimetre,
+    TYPES_INSTITUTIONNELS,
+)
+from scripts.snapshot.personnes import beneficiaires_argent_public  # noqa: E402,F401
+from scripts.snapshot.popolo import (  # noqa: E402,F401
+    build_popolo,
+    POPOLO_ORG_CLASS,
+    POPOLO_ROLES,
+)
+from scripts.snapshot.recherche import write_recherche_index, write_search_index  # noqa: E402,F401
+from scripts.snapshot.relations import (  # noqa: E402,F401
+    is_public_relation,
+    RELATION_META_PUBLIQUE,
+    relation_meta_publique,
+    relation_pertinente,
+    sort_du_type,
+)
+from scripts.snapshot.revue import (  # noqa: E402,F401
+    appliquer_revue,
+    charger_revue,
+    TYPES_REVUS,
+)
 from scripts.snapshot.socle import (  # noqa: E402,F401
     COMMUNES_EPCI,
     DB_PATH,
@@ -40,29 +109,35 @@ from scripts.snapshot.socle import (  # noqa: E402,F401
     DEPARTEMENT,
     EPCI_NOM_C2,
     EPCI_SIREN_C2,
-    INSEE_C1,
-    RULES,
-    RULES_PATH,
-    TELECOMS_RAYON_KM,
-    URL_COMMUNE,
-    URL_EPCI,
-    VARIABLE_HORLOGE,
     get_db,
+    INSEE_C1,
     jour_utc,
     lire_horloge,
     load_rules,
     relation_exists,
     row,
     rows,
+    RULES,
+    RULES_PATH,
     safe_url,
     table_exists,
+    TELECOMS_RAYON_KM,
+    URL_COMMUNE,
+    URL_EPCI,
+    VARIABLE_HORLOGE,
     write_json,
     write_json_compact,
 )
-from scripts.snapshot.popolo import (  # noqa: E402,F401
-    build_popolo,
-    POPOLO_ORG_CLASS,
-    POPOLO_ROLES,
+from scripts.snapshot.territoire import (  # noqa: E402,F401
+    DECHETS_INDICATEURS,
+    export_dechets,
+    export_eau_potable,
+    export_enfance,
+    export_incendie,
+    export_reperes_fiscaux,
+    export_telecoms,
+    INSEE_PUBLIABLES,
+    RUPTURE_CUIVRE,
 )
 from scripts.snapshot.textes import (  # noqa: E402,F401
     ACRONYMES,
@@ -79,93 +154,8 @@ from scripts.snapshot.textes import (  # noqa: E402,F401
     texte_publiable,
     TITRES_VIDES,
 )
-from scripts.snapshot.perimetre import (  # noqa: E402,F401
-    exiger_perimetre_classe,
-    PerimetreNonClasse,
-    publiable_dans_perimetre,
-    TYPES_INSTITUTIONNELS,
-)
-from scripts.snapshot.revue import (  # noqa: E402,F401
-    appliquer_revue,
-    charger_revue,
-    TYPES_REVUS,
-)
-from scripts.snapshot.personnes import beneficiaires_argent_public  # noqa: E402,F401
-from scripts.snapshot.fiches import (  # noqa: E402,F401
-    FIN_DACTIVITE,
-    NAF_IMMOBILIER,
-    domain_for,
-    etat_activite,
-    in_center_box,
-    in_commune_bbox,
-    load_confirmed_urls,
-    nature_entreprise,
-    public_entity,
-)
-from scripts.snapshot.relations import (  # noqa: E402,F401
-    RELATION_META_PUBLIQUE,
-    is_public_relation,
-    relation_meta_publique,
-    relation_pertinente,
-    sort_du_type,
-)
-from scripts.snapshot.actes import (  # noqa: E402,F401
-    ACCORDE_RE,
-    DEMANDE_RE,
-    domaine,
-    PORTEE_PAR_PERIMETRE,
-    PORTEE_PAR_TYPE,
-    portee_evenement,
-    _annee_de_trace,
-    MONTANT_MAX,
-    MONTANT_MIN,
-    TYPES_DELIBERES,
-    TYPES_SEANCE,
-    montant_de_la_decision,
-    provenance,
-    public_event_detail,
-)
-from scripts.snapshot.argent import (  # noqa: E402,F401
-    beneficiaire_inconnu,
-    _commune_entity_id,
-    dedupliquer_flux,
-    delier_extremites,
-    delier_renvois_morts,
-    flux_extremites_publiees,
-    statut_extremites,
-)
-from scripts.snapshot.territoire import (  # noqa: E402,F401
-    DECHETS_INDICATEURS,
-    export_reperes_fiscaux,
-    export_enfance,
-    export_telecoms,
-    INSEE_PUBLIABLES,
-    RUPTURE_CUIVRE,
-    export_dechets,
-    export_eau_potable,
-    export_incendie,
-)
-from scripts.snapshot.compteurs import mesurer_replicabilite  # noqa: E402,F401
-from scripts.snapshot.couverture import STEP_META, export_couverture  # noqa: E402,F401
-from scripts.snapshot.corrections import (  # noqa: E402,F401
-    JOURNAL_PATH,
-    export_corrections,
-    lire_journal_corrections,
-)
-from scripts.snapshot.en_clair import export_dossiers, export_en_clair  # noqa: E402,F401
-from scripts.snapshot.conflits import deports_par_deliberation, export_conflits  # noqa: E402,F401
-from scripts.snapshot.fiches import comptes_syndicats_par_entite, write_entity_bundles  # noqa: E402,F401
-from scripts.snapshot.actes import write_act_extracts  # noqa: E402,F401
-from scripts.snapshot.recherche import write_recherche_index, write_search_index  # noqa: E402,F401
 from scripts.snapshot.etapes import ETAPES  # noqa: E402
 from scripts.snapshot.registre import executer  # noqa: E402
-from collectors.verdict import ecarte, verdict_de  # noqa: E402
-# Ce que ce site EST, pour un lecteur qui y arrive sans rien savoir. Publié
-# DANS LES DONNÉES et pas seulement dans le gabarit : une mention qui
-# n'existe que dans la page disparaît de tout ce qui n'est pas la page —
-# un export, une API, un moissonneur, un lecteur de flux.
-from collectors.config import STATUT  # noqa: E402
-from collectors.etat_flux import etat_du_flux  # noqa: E402
 
 
 def synchroniser_site_public(src: Path, root: Path) -> dict:
@@ -241,235 +231,20 @@ def synchroniser_site_public(src: Path, root: Path) -> dict:
 # correctif. Le jour où les migrations existent, ce filtre devient inutile —
 # et il ne fera alors que confirmer un jeu déjà propre.
 def build_snapshot(out: Path, horloge: datetime | None = None) -> dict:
+    """Construit le snapshot public dans `out` ; rend ses compteurs (`stats.json`).
+
+    Les étapes, ce qu'elles lisent, produisent et écrivent, et leur ordre sont
+    déclarés dans `scripts/snapshot/etapes.py` : cette fonction ne fait que
+    les exécuter sur une connexion en lecture seule.
+    """
     # Avant toute lecture de la base : l'heure de cette construction, pour
     # tous les fichiers. Cf. `lire_horloge`.
     horloge = horloge or lire_horloge()
     conn = get_db()
     try:
-        # Les étapes déclarées dans `scripts/snapshot/etapes.py`, dans l'ordre
-        # de la liste. Ce qui suit leur exécution n'est pas encore découpé : il
-        # reprend leurs produits sous les noms qu'il leur a toujours donnés.
         faits = executer(ETAPES, {"conn": conn, "out": out, "horloge": horloge,
                                   "exclusions": defaultdict(Counter)})
-        revue = faits["revue"]
-        exclusions = faits["exclusions"]
-
-
-        civic_person_ids = faits["civic_person_ids"]
-        beneficiaires = faits["beneficiaires"]
-        public_person_ids = faits["public_person_ids"]
-        redige, redactions = faits["redige"], faits["redactions"]
-        noms_publics = faits["noms_publics"]
-        ids_conseil_communautaire = faits["ids_conseil_communautaire"]
-
-        entity_rows = faits["entity_rows"]
-        ei_ids = faits["ei_ids"]
-        public_entities = faits["public_entities"]
-        entity_exclusions = faits["entity_exclusions"]
-        ecartees_du_perimetre = faits["ecartees_du_perimetre"]
-        location_quality = faits["location_quality"]
-        public_ids = faits["public_ids"]
-
-        relation_rows = faits["relation_rows"]
-        public_relations = faits["public_relations"]
-        relation_exclusions = faits["relation_exclusions"]
-
-        event_rows = faits["event_rows"]
-        public_events = faits["public_events"]
-        event_exclusions = faits["event_exclusions"]
-        textes_extraits = faits["textes_extraits"]
-        masquages = faits["masquages"]
-
-        public_event_ids = {e["id"] for e in public_events}
-        public_links = faits["public_links"]
-        perimetre_par_entite = faits["perimetre_par_entite"]
-
-        index_actes = faits["index_actes"]
-        affiches = faits["affiches"]
-        cles_stats = faits["cles_stats"]
-
-        flow_rows = faits["flow_rows"]
-        public_flows = faits["public_flows"]
-
-        public_layers = faits["public_layers"]
-
-        budget_annuel = faits["budget_annuel"]
-        budget_annexe = faits["budget_annexe"]
-        ofgl_data = faits["ofgl_data"]
-        budget_vote = faits["budget_vote"]
-        dvf_data = faits["dvf_data"]
-        marches_data = faits["marches_data"]
-        approbations_data = faits["approbations_data"]
-
-        stats = faits["stats"]
-
-        elections = faits["elections"]
-
-        fiscalite = faits["fiscalite"]
-
-        elus = faits["elus"]
-
-        urbanisme_public = faits["urbanisme_public"]
-        adresses_retirees = faits["adresses_retirees"]
-
-        croisement_foncier = faits["croisement_foncier"]
-
-        actualite = faits["actualite"]
-        a_venir = faits["a_venir"]
-        # ── Dictionnaire de données ──────────────────────────────────────────
-        # Servi À CÔTÉ des JSON, et régénéré à chaque exécution : un README
-        # écrit à la main se périme en silence — celui d'avant le 12/08/2026
-        # annonçait encore 2 876 entités publiques pour 1 807 réelles, et ne
-        # disait rien du contenu des fichiers. Un jeu de données sans
-        # dictionnaire n'est pas réutilisable, quelle que soit sa qualité.
-        markdown = [
-            f"# Données publiques — {RULES['project']['public_name']}",
-            "",
-            f"Généré le {stats['generated_at']} depuis la base de travail, "
-            "sans la modifier.",
-            "",
-            "Ces fichiers sont le snapshot public : ce que le site sert, et rien "
-            "d'autre. Ils sont produits par `scripts/build_public_snapshot.py` "
-            "et contrôlés par `scripts/verify_snapshot.py`, qui refuse de "
-            "publier tout type de relation absent de l'allowlist.",
-            "",
-            "## Licence",
-            "",
-            f"Ce jeu de données est publié sous **{RULES['outputs']['license']}** "
-            f"([Open Database License]({RULES['outputs']['license_url']})).",
-            "",
-            "Vous pouvez le copier, le modifier et l'utiliser, y compris "
-            "commercialement, à trois conditions : **citer** la source, "
-            "**partager à l'identique** toute base dérivée que vous "
-            "redistribuez, et ne pas la diffuser sous verrou technique sans "
-            "en fournir aussi une version libre.",
-            "",
-            "Ce choix découle des sources : 333 des entités publiées sont des "
-            "points d'intérêt OpenStreetMap et une large part des coordonnées "
-            "vient d'un géocodage OSM. La contribution est substantielle et "
-            "fondue dans le jeu — c'est donc une base dérivée au sens de "
-            "l'ODbL, et le partage à l'identique s'applique.",
-            "",
-            "### Attribution",
-            "",
-            f"> {RULES['outputs']['attribution']}",
-            "",
-        ]
-        markdown += [f"- {a}" for a in RULES["outputs"]["source_attributions"]]
-        markdown += [
-            "",
-            "Le **site** et ses visualisations sont un « Produced Work » au "
-            "sens de l'ODbL : les reprendre demande l'attribution, pas le "
-            "partage à l'identique. Le **code** relève d'une licence distincte "
-            "(MIT) — l'ODbL ne porte pas sur le logiciel.",
-            "",
-            "**La licence ne dit rien du RGPD.** Ces données restent soumises "
-            "au droit des données personnelles : une réutilisation doit avoir "
-            "sa propre base légale.",
-            "",
-            "## Réplication",
-            "",
-            "Ce modèle est conçu pour être rejoué sur une autre commune. Le "
-            "périmètre se pilote dans `collectors/config.py` et nulle part "
-            "ailleurs : commune, intercommunalité, communes membres. Les "
-            "collecteurs, le schéma et le site n'ont pas à être touchés.",
-            "",
-            "## Fichiers",
-            "",
-            "| Fichier | Contenu | Clé racine |",
-            "|---|---|---|",
-            "| `entities.json` | Acteurs publiés : personnes, entreprises, "
-            "associations, services, lieux | `entities` |",
-            "| `relations.json` | Liens entre acteurs, datés et sourcés | "
-            "`relations` |",
-            "| `popolo.json` | Les **mandats** au format [Popolo]"
-            "(https://www.popoloproject.com/) — format d'interopérabilité | "
-            "`persons`, `organizations`, `memberships`, `areas` |",
-            "| `events.json` | Actes : délibérations, arrêtés, annonces | "
-            "`events` |",
-            "| `event_links.json` | Quel acteur est cité dans quel acte | "
-            "`links` |",
-            "| `flows.json` | Flux financiers publics (subventions, "
-            "participations) | `flows` |",
-            "| `marches.json` | Marchés publics et attributaires | `marches` |",
-            "| `budget.json` · `budget_vote.json` · `ofgl.json` | Budgets "
-            "votés et agrégats financiers | `annuel`/`annexe`, `budget_vote`, "
-            "`ofgl` |",
-            "| `intercommunalite.json` | Compétences, délégués, sièges de "
-            "l'EPCI | racine |",
-            "| `elus_rne.json` | Conseils municipaux (Répertoire National des "
-            "Élus) | `elus` |",
-            "| `elections.json` | Résultats des municipales par commune | "
-            "`resultats` |",
-            "| `fiscalite.json` · `impots` | Taux d'imposition comparés, et "
-            "leur rang parmi les communes | `taux`, `reperes` |",
-            "| `dvf.json` | Transactions immobilières (DVF) | `dvf` |",
-            "| `urbanisme.json` | Autorisations d'urbanisme | `autorisations` |",
-            "| `environnement.json` | Eau (prix, contrôle sanitaire), déchets, "
-            "forêt et feux, risques, ICPE, catastrophes naturelles | racine |",
-            "| `territoire.json` | Indicateurs INSEE, équipements, télécoms, "
-            "écoles et accueil du jeune enfant | racine |",
-            "| `conflits.json` | Cas de conflits d'intérêts potentiels | "
-            "`cas` |",
-            "| `stats.json` | Compteurs et paramètres de publication | racine |",
-            "| `layers/*.geojson` | Couches cartographiques | FeatureCollection |",
-            "| `entite/<id>.json` | Fiche complète d'un acteur | racine |",
-            "| `extrait/<id>.json` | Texte d'une délibération, lu dans le "
-            "document | `texte` |",
-            "| `liens.json` | Clé datée d'un acte (`c-2021-41`) → les dossiers "
-            "et séances en clair qui le citent ; table d'alias `#a{id}` → clé | "
-            "`actes`, `alias` |",
-            "| `lacunes.json` | Questions ouvertes des dossiers publiés et "
-            "citations sans acte publié | `lacunes` |",
-            "| `personnes_morales.json` | Par clé d'acte, les personnes morales "
-            "publiées qu'il concerne (SIREN) | `actes` |",
-            "",
-            "Chaque fichier à liste porte aussi un `total`.",
-            "",
-            "## Ce qui n'est jamais publié",
-            "",
-            "- les affirmations de niveau `probable` ou `hypothesis` — seuls "
-            f"`{'`, `'.join(sorted(RULES['confidence']['public']))}` sortent ;",
-            "- les liens de famille, de domicile partagé et les doublons "
-            f"présumés (marqueurs : `{'`, `'.join(sorted(RULES['relations']['private_markers']))}`) ;",
-            "- les coordonnées des personnes, et les adresses des demandeurs "
-            "particuliers en urbanisme ;",
-            "- la date de naissance des élus (le RNE la diffuse, pas nous) ;",
-            "- dans le texte des délibérations, le domicile, la date et le lieu "
-            "de naissance d'une personne — masqués ; pour une personne publique, "
-            "la date de naissance devient son âge à la date de l'acte. Les noms, "
-            "eux, sont cités : un acte officiel cite ses particuliers ;",
-            "- les conseils municipaux des communes hors intercommunalité.",
-            "",
-            "## Compteurs",
-            "",
-            f"- entités : {stats['entities_public']} publiées "
-            f"sur {stats['entities_total_private']} en base",
-            f"- relations : {stats['relations_public']} sur "
-            f"{stats['relations_total_private']}",
-            f"- actes : {stats['events_public']} sur "
-            f"{stats['events_total_private']}",
-            f"- points cartographiés : {stats['map_features_public']}",
-            f"- sites web vérifiés : {stats['urls_public_confirmed']}",
-            "",
-            "## Qualité de localisation",
-            "",
-        ]
-        for key, count in sorted(location_quality.items()):
-            markdown.append(f"- `{key}` : {count}")
-        markdown.extend([
-            "",
-            "## Exclusions — pourquoi une donnée n'est pas là",
-            "",
-        ])
-        for section, counts in stats["exclusions"].items():
-            markdown.append(f"### {section}")
-            for reason, count in sorted(counts.items()):
-                markdown.append(f"- `{reason}` : {count}")
-            markdown.append("")
-        (out / "README.md").write_text("\n".join(markdown), encoding="utf-8")
-
-        return stats
+        return faits["stats"]
     finally:
         conn.close()
 
