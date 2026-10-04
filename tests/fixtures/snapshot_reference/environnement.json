@@ -1,0 +1,16 @@
+{
+  "eau_stations": [],
+  "sispea_services": [],
+  "sispea_indicateurs": [],
+  "eau_series": [],
+  "eau_couverture": [],
+  "eau_qualification": [],
+  "dpe_agregats": [],
+  "dpe_couverture": [],
+  "risques": [],
+  "icpe": [],
+  "catnat": [],
+  "eau_controle": null,
+  "dechets": null,
+  "incendie": null
+}

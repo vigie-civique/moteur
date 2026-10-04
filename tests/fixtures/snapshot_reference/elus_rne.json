@@ -1,0 +1,33 @@
+{
+  "elus": [
+    {
+      "mandat": "cm",
+      "insee": "99001",
+      "commune": "Testonville",
+      "nom": "ÉPREUVE",
+      "prenom": "Élue",
+      "fonction": null,
+      "date_debut_mandat": "2026-03-22",
+      "date_debut_fonction": null,
+      "epci_nom": null,
+      "entity_id": 5,
+      "fiche": true
+    },
+    {
+      "mandat": "cm",
+      "insee": "99002",
+      "commune": "Voisinbourg",
+      "nom": "VOISIN",
+      "prenom": "Conseiller",
+      "fonction": null,
+      "date_debut_mandat": "2026-03-22",
+      "date_debut_fonction": null,
+      "epci_nom": null,
+      "entity_id": 6,
+      "fiche": false
+    }
+  ],
+  "total": 2,
+  "total_avec_fiche": 1,
+  "note_fiche": "`fiche: false` signale un élu publié sans page dédiée : sa commune relève de l'intercommunalité et il ne siège pas au conseil communautaire. Ne pas construire de lien /entite/<entity_id> pour ces lignes."
+}

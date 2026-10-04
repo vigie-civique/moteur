@@ -1,0 +1,13 @@
+{
+ "actes": {
+  "cc-2025-12": [
+   {
+    "siren": "999000001",
+    "nom": "Boulangerie d'épreuve",
+    "entity_id": 1
+   }
+  ]
+ },
+ "total": 1,
+ "_note": "Personnes morales publiées que chaque acte concerne, par SIREN. Aucune personne physique. Préparé pour la fédération des vigies (docs/federation.md), non branché."
+}
