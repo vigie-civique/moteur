@@ -1,0 +1,16 @@
+{
+  "cas": [],
+  "total": 0,
+  "deports_repertories": 0,
+  "methode": {
+    "source_liens": "relations vérifiées entre une personne à mandat électif et une structure qu'elle dirige",
+    "source_versements": "subventions et flux financiers de la commune (périmètre 'detail', statut 'réalisé')",
+    "source_deports": "mentions « ne participe pas » relevées dans les comptes rendus du conseil municipal",
+    "exclusions": [
+      "adresses partagées",
+      "liens familiaux présumés",
+      "relations probable / hypothesis"
+    ],
+    "avertissement": "Un lien n'est pas une faute. La loi n'interdit pas à un élu de diriger une association subventionnée : elle lui impose de ne pas participer au vote. L'absence de déport constaté ici peut simplement signifier que le compte rendu correspondant n'a pas encore été exploité."
+  }
+}

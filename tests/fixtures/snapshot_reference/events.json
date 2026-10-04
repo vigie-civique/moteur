@@ -1,0 +1,242 @@
+{
+  "events": [
+    {
+      "id": 1,
+      "type": "election",
+      "date": "2026-01-15",
+      "date_end": null,
+      "title": "Scrutin d'épreuve",
+      "source": "interieur",
+      "source_url": null,
+      "page_url": null,
+      "pieces": null,
+      "pdf_url": null,
+      "provenance": "primaire",
+      "document": "aucun",
+      "traitement": "structure",
+      "portee": "commune"
+    },
+    {
+      "id": 8,
+      "type": "deliberation_cc",
+      "date": "2025-04-02",
+      "date_end": null,
+      "title": "Redevance pour pollution domestique",
+      "source": "epci.exemple.invalid",
+      "source_url": "https://epci.exemple.invalid/actes/2025-04-02-12.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://epci.exemple.invalid/actes/2025-04-02-12.pdf",
+      "vote": {
+        "pour": null,
+        "contre": null,
+        "abstention": null,
+        "unanimite": true
+      },
+      "montant_principal": 2064.0,
+      "montants": [
+        2064.0
+      ],
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "structure",
+      "portee": "intercommunalite",
+      "cle": "cc-2025-12",
+      "ancre": "cc-2025-12"
+    },
+    {
+      "id": 3,
+      "type": "conseil_communautaire",
+      "date": "2025-04-02",
+      "date_end": null,
+      "title": "Conseil communautaire du 2 avril 2025",
+      "source": "epci.exemple.invalid",
+      "source_url": "https://epci.exemple.invalid/pv/2025-04-02.pdf",
+      "page_url": null,
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2025-04-02",
+          "url": "https://epci.exemple.invalid/pv/2025-04-02.pdf"
+        }
+      ],
+      "pdf_url": "https://epci.exemple.invalid/pv/2025-04-02.pdf",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "structure",
+      "portee": "intercommunalite",
+      "cle": "cc-2025-04-02",
+      "ancre": "cc-2025-04-02"
+    },
+    {
+      "id": 9,
+      "type": "deliberation_cc",
+      "date": "2024-06-20",
+      "date_end": null,
+      "title": "Adhésion au service commun d'instruction",
+      "source": "epci.exemple.invalid",
+      "source_url": "https://epci.exemple.invalid/actes/2024-06-20-12.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://epci.exemple.invalid/actes/2024-06-20-12.pdf",
+      "vote": {
+        "pour": 30,
+        "contre": 1,
+        "abstention": 0,
+        "unanimite": false
+      },
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "structure",
+      "portee": "intercommunalite",
+      "cle": "cc-2024-12",
+      "ancre": "cc-2024-12"
+    },
+    {
+      "id": 7,
+      "type": "deliberation",
+      "date": "2023-03-06",
+      "date_end": null,
+      "title": "Compte administratif 2022 de la régie de l'eau",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/actes/2023-03-06-sn.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://exemple.invalid/actes/2023-03-06-sn.pdf",
+      "vote": {
+        "pour": null,
+        "contre": null,
+        "abstention": null,
+        "unanimite": true
+      },
+      "montant_principal": 27980.0,
+      "montants": [
+        27980.0
+      ],
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2023-03-06-t42d6b626",
+      "cle_faible": true,
+      "ancre": "a7"
+    },
+    {
+      "id": 6,
+      "type": "deliberation",
+      "date": "2022-05-11",
+      "date_end": null,
+      "title": "Tarifs de l'eau : abonnement et part variable",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/actes/2022-05-11-41.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://exemple.invalid/actes/2022-05-11-41.pdf",
+      "vote": {
+        "pour": null,
+        "contre": null,
+        "abstention": null,
+        "unanimite": true
+      },
+      "montant_principal": 45.0,
+      "montants": [
+        45.0
+      ],
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2022-41",
+      "ancre": "c-2022-41"
+    },
+    {
+      "id": 5,
+      "type": "deliberation",
+      "date": "2021-04-14",
+      "date_end": null,
+      "title": "Budget primitif 2021 du service de l'eau (relu)",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/actes/2021-04-14-42.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://exemple.invalid/actes/2021-04-14-42.pdf",
+      "vote": {
+        "pour": null,
+        "contre": null,
+        "abstention": null,
+        "unanimite": true
+      },
+      "montant_principal": 61500.0,
+      "montants": [
+        61500.0
+      ],
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2021-42",
+      "ancre": "c-2021-42"
+    },
+    {
+      "id": 4,
+      "type": "deliberation",
+      "date": "2021-04-14",
+      "date_end": null,
+      "title": "Protection des captages : périmètres et servitudes",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/actes/2021-04-14-41.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://exemple.invalid/actes/2021-04-14-41.pdf",
+      "vote": {
+        "pour": 13,
+        "contre": 0,
+        "abstention": 2,
+        "unanimite": false
+      },
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2021-41",
+      "ancre": "c-2021-41"
+    },
+    {
+      "id": 2,
+      "type": "conseil_municipal",
+      "date": "2021-04-14",
+      "date_end": null,
+      "title": "Conseil municipal du 14 avril 2021",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/pv/2021-04-14.pdf",
+      "page_url": null,
+      "pieces": [
+        {
+          "nature": "proces_verbal",
+          "libelle": "PV du 2021-04-14",
+          "url": "https://exemple.invalid/pv/2021-04-14.pdf"
+        }
+      ],
+      "pdf_url": "https://exemple.invalid/pv/2021-04-14.pdf",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2021-04-14",
+      "ancre": "c-2021-04-14"
+    }
+  ],
+  "total": 9
+}

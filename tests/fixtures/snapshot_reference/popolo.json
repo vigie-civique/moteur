@@ -1,0 +1,77 @@
+{
+  "@context": "https://www.popoloproject.com/contexts/organization.jsonld",
+  "generated_at": "2026-10-04T10:01:10",
+  "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution": "",
+  "source_attributions": [
+    "Contient des informations d'OpenStreetMap, mises à disposition sous Open Database License (ODbL) — © les contributeurs OpenStreetMap",
+    "Contient des données publiques sous Licence Ouverte v2 (Etalab) : SIRENE et indicateurs INSEE, RNA, DVF, BODACC, OFGL et DGFiP, DECP et BOAMP, Répertoire National des Élus, résultats électoraux du ministère de l'Intérieur, BANATIC",
+    "Contient des données IGN (géocodage) sous Licence Ouverte v2"
+  ],
+  "note": "Vue Popolo (popoloproject.com) des mandats publiés. Sous-ensemble de entities.json et relations.json, exporté dans un vocabulaire partagé pour être réutilisable hors de ce projet. Les liens économiques et les lieux n'entrent pas dans ce modèle et restent dans les fichiers d'origine. Pas de VoteEvent : les procès-verbaux publiés ne donnent pas les votes nominatifs.",
+  "persons": [
+    {
+      "id": "person/5",
+      "name": "Élue de Testonville",
+      "identifiers": [
+        {
+          "scheme": "vigie-civique",
+          "identifier": "5"
+        }
+      ],
+      "links": []
+    }
+  ],
+  "organizations": [
+    {
+      "id": "organization/1",
+      "name": "Boulangerie d'épreuve",
+      "other_names": [],
+      "classification": "company",
+      "area_id": "area/Testonville",
+      "founding_date": null,
+      "identifiers": [
+        {
+          "scheme": "vigie-civique",
+          "identifier": "1"
+        }
+      ],
+      "links": []
+    },
+    {
+      "id": "organization/4",
+      "name": "Mairie d'épreuve",
+      "other_names": [],
+      "classification": "public_body",
+      "area_id": "area/Testonville",
+      "founding_date": null,
+      "identifiers": [
+        {
+          "scheme": "vigie-civique",
+          "identifier": "4"
+        }
+      ],
+      "links": []
+    }
+  ],
+  "memberships": [
+    {
+      "id": "membership/1",
+      "person_id": "person/5",
+      "organization_id": "organization/4",
+      "role": "Maire",
+      "start_date": null,
+      "end_date": null,
+      "sources": [],
+      "vigie_confidence": "verified"
+    }
+  ],
+  "areas": [
+    {
+      "id": "area/Testonville",
+      "name": "Testonville",
+      "classification": "commune"
+    }
+  ]
+}

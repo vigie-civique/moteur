@@ -1,0 +1,58 @@
+{
+  "arrete_le": "2026-10-04T10:01:09",
+  "sources": [
+    {
+      "source": "exemple.invalid",
+      "actes": 5,
+      "debut": "2021-04-14",
+      "fin": "2023-03-06",
+      "avec_document": 5,
+      "a_venir": 0,
+      "annonce_jusqu_au": null
+    },
+    {
+      "source": "epci.exemple.invalid",
+      "actes": 3,
+      "debut": "2024-06-20",
+      "fin": "2025-04-02",
+      "avec_document": 3,
+      "a_venir": 0,
+      "annonce_jusqu_au": null
+    },
+    {
+      "source": "interieur",
+      "actes": 1,
+      "debut": "2026-01-15",
+      "fin": "2026-01-15",
+      "avec_document": 0,
+      "a_venir": 0,
+      "annonce_jusqu_au": null
+    }
+  ],
+  "collecteurs": {},
+  "actes_avec_piece": 8,
+  "actes_total": 9,
+  "part_avec_piece": 88.9,
+  "lacunes_connues": [
+    {
+      "sujet": "Documents des délibérations",
+      "etat": "partiel",
+      "detail": "La très grande majorité des actes renvoient vers la page du compte rendu qui les contient, et non vers la délibération elle-même. Il faut donc chercher le passage dans le document."
+    },
+    {
+      "sujet": "Mandatures antérieures à 2020",
+      "etat": "incomplet",
+      "detail": "L'historique des mandats est lacunaire avant 2020, ce qui empêche de dire si une personne était élue à la date d'un versement ancien. Les situations concernées sont signalées comme telles."
+    },
+    {
+      "sujet": "Dirigeants d'associations",
+      "etat": "incomplet",
+      "detail": "Aucune source ouverte ne publie les dirigeants d'associations. Ceux qui figurent ici proviennent de documents publics les nommant, jamais d'un registre exhaustif."
+    },
+    {
+      "sujet": "Recoupement entre sources",
+      "etat": "absent",
+      "detail": "Aucune donnée n'est aujourd'hui confirmée par deux sources indépendantes : la chaîne ne sait pas encore le faire."
+    }
+  ]
+}
