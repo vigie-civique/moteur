@@ -120,6 +120,8 @@ def etape_dictionnaire(out, stats, location_quality) -> None:
         "| `seances.json` | Une ligne par séance publiée, relue ou non : date, "
         "assemblée, délibérations publiées, pièces, et la feuille en clair si "
         "elle existe | `seances` |",
+        "| `sujets.json` | Pour chaque sujet (l'eau, les déchets…) : ses sections "
+        "de données, s'il en a ici, et son dossier publié | `sujets` |",
         "",
         "Chaque fichier à liste porte aussi un `total`.",
         "",

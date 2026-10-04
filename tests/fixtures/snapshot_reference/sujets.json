@@ -1,0 +1,102 @@
+{
+  "sujets": [
+    {
+      "id": "eau",
+      "titre": "L'eau",
+      "sections": [
+        {
+          "page": "/environnement",
+          "ancre": "eau-du-robinet",
+          "titre": "L'eau du robinet"
+        }
+      ],
+      "donnees": false,
+      "dossier": "eau"
+    },
+    {
+      "id": "dechets",
+      "titre": "Les déchets",
+      "sections": [
+        {
+          "page": "/environnement",
+          "ancre": "dechets",
+          "titre": "Les déchets ménagers"
+        }
+      ],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "incendie",
+      "titre": "La forêt et le feu",
+      "sections": [
+        {
+          "page": "/environnement",
+          "ancre": "foret-et-feu",
+          "titre": "La forêt et le feu"
+        }
+      ],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "enfance",
+      "titre": "L'enfance",
+      "sections": [
+        {
+          "page": "/territoire",
+          "ancre": "enfance",
+          "titre": "L'école et les tout-petits"
+        }
+      ],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "telecoms",
+      "titre": "Internet et téléphone",
+      "sections": [
+        {
+          "page": "/territoire",
+          "ancre": "telecoms",
+          "titre": "Internet et téléphone"
+        }
+      ],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "logement",
+      "titre": "Le logement",
+      "sections": [
+        {
+          "page": "/territoire",
+          "ancre": "logement",
+          "titre": "Logement : la part des résidences secondaires"
+        },
+        {
+          "page": "/urbanisme",
+          "ancre": "",
+          "titre": "Urbanisme & transactions foncières"
+        }
+      ],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "sante",
+      "titre": "La santé",
+      "sections": [],
+      "donnees": false,
+      "dossier": null
+    },
+    {
+      "id": "mourir",
+      "titre": "La fin de vie",
+      "sections": [],
+      "donnees": false,
+      "dossier": null
+    }
+  ],
+  "total": 8
+}

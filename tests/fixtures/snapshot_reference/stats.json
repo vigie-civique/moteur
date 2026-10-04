@@ -183,6 +183,10 @@
     "seances": 2,
     "relues": 1
   },
+  "sujets": {
+    "avec_donnees": 0,
+    "avec_dossier": 1
+  },
   "corrections_site": 0,
   "actualite_items": 9,
   "actualite_a_venir": 0,

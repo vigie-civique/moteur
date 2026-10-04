@@ -36,6 +36,7 @@ from scripts.snapshot.registre import Etape
 from scripts.snapshot.relations import etape_relations
 from scripts.snapshot.revue import etape_revue
 from scripts.snapshot.seances import etape_seances
+from scripts.snapshot.sujets import etape_sujets
 from scripts.snapshot.territoire import etape_environnement, etape_fiscalite, etape_territoire
 from scripts.snapshot.urbanisme import etape_croisement_foncier, etape_urbanisme
 
@@ -178,6 +179,11 @@ ETAPES: list[Etape] = [
     Etape("seances", etape_seances,
           lit=("out", "public_events", "seances_relues"), produit=("stats_seances",),
           ecrit=("seances.json",)),
+    # Les sujets : quel dossier, quelles données (lot 8). Lit les fichiers
+    # qu'`environnement` et `territoire` ont écrits plus haut.
+    Etape("sujets", etape_sujets,
+          lit=("out", "dossiers_publies"), produit=("stats_sujets",),
+          ecrit=("sujets.json",)),
     Etape("transparence", etape_transparence,
           lit=("conn", "out"), ecrit=("transparence.json",)),
     Etape("conflits", etape_conflits,
@@ -200,7 +206,7 @@ ETAPES: list[Etape] = [
                "a_venir", "redactions", "conflits", "elections", "fiscalite", "elus",
                "urbanisme_public", "adresses_retirees", "croisement_foncier",
                "extraits_actes", "masquages", "bundles", "indexed", "recherche",
-               "stats_seances"),
+               "stats_seances", "stats_sujets"),
           complete=("stats",), ecrit=("stats.json",)),
     # Hors du snapshot : `audits/`, sous la racine du moteur. Le rapport porte
     # les exclusions NOMINATIVES — exactement ce que le filtre retient.

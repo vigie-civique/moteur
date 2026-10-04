@@ -257,3 +257,24 @@ def test_un_autre_verdict_leve_le_sceau(atelier_avec_actes):
     assert v.patch(url, json={"review_status": "a_revoir"}).status_code == 200
     conn = sqlite3.connect(api.DB_PATH)
     assert conn.execute("SELECT COUNT(*) FROM citations_relues").fetchone()[0] == 0
+
+
+# ── Les sujets (04/10/2026) ──────────────────────────────────────────────────
+def test_un_sujet_relie_son_dossier_et_ses_donnees(tmp_path):
+    """Un dossier se rattache à son sujet par son nom, ou par `sujet:` ; un
+    sujet n'a de données que si la section qui l'affiche a de quoi s'afficher."""
+    import json
+    from scripts.snapshot.sujets import index_des_sujets
+    (tmp_path / "environnement.json").write_text(json.dumps(
+        {"sispea_services": [{"code": "x"}], "dechets": {"acteurs": []}, "incendie": {"x": 1}}))
+    (tmp_path / "territoire.json").write_text(json.dumps({"insee": [], "enfance": None}))
+
+    sujets = {s["id"]: s for s in index_des_sujets(tmp_path, [
+        {"slug": "eau", "titre": "L'eau", "sujet": "eau"},
+        {"slug": "la-cure", "titre": "La Cure", "sujet": "logement"}])}
+
+    assert (sujets["eau"]["donnees"], sujets["eau"]["dossier"]) == (True, "eau")
+    assert (sujets["dechets"]["donnees"], sujets["dechets"]["dossier"]) == (False, None)
+    assert sujets["incendie"]["donnees"] is True
+    assert sujets["logement"]["dossier"] == "la-cure"
+    assert sujets["sante"]["sections"] == [] and sujets["sante"]["donnees"] is False

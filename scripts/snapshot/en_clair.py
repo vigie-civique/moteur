@@ -179,9 +179,13 @@ def etape_graphe(conn, out, index_actes, affiches, public_events, public_links,
     import json
     from collectors.dossiers import entete
     seances_relues = json.loads((out / "conseils.json").read_text())["seances"]
-    dossiers_publies = [
-        {"slug": d["slug"], "titre": entete(d["texte"])[0].get("titre") or d["slug"]}
-        for d in json.loads((out / "dossiers.json").read_text())["dossiers"]]
+    dossiers_publies = []
+    for d in json.loads((out / "dossiers.json").read_text())["dossiers"]:
+        meta = entete(d["texte"])[0]
+        dossiers_publies.append({"slug": d["slug"], "titre": meta.get("titre") or d["slug"],
+                                 # Le sujet du registre (`sujets.py`) : son nom
+                                 # de fichier, sauf en-tête `sujet:` contraire.
+                                 "sujet": meta.get("sujet") or d["slug"]})
     return {"graphe": graphe, "stats_en_clair": stats_en_clair,
             "stats_dossiers": stats_dossiers, "stats_graphe": stats_graphe,
             "seances_relues": seances_relues, "dossiers_publies": dossiers_publies}

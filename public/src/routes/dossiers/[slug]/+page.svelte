@@ -116,6 +116,18 @@
       {/if}
     </div>
 
+    {#if data.donnees?.length}
+      <aside class="donnees">
+        <h2>Les données de ce sujet</h2>
+        <p>Les mêmes faits, tels que les sources publiques les donnent, sans commentaire&nbsp;:</p>
+        <ul>
+          {#each data.donnees as sec}
+            <li><a href="{sec.page}{sec.ancre ? `#${sec.ancre}` : ''}">{sec.titre}</a></li>
+          {/each}
+        </ul>
+      </aside>
+    {/if}
+
     <aside class="reponse">
       <h2>Droit de réponse</h2>
       <p>
@@ -203,6 +215,11 @@
   .corps :global(td[align="right"]), .corps :global(th[align="right"]) { text-align: right;
                                            font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+  .donnees { margin-top: 2.5rem; padding: 1rem 1.2rem; border-left: 3px solid var(--ardoise);
+             font-size: .92rem; line-height: 1.55; }
+  .donnees h2 { font-size: 1rem; margin: 0 0 .4rem; }
+  .donnees p { margin: 0 0 .3rem; color: var(--gris); }
+  .donnees ul { margin: 0; padding-left: 1.2rem; }
   .reponse { margin-top: 2.5rem; padding: 1rem 1.2rem; background: var(--papier);
              border-radius: .5rem; font-size: .92rem; line-height: 1.55; }
   .reponse h2 { font-size: 1rem; margin: 0 0 .4rem; }

@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE, COMMUNE_A, COMMUNE_DE, INSEE, SITE_NOM } from '$lib/instance.js'
   import Niveau from '$lib/components/Niveau.svelte'
+  import VersDossier from '$lib/components/VersDossier.svelte'
   import Icon from '$lib/components/Icon.svelte'
 
   // Portrait de territoire. 1 812 indicateurs INSEE (1968→2024) dormaient en
@@ -289,7 +290,8 @@
 
     {#if logements.length}
     <!-- ── Logement ─────────────────────────────────────────────────── -->
-    <h2>Logement : la part des résidences secondaires</h2>
+    <h2 id="logement">Logement : la part des résidences secondaires</h2>
+    <VersDossier dossier={data.dossiers?.logement} />
     <p class="note">
       Répartition du parc de logements à chaque recensement. La part des
       résidences secondaires conditionne l'école, les commerces ouverts à
@@ -394,6 +396,7 @@
 
   {#if enfance}
     <h2 id="enfance">L'école et les tout-petits</h2>
+    <VersDossier dossier={data.dossiers?.enfance} />
     {#each enfance.ecoles.filter(e => e.serie.length) as e}
       {@const d = e.serie.at(-1)}
       {@const p = e.serie[0]}
@@ -546,6 +549,7 @@
 
   {#if fixe}
     <h2 id="telecoms">Internet et téléphone</h2>
+    <VersDossier dossier={data.dossiers?.telecoms} />
     <Niveau type="calcul" base="les statistiques communales de l'ARCEP (Ma connexion internet), {trimestre(fixe.dernier.trimestre)}">
       Au {jour(fixe.dernier.date)}, <b>{nb(fixe.dernier.fibre)}</b> des
       {nb(fixe.dernier.locaux)} locaux recensés sont éligibles à la fibre&nbsp;:

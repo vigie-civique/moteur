@@ -2,6 +2,7 @@
 // Lu dans le snapshot au build — cf. marches/+page.server.js pour le motif.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dossiersDeLaPage } from '$lib/sujets.server.js'
 import { DATA_DIR } from '$lib/donnees.server.js'
 
 export const prerender = true
@@ -59,5 +60,7 @@ export function load() {
     controleEau: d.eau_controle?.reseaux?.length ? d.eau_controle : null,
     dechets: d.dechets?.acteurs?.length ? d.dechets : null,
     incendie: d.incendie || null,
+    // Section → dossier thématique publié sur le même sujet (lot 8).
+    dossiers: dossiersDeLaPage('/environnement'),
   }
 }

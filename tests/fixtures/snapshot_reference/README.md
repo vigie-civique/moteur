@@ -57,6 +57,7 @@ Ce modèle est conçu pour être rejoué sur une autre commune. Le périmètre s
 | `lacunes.json` | Questions ouvertes des dossiers publiés et citations sans acte publié | `lacunes` |
 | `personnes_morales.json` | Par clé d'acte, les personnes morales publiées qu'il concerne (SIREN) | `actes` |
 | `seances.json` | Une ligne par séance publiée, relue ou non : date, assemblée, délibérations publiées, pièces, et la feuille en clair si elle existe | `seances` |
+| `sujets.json` | Pour chaque sujet (l'eau, les déchets…) : ses sections de données, s'il en a ici, et son dossier publié | `sujets` |
 
 Chaque fichier à liste porte aussi un `total`.
 

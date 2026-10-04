@@ -3,9 +3,9 @@
   "genere_le": "2026-10-04T10:01:09",
   "revision_moteur": null,
   "moteur_modifie": null,
-  "total": 49,
+  "total": 50,
   "fichiers": [
-    {"chemin": "README.md", "etape": "dictionnaire", "objets": null, "octets": 6199, "sha256": "2530749cd93c90ceac29263fd8e8dbc2fe9ea620decc5f5f02665c6ccc890581"},
+    {"chemin": "README.md", "etape": "dictionnaire", "objets": null, "octets": 6339, "sha256": "93bbe29768508bbef4c5a8773d3595c82bb291bc89e23c7deeaedd2b8f60f97f"},
     {"chemin": "actualite.json", "etape": "actualite", "objets": 9, "octets": 4344, "sha256": "5498fb96a3f4d8016bc25ec3cc5eee3eeebb5312b20b114b223d5aef5c0d6525"},
     {"chemin": "approbations.json", "etape": "ecrire_finances", "objets": 0, "octets": 38, "sha256": "fb9e32a32600def0d7c161d16ab9c35fede04ccfdbc3e285bac439f8f08c98ff"},
     {"chemin": "budget.json", "etape": "ecrire_finances", "objets": 0, "octets": 34, "sha256": "6fdd7bb7b46288994f98d38067a3c16a3de650c13de707a18154ade436cba409"},
@@ -50,7 +50,8 @@
     {"chemin": "recherche_index.json", "etape": "index_recherche", "objets": 14, "octets": 1846, "sha256": "290b28429c33fc8a031a82b94013f5eb3b2018272d92b9c64d889a37f8560bd6"},
     {"chemin": "relations.json", "etape": "ecrire_acteurs", "objets": 1, "octets": 311, "sha256": "103f897f1e956e8a0bc1509b22e54edfc348d218bf5060a443d41621cca7a098"},
     {"chemin": "seances.json", "etape": "seances", "objets": 2, "octets": 1128, "sha256": "3dc577aa7c11b17ff549b03432d5aa1b5260fe1aaa18beb5275b3d5a7bea2942"},
-    {"chemin": "stats.json", "etape": "stats", "objets": 1, "octets": 4725, "sha256": "78df0360aa8afabf84407012d564868f92f619ed94d4fc9ff3ea5da381a23bd9"},
+    {"chemin": "stats.json", "etape": "stats", "objets": 1, "octets": 4789, "sha256": "3df947243d68155202ad93b81b55cfcdf3616157dc053823bd286039ff6ca85c"},
+    {"chemin": "sujets.json", "etape": "sujets", "objets": 8, "octets": 2097, "sha256": "7d443235dbee31f53bc2ae8d2401d5ae1ca71cc8b8c1b1f0f6a594486818604e"},
     {"chemin": "territoire.json", "etape": "territoire", "objets": 0, "octets": 219, "sha256": "c2a7f5ddb729a135ef4076d024e443eec30e9560ac40b84e25c0d96866d09b82"},
     {"chemin": "transparence.json", "etape": "transparence", "objets": 0, "octets": 255, "sha256": "24f31e25d244271a34789328850a68d3ffdef2c86562aefd0456029097bf862c"},
     {"chemin": "urbanisme.json", "etape": "urbanisme", "objets": 1, "octets": 922, "sha256": "13724a447a04731881ff05336ef608950f957e022e5738eddc9de43409a4b540"}

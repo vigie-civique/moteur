@@ -1,5 +1,6 @@
 <script>
   import { COMMUNE, COMMUNE_A, INSEE, SITE_NOM } from '$lib/instance.js'
+  import VersDossier from '$lib/components/VersDossier.svelte'
   import Icon from '$lib/components/Icon.svelte'
   import Niveau from '$lib/components/Niveau.svelte'
 
@@ -174,6 +175,7 @@
     <!-- ── L'eau du robinet ─────────────────────────────────────────── -->
     {#if eauPotable.length || controleEau}
       <h2 id="eau-du-robinet">L'eau du robinet</h2>
+      <VersDossier dossier={data.dossiers?.["eau-du-robinet"]} />
     {/if}
     {#if eauPotable.length}
       <p class="note">
@@ -432,6 +434,7 @@
     <!-- ── La forêt et le feu ───────────────────────────────────────── -->
     {#if incendie}
       <h2 id="foret-et-feu">La forêt et le feu</h2>
+      <VersDossier dossier={data.dossiers?.["foret-et-feu"]} />
       {#if incendie.boisement}
         {@const b = incendie.boisement}
         <Niveau type="fait" source="IGN — Observatoire des forêts, prises de vue de {b.annee_pva}">
@@ -526,6 +529,7 @@
     <!-- ── Les déchets ménagers ─────────────────────────────────────── -->
     {#if dechets}
       <h2 id="dechets">Les déchets ménagers</h2>
+      <VersDossier dossier={data.dossiers?.dechets} />
       {#if dechets.acteurs.length > 1}
         <p class="note">
           {dechets.acteurs.length} collectivités se partagent les déchets ici.

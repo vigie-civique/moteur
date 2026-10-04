@@ -8,6 +8,7 @@ import { estAttribue } from '$lib/marches.js'
 import { TYPES_ACTEURS } from '$lib/actes.js'
 import { etatSource } from '$lib/couverture.js'
 import { lireDossiers } from '$lib/dossiers.server.js'
+import { lireSujets } from '$lib/sujets.server.js'
 
 export const prerender = true
 
@@ -187,6 +188,10 @@ export function load() {
     // et le chapeau. Un dossier « à développer » attend sur /dossiers.
     dossiers: lireDossiers().filter((d) => d.statut !== 'a_developper')
       .map(({ slug, titre, chapeau }) => ({ slug, titre, chapeau })),
+    // Sans dossier écrit, ce que les données disent déjà des mêmes sujets :
+    // une instance neuve a un accueil qui part des sujets, sans rien à relire.
+    sujets: lireSujets().filter((s) => s.donnees && !s.dossier)
+      .map(({ titre, sections }) => ({ titre, lien: `${sections[0].page}${sections[0].ancre ? `#${sections[0].ancre}` : ''}` })),
     chiffres: {
       acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
       // `events_public` compte TOUT ce qui est publié — BODACC, agenda,

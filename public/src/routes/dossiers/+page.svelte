@@ -44,6 +44,18 @@
     </ul>
   {/if}
 
+  {#if data.sujets?.length}
+    <h2>{data.dossiers.length ? 'Sans dossier écrit' : 'Ce que les données disent de…'}</h2>
+    <p class="aide">Des sujets que personne n'a encore instruits ici, mais sur lesquels les sources publiques ont déjà des faits&nbsp;: les voici, sans commentaire.</p>
+    <ul class="liste">
+      {#each data.sujets as s}
+        <li><b>{s.titre}</b>
+          <p>{#each s.sections as sec, i}{#if i} · {/if}<a href="{sec.page}{sec.ancre ? `#${sec.ancre}` : ''}">{sec.titre}</a>{/each}</p>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
   {#if annonces.length}
     <h2>En préparation</h2>
     <p class="aide">Sujets identifiés, pas encore instruits&nbsp;: la page annonce le sujet, rien de plus.</p>

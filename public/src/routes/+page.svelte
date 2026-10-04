@@ -8,7 +8,7 @@
   // oriente, puis montre ce qui vient de bouger.
   export let data
   $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains, sourceMarches,
-       dernieres, dossiers } = data)
+       dernieres, dossiers, sujets } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -136,6 +136,19 @@
       {/each}
     </div>
   {/if}
+  </section>
+{/if}
+
+{#if !dossiers?.length && sujets?.length}
+  <section class="dossiers">
+    <header>
+      <h2>Ce que les données disent de…</h2>
+      <a class="tout" href="/dossiers">Dossiers thématiques <Icon name="fleche" size={14} /></a>
+    </header>
+    <p class="chapeau-dossiers">Aucun dossier n'est encore écrit ici. Sur ces sujets, les sources publiques ont déjà des faits&nbsp;:</p>
+    <ul>
+      {#each sujets as s}<li><a href={s.lien}>{s.titre}</a></li>{/each}
+    </ul>
   </section>
 {/if}
 
