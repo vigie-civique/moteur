@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
 import { estAttribue } from '$lib/marches.js'
 import { TYPES_ACTEURS } from '$lib/actes.js'
+import { etatSource } from '$lib/couverture.js'
 
 export const prerender = true
 
@@ -196,6 +197,9 @@ export function load() {
       recents: ailleurs,
     },
     budget,
+    // Ce que vaut un zéro de marchés : une question non posée (collecte
+    // absente) n'est pas un résultat (cf. $lib/couverture.js).
+    sourceMarches: etatSource(lire('couverture.json', {}), 'marches').etat,
     recents,
     agenda,
     arreteLe: actualite.arrete_le || null,

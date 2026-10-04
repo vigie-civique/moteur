@@ -53,7 +53,11 @@ export function etatSource(couverture, domaine) {
   if (!tournes.length) {
     return { etat: 'absente', sources: attendus.map((c) => LIBELLE_SOURCE[c] || c), dernier: null }
   }
-  const utiles = tournes.filter((c) => runs[c].statut !== 'empty')
+  // `a_rapporte` (depuis le 04/10/2026) : une passe au moins a rapporté. Le
+  // statut seul est celui de la dernière passe, `empty` pour un collecteur
+  // incrémental qui n'a rien trouvé de NEUF. Absent : snapshot plus ancien.
+  const utiles = tournes.filter((c) =>
+    runs[c].a_rapporte ?? runs[c].statut !== 'empty')
   const dernier = tournes.map((c) => runs[c].dernier).filter(Boolean).sort().pop() || null
   return {
     etat: utiles.length ? 'servie' : 'vide',

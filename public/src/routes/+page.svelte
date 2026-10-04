@@ -7,7 +7,7 @@
   // ni ce qu'on peut y chercher. La carte devient /carte ; l'accueil annonce,
   // oriente, puis montre ce qui vient de bouger.
   export let data
-  $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains } = data)
+  $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains, sourceMarches } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -112,11 +112,21 @@
     {#if chiffres.marches === 0}
       <!-- Zéro n'est pas « la commune ne commande rien » : c'est « nos sources
            n'en recensent aucun ». La différence est tout le sujet du site. -->
+      <!-- « Ce n'est pas une lacune de collecte » s'affichait ici sur les
+           trois instances, alors que les procès-verbaux de l'une révélaient 77
+           attributions jamais relevées (docs/refonte-du-contenu.md, défaut 2).
+           Le zéro dit ce que le SITE a relevé, jamais ce que la commune a fait. -->
       <p class="lacune">
-        La commune n'apparaît comme acheteur dans aucune source ouverte de
-        commande publique. Ce n'est pas une lacune de collecte&nbsp;:
-        <b>la publication n'est obligatoire qu'au-delà de 40 000 €&nbsp;HT</b>,
-        et en dessous rien n'est publié nulle part.
+        {#if sourceMarches === 'absente'}
+          La collecte des marchés publics n'a pas encore tourné pour ce site&nbsp;:
+          ce zéro est une question non posée, pas une réponse.
+        {:else}
+          Aucun marché attribué par la commune n'est encore relevé ici. Ce zéro
+          n'est pas celui de la commune&nbsp;: les sources ouvertes ne publient
+          rien sous <b>40 000 €&nbsp;HT</b>, et les marchés plus petits ne se
+          lisent que dans les procès-verbaux du conseil, qui ne sont pas encore
+          relevés pour cela.
+        {/if}
         <a href="/marches">Ce que cela laisse dans l'ombre</a>
       </p>
     {/if}

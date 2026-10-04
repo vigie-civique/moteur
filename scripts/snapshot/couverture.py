@@ -60,12 +60,20 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
     derniers = {}
     if table_exists(conn, "collector_runs"):
         for r in rows(conn, """
-            SELECT collector, status, MAX(started_at) AS dernier
+            SELECT collector, status, MAX(started_at) AS dernier,
+                   SUM(CASE WHEN status = 'ok' OR items_added > 0 THEN 1 ELSE 0 END)
+                       AS passes_utiles
             FROM collector_runs GROUP BY collector
         """):
             derniers[r["collector"]] = {
                 "statut": r["status"],
                 "dernier": r["dernier"],
+                # `statut` est celui de la DERNIÈRE passe : un collecteur
+                # incrémental qui n'a rien trouvé de neuf vaut `empty` alors
+                # que ses lignes sont publiées — `marches` valait `empty` sur
+                # les trois instances à côté de 58 marchés (04/10/2026). Un
+                # zéro se juge sur « a déjà rapporté », pas sur la dernière fois.
+                "a_rapporte": bool(r["passes_utiles"]),
                 # Le seuil vient de la source unique de vérité, jamais d'un
                 # nombre écrit dans la page : un collecteur dont on change le
                 # rythme change de seuil le jour même.

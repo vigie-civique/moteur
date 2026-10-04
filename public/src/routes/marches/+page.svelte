@@ -100,9 +100,10 @@
     sous ce seuil — et ne se lit, quand elle se lit, que dans les procès-verbaux
     du conseil.
     {#if comptePortee.commune === undefined}
-      Ici, <b>aucun marché de la commune</b> n'apparaît dans les sources
-      ouvertes&nbsp;; les avis qui la mentionnent émanent de
-      l'intercommunalité ou du département.
+      Ici, <b>aucun marché attribué par la commune</b> n'est encore relevé —
+      ni dans les sources ouvertes, ni dans les procès-verbaux, qui ne sont
+      pas encore relus pour cela. Ce zéro est celui du site, pas celui de la
+      commune. Les avis publiés émanent d'autres acheteurs.
     {/if}
   </p>
 
