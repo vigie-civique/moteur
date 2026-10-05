@@ -20,28 +20,29 @@ instance n'est pas dans le dépôt.
 
 ## Comment lire ce document : ce qui a été vu, et comment
 
-L'accès réseau de cet environnement est restreint. Le proxy de sortie **refuse
-par politique** (HTTP 403 au CONNECT) toutes les sources visées, aussi bien
-depuis `curl` que depuis l'outil de lecture de pages. Domaines essayés le
-05/10/2026 et refusés : `www.data.gouv.fr`, `data.economie.gouv.fr`,
-`data.laregion.fr`, `data.auvergnerhonealpes.fr`, `www.associations.gouv.fr`,
-`datasubvention.beta.gouv.fr`, `lecompteasso.associations.gouv.fr`,
-`www.gard.fr`, `www.ladrome.fr`, `www.tarn.fr`, `opendata.tarn.fr`,
-`data.ladrome.fr`, `www.culture.gouv.fr`, `www.caf.fr`,
-`www.europe-en-france.gouv.fr`, `www.legifrance.gouv.fr`,
-`schema.data.gouv.fr`, `www.caussesaigoual-cevennes.fr`,
-`www.agence-cohesion-territoires.gouv.fr`, `www.eaurmc.fr`,
-`www.economie.gouv.fr`, `www.budget.gouv.fr`, `ville-de-sauve.fr`. Rien n'a été
-contourné. Seul un moteur de recherche répondait : il rend des titres, des
-adresses et un résumé, pas le document lui-même.
+Cette note a été écrite en deux passes, le 05/10/2026.
 
-Chaque affirmation porte donc l'une de ces quatre marques :
+**La première** depuis un environnement dont le proxy refusait par politique
+(HTTP 403) toutes les sources visées — data.gouv.fr, les portails des Régions
+et des Départements, les sites de l'État. Rien n'a été contourné. Seul un
+moteur de recherche répondait : il rend des titres, des adresses et un résumé,
+pas le document lui-même.
+
+**La seconde** depuis un poste à accès ouvert : les interfaces de data.gouv.fr,
+de `data.laregion.fr` et de `data.economie.gouv.fr` ont été interrogées, et
+plusieurs pages et PDF ouverts. Deux familles de sites sont restées fermées
+même ainsi : les sites académiques (`ac-montpellier.fr`, `ac-grenoble.fr`), qui
+refusent tout client qui n'est pas un navigateur, et Légifrance, non tenté —
+les références juridiques restent donc [su].
+
+Chaque affirmation porte l'une de ces cinq marques :
 
 | Marque | Ce qu'elle veut dire |
 |---|---|
+| **[vu]** | Ouvert et lu à la seconde passe, le 05/10/2026 : page, PDF, ou réponse d'une interface de données. |
 | **[lu]** | Ouvert et lu, **dans le dépôt** : code, essais construits sur le jeu réel, messages de commit qui consignent une vérification datée. La vérification date du commit, pas d'aujourd'hui. |
 | **[cité]** | Trouvé cité dans un résultat de recherche du 05/10/2026 (titre, adresse, résumé). Le document n'a pas été ouvert. |
-| **[su]** | Connaissance du cadre juridique ou administratif, **non revérifiée** depuis cet environnement. À contrôler avant d'en faire une phrase publiée. |
+| **[su]** | Connaissance du cadre juridique ou administratif, **non revérifiée**. À contrôler avant d'en faire une phrase publiée. |
 | **[non atteint]** | Cherché, sans réponse exploitable. |
 
 ## 1. Ce que le moteur collecte déjà
@@ -49,9 +50,9 @@ Chaque affirmation porte donc l'une de ces quatre marques :
 | Step | Module | Financeur | Source | Clé de rattachement | Ce qu'on en sait |
 |---|---|---|---|---|---|
 | `cm_flux` | `collectors/cm_finances.py` | commune, intercommunalité | texte des délibérations des **deux** assemblées | nom résolu vers une fiche existante | [lu] « attribuer à X une subvention de N € » et les tableaux de subventions votées. Depuis le 08/09/2026 (commit `851e7cb`), les délibérations communautaires sont lues : 211 délibérations de la CC qui mentionnaient une subvention n'avaient jamais été lues. |
-| `subv_ouvertes` | `collectors/subventions_ouvertes.py` | toute autorité qui publie au schéma `scdl/subventions` | data.gouv.fr, découverte par le schéma (53 jeux au 08/09/2026), plus l'ADEME | `idBeneficiaire` (SIRET), `rnaBeneficiaire` (RNA) | [lu] Sur Lasalle le 08/09/2026 (commit `07a776c`) : 84 584 lignes lues, **zéro** pour le territoire. Le Département du Gard publiait alors 44 jeux sur data.gouv, **aucun** sur les subventions ; la CC (5 463 hab.) était absente de data.gouv ; la commune (1 202 hab.) est exemptée. |
-| `region` | `collectors/occitanie_region.py`, déclaré par l'instance (`collecteurs_regionaux`) | Région Occitanie | `data.laregion.fr`, jeu `subventions-du-conseil-regional`, export CSV intégral | `idbeneficiaire` = SIRET, via `beneficiaires_locaux` | [lu] Sur Lasalle (commit `b389dbe`) : 54 lignes, 15 bénéficiaires, environ 2,1 M€. Il n'a de sens qu'en Occitanie : Lasalle et Brassac oui, Saillans non. |
-| `jaune` | `collectors/jaune_associations.py` | État, tous programmes, FDVA compris | annexe « jaune » au PLF, `data.economie.gouv.fr` | SIRET, SIREN (siège local), RNA | [lu] Quatre millésimes de versements (2012, 2014, 2016, 2023) ; l'export 2022 (PLF 2024) est publié cassé et écarté. Simulation du 24/09/2026 (commit `3f09bb4`) : Lasalle 21 flux, Saillans 18, Brassac 8. Les essais sont construits sur des lignes réelles du PLF 2025, dont « Fonct et Innov FDVA » et « Formation bénév FDVA » (programme 163). |
+| `subv_ouvertes` | `collectors/subventions_ouvertes.py` | toute autorité qui publie au schéma `scdl/subventions` | data.gouv.fr, découverte par le schéma (53 jeux au 08/09/2026), plus l'ADEME | `idBeneficiaire` (SIRET), `rnaBeneficiaire` (RNA) | [lu] Sur Lasalle le 08/09/2026 (commit `07a776c`) : 84 584 lignes lues, **zéro** pour le territoire. Le Département du Gard publiait alors 44 jeux sur data.gouv, **aucun** sur les subventions ; la CC (5 463 hab.) était absente de data.gouv ; la commune (1 202 hab.) est exemptée. [vu, 05/10/2026] Toujours 53 jeux au schéma, et 42 jeux du Département du Gard dont aucun sur les subventions. |
+| `region` | `collectors/occitanie_region.py`, déclaré par l'instance (`collecteurs_regionaux`) | Région Occitanie | `data.laregion.fr`, jeu `subventions-du-conseil-regional`, export CSV intégral | `idbeneficiaire` = SIRET, via `beneficiaires_locaux` | [lu] Sur Lasalle (commit `b389dbe`) : 54 lignes, 15 bénéficiaires, environ 2,1 M€. Il n'a de sens qu'en Occitanie : Lasalle et Brassac oui, Saillans non. [vu, 05/10/2026] `collecteurs_regionaux` déclare bien `occitanie_region` à Lasalle et à Brassac, pas à Saillans. |
+| `jaune` | `collectors/jaune_associations.py` | État, tous programmes, FDVA compris | annexe « jaune » au PLF, `data.economie.gouv.fr` | SIRET, SIREN (siège local), RNA | [lu] Quatre millésimes de versements (2012, 2014, 2016, 2023) ; l'export 2022 (PLF 2024) est publié cassé et écarté. Simulation du 24/09/2026 (commit `3f09bb4`) : Lasalle 21 flux, Saillans 18, Brassac 8. Les essais sont construits sur des lignes réelles du PLF 2025, dont « Fonct et Innov FDVA » et « Formation bénév FDVA » (programme 163). [vu, catalogue de `data.economie.gouv.fr`, 05/10/2026] Le jeu du PLF 2025 (112 722 lignes) date du 23/12/2024 ; celui du PLF 2024 n'a que 111 lignes, ce qui confirme qu'il est cassé ; **aucun jeu « jaune » n'a été publié depuis** : le dernier millésime lisible reste 2023. |
 | `dotations_inv` | `collectors/dotations_investissement.py` | État (DETR, DSIL, DSID, DPV, Fonds vert) | DGCL et ministère de la Transition écologique | code INSEE, SIREN de l'EPCI | [lu] Ce sont des subventions à la **collectivité**, pas aux associations. Cité pour mémoire. |
 | `syndicats` | `collectors/syndicats_comptes.py` | — | balances DGFiP des syndicats | SIREN | [lu] Ces balances donnent les subventions **reçues** par financeur (État, Région, Département, Europe), agrégées. Aucun flux par bénéficiaire. |
 
@@ -115,6 +116,9 @@ d'autre, ni sur le Département, ni sur l'Europe.
   sans déclarer le schéma : CC du Frontonnais, Estérel Côte d'Azur, Grenoble-
   Alpes Métropole, Martigues, communes de Montpellier Méditerranée Métropole.
   Aucun ne concerne nos territoires.
+- [vu, 05/10/2026] Le schéma compte toujours **53 jeux**. Aucun n'est publié
+  par le Gard, la Drôme, le Tarn, la Région Occitanie ou la Région
+  Auvergne-Rhône-Alpes.
 - [cité] « PLF - Jaune - Associations subventionnées » existe aussi sur
   data.gouv.fr, à côté de `data.economie.gouv.fr`.
 
@@ -129,6 +133,9 @@ d'autre, ni sur le Département, ni sur l'Europe.
   citoyen. Une collectivité partenaire pourrait y lire ce que le site ne voit
   pas, mais elle ne pourrait pas le republier sans une base légale de
   diffusion propre à chaque ligne.
+- [vu, fiche « API Data.Subvention » de data.gouv.fr, 05/10/2026] L'accès est
+  **restreint** : agents de l'État, de la fonction publique territoriale et
+  des opérateurs, sur demande. Producteur : la DINUM. Rien n'a changé.
 - **Le Compte Asso** (`lecompteasso.associations.gouv.fr`) [cité] est le
   guichet où l'association **dépose** sa demande (FDVA notamment) et reçoit
   son résultat. Le résultat individuel est notifié dans le dossier de
@@ -153,9 +160,9 @@ d'autre, ni sur le Département, ni sur l'Europe.
   et 2, campagne 2025, Paris](https://www.ac-paris.fr/resultats-fdva-1-2-campagne-2025-132839).
   [su] Le Tarn (Brassac) relève de l'académie de Toulouse, dans la même région
   académique Occitanie, et la Drôme (Saillans) de l'académie de Grenoble,
-  région académique Auvergne-Rhône-Alpes. Il faut donc **trois pages** à
-  suivre, une par académie ou par région académique, et leur forme n'est pas
-  connue d'ici.
+  région académique Auvergne-Rhône-Alpes. La première passe en concluait qu'il
+  fallait suivre trois pages ; la seconde montre qu'il y en a deux (voir
+  « Seconde passe », plus bas).
   - **Format** [non atteint] : listes en page web ou en PDF, a priori par
     département et par volet.
   - **Granularité** [su] : nom de l'association, montant, volet, département.
@@ -174,6 +181,26 @@ d'autre, ni sur le Département, ni sur l'Europe.
   24 mois de retard**. Et le jeu 2022 (PLF 2024) est cassé.
 - **Clé** : SIRET dans le jaune [lu] ; nom seul dans les listes académiques
   (probable).
+
+- **Seconde passe (05/10/2026)** :
+  - **Deux foyers, pas trois** [cité] : les notes d'orientation du Gard *et*
+    du Tarn renvoient à la même page de l'académie de Montpellier, tenue par la
+    DRAJES pour toute l'Occitanie
+    (`ac-montpellier.fr/fdva-2-fonctionnement-global-et-nouveaux-services-mode-d-emploi-en-region-occitanie-122636`) ;
+    résultats 2026 annoncés « à partir du 19 juin ». Pour Auvergne-Rhône-Alpes,
+    les résultats sont des PDF déposés sur `ac-grenoble.fr` et `ac-lyon.fr`.
+  - **Ordre de grandeur, Drôme 2025** [cité] : enveloppe de 484 226 €,
+    305 demandes, 183 associations financées, de 1 000 à 7 500 € chacune.
+  - **Ces sites refusent les robots** [vu] : `ac-montpellier.fr` et
+    `ac-grenoble.fr` répondent 403 à tout client qui n'est pas un navigateur,
+    depuis un poste à accès ouvert comme depuis l'environnement d'origine. Le
+    format des listes et la présence d'un SIRET restent donc [non atteint], et
+    un collecteur automatique y serait refusé de la même façon : prévoir un
+    **dépôt manuel** du fichier.
+  - La note du Tarn citée plus haut est une copie relayée par un district
+    sportif, faute de l'avoir trouvée sur un site de l'État : à remplacer par
+    l'original.
+
 
 ### 3.2 État — DRAC et autres subventions de l'État aux associations
 
@@ -202,6 +229,14 @@ d'autre, ni sur le Département, ni sur l'Europe.
   **23 000 €**. CSV (≈ 12 Mo) et JSON. **Licence Ouverte 2.0**. Mis à jour le
   29/05/2026. [lu] Il porte `idbeneficiaire` (SIRET), et le collecteur prend
   l'export intégral.
+- **Seconde passe** [vu, interface du portail, 05/10/2026] : 64 541 lignes ;
+  décisions du 02/02/2018 au 16/12/2025 ; plus petit cumul annuel par
+  bénéficiaire : 23 000 € exactement ; Licence Ouverte v2.0 ; dernière
+  modification le 29/05/2026. Champs : `nomattribuant`, `idattribuant`,
+  `nombeneficiaire`, `idbeneficiaire`, `objet`, `date_de_decision`,
+  `referencedecision`, `montant_vote`, `mt_vote_pour_le_tiers_sur_l_annee`,
+  `annee_decision`. Les décisions de 2026 n'y sont pas encore : **cinq à
+  dix-sept mois de retard** selon la date du vote.
 - **Limite décisive** : le seuil de 23 000 € cumulés exclut l'essentiel des
   petites associations. L'association de Lasalle n'y figure probablement pas,
   à vérifier en base.
@@ -211,37 +246,61 @@ d'autre, ni sur le Département, ni sur l'Europe.
 - **Fonds européens** : la Région est autorité de gestion (§ 3.6).
 
 **Auvergne-Rhône-Alpes (Saillans)**
-- [non atteint] Aucun jeu régional de subventions n'a été trouvé.
-  `data.auvergnerhonealpes.fr` est refusé par le proxy. Les résultats de
-  recherche ne rendent que des délibérations de commission permanente en PDF,
-  sur `edelib.auvergnerhonealpes.fr` [cité], et un jeu de l'ETS AURA (don du
-  sang) sans rapport.
-- **À vérifier avant tout collecteur** : la Région publie-t-elle ses
-  conventions au-delà de 23 000 € (SCDL ou autre) ? Si c'est au schéma
-  déclaré, `subv_ouvertes` les verrait déjà, et aucune ligne n'est remontée
-  pour Saillans [su : à mesurer sur la base de Saillans].
+- **Aucun jeu régional de subventions trouvé** [vu, 05/10/2026] : la Région
+  n'a aucun jeu parmi les 53 du schéma `scdl/subventions` ; aucun titre de
+  « subvention », d'« aide », de « délibération » ou de « budget » parmi les
+  300 premiers jeux de son organisation sur data.gouv.fr ; les recherches n'y
+  rendent que les tableaux de l'Établissement français du sang, sans rapport.
+  Son portail `data.auvergnerhonealpes.fr` ne répond pas à l'interface de
+  catalogue qu'expose celui de l'Occitanie : il reste à ouvrir à la main.
+- Les délibérations de commission permanente sont en PDF sur
+  `edelib.auvergnerhonealpes.fr` [cité].
+- **Conséquence** : `subv_ouvertes` ne peut rien remonter de la Région pour
+  Saillans, puisqu'il découvre par le schéma. Le zéro régional de Saillans
+  est une absence de source, pas un fait.
 
 ### 3.4 Département
 
 | | Gard (Lasalle) | Drôme (Saillans) | Tarn (Brassac) |
 |---|---|---|---|
-| Jeu de subventions ouvert | **aucun** sur data.gouv au 08/09/2026 [lu, commit `07a776c`] ; aucun trouvé [cité] | aucun trouvé [non atteint] | aucun trouvé [non atteint] ; les résultats renvoient au Tarn-et-Garonne, autre département |
-| Délibérations / arrêtés | portail de dépôt « Subventions Gard » depuis 2024, à partir de 500 € (ou 1 000 € selon la source) [cité, source secondaire] ; délibérations de commission permanente non trouvées en ligne [non atteint] | **arrêtés d'attribution signés, en PDF**, sur `ladrome.fr`, avec des listes d'associations : en 2020, un arrêté pour 2 313 517,61 € et un autre pour 612 880,67 € [cité] | non trouvés [non atteint] |
-| Annexe « concours attribués » du CA | [su] obligatoire ; non vérifiée | [su] idem | [su] idem |
-| Clé de rattachement | RNA en W30… et SIRET exigés à la demande [cité] ; leur présence dans les listes publiées est inconnue | inconnue (nom probable) | inconnue |
+| Jeu de subventions ouvert | **aucun** : 42 jeux du Département sur data.gouv.fr au 05/10/2026, aucun sur les subventions [vu] (44 et aucun au 08/09/2026 [lu, commit `07a776c`]) | aucun au schéma `scdl/subventions` [vu] | aucun au schéma [vu] ; les recherches renvoient au Tarn-et-Garonne, autre département |
+| Tableau annuel des concours aux associations | non trouvé [non atteint] | **en ligne pour 2020 et 2021** [vu] : « Tableau des subventions, prêts, prestations en nature accordés par le Département aux associations en 2021 », 20 pages, PDF de texte | non trouvé [non atteint] |
+| Délibérations | [vu, page du Département] deux portails : `deliberations.gard.fr` jusqu'au 31/03/2024, `cg30.kiosk.qualigraf.fr` depuis ; assemblée et commission permanente | page « Délibérations » et recueil mensuel des actes en PDF sur `ladrome.fr` [vu] | [vu, page du Département] `actes.tarn.fr` avant le 01/01/2024, `cd-tarn.kiosk.qualigraf.fr` depuis ; recueil des actes à part |
+| Clé de rattachement | RNA et SIRET exigés à la demande [cité] ; dans les délibérations, inconnue (nom probable) | **SIRET** dans le tableau annuel [vu] ; nom seul dans les arrêtés [vu] | inconnue (nom probable) |
 
-- **Format** : PDF de délibération ou d'arrêté, au mieux. Pas d'API.
-- **Granularité** [su] : bénéficiaire nommé, montant, objet, date de la
-  commission. SIRET et RNA rarement présents.
-- **Profondeur** : celle des archives en ligne de chaque site (Drôme : au
-  moins 2020 [cité]).
-- **Délai** : publication de l'acte quelques semaines après la commission [su].
+- **Le tableau annuel de la Drôme** [vu] est la pièce que la première version
+  de cette note supposait : le relevé des concours attribués aux associations
+  (CGCT, art. L. 3313-1 [su]). Colonnes : nom de l'association, objet (avec la
+  référence du dossier), **SIRET**, montant, prêt, montant garanti, prestations
+  en nature. **Sans seuil** : des lignes de 150 € y figurent. Deux millésimes
+  sont liés depuis la page du recueil des actes
+  ([2021](https://www.ladrome.fr/wp-content/uploads/2022/04/2021-subventions.pdf),
+  [2020](https://www.ladrome.fr/wp-content/uploads/2021/04/com-subventions-2020.pdf)) ;
+  aucun plus récent n'y était lié le 05/10/2026. Le 2021 a été mis en ligne en
+  avril 2022 : **délai d'environ quatre mois** après la fin de l'exercice.
+- **Les arrêtés drômois de 2020 ne sont pas une source régulière** [vu,
+  [arrêté n° 20_DPT_01](https://www.ladrome.fr/wp-content/uploads/2020/05/20-dpt-01signtamponn.pdf)].
+  Ils visent l'ordonnance n° 2020-391, qui permettait pendant la crise
+  sanitaire au président d'attribuer les subventions à la place de
+  l'assemblée. Colonnes de leur annexe : politique, service instructeur, type
+  d'aide, nom du bénéficiaire, objet, montant, fonctionnement ou
+  investissement — **ni SIRET ni commune**. Hors de cette période, les
+  subventions se lisent dans les délibérations.
+- **Gard et Tarn partagent un logiciel** [vu] : leurs deux kiosques servent la
+  même application (mêmes fichiers, mêmes routes publiques). C'est une
+  application qui se charge par script : la page ne contient aucun acte, et
+  la forme de ce qu'elle interroge n'a pas été explorée. Un connecteur écrit
+  pour l'un vaut pour l'autre, **s'il peut lire le kiosque sans navigateur**.
+- **Format** : PDF. Pas d'API documentée.
+- **Granularité des délibérations** [su] : bénéficiaire nommé, montant, objet,
+  date de la commission. SIRET et RNA rarement présents.
+- **Profondeur** : Drôme, tableaux 2020 et 2021 [vu] ; Gard et Tarn, celle de
+  leurs deux portails successifs, non mesurée.
 - **Caractère public** : actes administratifs publiés, réutilisables selon le
   CRPA [su].
 - **Obligation SCDL** : les trois Départements y sont soumis pour les
-  conventions de plus de 23 000 € [su]. Aucun ne s'y conforme sur data.gouv
-  pour ce qu'on a pu mesurer (le Gard, au 08/09/2026).
-
+  conventions de plus de 23 000 € [su]. Aucun ne s'y conforme sur data.gouv.fr :
+  le schéma y compte 53 jeux le 05/10/2026, aucun d'eux [vu].
 ### 3.5 Intercommunalité, et la CGEAC de la CC Causses Aigoual Cévennes Terres Solidaires
 
 - **Subventions votées en conseil communautaire** : déjà lues par `cm_flux`
@@ -266,9 +325,21 @@ d'autre, ni sur le Département, ni sur l'Europe.
        et la CC (montant de la rémunération de l'artiste) [cité, non ouvert] ;
     3. les crédits de la DRAC versés à une **association** porteuse figurent
        dans le jaune, programme 361 [su], avec 12 à 24 mois de retard ;
-    4. un **bilan** : d'autres territoires publient le leur (exemple :
-       [Alès Agglomération, bilan 2021-2025 de l'EAC](https://www.agglopole.fr/wp-content/uploads/2026/07/Bilan-2021-2025-du-Service-education-artistique-et-culturelle.pdf))
-       [cité]. Aucun bilan n'a été trouvé pour la CC.
+    4. un **bilan** : d'autres territoires publient le leur. Exemple [vu] :
+       [Sète agglopôle méditerranée, bilan 2021-2025 de son service EAC](https://www.agglopole.fr/wp-content/uploads/2026/07/Bilan-2021-2025-du-Service-education-artistique-et-culturelle.pdf)
+       (Hérault — et non Alès Agglomération, comme l'écrivait la première
+       version de cette note). Il nomme ses signataires — l'État par la DRAC
+       Occitanie, le ministère délégué à la Ville par la DDETS, l'Éducation
+       nationale — et la part de l'agglomération année par année (6 000 € en
+       2023, 8 000 € en 2024, 20 000 € en 2025). C'est la forme de document à
+       demander à la CC. Aucun bilan n'a été trouvé pour elle.
+  - **Ce que dit l'appel à candidatures** [vu, page du ministère de la
+    Culture] : « Résidence de territoire "Patrimoines Aigoual et vallées
+    cévenoles" », candidatures jusqu'au 8 juillet 2026, deux périodes de six
+    semaines. Il ne nomme **aucun autre signataire** que la DRAC, et ne donne
+    **ni la rémunération ni le plan de financement**. Les candidatures sont
+    reçues par une structure du territoire : c'est probablement elle, et non
+    l'artiste, qui porte le financement — à lire dans la délibération.
   - **Publics et réutilisables ?** La convention et la délibération sont des
     documents administratifs communicables (CRPA L. 311-1). Une fois publiées,
     elles sont réutilisables (L. 321-1) [su]. Les noms des artistes retenus sont
@@ -281,9 +352,9 @@ d'autre, ni sur le Département, ni sur l'Europe.
 | Financeur | Source ouverte ? |
 |---|---|
 | **CAF** (Gard, Drôme, Tarn) | **Non.** Les règlements d'aide aux partenaires sont publiés, la liste des subventions versées ne l'est pas ; `monenfant.fr` liste les structures conventionnées, sans montants [cité]. Soumise au décret 2017-779 au-delà de 23 000 € [su], sans jeu trouvé. |
-| **LEADER** (FEADER, via les GAL) | **Avec réserve.** La Région Occitanie, autorité de gestion, a sélectionné 38 GAL [cité]. [su] Les règlements européens imposent de publier la liste des opérations et des bénéficiaires, au plus tard chaque trimestre ou tous les quatre mois, avec nom, montant et objet. Forme : un fichier régional, à localiser. Clé : le nom, parfois le SIRET. |
-| **FEDER / FSE+** | **Avec réserve.** Même obligation de liste des opérations [su] ; des listes de bénéficiaires FEDER (Midi-Pyrénées) existent sur data.gouv.fr (étiquettes `feder`, `fse`) [cité]. Bénéficiaires rarement associatifs à cette échelle. |
-| **ANCT** | **Oui, partiellement.** Jeu « Fabriques de territoire » sur data.gouv.fr (tiers-lieux labellisés et subventionnés) [cité]. Les autres dispositifs (France services, Petites villes de demain) ne sont pas connus sous forme de liste de subventions. |
+| **LEADER** (FEADER, via les GAL) | **Avec réserve.** La Région Occitanie, autorité de gestion, a sélectionné 38 GAL [cité]. [su] Les règlements européens imposent de publier la liste des opérations et des bénéficiaires, au plus tard chaque trimestre ou tous les quatre mois, avec nom, montant et objet. Forme : un fichier régional, à localiser. Clé : le nom, parfois le SIRET. [vu] La rubrique « Open Data » de `europe-en-occitanie.eu` renvoie à `data.laregion.fr`, où une recherche « feder », « feader », « leader », « fonds européens » ne rend **aucun** jeu de bénéficiaires (05/10/2026). |
+| **FEDER / FSE+** | **Avec réserve.** Même obligation de liste des opérations [su] ; des listes de bénéficiaires FEDER (Midi-Pyrénées) existent sur data.gouv.fr (étiquettes `feder`, `fse`) [cité]. Bénéficiaires rarement associatifs à cette échelle. [vu] Même constat que pour LEADER : rien sur `data.laregion.fr`. [su] Le portail européen Kohesio recense les opérations FEDER et FSE+ par bénéficiaire ; non exploré. |
+| **ANCT** | **Oui, partiellement.** Jeu « Fabriques de territoire » sur data.gouv.fr (tiers-lieux labellisés et subventionnés) [cité]. Les autres dispositifs (France services, Petites villes de demain) ne sont pas connus sous forme de liste de subventions. [vu] Le jeu existe sur data.gouv.fr (ANCT, modifié le 24/09/2025). |
 | **Agence de l'eau** | **Non, au niveau du bénéficiaire.** Rhône Méditerranée Corse (Gard, Drôme) publie des communiqués trimestriels agrégés par territoire [cité]. Brassac relève d'**Adour-Garonne** [su], non instruite. Bénéficiaires associatifs rares (rivières, pêche). |
 | **Fondations reconnues d'utilité publique** | **Non.** Elles publient leurs comptes annuels au JOAFE (au-delà de 153 000 € de dons) [cité], pas la liste des subventions qu'elles versent. Ce ne sont pas des fonds publics au sens du projet. |
 
@@ -295,16 +366,16 @@ d'autre, ni sur le Département, ni sur l'Europe.
 | Intercommunalité | délibérations (`cm_flux`) | ✔ (déjà) | | |
 | Intercommunalité, CGEAC | délibération + appel à candidatures + jaune | | ✔ PDF, signataires à établir | |
 | État, tous programmes (DRAC comprise) | jaune budgétaire (`jaune`) | ✔ (déjà) | retard de 12 à 24 mois, millésime 2022 cassé | |
-| État, FDVA de l'année | listes des académies | | ✔ PDF ou page web, nom seul, trois académies | |
+| État, FDVA de l'année | listes des académies | | ✔ PDF ou page web, nom seul, deux foyers ; sites fermés aux robots [vu] | |
 | État, détail par dossier | Data.Subvention | | | ✘ réservé aux agents |
 | Région Occitanie | `data.laregion.fr` (`region`) | ✔ (déjà, ≥ 23 000 €) | | |
 | Région Occitanie, petites aides | délibérations de commission permanente | | ✔ PDF, à localiser | |
-| Région Auvergne-Rhône-Alpes | délibérations de CP (`edelib`) ; jeu inconnu | | ✔ à instruire | |
-| Département du Gard | annexe du CA ; délibérations de CP | | ✔ à localiser | ✘ aucun jeu ouvert |
-| Département de la Drôme | arrêtés d'attribution en PDF | | ✔ PDF avec listes | |
-| Département du Tarn | annexe du CA ; délibérations | | ✔ à localiser | ✘ aucun jeu trouvé |
+| Région Auvergne-Rhône-Alpes | délibérations de CP (`edelib`) ; aucun jeu trouvé [vu] | | ✔ à instruire | |
+| Département du Gard | délibérations sur kiosque Qualigraf (depuis le 31/03/2024) et `deliberations.gard.fr` (avant) ; annexe du CA non trouvée | | ✔ PDF, nom seul | ✘ aucun jeu ouvert [vu] |
+| Département de la Drôme | **tableau annuel des subventions aux associations, avec SIRET** (2020, 2021) | ✔ (PDF de texte, sans seuil) | années suivantes à localiser | |
+| Département du Tarn | délibérations sur kiosque Qualigraf (depuis le 01/01/2024) et `actes.tarn.fr` (avant) ; annexe du CA non trouvée | | ✔ PDF, nom seul | ✘ aucun jeu trouvé |
 | Toute autorité ≥ 23 000 € | SCDL sur data.gouv (`subv_ouvertes`) | ✔ (déjà) | | |
-| LEADER, FEDER | listes d'opérations de l'autorité de gestion | | ✔ | |
+| LEADER, FEDER | listes d'opérations de l'autorité de gestion | | ✔ à localiser : aucun jeu sur `data.laregion.fr` [vu] | |
 | ANCT | Fabriques de territoire | ✔ (jeu cité) | | |
 | CAF | — | | | ✘ |
 | Agence de l'eau | — | | | ✘ au niveau du bénéficiaire |
@@ -319,20 +390,27 @@ Du meilleur rapport couverture/effort au pire :
    base, ce que `jaune`, `region` et `subv_ouvertes` rendent pour les
    associations de chaque commune. Effort : une heure. C'est peut-être là
    qu'est l'écart avec le constat de départ.
-1. **Le Département, par l'annexe « concours attribués » de son compte
-   administratif.** Une seule pièce par an et par Département, sans seuil,
-   avec tous les bénéficiaires. Lecture de tableau PDF, déjà pratiquée pour
-   les budgets votés. Trois Départements, donc trois sources, mais une seule
-   forme de document (maquette M57).
-2. **Les arrêtés et délibérations du Département** (la Drôme d'abord, dont les
-   arrêtés listent les associations). C'est plus frais que l'annexe, mais il
-   faut un connecteur par site et lire des PDF.
+1. **Le Département, par le tableau annuel des concours attribués aux
+   associations.** Une seule pièce par an et par Département, sans seuil, avec
+   tous les bénéficiaires. **La Drôme d'abord** : son tableau de 2021 est en
+   ligne, en PDF de texte, **avec le SIRET** [vu, § 3.4] — c'est la seule
+   source départementale qui se rattache sans passer par le nom. Reste à
+   trouver les années suivantes, et la même pièce pour le Gard et le Tarn.
+2. **Les délibérations du Gard et du Tarn, par leur kiosque commun.** Les deux
+   Départements publient leurs actes sur le même logiciel (`kiosk.qualigraf.fr`,
+   § 3.4) : un seul connecteur pour deux instances, à condition que le kiosque
+   se laisse lire sans navigateur — à instruire avant d'écrire. Le nom seul,
+   donc une relecture à l'atelier.
 3. **Les listes FDVA des académies** : elles donnent l'année en cours, quand le
-   jaune n'arrive qu'un à deux ans après. Il y a trois pages, le nom seul, et
-   les noms se rattachent mal : à n'écrire qu'avec une relecture à l'atelier,
-   sur le modèle de `collectors/marches_extraits.py`.
-4. **La Région Auvergne-Rhône-Alpes** : d'abord instruire (jeu ouvert ou
-   non) ; un collecteur régional déclaré, comme `occitanie_region`.
+   jaune n'arrive qu'un à deux ans après. Il y a **deux** foyers et non trois
+   (une page pour toute l'Occitanie, des PDF pour Auvergne-Rhône-Alpes), le nom
+   seul, et les sites académiques **refusent tout client qui n'est pas un
+   navigateur** (§ 3.1) : à n'écrire qu'avec un dépôt manuel du fichier et une
+   relecture à l'atelier, sur le modèle de `collectors/marches_extraits.py`.
+4. **La Région Auvergne-Rhône-Alpes** : aucun jeu trouvé à la seconde passe
+   (§ 3.3). Ouvrir à la main son portail et `edelib` avant de décider ; un
+   collecteur régional déclaré, comme `occitanie_region`, seulement s'il
+   existe un jeu.
 5. **Les listes d'opérations LEADER et FEDER** de chaque autorité de gestion.
    Les montants sont importants mais les bénéficiaires associatifs sont rares.
 6. **Les délibérations de commission permanente des Régions**, pour les aides
