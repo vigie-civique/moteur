@@ -123,6 +123,71 @@ def test_la_collecte_pose_la_cle_et_retrouve_l_acte_par_elle(base):
     assert base.execute("SELECT cle_acte FROM events WHERE id=?", (s,)).fetchone()[0] == "c-2021-04-14"
 
 
+
+def _conseils():
+    return pytest.importorskip("collectors.conseils", reason="job « tests-deps » : pdfplumber")
+
+
+_PV, _RECUEIL = ("https://exemple.invalid/PV-du-24.05.2023.pdf",
+                 "https://exemple.invalid/Deliberations-24.05.2023.pdf")
+_TITRE = "Livraison d’eau considérée comme non potable dans le cadre de la pénurie d’eau privée"
+
+
+@pytest.mark.parametrize("ordre", ["pv_puis_recueil", "recueil_puis_pv"])
+def test_une_seance_publiee_deux_fois_ne_fait_qu_une_fiche_par_acte(base, ordre):
+    conseils = _conseils()
+    # Le procès-verbal ne numérote pas, coupe le titre en fin de ligne, et
+    # détaille le vote ; le recueil numérote, et écrit l'apostrophe autrement.
+    du_pv = {**_delib(None, _TITRE[:60]),
+             "vote": {"pour": 30, "contre": 2, "abstentions": 1, "unanimite": False}}
+    du_recueil = _delib("99", _TITRE.replace("’", "'"))
+    entrees = [(_Doc("2023-05-24", _PV), du_pv), (_Doc("2023-05-24", _RECUEIL), du_recueil)]
+    if ordre == "recueil_puis_pv":
+        entrees.reverse()
+    ids = [conseils.enregistrer_deliberation(base, doc, "epci", d) for doc, d in entrees]
+    # Rejeu du procès-verbal seul : c'est ce que fait un redécoupage.
+    ids.append(conseils.enregistrer_deliberation(base, _Doc("2023-05-24", _PV), "epci", du_pv))
+
+    assert len(set(ids)) == 1
+    lignes = base.execute("SELECT cle_acte, title, source_url, metadata FROM events"
+                          " WHERE type='deliberation_cc'").fetchall()
+    assert len(lignes) == 1
+    cle, titre, url, meta = lignes[0]
+    # L'acte du recueil fait foi ; le vote du procès-verbal n'est pas perdu.
+    assert (cle, titre, url) == ("cc-2023-99", du_recueil["titre"], _RECUEIL)
+    assert json.loads(meta)["vote"]["contre"] == 2
+
+
+def test_deux_actes_voisins_d_une_seance_restent_deux(base):
+    conseils = _conseils()
+    recueil, pv = _Doc("2021-03-03", _RECUEIL), _Doc("2021-03-03", _PV)
+    a = conseils.enregistrer_deliberation(
+        base, recueil, "epci", _delib("12", "Création Agent social CDD 22 h 30 - Crèche Espérou"))
+    b = conseils.enregistrer_deliberation(
+        base, pv, "epci", _delib(None, "Création Agent social CDD 24h - Crèche Notre dame de la Rouvière"))
+    assert a != b
+
+
+def test_un_titre_qui_convient_a_deux_actes_n_en_choisit_aucun(base):
+    conseils = _conseils()
+    recueil, pv = _Doc("2022-12-14", _RECUEIL), _Doc("2022-12-14", _PV)
+    numerotes = [conseils.enregistrer_deliberation(base, recueil, "epci", _delib(n, t)) for n, t in (
+        ("201", "Décisions modificatives budgétaires 2022 N°4 « Budget Principal »"),
+        ("202", "Décisions modificatives budgétaires 2022 N°2 « Maison de l’Eau »"))]
+    du_pv = conseils.enregistrer_deliberation(
+        base, pv, "epci", _delib(None, "Décisions modificatives budgétaires 2022"))
+    assert du_pv not in numerotes
+
+
+def test_le_meme_titre_un_autre_jour_est_un_autre_acte(base):
+    conseils = _conseils()
+    a = conseils.enregistrer_deliberation(
+        base, _Doc("2023-05-24", _RECUEIL), "epci", _delib("99", "Questions diverses"))
+    b = conseils.enregistrer_deliberation(
+        base, _Doc("2023-07-05", _PV), "epci", _delib(None, "Questions diverses"))
+    assert a != b
+
+
 # ── la migration ─────────────────────────────────────────────────────────────
 
 def _ancienne_base(tmp_path, schema_sql):
