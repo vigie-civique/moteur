@@ -84,6 +84,12 @@
   $: project = etat?.project || {}
   $: enLigne = etat?.en_ligne || {}
   $: deploiement = etat?.mise_en_ligne || {}
+  // Un aperçu en construction et la mise en ligne écrivent au même endroit
+  // (`public/.svelte-kit`) : l'une attend l'autre. Le bouton ne s'offre pas
+  // pendant ce temps — celui de cette page (`serveurEnCours`) comme celui d'un
+  // autre compte, que l'état rapporte.
+  $: apercuEnConstruction = deploiement.build?.genre === 'apercu'
+  $: if (apercuEnConstruction && !suivi) suivre()
   $: urlPublique = etat?.site?.url || null
   $: promu = etape === 'promu_localement' || etape === 'en_ligne'
   $: peutPublier = peutAgir && etape === 'pret_a_publier'
@@ -209,7 +215,9 @@
     clearInterval(suivi)
     suivi = setInterval(async () => {
       await charger({ silencieux: true })
-      if (!etat?.mise_en_ligne?.actif) { clearInterval(suivi); suivi = null }
+      if (!etat?.mise_en_ligne?.actif && !etat?.mise_en_ligne?.build) {
+        clearInterval(suivi); suivi = null
+      }
     }, 5000)
   }
   onDestroy(() => clearInterval(suivi))
@@ -747,7 +755,12 @@
       <p class="muted">Jamais vérifié depuis cette machine.</p>
     {/if}
 
-    {#if deploiement.actif}
+    {#if deploiement.actif && apercuEnConstruction}
+      <p class="ligne"><span class="tag attente">mise en ligne en attente</span>
+        Un aperçu se construit{deploiement.build.depuis ? ` depuis ${date(deploiement.build.depuis)}` : ''} :
+        la mise en ligne commencera dès qu'il aura fini. Rien n'est encore touché.
+      </p>
+    {:else if deploiement.actif}
       <p class="ligne"><span class="tag attente">déploiement en cours</span>
         Vers <code>{deploiement.destination_visee || deploiement.destination}</code>, empreinte
         <code>{deploiement.empreinte_visee}</code>. Construction des pages puis
@@ -767,9 +780,17 @@
 
     {#if peutAgir}
       <button class="danger" on:click={mettreEnLigne}
-              disabled={deploying || deploiement.actif || publishing}>
+              disabled={deploying || deploiement.actif || publishing
+                        || serveurEnCours || apercuEnConstruction}>
         {deploying || deploiement.actif ? 'Mise en ligne…' : 'Mettre en ligne'}
       </button>
+      {#if !deploiement.actif && (serveurEnCours || apercuEnConstruction)}
+        <p class="muted">
+          « Mettre en ligne » attend : un aperçu se construit{deploiement.build?.depuis
+            ? ` depuis ${date(deploiement.build.depuis)}` : ''}, et deux builds du site
+          écrivent au même endroit. Le bouton revient dès qu'il a fini.
+        </p>
+      {/if}
       <button class="secondary" on:click={verifierEnLigne} disabled={verifying}>
         {verifying ? 'Vérification…' : 'Vérifier ce qui est en ligne'}
       </button>
