@@ -126,6 +126,10 @@ class TestDepot:
         ({"acheteur_siren": "12345"}, "SIREN"),
         ({"objet": ""}, "objet : champ obligatoire"),
         ({"devise_base": "HTVA"}, "valeurs admises"),
+        # Relecture du 05/10/2026 : `float()` les lit sans erreur, et une charge
+        # portant un NaN ne se sérialise plus.
+        ({"montant": "nan"}, "montant attendu"),
+        ({"montant": float("inf")}, "montant attendu"),
     ])
     def test_ce_qui_ne_s_atteste_pas_est_refuse_avec_sa_raison(self, base, depot, modif, motif):
         eid = _acte(base)
@@ -184,6 +188,79 @@ class TestDepot:
     def test_un_montant_se_lit_avec_un_point_decimal(self, ecrit, lu):
         from collectors.citations import montants_cites
         assert montants_cites(f"pour un montant de {ecrit} par an") == {lu}
+
+
+class TestRedecoupage:
+    """`events.id` change quand `redecouper_pv` ou une purge refont les actes.
+    La clé datée, elle, reste : c'est elle qui tient la ligne à son acte."""
+
+    def _redecouper(self, base, ancien):
+        r = base.execute("SELECT type, date, title, content, source, source_url, "
+                         "raw_document_id, cle_acte FROM events WHERE id=?", (ancien,)).fetchone()
+        base.execute("DELETE FROM events WHERE id=?", (ancien,))
+        nouveau = base.execute(
+            "INSERT INTO events(type, date, title, content, source, source_url, "
+            "raw_document_id, cle_acte) VALUES(?,?,?,?,?,?,?,?)", tuple(r)).lastrowid
+        base.commit()
+        return nouveau
+
+    def test_un_rapport_regenere_ne_repropose_pas_ce_qui_a_ete_ecarte(self, base, depot):
+        eid = _acte(base)
+        depot([_ligne(eid)])
+        base.execute("UPDATE propositions SET etat='refusee'")
+        base.commit()
+        nouveau = self._redecouper(base, eid)
+        assert nouveau != eid
+        assert depot([_ligne(nouveau)])["deja_proposees"] == 1
+
+    def test_une_ligne_en_attente_retrouve_son_acte(self, base, depot):
+        eid = _acte(base)
+        depot([_ligne(eid)])
+        nouveau = self._redecouper(base, eid)
+        prop = {"object_id": eid,
+                "charge": json.loads(base.execute("SELECT charge FROM propositions").fetchone()[0])}
+        assert mx.acte_de_proposition(base, prop)["id"] == nouveau
+
+    def test_sans_cle_datee_l_identifiant_reste_la_reference(self, base, depot):
+        eid = _acte(base)
+        base.execute("UPDATE events SET cle_acte=NULL")
+        base.commit()
+        depot([_ligne(eid)])
+        assert "acte_cle" not in json.loads(
+            base.execute("SELECT charge FROM propositions").fetchone()[0])
+
+
+class TestSousLesYeux:
+    def test_un_marche_deja_en_base_du_meme_acheteur_et_montant_est_signale(self, base):
+        base.execute("INSERT INTO marches_publics(acheteur_siren, acheteur_nom, objet, montant, "
+                     "date_notif, source, raw_id) VALUES(?, 'Mairie', 'Toiture', 18450.4, "
+                     "'2024-03-20', 'atelier:x', 'atelier:x')", (COMMUNE_SIREN,))
+        base.commit()
+        charge = {"acheteur_siren": COMMUNE_SIREN, "montant": 18450}
+        [d] = mx.doublons(base, charge)
+        assert d["source"] == "atelier:x"
+        assert mx.doublons(base, {**charge, "montant": 9000}) == []
+        assert mx.doublons(base, {**charge, "acheteur_siren": EPCI_SIREN}) == []
+
+    def test_le_passage_se_surligne_comme_la_citation_se_controle(self):
+        # Sans accents ni apostrophes : `citation_presente` l'accepte, le
+        # surlignage doit le retrouver aussi, sur le texte d'origine.
+        cite = "decide d attribuer le marche de refection de la toiture"
+        e = mx.extrait(TEXTE, cite, marge=20)
+        assert e["cite"] == "décide d'attribuer le marché de réfection de la toiture"
+        assert e["avant"].startswith("…") and e["apres"].endswith("…")
+        assert mx.extrait(TEXTE, "une phrase qui n'y figure pas du tout") is None
+
+
+def test_le_depot_se_journalise_et_s_archive_par_tout_chemin(base, depot, tmp_path):
+    octets = json.dumps([{"x": 1}]).encode()
+    chemin = mx.archiver(octets, tmp_path)
+    assert chemin.read_bytes() == octets and chemin.parent == tmp_path
+    assert mx.archiver(octets, tmp_path) == chemin          # rejouer n'écrit rien de plus
+    mx.journaliser(base, {"id": 1, "email": "v"}, "abc", {"lignes": 2, "refusees": ["…"]})
+    [j] = base.execute("SELECT action, field, new_value FROM audit_log").fetchall()
+    assert (j[0], j[1]) == ("deposer_marches_extraits", "rapport/abc")
+    assert "refusees" not in json.loads(j[2])
 
 
 class TestPortee:
@@ -288,8 +365,11 @@ class TestAtelier:
         atelier["client"].post("/api/atelier/marches-extraits", headers=atelier["valid"],
                                json=[_ligne(atelier["eid"])])
         [p] = _attente(atelier)
-        assert p["acte"]["id"] == atelier["eid"] and CITATION[:30] in p["acte"]["content"]
-        assert p["actuel"] == {}
+        assert p["acte"]["id"] == atelier["eid"] and p["actuel"] == {}
+        # Le passage et son contexte, pas le texte entier de l'acte.
+        assert "content" not in p["acte"]
+        assert p["acte"]["extrait"]["cite"] == CITATION
+        assert p["doublons"] == []
 
     def test_accepter_corrige_et_rattache_a_l_acte_a_la_piece_et_a_l_acheteur(self, atelier):
         c = atelier["client"]

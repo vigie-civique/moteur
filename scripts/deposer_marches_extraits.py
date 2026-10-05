@@ -38,8 +38,9 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        rapport = json.loads(args.rapport.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as e:
+        octets = args.rapport.read_bytes()
+        rapport = json.loads(octets.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         print(f"✖ rapport illisible : {e}", file=sys.stderr)
         return 1
 
@@ -50,16 +51,23 @@ def main() -> int:
         if not compte or compte["role"] not in ROLES_VALIDATEURS or compte["desactive_le"]:
             print(f"✖ {args.compte} n'est pas un compte validateur actif.", file=sys.stderr)
             return 1
+        auteur = {"id": compte["id"], "email": compte["email"]}
+        # La même forme que l'atelier (`POST /api/atelier/marches-extraits`) :
+        # un même rapport porte la même empreinte, par où qu'il entre.
+        octets = json.dumps(rapport, ensure_ascii=False, sort_keys=True).encode()
+        empreinte = mx.empreinte(octets)[:16]
         try:
-            bilan = mx.deposer(conn, rapport, {"id": compte["id"], "email": compte["email"]},
-                               mx.empreinte(args.rapport.read_bytes())[:16])
+            bilan = mx.deposer(conn, rapport, auteur, empreinte)
         except mx.RapportRefuse as e:
             print(f"✖ {e}", file=sys.stderr)
             return 1
         if args.simulation:
             conn.rollback()
         else:
+            # Comme l'atelier : le dépôt au journal, le rapport archivé.
+            mx.journaliser(conn, auteur, empreinte, bilan)
             conn.commit()
+            mx.archiver(octets)
     finally:
         conn.close()
 

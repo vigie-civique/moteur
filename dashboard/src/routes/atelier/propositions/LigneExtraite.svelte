@@ -39,17 +39,12 @@
 
   let motif = ''
 
-  // Le passage cité, retrouvé dans le texte de l'acte pour y être surligné. La
-  // recherche ignore la casse et les blancs ; l'API, elle, a déjà vérifié la
-  // présence littérale (à la ponctuation près) avant de proposer la ligne.
-  const plat = (t) => (t || '').replace(/\s+/g, ' ')
-  $: texte = plat(acte?.content)
-  $: debut = texte.toLowerCase().indexOf(plat(c.citation).toLowerCase())
-  $: extrait = debut < 0 ? null : {
-    avant: (debut > 400 ? '…' : '') + texte.slice(Math.max(0, debut - 400), debut),
-    cite: texte.slice(debut, debut + plat(c.citation).length),
-    apres: texte.slice(debut + plat(c.citation).length, debut + plat(c.citation).length + 400) + '…',
-  }
+  // Le passage cité et son contexte, découpés par l'API comme
+  // `citation_presente` les a reconnus (ponctuation et accents compris). Le
+  // navigateur cherchait lui-même, plus strictement : le surlignage échouait là
+  // où le contrôle avait réussi.
+  $: extrait = acte?.extrait
+  $: doublons = p.doublons || []
 </script>
 
 <div class="ligne">
@@ -80,7 +75,20 @@
     <p class="signal">L'acte est municipal, l'acheteur lu est l'intercommunalité : un compte rendu, ou une erreur de lecture ?</p>
   {/if}
 
+  {#if doublons.length}
+    <div class="signal">
+      Déjà en base pour le même acheteur et le même montant — un doublon, ou un autre marché ?
+      <ul>
+        {#each doublons as d}
+          <li>{d.date_notif || 'sans date'} · {d.objet} · {d.source}{d.confidence === 'probable' ? ' (non publié)' : ''}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
   <p class="muted">Acheteur : {PORTEE[c.portee] ?? c.portee}
+    {#if c.acheteur_siren}— SIREN donné par l'outil, qui peut l'avoir déduit de l'assemblée
+      plutôt que lu dans l'acte : la portée en découle, le vérifier{/if}
     {#if c.titre_acte && c.titre_acte !== acte?.title}· l'outil a lu le titre « {c.titre_acte} »{/if}</p>
 
   <div class="champs">

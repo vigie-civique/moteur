@@ -4223,8 +4223,8 @@ def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
     if prop["nature"] == _marches_extraits.NATURE:
         # Une ligne extraite ne remplace aucune valeur en place : ce qui peut
         # avoir disparu, c'est l'acte d'où elle a été lue.
-        existe = row(conn, "SELECT 1 FROM events WHERE id=?", (prop["object_id"],))
-        return {} if existe else None
+        # Retrouvé par sa clé datée s'il a été renuméroté depuis le dépôt.
+        return {} if _marches_extraits.acte_de_proposition(conn, prop) else None
     if prop["nature"] == "fiche":
         ligne = row(conn, _FICHE_COURANTE, (prop["object_id"],))
     elif prop["nature"] == "coords":
@@ -4242,13 +4242,20 @@ def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
 
 def _acte_sous_les_yeux(conn, prop: dict) -> Optional[dict]:
     """L'acte d'où une ligne extraite a été lue, et ce qu'il faut pour la juger :
-    son texte, sa pièce, et l'endroit où la citation s'y lit. Relire une
-    extraction sans l'acte, c'est faire confiance à l'outil — ce que la
-    relecture devait justement cesser de faire."""
-    acte = row(conn, "SELECT id, type, date, title, content, source, source_url, "
-                     "raw_document_id, cle_acte FROM events WHERE id=?",
-               (prop["object_id"],))
-    return dict(acte) if acte else None
+    sa pièce, et le passage où la citation s'y lit, avec son contexte. Relire
+    une extraction sans l'acte, c'est faire confiance à l'outil — ce que la
+    relecture devait justement cesser de faire.
+
+    Le passage, pas le texte entier : la file pesait environ 2 Mo pour les
+    161 lignes du rapport de Lasalle (relecture du 05/10/2026)."""
+    acte = _marches_extraits.acte_de_proposition(conn, prop)
+    if not acte:
+        return None
+    sortie = {k: acte.get(k) for k in ("id", "type", "date", "title", "source_url",
+                                         "raw_document_id", "cle_acte")}
+    sortie["extrait"] = _marches_extraits.extrait_de(
+        conn, acte, (prop.get("charge") or {}).get("citation") or "")
+    return sortie
 
 
 @app.get("/api/atelier/propositions")
@@ -4270,6 +4277,10 @@ def atelier_propositions(etat: str = "en_attente", nature: Optional[str] = None,
             p["actuel"] = _valeurs_actuelles(conn, p) if etat == "en_attente" else None
             if p["nature"] == _marches_extraits.NATURE:
                 p["acte"] = _acte_sous_les_yeux(conn, p)
+                # Calculés à la lecture, pas au dépôt : un marché accepté hier
+                # doit apparaître comme doublon possible de la ligne d'aujourd'hui.
+                if etat == "en_attente":
+                    p["doublons"] = _marches_extraits.doublons(conn, p["charge"])
         return {"propositions": lignes, "peut_trancher": au_moins(user, "validator"),
                 "corrigeables": {_marches_extraits.NATURE: list(_marches_extraits.CORRIGEABLES)}}
     finally:
@@ -4353,7 +4364,7 @@ def atelier_trancher_proposition(
 # validateur l'ait acceptée. Le rapport reçu est archivé tel quel, sous son
 # empreinte : une ligne proposée dit de quel rapport elle vient.
 
-RAPPORTS_EXTRAITS = RACINE / "data" / "extraits" / "marches"
+RAPPORTS_EXTRAITS = _marches_extraits.RAPPORTS
 
 
 @app.post("/api/atelier/marches-extraits", status_code=201)
@@ -4367,7 +4378,6 @@ def atelier_deposer_marches_extraits(
     Réservé au validateur : un dépôt fait entrer d'un coup des dizaines de
     lignes dans la file que les validateurs relisent, et c'est à eux d'en
     décider."""
-    from collectors.chemins import sous
     octets = json.dumps(rapport, ensure_ascii=False, sort_keys=True).encode()
     if len(octets) > 20 * 1024 * 1024:
         raise HTTPException(413, "rapport trop volumineux (20 Mo maximum).")
@@ -4380,21 +4390,13 @@ def atelier_deposer_marches_extraits(
         except _marches_extraits.RapportRefuse as e:
             conn.rollback()
             raise HTTPException(400, str(e))
-        conn.execute(
-            "INSERT INTO audit_log(user_id, entity_id, table_name, action, field, new_value) "
-            "VALUES(?,?,?,?,?,?)",
-            (user["id"], None, "propositions", "deposer_marches_extraits",
-             f"rapport/{empreinte[:16]}", json.dumps(
-                 {k: v for k, v in bilan.items() if k != "refusees"}, ensure_ascii=False)))
+        _marches_extraits.journaliser(conn, user, empreinte[:16], bilan)
         conn.commit()
     finally:
         conn.close()
     # Archivé APRÈS le dépôt : un rapport refusé n'a rien proposé, il n'a pas
     # à occuper le disque. Le nom est l'empreinte, jamais une valeur reçue.
-    chemin = sous(RAPPORTS_EXTRAITS, f"{empreinte[:16]}.json")
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    if not chemin.exists():
-        chemin.write_bytes(octets)
+    _marches_extraits.archiver(octets, RAPPORTS_EXTRAITS)
     return {"ok": True, "rapport": empreinte[:16], **bilan}
 
 

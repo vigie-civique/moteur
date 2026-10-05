@@ -126,8 +126,10 @@
         une ligne lue n'est publiée qu'une fois confirmée, une à une, l'acte
         sous les yeux.
       {:else if extraits.cas === 'depouilles'}
-        Les procès-verbaux ont été dépouillés pour en relever les marchés
-        {#if extraits.dernier}(dernier relevé le {extraits.dernier}){/if}&nbsp;;
+        <!-- « Dépouillés » s'affichait dès une seule ligne déposée : la phrase
+             affirmait un relevé complet que le site ne sait pas. -->
+        Un relevé des marchés lus dans les procès-verbaux a été déposé
+        {#if extraits.dernier}(le dernier, le {extraits.dernier}){/if}&nbsp;;
         aucune attribution de la commune n'y attend de relecture.
       {:else if extraits.cas === 'non_depouilles'}
         Les procès-verbaux du conseil n'ont pas encore été dépouillés pour en
@@ -138,6 +140,14 @@
       {/if}
       Ce zéro est celui du site, pas celui de la commune.
       {#if marches.length}Les marchés publiés ici émanent d'autres acheteurs.{/if}
+    {/if}
+    <!-- Les lignes communales en attente se taisaient dès qu'un premier marché
+         de la commune était publié : le total affiché paraissait complet. -->
+    {#if comptePortee.commune !== undefined && extraits.enAttente}
+      {pluriel(extraits.enAttente, 'autre attribution')} de la commune
+      lue{extraits.enAttente > 1 ? 's' : ''} dans les procès-verbaux
+      {extraits.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture et
+      n'entre{extraits.enAttente > 1 ? 'nt' : ''} dans aucun chiffre de cette page.
     {/if}
     {#if extraits.autresEnAttente}
       {pluriel(extraits.autresEnAttente, 'autre attribution')} lue{extraits.autresEnAttente > 1 ? 's' : ''}

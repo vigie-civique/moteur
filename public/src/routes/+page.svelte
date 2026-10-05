@@ -273,8 +273,8 @@
           procès-verbaux et {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'}
           relecture.
         {:else if extraitsMarches?.cas === 'depouilles'}
-          Les procès-verbaux ont été dépouillés, et aucune attribution de la
-          commune n'y attend de relecture.
+          Un relevé des procès-verbaux a été déposé, et aucune attribution de
+          la commune n'y attend de relecture.
         {:else if extraitsMarches?.cas === 'non_depouilles'}
           Les procès-verbaux ne sont pas encore dépouillés pour en relever les marchés.
         {/if}

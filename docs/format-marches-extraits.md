@@ -33,7 +33,11 @@ rapport JSON ─▶ dépôt (atelier, ou scripts/deposer_marches_extraits.py)
   rien d'autre. Le snapshot en publie le **nombre** (`couverture.json`,
   `extraits.marches`), jamais les lignes (décision 6 du 04/10/2026).
 - **Rejouer ne double rien.** Chaque ligne a une empreinte (l'acte, l'objet, le
-  titulaire et le montant, sous forme compacte) ; une empreinte déjà proposée
+  titulaire et le montant, sous forme compacte). L'acte y entre par sa clé
+  datée (`events.cle_acte`) quand il en a une, pour qu'un redécoupage des
+  procès-verbaux, qui renouvelle `events.id`, ne fasse pas reproposer ce qui a
+  déjà été tranché ; une ligne en attente retrouve son acte de la même façon.
+  Une empreinte déjà proposée
   ne l'est plus, que la proposition ait été acceptée, écartée ou soit en
   attente. L'acceptation écrit une saisie dont l'identifiant dérive de cette
   empreinte, et le rejeu des saisies ne réécrit pas une ligne déjà en base.
@@ -86,7 +90,7 @@ existant). Un objet qui déclare un autre `format` est refusé entier.
 | `citation` | oui | texte | Le passage **littéral** de l'acte qui atteste la ligne. Il doit se retrouver dans le texte de l'acte (`events.content`), ou à défaut dans celui d'un autre acte de la même pièce (même document archivé, ou même adresse et même date). Le contrôle est `collectors/extraction.py::citation_presente` : casse, accents, ponctuation et blancs ignorés ; au moins 15 caractères. |
 | `objet` | oui | texte | L'objet du marché. |
 | `acheteur_nom` | oui | texte | L'acheteur, tel que l'acte le nomme. Conservé tel quel ; le site publie le nom de la **fiche** de l'acheteur. |
-| `acheteur_siren` | non | 9 chiffres (ou un SIRET de 14) | Rattache l'acheteur à sa fiche. Sans lui, la portée est déduite du nom (`attribution_acheteur`), et reste « non établie » quand le nom ne suffit pas. |
+| `acheteur_siren` | non | 9 chiffres (ou un SIRET de 14) | Rattache l'acheteur à sa fiche. L'outil de Lasalle le **déduit de l'assemblée** plutôt qu'il ne le lit : l'atelier le dit au validateur. Sans lui, la portée est déduite du nom (`attribution_acheteur`), et reste « non établie » quand le nom ne suffit pas. |
 | `titulaire` | non | texte | L'attributaire. Sans titulaire, la ligne est un avis, pas un marché attribué. |
 | `montant` | non | nombre ≥ 0 | En euros, tel que l'acte le donne. `"18 450,00"` est lu aussi. |
 | `devise_base` | non | `HT` ou `TTC` | Conservé dans `marches_publics.montant_base`. |
@@ -113,6 +117,9 @@ l'acte ; citation trop courte ou introuvable.
 
 - le montant ne figure pas dans la citation (il peut se lire ailleurs dans l'acte) ;
 - la citation se lit dans un autre acte de la même pièce, pas dans celui-ci ;
+- un marché **déjà en base** porte le même acheteur (par SIREN) et le même
+  montant à l'euro près : doublon, ou autre marché ? L'outil calcule
+  `deja_importe` par acte, pas par marché, et ne le voit pas ;
 - l'acheteur lu est la commune alors que l'acte est communautaire, ou
   l'inverse — un compte rendu, ou une erreur de lecture : un acte de
   l'intercommunalité n'est pas un acte de la commune.
