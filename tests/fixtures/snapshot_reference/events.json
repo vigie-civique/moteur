@@ -97,6 +97,36 @@
       "ancre": "cc-2024-12"
     },
     {
+      "id": 10,
+      "type": "deliberation",
+      "date": "2023-09-18",
+      "date_end": null,
+      "title": "Toiture de l'école : attribution du marché",
+      "source": "exemple.invalid",
+      "source_url": "https://exemple.invalid/actes/2023-09-18-57.pdf",
+      "page_url": null,
+      "extrait": true,
+      "pieces": null,
+      "pdf_url": "https://exemple.invalid/actes/2023-09-18-57.pdf",
+      "vote": {
+        "pour": null,
+        "contre": null,
+        "abstention": null,
+        "unanimite": true
+      },
+      "montant_principal": 18450.0,
+      "montants": [
+        18450.0
+      ],
+      "categorie": "eau",
+      "provenance": "secondaire",
+      "document": "acte",
+      "traitement": "extraction",
+      "portee": "commune",
+      "cle": "c-2023-57",
+      "ancre": "c-2023-57"
+    },
+    {
       "id": 7,
       "type": "deliberation",
       "date": "2023-03-06",
@@ -238,5 +268,5 @@
       "ancre": "c-2021-04-14"
     }
   ],
-  "total": 9
+  "total": 10
 }

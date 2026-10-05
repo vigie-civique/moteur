@@ -349,7 +349,7 @@ def test_une_autre_date_change_la_sortie_et_le_comparateur_le_dit(base_ci, matin
     r = C.comparer_snapshots(matin, autrefois)
     assert not r["identiques"]
     assert {m["fichier"] for m in r["modifies"]} == {"couverture.json", "stats.json"}
-    assert {"chemin": "actualite_a_venir", "ancien": 0, "nouveau": 9} in \
+    assert {"chemin": "actualite_a_venir", "ancien": 0, "nouveau": 10} in \
         _modifie(r, "stats.json")["ecarts"]
 
 

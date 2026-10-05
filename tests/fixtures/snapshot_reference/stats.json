@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-04T10:01:09",
+  "generated_at": "2026-10-04T23:59:31",
   "statut": {
     "type": "demonstration",
     "libelle": "Portage de démonstration",
@@ -22,15 +22,15 @@
   "conseil_communautaire": 0,
   "relations_total_private": 1,
   "relations_public": 1,
-  "events_total_private": 9,
-  "events_public": 9,
-  "deliberations_public": 6,
+  "events_total_private": 10,
+  "events_public": 10,
+  "deliberations_public": 7,
   "deliberations_public_par_portee": {
     "intercommunalite": 2,
-    "commune": 4
+    "commune": 5
   },
   "events_public_par_portee": {
-    "commune": 6,
+    "commune": 7,
     "intercommunalite": 3
   },
   "entities_public_par_activite": {
@@ -46,7 +46,7 @@
     "election": 1,
     "deliberation_cc": 2,
     "conseil_communautaire": 1,
-    "deliberation": 4,
+    "deliberation": 5,
     "conseil_municipal": 1
   },
   "replicabilite": {
@@ -84,15 +84,15 @@
   "provenance": {
     "provenance": {
       "primaire": 1,
-      "secondaire": 8
+      "secondaire": 9
     },
     "document": {
       "aucun": 1,
-      "acte": 8
+      "acte": 9
     },
     "traitement": {
       "structure": 4,
-      "extraction": 5
+      "extraction": 6
     }
   },
   "flows_total_private": 0,
@@ -166,7 +166,7 @@
   "graphe": {
     "actes_cites": 6,
     "renvois": 10,
-    "alias": 7,
+    "alias": 8,
     "lacunes": {
       "question": 2,
       "citation": 2
@@ -174,7 +174,7 @@
     "citations_non_resolues": 2,
     "actes_avec_personne_morale": 1,
     "cles": {
-      "stables": 7,
+      "stables": 8,
       "faibles": 1,
       "en_collision": 0
     }
@@ -188,10 +188,10 @@
     "avec_dossier": 1
   },
   "corrections_site": 0,
-  "actualite_items": 9,
+  "actualite_items": 10,
   "actualite_a_venir": 0,
   "actualite_par_genre": {
-    "acte": 9
+    "acte": 10
   },
   "redactions_personnes": 0,
   "conflits_cas": 0,
@@ -201,11 +201,11 @@
   "elus_rne": 2,
   "urbanisme_autorisations": 1,
   "urbanisme_adresses_retirees": 0,
-  "extraits_actes": 6,
+  "extraits_actes": 7,
   "extraits_masquages": {
     "courriel": 0
   },
   "entity_bundles": 3,
   "search_index_entries": 3,
-  "recherche_index_entries": 14
+  "recherche_index_entries": 15
 }

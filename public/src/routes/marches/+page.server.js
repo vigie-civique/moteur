@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR } from '$lib/donnees.server.js'
+import { etatSource, extraitsMarches } from '$lib/couverture.js'
 
 export const prerender = true
 
@@ -46,8 +47,14 @@ export function load() {
     }, new Map())
   ).values()].filter((n) => n > 1).length
 
+  // Ce que vaut un zéro : la collecte des sources ouvertes a-t-elle tourné,
+  // et les procès-verbaux ont-ils été dépouillés ? (cf. $lib/couverture.js)
+  const couverture = lire('couverture.json', {})
+
   return {
     marches,
+    sourceMarches: etatSource(couverture, 'marches').etat,
+    extraits: extraitsMarches(couverture, 'commune'),
     constat: attribues.length ? {
       attribues: attribues.length,
       total,

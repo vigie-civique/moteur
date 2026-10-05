@@ -215,6 +215,12 @@ jobs:
           assert liens["actes"].get("c-2021-41"), "aucun retour vers l'acte cité"
           assert json.loads((d / "lacunes.json").read_text())["total"] >= 2
           print("graphe des liens :", s["graphe"])
+          # Un marché lu dans un procès-verbal et déposé à l'atelier : il est
+          # COMPTÉ en attente, et il n'est PAS publié (extraction ≠ publication).
+          x = json.loads((d / "couverture.json").read_text())["extraits"]["marches"]
+          assert x["en_attente"]["commune"] == 1, x
+          assert json.loads((d / "marches.json").read_text())["marches"] == [], \
+              "une ligne extraite est publiée sans avoir été relue"
           PY
       - name: Build
         working-directory: public
@@ -230,6 +236,10 @@ jobs:
           grep -q 'Mise en clair' build/conseils/2021-04-14_conseil-municipal.html
           grep -q 'Pas encore mise en clair' build/conseils/2025-04-02_conseil-communautaire.html
           grep -q 'href="/conseils/2021-04-14_conseil-municipal"' build/deliberations/2021.html
+          # Un zéro de marchés dit pourquoi : ici, une attribution lue dans un
+          # procès-verbal attend sa relecture (lot 4 b), et le nombre est donné.
+          grep -q 'attend sa' build/marches.html
+          grep -q 'attend sa' build/index.html
           # Chaque résultat de recherche mène à une page qui l'affiche : avant
           # le 04/10/2026, ≈ 1 400 résultats de Lasalle visaient une ancre
           # absente de /deliberations/<année>, ou une année sans page.
