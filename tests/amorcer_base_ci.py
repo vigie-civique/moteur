@@ -96,6 +96,7 @@ def main() -> int:
     conn.commit()
 
     n_actes = amorcer_deliberations(conn, publiable)
+    n_extraits = amorcer_marches_extraits(conn)
     regles = ecrire_regles_ci()
     n_dossiers = amorcer_dossiers(conn, regles) if os.environ.get("VIGIE_CI_DOSSIERS") else 0
     n_seances = amorcer_conseils(conn) if os.environ.get("VIGIE_CI_DOSSIERS") else 0
@@ -104,7 +105,7 @@ def main() -> int:
     conn.close()
     print(f"[ci] {DB_PATH} amorcée — {total} entités, dont 1 seule publiable ; "
           f"{n_actes} actes d'assemblée ; {n_dossiers} dossiers retenus ; "
-          f"{n_seances} séance relue ; "
+          f"{n_seances} séance relue ; {n_extraits} marché lu en attente ; "
           f"règles : {regles}")
     return 0
 
@@ -151,6 +152,14 @@ ACTES = (
     ("deliberation_cc", "2024-06-20", "12", "Adhésion au service commun d'instruction",
      "Le conseil communautaire approuve l'adhésion au service commun d'instruction des "
      "autorisations d'urbanisme.", [], {"pour": 30, "contre": 1, "abstention": 0}),
+    # En dernier, pour ne décaler l'identifiant d'aucun acte de la référence.
+    # Un marché attribué en conseil, sous le seuil de publicité : il ne se lit
+    # que là. Sa ligne extraite attend une relecture (`amorcer_marches_extraits`).
+    ("deliberation", "2023-09-18", "57", "Toiture de l'école : attribution du marché",
+     "Le conseil municipal attribue le marché de réfection de la toiture de l'école à "
+     "l'entreprise Couvreurs d'épreuve pour un montant de 18 450 € HT, au terme d'une "
+     "procédure adaptée.",
+     [{"montant": 18450.0, "context": "18 450 € HT"}], {"unanimite": True}),
 )
 
 SEANCES = (("conseil_municipal", "2021-04-14", "Conseil municipal du 14 avril 2021"),
@@ -190,6 +199,36 @@ def amorcer_deliberations(conn, entite_concernee: int) -> int:
                  (entite_concernee,))
     conn.commit()
     return len(ACTES)
+
+
+# ─── Un marché lu dans un procès-verbal, en attente de relecture ─────────────
+# Ajouté le 04/10/2026 avec `collectors/marches_extraits.py`. La base de la CI
+# n'a AUCUN marché publié : /marches y affiche son zéro, et ce zéro doit dire
+# qu'une attribution lue attend sa relecture — sans la publier. Déposée par le
+# vrai chemin, pour que le contrôle porte sur lui et non sur une copie.
+
+def amorcer_marches_extraits(conn) -> int:
+    from collectors import marches_extraits
+    from collectors.config import COMMUNE_NAME, COMMUNE_SIREN
+    eid = conn.execute("SELECT id FROM events WHERE type='deliberation' "
+                       "AND date='2023-09-18'").fetchone()[0]
+    uid = conn.execute("INSERT INTO users (email, password_hash, role) "
+                       "VALUES ('ci@exemple.invalid', '-', 'validator')").lastrowid
+    bilan = marches_extraits.deposer(conn, {"format": marches_extraits.FORMAT, "lignes": [{
+        "event_id": eid, "date": "2023-09-18",
+        "objet": "Réfection de la toiture de l'école",
+        "citation": "attribue le marché de réfection de la toiture de l'école à "
+                    "l'entreprise Couvreurs d'épreuve pour un montant de 18 450 € HT",
+        "acheteur_nom": f"Commune de {COMMUNE_NAME}", "acheteur_siren": COMMUNE_SIREN,
+        "titulaire": "Couvreurs d'épreuve", "montant": 18450, "devise_base": "HT",
+        "procedure": "adaptée", "nature": "travaux"}]},
+        {"id": uid, "email": "ci@exemple.invalid"})
+    # Une date fixe : `couverture.json` publie celle du dernier dépôt, et le
+    # snapshot de référence doit être le même quel que soit le jour.
+    conn.execute("UPDATE propositions SET propose_le='2026-10-04 09:00:00'")
+    conn.commit()
+    assert bilan["proposees"] == 1, bilan
+    return bilan["proposees"]
 
 
 def ecrire_regles_ci() -> Path:

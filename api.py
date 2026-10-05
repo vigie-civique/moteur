@@ -38,6 +38,7 @@ from collectors.config import (BBOX, COMMUNE_NAME, COMMUNE_INSEE, DB_PATH,
                                DEPARTEMENT, EPCI_NOM)
 from collectors import dossiers as _dossiers
 from collectors import propositions as _propositions
+from collectors import marches_extraits as _marches_extraits
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
@@ -4207,6 +4208,11 @@ def delete_relation(rel_id: int = FPath(..., ge=1), user=Depends(require_au_moin
 class DecisionProposition(BaseModel):
     accepter: bool
     motif: str = ""
+    #: Une ligne extraite (nature `marche`) peut être CORRIGÉE en l'acceptant :
+    #: le validateur lit l'acte, et c'est lui qui a le dernier mot sur ce qu'il
+    #: dit. Refusé pour toute autre nature : celles-là portent déjà ce que le
+    #: contributeur voulait écrire, et le corriger serait écrire à sa place.
+    corrections: dict = {}
 
 
 def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
@@ -4214,6 +4220,11 @@ def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
     relecture, la collecte ou un autre éditeur ont pu passer. None : l'objet
     n'existe plus."""
     champs = list(prop["charge"])
+    if prop["nature"] == _marches_extraits.NATURE:
+        # Une ligne extraite ne remplace aucune valeur en place : ce qui peut
+        # avoir disparu, c'est l'acte d'où elle a été lue.
+        # Retrouvé par sa clé datée s'il a été renuméroté depuis le dépôt.
+        return {} if _marches_extraits.acte_de_proposition(conn, prop) else None
     if prop["nature"] == "fiche":
         ligne = row(conn, _FICHE_COURANTE, (prop["object_id"],))
     elif prop["nature"] == "coords":
@@ -4229,20 +4240,49 @@ def _valeurs_actuelles(conn, prop: dict) -> Optional[dict]:
     return {c: ligne.get(c) for c in champs}
 
 
+def _acte_sous_les_yeux(conn, prop: dict) -> Optional[dict]:
+    """L'acte d'où une ligne extraite a été lue, et ce qu'il faut pour la juger :
+    sa pièce, et le passage où la citation s'y lit, avec son contexte. Relire
+    une extraction sans l'acte, c'est faire confiance à l'outil — ce que la
+    relecture devait justement cesser de faire.
+
+    Le passage, pas le texte entier : la file pesait environ 2 Mo pour les
+    161 lignes du rapport de Lasalle (relecture du 05/10/2026)."""
+    acte = _marches_extraits.acte_de_proposition(conn, prop)
+    if not acte:
+        return None
+    sortie = {k: acte.get(k) for k in ("id", "type", "date", "title", "source_url",
+                                         "raw_document_id", "cle_acte")}
+    sortie["extrait"] = _marches_extraits.extrait_de(
+        conn, acte, (prop.get("charge") or {}).get("citation") or "")
+    return sortie
+
+
 @app.get("/api/atelier/propositions")
-def atelier_propositions(etat: str = "en_attente", user=Depends(require_auth)):
+def atelier_propositions(etat: str = "en_attente", nature: Optional[str] = None,
+                         user=Depends(require_auth)):
     """La file des propositions. Un contributeur n'y voit que les siennes."""
     if etat not in _propositions.ETATS:
         raise HTTPException(400, f"etat invalide — valeurs : {', '.join(_propositions.ETATS)}")
+    if nature is not None and nature not in _propositions.NATURES:
+        raise HTTPException(400, f"nature invalide — valeurs : {', '.join(_propositions.NATURES)}")
     conn = get_db_rw()
     try:
         _propositions.assurer_schema(conn)
         conn.commit()
         lignes = _propositions.lister(
-            conn, etat, None if au_moins(user, "validator") else user["id"])
+            conn, etat, None if au_moins(user, "validator") else user["id"],
+            nature=nature)
         for p in lignes:
             p["actuel"] = _valeurs_actuelles(conn, p) if etat == "en_attente" else None
-        return {"propositions": lignes, "peut_trancher": au_moins(user, "validator")}
+            if p["nature"] == _marches_extraits.NATURE:
+                p["acte"] = _acte_sous_les_yeux(conn, p)
+                # Calculés à la lecture, pas au dépôt : un marché accepté hier
+                # doit apparaître comme doublon possible de la ligne d'aujourd'hui.
+                if etat == "en_attente":
+                    p["doublons"] = _marches_extraits.doublons(conn, p["charge"])
+        return {"propositions": lignes, "peut_trancher": au_moins(user, "validator"),
+                "corrigeables": {_marches_extraits.NATURE: list(_marches_extraits.CORRIGEABLES)}}
     finally:
         conn.close()
 
@@ -4266,6 +4306,25 @@ def atelier_trancher_proposition(
         if prop["etat"] != "en_attente":
             raise HTTPException(409, f"Cette proposition n'attend plus : {prop['etat']}"
                                      + (f" par {prop['tranche_par']}." if prop["tranche_par"] else "."))
+        if req.corrections and not (req.accepter and prop["nature"] == _marches_extraits.NATURE):
+            raise HTTPException(400, "Seule une ligne extraite se corrige en l'acceptant.")
+        motif = req.motif
+        if req.accepter and prop["nature"] == _marches_extraits.NATURE:
+            if _valeurs_actuelles(conn, prop) is None:
+                raise HTTPException(409, "L'acte d'où la ligne a été lue n'existe plus "
+                                         "dans cette base : elle ne peut qu'être écartée.")
+            try:
+                saisie = _marches_extraits.saisie_de(conn, prop, req.corrections, user)
+            except _marches_extraits.LigneRefusee as e:
+                raise HTTPException(400, str(e))
+            # Même ordre que pour une correction : la saisie est écrite et
+            # rejouée d'abord, la proposition close ensuite. `import_saisies`
+            # ouvre sa propre transaction ; la tenir ici l'aurait bloqué.
+            _saisies.ajouter(saisie)
+            _saisies.import_saisies()
+            if req.corrections:
+                motif = (f"corrigée : {', '.join(sorted(req.corrections))}"
+                         + (f" — {req.motif.strip()}" if req.motif.strip() else ""))
         if req.accepter and prop["nature"] == "correction":
             # `_decider` ouvre sa propre transaction : la correction est posée
             # d'abord, la proposition close ensuite. Rejouer une correction déjà
@@ -4273,7 +4332,7 @@ def atelier_trancher_proposition(
             _decider(prop["object_type"], prop["object_id"],
                      AnnotationUpdate(corrections=prop["charge"]), user)
         conn.execute("BEGIN IMMEDIATE")
-        if req.accepter and prop["nature"] != "correction":
+        if req.accepter and prop["nature"] not in ("correction", _marches_extraits.NATURE):
             oid, charge = prop["object_id"], prop["charge"]
             if prop["nature"] == "fiche":
                 current = row(conn, _FICHE_COURANTE, (oid,))
@@ -4291,11 +4350,54 @@ def atelier_trancher_proposition(
                     raise HTTPException(404, "La relation visée n'existe plus.")
                 _ecrire_relation(conn, rel, charge, user)
         _propositions.clore(conn, proposition_id, "acceptee" if req.accepter else "refusee",
-                            user, req.motif)
+                            user, motif)
         conn.commit()
         return _propositions.lire(conn, proposition_id)
     finally:
         conn.close()
+
+
+# ─── Marchés lus dans les procès-verbaux ──────────────────────────────────────
+# Un rapport d'extraction (cf. `collectors/marches_extraits.py`,
+# `docs/format-marches-extraits.md`) entre par ici : chaque ligne attestée
+# devient une proposition, rien n'est écrit dans `marches_publics` avant qu'un
+# validateur l'ait acceptée. Le rapport reçu est archivé tel quel, sous son
+# empreinte : une ligne proposée dit de quel rapport elle vient.
+
+RAPPORTS_EXTRAITS = _marches_extraits.RAPPORTS
+
+
+@app.post("/api/atelier/marches-extraits", status_code=201)
+def atelier_deposer_marches_extraits(
+    rapport: dict | list = Body(...),
+    user=Depends(require_au_moins("validator", "Déposer un rapport de marchés extraits")),
+):
+    """Dépose un rapport : une proposition par ligne nouvelle dont la citation
+    se lit dans l'acte. Rejouer le même rapport ne propose rien de plus.
+
+    Réservé au validateur : un dépôt fait entrer d'un coup des dizaines de
+    lignes dans la file que les validateurs relisent, et c'est à eux d'en
+    décider."""
+    octets = json.dumps(rapport, ensure_ascii=False, sort_keys=True).encode()
+    if len(octets) > 20 * 1024 * 1024:
+        raise HTTPException(413, "rapport trop volumineux (20 Mo maximum).")
+    empreinte = _marches_extraits.empreinte(octets)
+    conn = get_db_rw()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            bilan = _marches_extraits.deposer(conn, rapport, user, empreinte[:16])
+        except _marches_extraits.RapportRefuse as e:
+            conn.rollback()
+            raise HTTPException(400, str(e))
+        _marches_extraits.journaliser(conn, user, empreinte[:16], bilan)
+        conn.commit()
+    finally:
+        conn.close()
+    # Archivé APRÈS le dépôt : un rapport refusé n'a rien proposé, il n'a pas
+    # à occuper le disque. Le nom est l'empreinte, jamais une valeur reçue.
+    _marches_extraits.archiver(octets, RAPPORTS_EXTRAITS)
+    return {"ok": True, "rapport": empreinte[:16], **bilan}
 
 
 @app.delete("/api/atelier/propositions/{proposition_id}")

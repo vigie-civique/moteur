@@ -66,6 +66,20 @@
       "note_revue": null
     },
     {
+      "date": "2023-09-18",
+      "genre": "acte",
+      "type": "deliberation",
+      "titre": "Toiture de l'école : attribution du marché",
+      "url": "https://exemple.invalid/actes/2023-09-18-57.pdf",
+      "montant": 18450.0,
+      "montant_indicatif": null,
+      "categorie": "eau",
+      "id": 10,
+      "portee": "commune",
+      "corrige": null,
+      "note_revue": null
+    },
+    {
       "date": "2023-03-06",
       "genre": "acte",
       "type": "deliberation",
@@ -145,8 +159,8 @@
       "note_revue": null
     }
   ],
-  "total": 9,
+  "total": 10,
   "arrete_le": "2026-10-04",
-  "genere_le": "2026-10-04T10:01:09",
+  "genere_le": "2026-10-04T23:59:31",
   "note": "Flux construit à partir des dates des actes publiés. Les flux financiers n'ont qu'une année : ils portent `date_approx` et sont regroupés par année, hors de la frise mensuelle. Les éléments datés après `arrete_le` sont des événements à venir."
 }

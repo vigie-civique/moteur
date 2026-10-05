@@ -8,7 +8,7 @@
   // oriente, puis montre ce qui vient de bouger.
   export let data
   $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains, sourceMarches,
-       dernieres, dossiers, sujets } = data)
+       extraitsMarches, dernieres, dossiers, sujets } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -259,11 +259,24 @@
           La collecte des marchés publics n'a pas encore tourné pour ce site&nbsp;:
           ce zéro est une question non posée, pas une réponse.
         {:else}
-          Aucun marché attribué par la commune n'est encore relevé ici. Ce zéro
+          Aucun marché attribué par la commune n'est encore publié ici. Ce zéro
           n'est pas celui de la commune&nbsp;: les sources ouvertes ne publient
           rien sous <b>40 000 €&nbsp;HT</b>, et les marchés plus petits ne se
-          lisent que dans les procès-verbaux du conseil, qui ne sont pas encore
-          relevés pour cela.
+          lisent que dans les procès-verbaux du conseil.
+        {/if}
+        <!-- Ce que l'instance sait des procès-verbaux, indépendamment de la
+             collecte des sources ouvertes (couverture.extraits, lot 4 b). -->
+        {#if extraitsMarches?.cas === 'en_attente'}
+          <b>{extraitsMarches.enAttente.toLocaleString('fr-FR')}</b>
+          attribution{extraitsMarches.enAttente > 1 ? 's' : ''} de la commune
+          {extraitsMarches.enAttente > 1 ? 'ont été lues' : 'a été lue'} dans les
+          procès-verbaux et {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'}
+          relecture.
+        {:else if extraitsMarches?.cas === 'depouilles'}
+          Un relevé des procès-verbaux a été déposé, et aucune attribution de
+          la commune n'y attend de relecture.
+        {:else if extraitsMarches?.cas === 'non_depouilles'}
+          Les procès-verbaux ne sont pas encore dépouillés pour en relever les marchés.
         {/if}
         <a href="/marches">Ce que cela laisse dans l'ombre</a>
       </p>

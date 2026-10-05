@@ -13,6 +13,7 @@ from datetime import datetime
 # qui bouge le plus — le site municipal, déclaré à 3 jours — était celle que ce
 # seuil couvrait le moins.
 from collectors.config import STEP_META
+from collectors.marches_extraits import releve as releve_extraits
 from scripts.snapshot.socle import rows, table_exists, write_json
 
 
@@ -118,6 +119,11 @@ def export_couverture(conn, public_events: list[dict], stats: dict) -> dict:
         "sources": sorted(par_source.values(), key=lambda d: -d["actes"]),
         "collecteurs": derniers,
         "financeurs": financeurs(derniers),
+        # Ce qui a été lu dans les textes et attend une relecture : des
+        # NOMBRES, jamais les lignes (décision 6 du 04/10/2026). C'est ce qui
+        # permet à /marches de dire « 77 attributions lues, en attente » au
+        # lieu d'un zéro nu. None : aucun rapport n'a jamais été déposé.
+        "extraits": {"marches": releve_extraits(conn)},
         # Le chiffre le plus inconfortable du site, donc celui qu'il faut donner
         # en premier : la proportion d'actes dont la pièce elle-même est
         # consultable, par opposition à la page qui la contient.

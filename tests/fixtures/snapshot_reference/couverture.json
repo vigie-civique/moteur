@@ -1,12 +1,12 @@
 {
-  "arrete_le": "2026-10-04T10:01:09",
+  "arrete_le": "2026-10-04T23:59:31",
   "sources": [
     {
       "source": "exemple.invalid",
-      "actes": 5,
+      "actes": 6,
       "debut": "2021-04-14",
-      "fin": "2023-03-06",
-      "avec_document": 5,
+      "fin": "2023-09-18",
+      "avec_document": 6,
       "a_venir": 0,
       "annonce_jusqu_au": null
     },
@@ -74,9 +74,24 @@
       "releve": false
     }
   ],
-  "actes_avec_piece": 8,
-  "actes_total": 9,
-  "part_avec_piece": 88.9,
+  "extraits": {
+    "marches": {
+      "deposees": 1,
+      "en_attente": {
+        "commune": 1,
+        "intercommunalite": 0,
+        "autre": 0,
+        "non_etabli": 0,
+        "total": 1
+      },
+      "retenues": 0,
+      "ecartees": 0,
+      "dernier_depot": "2026-10-04"
+    }
+  },
+  "actes_avec_piece": 9,
+  "actes_total": 10,
+  "part_avec_piece": 90.0,
   "lacunes_connues": [
     {
       "sujet": "Documents des délibérations",

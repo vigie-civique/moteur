@@ -1,6 +1,6 @@
 # Données publiques — 
 
-Généré le 2026-10-04T10:01:09 depuis la base de travail, sans la modifier.
+Généré le 2026-10-04T23:59:31 depuis la base de travail, sans la modifier.
 
 Ces fichiers sont le snapshot public : ce que le site sert, et rien d'autre. Ils sont produits par `scripts/build_public_snapshot.py` et contrôlés par `scripts/verify_snapshot.py`, qui refuse de publier tout type de relation absent de l'allowlist.
 
@@ -73,7 +73,7 @@ Chaque fichier à liste porte aussi un `total`.
 
 - entités : 3 publiées sur 6 en base
 - relations : 1 sur 1
-- actes : 9 sur 9
+- actes : 10 sur 10
 - points cartographiés : 0
 - sites web vérifiés : 0
 

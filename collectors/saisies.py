@@ -99,6 +99,12 @@ CHAMPS_SAISIE = {
         "montant":        ("montant",     "Montant en euros"),
         "date_notif":     ("date",        "Date de notification"),
         "procedure":      ("texte_court", "Procédure (adaptée, ouverte…)"),
+        # Le SIREN rattache l'acheteur à SA fiche, quelle que soit la graphie
+        # saisie : sans lui, la communauté de communes de Lasalle s'affichait
+        # sous cinq noms (cf. `marches_publics.acheteur_par_siren`).
+        "acheteur_siren": ("texte_court", "SIREN de l'acheteur, s'il est connu"),
+        "nature":         ("texte_court", "Travaux, fournitures ou services"),
+        "montant_base":   ("choix:HT,TTC", "Le montant est-il hors taxes ou TTC ?"),
     },
     "budget_vote": {
         "_libelle": "Ligne de budget voté",
@@ -319,25 +325,84 @@ def _inserer_acte(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
     return True
 
 
+def _acte_de_la_saisie(conn, source: dict) -> int | None:
+    """L'acte d'où une saisie a été lue, retrouvé sur CETTE base.
+
+    Par sa clé datée d'abord — `events.id` change d'une machine et d'un rejeu à
+    l'autre, la clé non. Une clé que portent deux actes ne désigne aucun des
+    deux. À défaut, l'identifiant noté à la saisie, s'il désigne toujours un
+    acte de la même date. Sinon rien : un rattachement faux ferait afficher le
+    marché sous un acte qui n'en parle pas, pire que pas de rattachement.
+    """
+    cle, date = source.get("acte_cle"), source.get("acte_date")
+    if cle:
+        trouves = conn.execute("SELECT id FROM events WHERE cle_acte=? LIMIT 2",
+                               (cle,)).fetchall()
+        if len(trouves) == 1:
+            return trouves[0][0]
+    eid = source.get("event_id")
+    if eid and date:
+        r = conn.execute("SELECT id FROM events WHERE id=? AND substr(date,1,10)=?",
+                         (int(eid), date)).fetchone()
+        return r[0] if r else None
+    return None
+
+
+def _document_de_la_saisie(conn, source: dict, doc_id: int | None) -> int | None:
+    """La pièce archivée, par son empreinte quand elle est connue : sur une
+    autre machine, `raw_document_id` désigne un autre document, ou aucun."""
+    if source.get("sha256"):
+        r = conn.execute("SELECT id FROM raw_documents WHERE sha256=?",
+                         (source["sha256"],)).fetchone()
+        return r[0] if r else None
+    return doc_id
+
+
 def _inserer_marche(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
+    from .marches_publics import acheteur_par_siren, siren_de
     source = _source_de(s)
     if _existe(conn, "marches_publics", source):
         return False
     v = s["valeurs"]
+    src = s.get("source") or {}
+    colonnes = {r[1] for r in conn.execute("PRAGMA table_info(marches_publics)")}
     # `acheteur_siren` est NOT NULL au schéma ; une saisie ne connaît pas
     # toujours le SIREN de l'acheteur qu'elle nomme. La chaîne vide dit
     # « non renseigné » sans mentir sur un identifiant qui, lui, est vérifiable.
+    siren = siren_de(v.get("acheteur_siren"))
+    valeurs = {
+        "acheteur_id": acheteur_par_siren(conn, siren),
+        "acheteur_siren": siren, "acheteur_nom": v["acheteur_nom"],
+        "titulaire_nom": v.get("titulaire_nom"), "objet": v["objet"],
+        "nature": v.get("nature"), "montant": v.get("montant"),
+        "date_notif": v.get("date_notif"), "procedure": v.get("procedure"),
+        "source": source, "source_url": src.get("url"), "raw_id": source,
+        "event_id": _acte_de_la_saisie(conn, src),
+        "confidence": s.get("confidence", "confirmed"), "origine": ATELIER,
+        "raw_document_id": _document_de_la_saisie(conn, src, doc_id),
+        "saisi_par": s.get("saisi_par"), "saisi_le": s.get("saisi_le"),
+        "montant_base": v.get("montant_base"),
+    }
+    # Une base d'avant le 04/10/2026 n'a pas `montant_base` tant qu'`init_db`
+    # n'est pas repassé : la saisie s'écrit sans, plutôt que d'échouer.
+    valeurs = {c: x for c, x in valeurs.items() if c in colonnes}
     conn.execute(
-        "INSERT INTO marches_publics"
-        " (acheteur_siren,acheteur_nom,titulaire_nom,objet,montant,date_notif,"
-        "  procedure,source,source_url,raw_id,confidence,origine,raw_document_id,"
-        "  saisi_par,saisi_le)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (v.get("acheteur_siren") or "", v["acheteur_nom"], v["titulaire_nom"],
-         v["objet"], v.get("montant"), v.get("date_notif"), v.get("procedure"),
-         source, (s.get("source") or {}).get("url"), source,
-         s.get("confidence", "confirmed"), ATELIER, doc_id,
-         s.get("saisi_par"), s.get("saisi_le")))
+        f"INSERT INTO marches_publics ({','.join(valeurs)}) "
+        f"VALUES ({','.join('?' for _ in valeurs)})", tuple(valeurs.values()))
+    return True
+
+
+def ajouter(saisie: dict, chemin: Path | None = None) -> bool:
+    """Ajoute une saisie au fichier, sauf si son identifiant y est déjà.
+
+    Pour les écrivains dont l'identifiant est DÉRIVÉ (une ligne extraite
+    acceptée, `collectors/marches_extraits.py`) : deux acceptations simultanées
+    de la même ligne n'en écrivent qu'une. Rend True si elle a été ajoutée.
+    """
+    with modifier(chemin) as data:
+        if any(s.get("id") == saisie["id"] for s in data.setdefault("saisies", [])):
+            return False
+        data["saisies"].append(saisie)
     return True
 
 

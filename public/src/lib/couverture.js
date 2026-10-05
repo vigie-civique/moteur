@@ -72,3 +72,35 @@ export function enumerer(l) {
   if (l.length === 1) return l[0]
   return l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1]
 }
+
+/**
+ * Ce que le site sait des marchés LUS dans les procès-verbaux, pour une portée
+ * (`commune`, `intercommunalite`) : c'est ce qui donne sa raison à un zéro.
+ *
+ * Les marchés d'une petite commune passent sous les seuils de publicité : ils
+ * ne se lisent que dans les procès-verbaux. Un zéro de marchés peut donc dire
+ * trois choses que rien ne distinguait — les procès-verbaux n'ont pas été
+ * dépouillés, ils l'ont été et des lignes attendent leur relecture, ou ils
+ * l'ont été et rien n'y attend. `couverture.extraits.marches` (depuis le
+ * 04/10/2026) porte les NOMBRES, jamais les lignes (décision 6).
+ *
+ * @returns {{cas: 'inconnu'|'non_depouilles'|'en_attente'|'depouilles',
+ *            enAttente: number, autresEnAttente: number, dernier: string|null}}
+ */
+export function extraitsMarches(couverture, portee = 'commune') {
+  const x = couverture && couverture.extraits && couverture.extraits.marches
+  // Absent : snapshot plus ancien, ou base sans la table — le site ne sait pas.
+  if (!x) return { cas: 'inconnu', enAttente: 0, autresEnAttente: 0, dernier: null }
+  const attente = x.en_attente || {}
+  const enAttente = attente[portee] || 0
+  const autresEnAttente = (attente.total || 0) - enAttente
+  const base = { enAttente, autresEnAttente, dernier: x.dernier_depot || null }
+  if (enAttente) return { cas: 'en_attente', ...base }
+  if (x.deposees) return { cas: 'depouilles', ...base }
+  return { cas: 'non_depouilles', ...base }
+}
+
+/** « 1 attribution », « 3 attributions ». */
+export function pluriel(n, mot, motPluriel = mot + 's') {
+  return `${n.toLocaleString('fr-FR')} ${n > 1 ? motPluriel : mot}`
+}

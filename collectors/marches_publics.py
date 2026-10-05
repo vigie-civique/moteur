@@ -972,10 +972,43 @@ def _get_cac_entity_id(conn) -> int:
     ).fetchone()
     if row:
         return row["id"]
-    return upsert_entity(
-        conn, type="service", name=EPCI_NOM, short_name="CCSVP",
-        confidence="verified"
-    )
+    # Pas de nom court : « CCSVP » était écrit ici, le sigle de l'EPCI d'UNE
+    # instance, posé sur la fiche de l'intercommunalité de toutes les autres.
+    return upsert_entity(conn, type="service", name=EPCI_NOM, confidence="verified")
+
+
+def siren_de(valeur) -> str:
+    """Les neuf chiffres d'un SIREN, ou "" : un SIRET donne son SIREN, une
+    valeur qui n'en a pas neuf ne désigne personne."""
+    chiffres = re.sub(r"\D", "", str(valeur or ""))
+    return chiffres[:9] if len(chiffres) in (9, 14) else ""
+
+
+def acheteur_par_siren(conn, siren: str) -> int | None:
+    """La fiche de l'acheteur que désigne un SIREN, ou None s'il n'en a pas.
+
+    Le SIREN est la seule clé qui ne dépend pas de l'orthographe : à Lasalle,
+    la même communauté de communes s'écrivait de cinq façons dans
+    `marches.json`, et seul l'identifiant les réunissait. La commune et
+    l'intercommunalité se reconnaissent à celui que déclare l'instance ; un
+    autre acheteur (syndicat, département) à celui de sa fiche, s'il en a une.
+
+    Ce qui n'est pas reconnu reste SANS fiche — jamais rattaché par défaut à
+    l'intercommunalité, comme le faisait `insert_marche` pour tout SIREN qui
+    n'était pas celui de la commune.
+    """
+    s = siren_de(siren)
+    if not s:
+        return None
+    if COMMUNE_SIREN and s == siren_de(COMMUNE_SIREN):
+        return _get_commune_entity_id(conn)
+    if CAC_SIREN and s == siren_de(CAC_SIREN):
+        return _get_cac_entity_id(conn)
+    r = conn.execute(
+        "SELECT entity_id FROM businesses WHERE siren=? "
+        "UNION ALL SELECT entity_id FROM associations WHERE siren=? LIMIT 1",
+        (s, s)).fetchone()
+    return r[0] if r else None
 
 
 def _upsert_titulaire(conn, t: dict) -> int | None:
@@ -1060,14 +1093,12 @@ def insert_marche(conn, m: dict,
     # accrochait tout le reste à l'EPCI par défaut : un marché dont on ne savait
     # rien devenait un marché de l'intercommunalité.
     acheteur_id_str = m.get("acheteur_id", "")
-    if acheteur_id_str and acheteur_id_str.startswith(COMMUNE_SIREN):
-        acheteur_eid   = commune_id
+    acheteur_eid = acheteur_par_siren(conn, acheteur_id_str)
+    if acheteur_eid == commune_id:
         acheteur_label = acheteur_label or COMMUNE_NAME
-    elif acheteur_id_str:
-        acheteur_eid   = cac_id
+    elif acheteur_eid == cac_id:
         acheteur_label = acheteur_label or EPCI_NOM
     else:
-        acheteur_eid   = None
         acheteur_label = acheteur_label or "acheteur non établi"
 
     titulaires = m.get("titulaires", [])

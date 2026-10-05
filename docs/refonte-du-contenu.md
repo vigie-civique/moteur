@@ -687,7 +687,7 @@ s'écarte du plan du § 5 est dit ici.
 | 2 | livré | `stats.json` change aussi (compteur d'entrées). Un événement sans adresse d'origine s'affiche sans lien. Le job `site` vérifie que chaque adresse interne de l'index existe, ancre comprise. |
 | 3 | livré | Identique au comparateur sur la base de CI, qui n'a aucun marché : couvert par deux tests unitaires. |
 | 4 a | livré | `couverture.collecteurs[*].a_rapporte` ; la phrase en dur est remplacée sur l'accueil et /marches. |
-| 4 b | **non commencé** | Attend que l'extraction dépose ses candidats en base. |
+| 4 b | livré (branche `marches-des-pv`) | Les candidats entrent comme **propositions** (`collectors/marches_extraits.py`), pas dans une table à part : la file de relecture existait déjà. `couverture.json` gagne `extraits.marches` ; /marches et l'accueil disent le nombre en attente, ou que les PV n'ont pas été dépouillés. Format du rapport : `docs/format-marches-extraits.md`. |
 | 5 | livré | `couverture.json` gagne `financeurs` ; les fiches (`entite/*.json`) ne changent pas. |
 | 6 | livré | `actualite.json` ne change pas : l'accueil calcule l'adresse de la séance. `conseils.json` est gardé (un cycle). |
 | 7 | livré | Mesuré sur les données de Lasalle : accueil 37,2 Ko (8,3 Ko gzip) contre 27,7 Ko (6,4 Ko gzip) — le critère « pas plus lourd » n'est **pas** tenu, à cause des chapeaux des huit dossiers. L'en-tête se replie en menu sous 1 216 px ; le premier écran à 520 px montre les deux dernières séances, pas les dossiers. |

@@ -473,7 +473,7 @@ CREATE TABLE IF NOT EXISTS taches_journal (
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS propositions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    nature       TEXT NOT NULL,              -- fiche | coords | relation | correction
+    nature       TEXT NOT NULL,              -- fiche | coords | relation | correction | marche
     object_type  TEXT NOT NULL,              -- entity | relation | deliberation | flow | marche
     object_id    INTEGER NOT NULL,
     entity_id    INTEGER,                    -- la fiche dont l'historique reçoit la proposition
@@ -484,7 +484,12 @@ CREATE TABLE IF NOT EXISTS propositions (
     etat         TEXT NOT NULL DEFAULT 'en_attente',  -- en_attente | acceptee | refusee | retiree
     tranche_par  INTEGER REFERENCES users(id),
     tranche_le   TEXT,
-    motif        TEXT
+    motif        TEXT,
+    -- L'empreinte d'une ligne EXTRAITE (un marché lu dans un procès-verbal,
+    -- collectors/marches_extraits.py) : un rapport rejoué ne la repropose pas.
+    -- Son index unique est posé par `propositions.assurer_schema`, pas ici :
+    -- ce fichier est joué avant le rattrapage des colonnes.
+    cle          TEXT
 );
 
 -- ----------------------------------------------------------------
@@ -723,6 +728,9 @@ CREATE TABLE IF NOT EXISTS marches_publics (
     nature          TEXT,
     procedure       TEXT,
     montant         REAL,
+    -- 'HT' | 'TTC' | NULL. Les DECP publient hors taxes ; un procès-verbal
+    -- écrit l'un ou l'autre, et un montant sans sa base ne se compare à rien.
+    montant_base    TEXT,
     cpv             TEXT,
     cpv_label       TEXT,
     date_notif      TEXT,

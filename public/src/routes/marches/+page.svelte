@@ -2,6 +2,7 @@
   import { estAttribue } from '$lib/marches.js'
   import { COMMUNE_DE, EPCI, EPCI_COURT, SITE_NOM } from '$lib/instance.js'
   import { euros } from '$lib/data.js'
+  import { pluriel } from '$lib/couverture.js'
   import Niveau from '$lib/components/Niveau.svelte'
   import FiltrePortee from '$lib/components/FiltrePortee.svelte'
 
@@ -9,6 +10,8 @@
   export let data
   $: marches = data.marches
   $: constat = data.constat
+  $: extraits = data.extraits
+  $: sourceMarches = data.sourceMarches
 
   let year = 'all'
   // Un marché de la communauté de communes n'est pas un marché de la commune,
@@ -21,13 +24,19 @@
   const isAttrib = estAttribue
   const sum = (L) => L.reduce((s, m) => s + (m.montant || 0), 0)
 
-  // Étiquette de source compacte + libellé long.
-  function srcTag(s) {
-    s = s || ''
+  // Étiquette de source compacte. Le domaine d'UNE intercommunalité était
+  // écrit ici (« caussesaigoual ») : sur les deux autres instances, les avis du
+  // site de la leur sortaient sous huit lettres de leur adresse. C'est la
+  // portée du marché qui dit de quel site il vient.
+  function srcTag(m) {
+    const s = (m && m.source) || ''
     if (s.startsWith('CR')) return 'CR'
     if (s.startsWith('DECP')) return 'DECP'
     if (s.startsWith('BOAMP')) return 'BOAMP'
-    if (s.includes('caussesaigoual')) return `${EPCI_COURT}`
+    // Lu dans un procès-verbal et relu à l'atelier (collectors/marches_extraits.py).
+    if (s.startsWith('atelier:pv-')) return 'PV'
+    if (s.startsWith('atelier:')) return 'Saisie'
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s)) return m.portee === 'intercommunalite' ? EPCI_COURT : 'Site'
     return s.slice(0, 8)
   }
 
@@ -99,11 +108,52 @@
     Pour une commune de cette taille, l'essentiel de la commande publique passe
     sous ce seuil — et ne se lit, quand elle se lit, que dans les procès-verbaux
     du conseil.
+    <!-- La raison du zéro découle de ce que l'instance SAIT (couverture.json),
+         jamais d'une phrase fixe : « pas encore relus pour cela » s'affichait
+         sur les trois instances, y compris là où 77 attributions lues
+         attendaient leur relecture (docs/refonte-du-contenu.md, lot 4 b). -->
     {#if comptePortee.commune === undefined}
-      Ici, <b>aucun marché attribué par la commune</b> n'est encore relevé —
-      ni dans les sources ouvertes, ni dans les procès-verbaux, qui ne sont
-      pas encore relus pour cela. Ce zéro est celui du site, pas celui de la
-      commune. Les avis publiés émanent d'autres acheteurs.
+      Ici, <b>aucun marché attribué par la commune</b> n'est encore publié.
+      {#if sourceMarches === 'absente'}
+        La collecte des sources ouvertes (BOAMP, DECP) n'a pas encore tourné
+        pour ce site.
+      {/if}
+      {#if extraits.cas === 'en_attente'}
+        <b>{pluriel(extraits.enAttente, 'attribution')}</b> de la commune
+        {extraits.enAttente > 1 ? 'ont été lues' : 'a été lue'} dans les
+        procès-verbaux du conseil et
+        {extraits.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture&nbsp;:
+        une ligne lue n'est publiée qu'une fois confirmée, une à une, l'acte
+        sous les yeux.
+      {:else if extraits.cas === 'depouilles'}
+        <!-- « Dépouillés » s'affichait dès une seule ligne déposée : la phrase
+             affirmait un relevé complet que le site ne sait pas. -->
+        Un relevé des marchés lus dans les procès-verbaux a été déposé
+        {#if extraits.dernier}(le dernier, le {extraits.dernier}){/if}&nbsp;;
+        aucune attribution de la commune n'y attend de relecture.
+      {:else if extraits.cas === 'non_depouilles'}
+        Les procès-verbaux du conseil n'ont pas encore été dépouillés pour en
+        relever les marchés.
+      {:else}
+        Ce site ne dit pas si les procès-verbaux du conseil ont été dépouillés
+        pour en relever les marchés.
+      {/if}
+      Ce zéro est celui du site, pas celui de la commune.
+      {#if marches.length}Les marchés publiés ici émanent d'autres acheteurs.{/if}
+    {/if}
+    <!-- Les lignes communales en attente se taisaient dès qu'un premier marché
+         de la commune était publié : le total affiché paraissait complet. -->
+    {#if comptePortee.commune !== undefined && extraits.enAttente}
+      {pluriel(extraits.enAttente, 'autre attribution')} de la commune
+      lue{extraits.enAttente > 1 ? 's' : ''} dans les procès-verbaux
+      {extraits.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture et
+      n'entre{extraits.enAttente > 1 ? 'nt' : ''} dans aucun chiffre de cette page.
+    {/if}
+    {#if extraits.autresEnAttente}
+      {pluriel(extraits.autresEnAttente, 'autre attribution')} lue{extraits.autresEnAttente > 1 ? 's' : ''}
+      dans les procès-verbaux (intercommunalité ou autre acheteur)
+      {extraits.autresEnAttente > 1 ? 'attendent leur' : 'attend sa'} relecture et
+      n'entre{extraits.autresEnAttente > 1 ? 'nt' : ''} dans aucun chiffre de cette page.
     {/if}
   </p>
 
@@ -115,7 +165,8 @@
             extérieur." />
   {/if}
 
-  {#if !marches.length}<p class="err">Aucun marché dans ce jeu de données.</p>{/if}
+  <!-- Pas de zéro nu : la raison est dite juste au-dessus. -->
+  {#if !marches.length}<p class="err">Aucun marché n'est publié pour l'instant — pour les raisons dites ci-dessus.</p>{/if}
 
   {#if marches.length}
     <!-- Aucun document ne dit « 2,57 M€ de marchés sur 2016-2026 » : c'est une
@@ -199,7 +250,7 @@
               {#if m.procedure}<span class="chip light">{m.procedure}</span>{/if}
               <span class="macheteur">{m.acheteur_nom}</span>
               {#if m.date_notif}<span class="mdate">{m.date_notif}</span>{/if}
-              {#if m.source_url}<a class="msrc" class:cr={srcTag(m.source) === 'CR'} href={m.source_url} target="_blank" rel="noopener">{srcTag(m.source)} ↗</a>{:else}<span class="msrc">{srcTag(m.source)}</span>{/if}
+              {#if m.source_url}<a class="msrc" class:cr={srcTag(m) === 'CR'} href={m.source_url} target="_blank" rel="noopener">{srcTag(m)} ↗</a>{:else}<span class="msrc">{srcTag(m)}</span>{/if}
             </div>
           </li>
         {/each}
@@ -237,7 +288,7 @@
                 <td>{m.objet || '—'}</td>
                 <td class="r">{m.montant ? eurosC(m.montant) : '—'}</td>
                 <td>{m.acheteur_nom || '—'}</td>
-                <td>{#if m.source_url}<a href={m.source_url} target="_blank" rel="noopener">{srcTag(m.source)} ↗</a>{:else}{srcTag(m.source)}{/if}</td>
+                <td>{#if m.source_url}<a href={m.source_url} target="_blank" rel="noopener">{srcTag(m)} ↗</a>{:else}{srcTag(m)}{/if}</td>
               </tr>
             {/each}
           </tbody>
