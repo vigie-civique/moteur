@@ -86,7 +86,12 @@ LIEN = re.compile(r"!?\[[^\]\n]*\]\([^)\n]*\)|`[^`\n]*`")
 
 _CELLULE_DATE = re.compile(rf"^\s*{_DATE}\s*$", re.I)
 _CELLULE_ASSEMBLEE = re.compile(r"^\s*(CM|CC)\s*$")
-_MONTANT = re.compile(r"(\d{1,3}(?:[   .]\d{3})+|\d+)(?:,(\d+))?\s*(?:€|euros?\b)")
+#: La décimale s'écrit avec une virgule ou avec un POINT : les procès-verbaux de
+#: Lasalle écrivent « 13 766.98 € ». Lue à la virgule seule, cette somme
+#: devenait « 98 € » — et 62 des 88 lignes du rapport des marchés extraits
+#: étaient signalées « montant absent de la citation » alors qu'il s'y lisait.
+#: Un point suivi de trois chiffres reste un séparateur de milliers (« 1.234 € »).
+_MONTANT = re.compile(r"(\d{1,3}(?:[   .]\d{3})+|\d+)(?:,(\d+)|\.(\d{1,2})(?!\d))?\s*(?:€|euros?\b)")
 _GUILLEMETS = re.compile(r"«\s*([^»]{6,}?)\s*»|“([^”]{6,}?)”")
 
 
@@ -119,7 +124,7 @@ def montants_cites(texte: str) -> set[float]:
     for m in _MONTANT.finditer(texte or ""):
         entier = re.sub(r"[^\d]", "", m.group(1))
         try:
-            sortie.add(float(f"{entier}.{m.group(2) or 0}"))
+            sortie.add(float(f"{entier}.{m.group(2) or m.group(3) or 0}"))
         except ValueError:
             continue
     return sortie

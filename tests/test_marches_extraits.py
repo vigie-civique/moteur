@@ -173,6 +173,18 @@ class TestDepot:
         charge = json.loads(base.execute("SELECT charge FROM propositions").fetchone()[0])
         assert charge["montant_dans_citation"] is False
 
+    @pytest.mark.parametrize("ecrit, lu", [
+        ("13 766.98 € TTC", 13766.98),       # la graphie des PV de Lasalle
+        ("91 469.50 € HT", 91469.5),
+        ("18 450,00 € HT", 18450.0),
+        ("1.234 €", 1234.0),                 # trois chiffres : des milliers
+        ("1.234.567,89 euros", 1234567.89),
+        ("12.5 €", 12.5),
+    ])
+    def test_un_montant_se_lit_avec_un_point_decimal(self, ecrit, lu):
+        from collectors.citations import montants_cites
+        assert montants_cites(f"pour un montant de {ecrit} par an") == {lu}
+
 
 class TestPortee:
     """L'acheteur donne la portée, jamais l'acte : un acte de l'intercommunalité
