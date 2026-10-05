@@ -115,6 +115,11 @@ _COLONNES_AJOUTEES = [
     # 03/10/2026 — l'identité datée d'un acte, cf. collectors/cle_acte.py.
     # `events.id` change à chaque rejeu ; un lien vers un acte ne doit pas.
     ("events",               "cle_acte", "TEXT"),
+    # 04/10/2026 — l'empreinte d'une ligne extraite proposée à la relecture,
+    # cf. collectors/marches_extraits.py.
+    ("propositions",         "cle", "TEXT"),
+    # 04/10/2026 — HT ou TTC : un procès-verbal écrit l'un ou l'autre.
+    ("marches_publics",      "montant_base", "TEXT"),
 ]
 
 

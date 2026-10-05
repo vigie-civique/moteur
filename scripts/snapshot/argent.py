@@ -174,6 +174,51 @@ def nommer_acheteurs(marches: list[dict], noms: dict[int, str]) -> int:
     return renommes
 
 
+def acheteurs_par_siren(conn) -> dict[str, int]:
+    """SIREN → fiche, pour la commune et l'intercommunalité de l'instance.
+
+    Ce sont les deux acheteurs dont l'instance déclare le SIREN ; leurs fiches
+    se retrouvent par le nom, comme partout ailleurs dans le snapshot (aucun
+    identifiant de ligne écrit en dur).
+    """
+    from collectors.config import COMMUNE_SIREN, EPCI_NOM, EPCI_SIREN
+    from collectors.marches_publics import siren_de
+    from collectors.nom_normalise import normaliser
+    sortie = {}
+    commune = _commune_entity_id(conn)
+    if commune and siren_de(COMMUNE_SIREN):
+        sortie[siren_de(COMMUNE_SIREN)] = commune
+    if EPCI_NOM and siren_de(EPCI_SIREN):
+        r = conn.execute("SELECT id FROM entities WHERE type='service' AND name_norm=? "
+                         "ORDER BY id LIMIT 1", (normaliser(EPCI_NOM),)).fetchone()
+        if r:
+            sortie[siren_de(EPCI_SIREN)] = r["id"]
+    return sortie
+
+
+def rattacher_acheteurs(marches: list[dict], par_siren: dict[str, int]) -> int:
+    """Un marché sans fiche d'acheteur, mais dont l'acheteur porte le SIREN de
+    la commune ou de l'intercommunalité, est rattaché à sa fiche — et prend
+    donc son nom (`nommer_acheteurs`) et sa portée.
+
+    Le SIREN est la clé ; le nom n'en est jamais une. Sans ce rattachement, une
+    ligne saisie à la main ou lue dans un procès-verbal sous « CC Causses
+    Aigoual » restait une sixième graphie de l'acheteur que les cinq autres
+    désignaient déjà. Le SIREN lui-même ne sort pas : il n'était pas dans
+    `marches.json`, et ce rattachement n'a pas à changer son format.
+
+    Rend le nombre de marchés rattachés.
+    """
+    from collectors.marches_publics import siren_de
+    rattaches = 0
+    for m in marches:
+        siren = siren_de(m.pop("acheteur_siren", None))
+        if m.get("acheteur_id") is None and siren in par_siren:
+            m["acheteur_id"] = par_siren[siren]
+            rattaches += 1
+    return rattaches
+
+
 def delier_renvois_morts(marches: list[dict], public_ids: set[int]) -> int:
     """Coupe les renvois d'un marché vers une fiche que le snapshot n'écrit pas.
 
@@ -363,11 +408,19 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
     colonnes_mp = {r["name"] for r in rows(conn, "PRAGMA table_info(marches_publics)")}
     filtre_mp = ("WHERE confidence IN ('verified', 'confirmed')"
                  if "confidence" in colonnes_mp else "")
+    # `montant_base` (HT ou TTC) depuis le 04/10/2026 : un marché lu dans un
+    # procès-verbal porte l'un ou l'autre. Absente d'une base plus ancienne.
+    base_mp = "montant_base" if "montant_base" in colonnes_mp else "NULL AS montant_base"
     marches_data = rows(conn, f"""
-        SELECT id, acheteur_id, acheteur_nom, titulaire_id, titulaire_nom, objet, nature,
-               procedure, montant, cpv_label, date_notif, lieu_exec, source, source_url
+        SELECT id, acheteur_id, acheteur_siren, acheteur_nom, titulaire_id, titulaire_nom,
+               objet, nature, procedure, montant, {base_mp}, cpv_label, date_notif,
+               lieu_exec, source, source_url
         FROM marches_publics {filtre_mp} ORDER BY date_notif DESC, montant DESC
     """)
+    rattacher_acheteurs(marches_data, acheteurs_par_siren(conn))
+    for m in marches_data:
+        if m.get("montant_base") is None:
+            m.pop("montant_base", None)
     revue_marches = revue.get("marche", {})
     avant_revue = len(marches_data)
     marches_data = [m for m in (appliquer_revue(m, revue_marches.get(m["id"]))

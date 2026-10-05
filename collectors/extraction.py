@@ -207,6 +207,12 @@ def _aplatir(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
 
+#: En dessous, une citation ne prouve rien (cf. `citation_presente`). Lu aussi
+#: par `collectors/marches_extraits.py`, qui contrôle les rapports d'un outil
+#: externe avec CE contrôle-ci : deux seuils finiraient par se contredire.
+CITATION_MIN = 15
+
+
 def citation_presente(citation: str, texte: str) -> bool:
     """La phrase citée figure-t-elle vraiment dans le document ?
 
@@ -219,7 +225,7 @@ def citation_presente(citation: str, texte: str) -> bool:
     quoi que ce soit : « 1 200 € » se retrouve dans n'importe quel PV.
     """
     aplatie = _aplatir(citation)
-    if len(aplatie) < 15:
+    if len(aplatie) < CITATION_MIN:
         return False
     return aplatie in _aplatir(texte)
 

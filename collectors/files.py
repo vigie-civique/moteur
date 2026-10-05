@@ -153,8 +153,12 @@ def files(commune: str, code_postal: str) -> tuple[FileDeTravail, ...]:
             # savoir si son travail a compté (cf. `collectors/propositions.py`).
             cle="propositions",
             titre="Propositions à relire",
-            question="Cette modification proposée par un contributeur est-elle juste ?",
-            geste="Accepter la proposition, ou la refuser en disant pourquoi",
+            # Depuis le 04/10/2026, la file porte aussi les marchés lus dans
+            # les procès-verbaux (`collectors/marches_extraits.py`) : une ligne
+            # extraite est une proposition comme une autre, relue une à une.
+            question="Cette modification proposée, ou ce marché lu dans un "
+                     "procès-verbal, est-il juste ?",
+            geste="Accepter la proposition, la corriger, ou la refuser en disant pourquoi",
             effet="Une proposition acceptée est écrite sur la donnée publiée et "
                   "part au prochain passage ; refusée, rien ne change.",
             route="/atelier/propositions",
