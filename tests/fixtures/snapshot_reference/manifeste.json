@@ -24,7 +24,7 @@
     {"chemin": "entite/5.json", "etape": "fiches_acteurs", "objets": 1, "octets": 586, "sha256": "5d91ca55fd03dde053b2aea286712672aabc7b9ec3dd6c5283e91836028b3c00"},
     {"chemin": "entities.json", "etape": "ecrire_acteurs", "objets": 3, "octets": 1529, "sha256": "26502d3c99920e17e76d6a9fcffda329e0bcd57ce154b83ceefa687918632516"},
     {"chemin": "entity_index.json", "etape": "index_recherche", "objets": 3, "octets": 342, "sha256": "d66f4a2dc8e79802529131a7ffdbbe9f7d617053492289e72f45a88823d180db"},
-    {"chemin": "environnement.json", "etape": "environnement", "objets": 0, "octets": 304, "sha256": "92cad1441b96f0ec248d67929a798b41bd048af846c260307497ac0e566c710b"},
+    {"chemin": "environnement.json", "etape": "environnement", "objets": 0, "octets": 337, "sha256": "94aa1da158b7da62e7e7a336ef7ba5b8f15702dc45befa5c59e80b95fb102b8c"},
     {"chemin": "events.json", "etape": "ecrire_actes", "objets": 10, "octets": 7559, "sha256": "2e360654bef1956fd88ef0ff8c6de38bd3d0d0753e580a800c992429d70ec9c6"},
     {"chemin": "extrait/10.json", "etape": "extraits", "objets": 1, "octets": 207, "sha256": "f2fc9bb4474a78d0b2194dbd7f0920db39c7ca65e5c9865a8313a9c8b5ce6660"},
     {"chemin": "extrait/4.json", "etape": "extraits", "objets": 1, "octets": 182, "sha256": "20b7abd3076b54d868cef6b841d95963771fa42d8a5f201070542f530b26500d"},

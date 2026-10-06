@@ -408,6 +408,70 @@ def export_reperes_fiscaux(conn) -> list[dict]:
     return reperes
 
 
+# ── Les installations classées : qui est nommé, qui est situé ────────────────
+# Le registre des ICPE nomme l'exploitant et donne son adresse et ses
+# coordonnées. Pour une société, c'est une installation industrielle ; pour un
+# éleveur en nom propre — « DUPONT MARIE », « Mr MARTIN Paul » —, c'est le nom
+# d'un particulier et, le plus souvent, son domicile. Relevé le 06/10/2026 sur
+# deux instances en ligne : une douzaine de personnes publiées ainsi, avec leur
+# point sur la carte.
+#
+# ⚖️ On ne nomme et ne situe que ce qui est ÉTABLI personne morale : une forme
+# juridique écrite dans la raison sociale, ou un SIREN que la base connaît sous
+# une autre forme que l'entreprise individuelle. Le reste — particulier, mais aussi
+# société dont le nom ne dit pas la forme — garde sa commune, son régime et son
+# état, sans nom, sans adresse, sans coordonnées ni numéro d'installation (qui
+# rendrait le nom en une requête). On y perd le nom de quelques sociétés ; on ne
+# devine pas qu'un « NOM Prénom » est une enseigne.
+_FORME_MORALE = re.compile(
+    r"\b(?:SARL|SAS|SASU|SA|EARL|GAEC|SCEA|SCA|SCI|SCP|EURL|SNC|SCOP|SICA|CUMA|GIE|GFA"
+    r"|CC|SIVOM|SIVU|SICTOM|SMICTOM|SYNDICAT|COMMUNE|MAIRIE|COMMUNAUT[EÉ]"
+    r"|COOP[EÉ]RATIVE|SOCI[EÉ]T[EÉ]|D[EÉ]PARTEMENT|R[EÉ]GION|ASSOCIATION)\b", re.I)
+# Une entreprise individuelle est son exploitant, quelle que soit l'enseigne.
+_EXPLOITANT_INDIVIDUEL = re.compile(r"\b(?:EIRL|EI|M\.|Mr|Mme|Monsieur|Madame)(?=\s|$)", re.I)
+
+
+def exploitant_designe(raison_sociale: str | None, siret: str | None,
+                       formes: dict[str, str]) -> bool:
+    """L'exploitant d'une installation classée peut-il être nommé et situé ?
+
+    `formes` : la catégorie juridique des SIREN que la base connaît. Elle
+    tranche quand elle existe ; sinon c'est la raison sociale qui doit le dire.
+    """
+    nom = raison_sociale or ""
+    forme = formes.get(str(siret)[:9]) if siret else None
+    if forme:
+        return forme != "1000"
+    if _EXPLOITANT_INDIVIDUEL.search(nom):
+        return False
+    return bool(_FORME_MORALE.search(nom))
+
+
+def export_icpe(conn) -> tuple[list[dict], int]:
+    """Les installations classées, et le nombre d'exploitants non désignés."""
+    if not table_exists(conn, "icpe_installations"):
+        return [], 0
+    formes = {r["siren"]: r["legal_form_code"] for r in rows(
+        conn, "SELECT siren, legal_form_code FROM businesses "
+              "WHERE siren IS NOT NULL AND legal_form_code IS NOT NULL")}
+    sortie, masques = [], 0
+    for i in rows(conn, """
+        SELECT code_aiot, raison_sociale, commune, adresse, regime, seveso,
+               etat_activite, lat, lng,
+               CASE WHEN json_valid(raw_data) THEN json_extract(raw_data, '$.siret') END AS siret
+        FROM icpe_installations ORDER BY commune, raison_sociale
+    """):
+        siret = i.pop("siret")
+        if exploitant_designe(i["raison_sociale"], siret, formes):
+            sortie.append(i)
+            continue
+        masques += 1
+        sortie.append({"raison_sociale": None, "exploitant_masque": True,
+                       "commune": i["commune"], "regime": i["regime"],
+                       "seveso": i["seveso"], "etat_activite": i["etat_activite"]})
+    return sortie, masques
+
+
 def etape_environnement(conn, out) -> None:
     # ── Environnement : qualité de l'eau, risques, installations classées ──
     # 27 652 analyses, 75 risques recensés et 3 ICPE dormaient en base sans
@@ -494,14 +558,13 @@ def etape_environnement(conn, out) -> None:
         SELECT insee, commune, num_risque, libelle FROM risques_gaspar
         ORDER BY commune, libelle
     """) if table_exists(conn, "risques_gaspar") else []
-    icpe = rows(conn, """
-        SELECT code_aiot, raison_sociale, commune, adresse, regime, seveso,
-               etat_activite, lat, lng
-        FROM icpe_installations ORDER BY commune, raison_sociale
-    """) if table_exists(conn, "icpe_installations") else []
+    icpe, icpe_masques = export_icpe(conn)
+    # Les arrêtés que le collecteur Géorisques a écrits, et eux seuls : la
+    # requête lit la base, pas `events.json` — un acte du même type entré par une
+    # autre porte n'a passé aucun filtre.
     catnat = rows(conn, """
         SELECT date, title, source_url FROM events
-         WHERE type = 'arrete_catnat' ORDER BY date DESC
+         WHERE type = 'arrete_catnat' AND source = 'georisques' ORDER BY date DESC
     """)
 
     write_json(out / "environnement.json", {
@@ -515,6 +578,7 @@ def etape_environnement(conn, out) -> None:
         "dpe_couverture": dpe_couverture,
         "risques": risques,
         "icpe": icpe,
+        "icpe_exploitants_masques": icpe_masques,
         "catnat": catnat,
         "eau_controle": export_eau_potable(conn, INSEE_C1),
         "dechets": export_dechets(conn, INSEE_C1),

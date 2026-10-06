@@ -9,6 +9,7 @@
   "dpe_couverture": [],
   "risques": [],
   "icpe": [],
+  "icpe_exploitants_masques": 0,
   "catnat": [],
   "eau_controle": null,
   "dechets": null,

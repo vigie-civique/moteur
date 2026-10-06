@@ -516,7 +516,7 @@
         <tbody>
           {#each icpe as i}
             <tr>
-              <td><strong>{i.raison_sociale}</strong>{#if i.adresse}<span class="sub2">{i.adresse}</span>{/if}</td>
+              <td>{#if i.exploitant_masque}Exploitant non désigné{:else}<strong>{i.raison_sociale}</strong>{#if i.adresse}<span class="sub2">{i.adresse}</span>{/if}{/if}</td>
               <td>{i.commune}</td>
               <td>{i.regime || '—'}{#if i.seveso && i.seveso !== 'Non Seveso'}<span class="tag">{i.seveso}</span>{/if}</td>
               <td>{i.etat_activite || '—'}</td>
@@ -524,6 +524,13 @@
           {/each}
         </tbody>
       </table>
+      {#if icpe.some((i) => i.exploitant_masque)}
+        <p class="note">
+          «&nbsp;Exploitant non désigné&nbsp;»&nbsp;: le registre nomme un exploitant
+          dont la raison sociale n'indique pas une société — souvent un
+          agriculteur en nom propre. Son nom et son adresse ne sont pas repris ici.
+        </p>
+      {/if}
     {/if}
 
     <!-- ── Les déchets ménagers ─────────────────────────────────────── -->
