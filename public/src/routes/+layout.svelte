@@ -1,5 +1,5 @@
 <script>
-  import { COMMUNE, SITE_NOM, SITE_URL } from '$lib/instance.js'
+  import { COMMUNE, SITE_NOM, SITE_URL, STATUT_TYPE } from '$lib/instance.js'
   import { page, updated } from '$app/stores'
   import { goto, beforeNavigate } from '$app/navigation'
   import Icon from '$lib/components/Icon.svelte'
@@ -8,6 +8,11 @@
   // Chargé par +layout.server.js : la date de dernière collecte, qui rend le
   // statut vérifiable au lieu d'être seulement déclaré.
   export let data
+
+  // L'icône de l'onglet dit le statut, comme le bandeau : la vigie est à son
+  // poste (point plein) dès que quelqu'un tient le site sur place ; tant que
+  // c'est une démonstration, le nid est vide (anneau).
+  const icone = STATUT_TYPE === 'demonstration' ? '-demonstration' : ''
 
   // Une version plus récente du site a été publiée pendant que cet onglet était
   // ouvert : on quitte la navigation interne pour un vrai chargement. Sans ça,
@@ -94,6 +99,11 @@
      La condition est DANS la balise et non autour : `<svelte:head>` ne peut pas
      se trouver à l'intérieur d'un bloc, le compilateur refuse. -->
 <svelte:head>
+  <!-- Le PNG d'abord, pour les navigateurs qui ne lisent pas une icône SVG ;
+       les autres prennent le SVG, qui suit le thème clair ou sombre. -->
+  <link rel="icon" href="/favicon{icone}-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="/favicon{icone}.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon{icone}.png" />
   {#if SITE_URL}
     <link rel="canonical" href="{SITE_URL}{path}" />
     <meta property="og:url" content="{SITE_URL}{path}" />
