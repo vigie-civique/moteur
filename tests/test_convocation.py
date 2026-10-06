@@ -148,5 +148,5 @@ def test_la_convocation_publique_ne_garde_que_ce_qui_sort():
     from scripts.build_public_snapshot import convocation_publique
     c = convocation_publique({"heure": "9 h 30", "lieu": "Saumane", "url": "javascript:alert(1)",
                               "ordre_du_jour": ["FPIC 2026"], "inconnu": "x"},
-                             "2026-09-23", set(), Counter())
+                             "2026-09-23", set(), Counter(), lambda t: t)
     assert c == {"heure": "9 h 30", "lieu": "Saumane", "ordre_du_jour": ["FPIC 2026"]}

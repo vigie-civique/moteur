@@ -404,13 +404,18 @@ def _nomme_une_personne_publique(avant: str, noms_publics: set[str]) -> bool:
                for i in range(len(mots)) for j in range(i + 2, len(mots) + 1))
 
 
-def convocation_publique(c: dict, jour: str | None, noms_publics, masquages) -> dict:
-    """Ce qu'une convocation annonce, tel qu'il peut sortir."""
+def convocation_publique(c: dict, jour: str | None, noms_publics, masquages, redige) -> dict:
+    """Ce qu'une convocation annonce, tel qu'il peut sortir.
+
+    Un point de l'ordre du jour n'est pas un acte : rien n'est encore délibéré.
+    « Demande de M. X » y passe donc par `redige()`, comme le titre de la séance
+    — l'arbitrage du 16/09 ne vaut que pour ce que le conseil a voté.
+    """
     sortie = {k: c[k] for k in ("heure", "lieu", "convoque_le") if c.get(k)}
     url = safe_url(c.get("url"))
     if url and url.lower().startswith(("http://", "https://")):
         sortie["url"] = url
-    points = [masquer_donnees_personnelles(p, jour, noms_publics, masquages)
+    points = [redige(masquer_donnees_personnelles(p, jour, noms_publics, masquages))
               for p in c.get("ordre_du_jour") or []]
     if points:
         sortie["ordre_du_jour"] = points

@@ -422,10 +422,10 @@ def etape_actes(conn, revue, noms_publics, redige, exclusions) -> dict:
             ] or None,
             # Ce que la convocation annonce (collectors/convocation.py) :
             # l'heure, le lieu, l'ordre du jour. C'est ce qui permet
-            # d'annoncer un conseil AVANT qu'il ait lieu. Les points passent
-            # par le même masquage que les titres d'actes.
+            # d'annoncer un conseil AVANT qu'il ait lieu. Un point annoncé
+            # n'est pas un acte voté : il passe par `redige()`.
             **({"convocation": convocation_publique(
-                    metadata["convocation"], event["date"], noms_publics, masquages)}
+                    metadata["convocation"], event["date"], noms_publics, masquages, redige)}
                if event_type in TYPES_SEANCE and metadata.get("convocation") else {}),
             "pdf_url": safe_url(metadata.get("pdf_url")) or (
                 safe_url(event["source_url"])
