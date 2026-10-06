@@ -36,6 +36,7 @@ import urllib.parse
 import urllib.request
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 import pdfplumber
@@ -316,6 +317,69 @@ def _poser_cle_seance(conn, type_: str, date: str | None, eid: int) -> None:
                      (cle.valeur if cle else None, eid))
 
 
+#: En dessous, un début de titre commun convient à trop d'actes d'une séance
+#: (« Création d'un emploi permanent… ») pour désigner le même.
+_TITRE_TRONQUE_MIN = 30
+
+
+def _titre_compare(titre: str | None) -> str:
+    """Un titre tel qu'on le compare d'un document à l'autre : ni accents, ni
+    casse, ni ponctuation — le recueil écrit « l'exercice », le procès-verbal
+    « l’exercice »."""
+    # Retirer les accents, PAS les caractères non ASCII : un `encode("ascii",
+    # "ignore")` avale l'apostrophe courbe et soude « d’eau » en « deau ».
+    t = "".join(c for c in unicodedata.normalize("NFKD", titre or "")
+                if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
+
+
+def _vote_connu(vote) -> bool:
+    return isinstance(vote, dict) and any(v is not None for v in vote.values())
+
+
+def _completer(meta: dict, autre: dict) -> dict:
+    """`meta`, avec le vote et les montants de `autre` là où il n'en a pas :
+    le procès-verbal détaille souvent un vote que le recueil ne reprend pas."""
+    if not _vote_connu(meta.get("vote")) and _vote_connu(autre.get("vote")):
+        meta["vote"] = autre["vote"]
+    if not meta.get("montants") and autre.get("montants"):
+        meta["montants"] = autre["montants"]
+    return meta
+
+
+def _jumeau_de_seance(conn, type_: str, date: str | None, titre: str | None,
+                      url: str | None, numerote: bool):
+    """Le même acte, entré par l'AUTRE document de la séance.
+
+    Une collectivité publie deux fois sa séance : le recueil des délibérations,
+    qui numérote, et le procès-verbal, qui ne numérote pas. La clé de l'un est
+    `cc-2023-99`, celle de l'autre se replie sur le titre : aucune des deux ne
+    retrouve l'autre. On cherche donc, le même jour, dans un autre document,
+    l'acte qui porte le même titre et dont la numérotation est l'inverse de
+    celle qu'on tient (`numerote` : le jumeau cherché a-t-il un numéro ?).
+
+    Même titre : à la typographie près, ou l'un tronqué de l'autre — un
+    procès-verbal coupe ses titres en fin de ligne. Rien de plus lâche : deux
+    créations de poste d'une même séance se ressemblent à 75 %. Et un seul
+    candidat, sinon None : entre deux « Décision modificative » on ne devine pas.
+    """
+    mien = _titre_compare(titre)
+    if not mien or not date:
+        return None
+    trouves = []
+    for r in conn.execute(
+            "SELECT id, title, metadata FROM events"
+            " WHERE type=? AND date=? AND COALESCE(source_url,'')<>?",
+            (type_, date, url or "")).fetchall():
+        if bool(json.loads(r["metadata"] or "{}").get("numero_acte")) != numerote:
+            continue
+        court, long_ = sorted((mien, _titre_compare(r["title"])), key=len)
+        if court == long_ or (len(court) >= _TITRE_TRONQUE_MIN
+                              and long_.startswith(court)):
+            trouves.append(r)
+    return trouves[0] if len(trouves) == 1 else None
+
+
 def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     """Une délibération = un événement.
 
@@ -332,6 +396,14 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     quatre années de séances. L'année, et non la date : un portail d'actes
     affiche la date de télétransmission avant que la date de séance ne soit
     lue, et le même acte doit retrouver sa fiche quand elle change.
+
+    🔴 Une séance publiée deux fois — recueil numéroté et procès-verbal — donnait
+    deux fiches par acte : relevé le 05/10/2026 à Lasalle, 35 séances sur 84 et
+    environ 210 actes en trop. Et dans l'autre ordre, à titre identique, le
+    procès-verbal ÉCRASAIT l'acte du recueil et lui retirait sa clé numérotée.
+    Quand la clé ne trouve rien, on cherche donc le jumeau (`_jumeau_de_seance`) :
+    l'acte numéroté est celui qui reste, l'autre document ne fait que lui
+    apporter le vote et les montants qu'il n'avait pas.
     """
     p = PORTEES[portee]
     meta = {k: delib[k] for k in ("categorie", "tags", "vote", "montants",
@@ -356,12 +428,31 @@ def enregistrer_deliberation(conn, doc, portee: str, delib: dict) -> int:
     row = conn.execute(
         "SELECT id FROM events WHERE type=? AND cle_acte=? ORDER BY id LIMIT 1",
         (p["delib"], cle.valeur)).fetchone() if (avec_cle and cle) else None
+    if row is None and not delib.get("numero_acte"):
+        # Le procès-verbal arrive après le recueil : l'acte existe, numéroté.
+        # On ne le réécrit pas — on lui apporte ce qu'il ne savait pas.
+        jumeau = _jumeau_de_seance(conn, p["delib"], doc.date, delib.get("titre"),
+                                   doc.url, numerote=True)
+        if jumeau:
+            ancien = json.loads(jumeau["metadata"] or "{}")
+            complete = _completer(dict(ancien), meta)
+            if complete != ancien:
+                conn.execute("UPDATE events SET metadata=? WHERE id=?",
+                             (json.dumps(complete, ensure_ascii=False), jumeau["id"]))
+            return jumeau["id"]
     if row is None and delib.get("numero_acte"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=?"
             " AND json_extract(metadata,'$.numero_acte')=?"
             " AND substr(date, 1, 4)=?",
             (p["delib"], delib["numero_acte"], (doc.date or "")[:4])).fetchone()
+        if row is None:
+            # Le recueil arrive après le procès-verbal : sa fiche existe, sans
+            # numéro. Elle devient l'acte numéroté, et garde son vote.
+            row = _jumeau_de_seance(conn, p["delib"], doc.date, delib.get("titre"),
+                                    doc.url, numerote=False)
+            if row:
+                _completer(meta, json.loads(row["metadata"] or "{}"))
     elif row is None and delib.get("numero_seance"):
         row = conn.execute(
             "SELECT id FROM events WHERE type=? AND date=?"
