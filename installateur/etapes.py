@@ -132,6 +132,18 @@ def installer_dependances_python(journal) -> None:
             str(RACINE / "requirements.txt")], journal, quoi="pip install")
 
 
+def verifier_imports(journal) -> None:
+    """L'API et les collecteurs s'importent-ils sur CE poste ?
+
+    Un module absent d'un système — `fcntl` sous Windows — ne se voyait qu'au
+    premier lancement de l'atelier, une heure plus tard, sous un message qui
+    accusait autre chose. Ici, l'installation s'arrête en le disant.
+    """
+    journal("   vérification : l'API et les collecteurs se chargent…")
+    courir([python_venv(), "-c", "import api, collectors.run_all"], journal,
+           quoi="chargement de l'API et des collecteurs")
+
+
 def installer_dependances_node(journal, node: Path) -> None:
     """`npm ci` et non `npm install` — les versions sont épinglées à l'exact.
 

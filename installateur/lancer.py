@@ -85,8 +85,10 @@ def main() -> int:
             webbrowser.open(ADRESSE)
             break
         if api.poll() is not None:
-            print("\n✖ L'API s'est arrêtée au démarrage. La cause est écrite\n"
-                  "  juste au-dessus : le plus souvent, JWT_SECRET vide dans .env.")
+            # Ne pas deviner la cause : « JWT_SECRET vide » s'affichait aussi
+            # quand un module manquait, et envoyait chercher au mauvais endroit.
+            print("\n✖ L'API s'est arrêtée au démarrage. La cause est la dernière\n"
+                  "  ligne de l'erreur écrite juste au-dessus.")
             input("\n  Entrée pour fermer. ")
             return 1
         time.sleep(0.5)

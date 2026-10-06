@@ -36,12 +36,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:                                    # POSIX
-    import fcntl
-except ImportError:                     # Windows — l'installateur y vise aussi
-    fcntl = None
-    import msvcrt
-
+from . import verrou as verrou_fichier
 from .db import pivot_ids, transaction, upsert_entity, upsert_relation
 from .origine import ATELIER
 
@@ -194,19 +189,11 @@ def _verrou(chemin: Path):
     verrou = chemin.with_name(chemin.name + ".verrou")
     verrou.parent.mkdir(parents=True, exist_ok=True)
     with open(verrou, "a+b") as f:
-        if fcntl:
-            fcntl.flock(f, fcntl.LOCK_EX)
-        else:  # pragma: no cover — Windows : dix essais d'une seconde, puis OSError
-            f.seek(0)
-            msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+        verrou_fichier.prendre(f)
         try:
             yield
         finally:
-            if fcntl:
-                fcntl.flock(f, fcntl.LOCK_UN)
-            else:  # pragma: no cover
-                f.seek(0)
-                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+            verrou_fichier.rendre(f)
 
 
 @contextmanager

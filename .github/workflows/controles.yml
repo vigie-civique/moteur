@@ -68,6 +68,32 @@ jobs:
             exit 1
           fi
 
+  windows:
+    # L'installateur vise Windows, et rien ne le vérifiait : `import fcntl` dans
+    # scripts/publication.py empêchait l'API de se charger, donc l'atelier de
+    # démarrer. Ce job installe ce que l'installateur installe et charge ce que
+    # le lanceur charge. Python 3.12 : numpy, tel qu'il est épinglé, n'a pas de
+    # roue Windows au-delà.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r requirements.txt pytest
+      - name: L'API et les collecteurs se chargent
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+          VIGIE_RULES: config/publication_rules.exemple.json
+          JWT_SECRET: secret-de-ci-sans-valeur-32-octets-au-moins
+          PYTHONUTF8: "1"
+        run: python -c "import api, collectors.run_all"
+      - name: Le verrou de fichier
+        env:
+          PYTHONUTF8: "1"
+        run: python -m pytest -ra tests/test_verrou.py
+
   generique:
     # Séparé des tests : ce contrôle est l'admission du kit. Le voir échouer
     # seul dit immédiatement qu'une particularité locale est entrée dans le

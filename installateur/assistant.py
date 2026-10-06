@@ -183,6 +183,7 @@ def etape_publication(journal, arret) -> None:
 
 def etape_atelier(journal, arret) -> None:
     etapes.construire_atelier(journal, _node(journal))
+    etapes.verifier_imports(journal)
     etapes.ecrire_lanceurs(journal)
 
 
