@@ -92,6 +92,54 @@ EXCLUS_FICHIERS = {"instance.json", "instance.js", "seed_local.json",
 # version courante.
 EXCLUS_CHEMINS = ("public/static/kit/",)
 
+# ── Les seuls binaires admis ─────────────────────────────────────────────────
+# Décision explicite du 06/10/2026 (Julien) : les icônes du site public. Un
+# navigateur qui ne lit pas une icône SVG, et l'écran d'accueil d'un téléphone,
+# demandent du PNG. La liste est CLOSE et nomme chaque fichier : une extension
+# admise en bloc rouvrirait la porte que ce contrôle tient fermée. Y ajouter
+# une image est un geste, relu comme tel.
+IMAGES_ADMISES = {
+    "public/static/favicon-32.png",
+    "public/static/favicon-demonstration-32.png",
+    "public/static/apple-touch-icon.png",
+    "public/static/apple-touch-icon-demonstration.png",
+}
+IMAGE_POIDS_MAX = 64 * 1024
+# Les morceaux d'un PNG qui ne portent que de l'image. Tout autre est refusé :
+# tEXt, iTXt, zTXt, eXIf, iCCP… transportent du texte libre — un auteur, un
+# logiciel, un chemin de fichier — que personne ne relirait.
+MORCEAUX_PNG_ADMIS = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA",
+                      b"sRGB", b"pHYs", b"cHRM", b"bKGD", b"sBIT"}
+
+
+def refus_image(octets: bytes) -> str | None:
+    """Pourquoi cette image ne peut pas entrer dans l'archive — ou None.
+
+    Une image admise n'échappe pas au contrôle : elle en passe un autre. On ne
+    peut pas y chercher un patronyme, donc on exige qu'elle ne puisse pas en
+    porter : un PNG, léger, fait des seuls morceaux d'image, et rien après.
+    """
+    if len(octets) > IMAGE_POIDS_MAX:
+        return f"{len(octets)} octets, plus que les {IMAGE_POIDS_MAX} admis"
+    if not octets.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "ce n'est pas un PNG"
+    i = 8
+    while i < len(octets):
+        if i + 12 > len(octets):
+            return "PNG tronqué"
+        taille = int.from_bytes(octets[i:i + 4], "big")
+        genre = octets[i + 4:i + 8]
+        if genre not in MORCEAUX_PNG_ADMIS:
+            return f"morceau {genre.decode('latin-1')!r} — peut porter du texte libre"
+        i += 12 + taille
+        if genre == b"IEND":
+            break
+    else:
+        return "PNG sans fin (IEND absent)"
+    if i != len(octets):
+        return "des octets suivent la fin de l'image"
+    return None
+
 
 def fichiers(source: Path) -> list[Path]:
     """Ce que le dépôt VERSIONNE, moins les fichiers d'instance.
@@ -138,6 +186,11 @@ def verifier(source: Path, liste: list[Path]) -> list[str]:
         rel = f.relative_to(source)
         try:
             octets = f.read_bytes()
+            if rel.as_posix() in IMAGES_ADMISES:
+                raison = refus_image(octets)
+                if raison:
+                    problemes.append(f"{rel} — image refusée : {raison}")
+                continue
             # L'octet nul est le marqueur de binaire, et il est décodable en
             # UTF-8 : s'en remettre au seul échec de décodage laissait passer
             # tout format qui n'a pas de séquence invalide. Aucun fichier source
@@ -149,9 +202,9 @@ def verifier(source: Path, liste: list[Path]) -> list[str]:
             # Un fichier qu'on ne sait pas lire est un fichier qu'on ne sait pas
             # contrôler. Passer son chemin revenait à distribuer sans regarder :
             # une base SQLite est illisible en UTF-8, et c'est exactement ce que
-            # ce contrôle est censé arrêter. Le dépôt ne versionne aucun binaire ;
-            # le jour où il en versionnera un, ce refus demandera une décision
-            # explicite plutôt qu'un silence.
+            # ce contrôle est censé arrêter. Les seuls binaires que le dépôt
+            # versionne sont nommés dans IMAGES_ADMISES ; tout autre demande
+            # une décision explicite plutôt qu'un silence.
             problemes.append(f"{rel} — contenu non contrôlable ({type(e).__name__})")
             continue
 
