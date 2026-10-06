@@ -42,7 +42,8 @@ from collectors import marches_extraits as _marches_extraits
 from collectors import extraction as _extraction
 from collectors.origine import (ATELIER, INSTITUTIONNEL, ORIGINES, VERBATIM,
                                 modifiable)
-from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, OBJETS_A_RETENIR, RETENU, VERDICTS,
+from collectors.verdict import (GESTES, JAMAIS_RELU, OBJETS, OBJETS_A_RETENIR, RETENU,
+                                TYPES_REVUS, VERDICTS,
                                 empreinte, geste_de, modifie_depuis_relecture, note_du_geste,
                                 verdict_de)
 from collectors.files import (GEO_A_FAIRE, GEO_DEPUIS, GEO_ETAT,
@@ -2448,11 +2449,13 @@ def _donnees_query(object_type: str, limit: int, origine: Optional[str] = None):
                       FROM json_each(json_extract(e.metadata, '$.montants')) m
                      WHERE json_valid(e.metadata)) AS montant
             FROM events e
-            WHERE e.type IN ('deliberation','conseil_municipal','délibérations_cc','pv_cc')
+            WHERE e.type IN ({types})
             {filtre}
             ORDER BY e.date DESC
             LIMIT ?
-        """.replace("{filtre}", _filtre_origine("e", origine, params)), params + [limit])
+        """.replace("{types}", ",".join("?" * len(TYPES_REVUS["deliberation"])))
+           .replace("{filtre}", _filtre_origine("e", origine, params)),
+                [*TYPES_REVUS["deliberation"], *params, limit])
     if object_type == "flow":
         return ("""
             SELECT ff.id, ff.type, ff.year, ff.amount, ff.description,

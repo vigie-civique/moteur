@@ -148,12 +148,14 @@
     "non_retenus": 0,
     "en_faute": [],
     "sans_seance": [],
-    "modifies": []
+    "modifies": [],
+    "donnee_personnelle": []
   },
   "dossiers": {
     "publies": 1,
     "non_retenus": [],
     "modifies": [],
+    "donnee_personnelle": [],
     "citations": {
       "precis": 7,
       "imprecis": 1,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
-from collectors.verdict import ecarte, verdict_de
+from collectors.verdict import TYPES_REVUS, ecarte, verdict_de  # noqa: F401 — réexporté
 from scripts.snapshot.socle import rows, table_exists
 
 
@@ -27,10 +27,7 @@ from scripts.snapshot.socle import rows, table_exists
 # jugement d'une fiche vivait dans `entities.validation_status`, que rien ici ne
 # lisait : cf. `collectors/verdict.py`.
 #
-# `annotations.object_type` ↔ table source.
-TYPES_REVUS = {
-    "deliberation": ("deliberation", "conseil_municipal", "délibérations_cc", "pv_cc"),
-}
+# `annotations.object_type` ↔ types d'actes : `collectors.verdict.TYPES_REVUS`.
 
 
 def charger_revue(conn) -> dict[str, dict[int, dict]]:
@@ -83,9 +80,23 @@ def appliquer_revue(ligne: dict, verdict: dict | None) -> dict | None:
         ligne["corrige"] = sorted(corrigees)
     if verdict["confidence"]:
         ligne["confidence"] = verdict["confidence"]
-    if verdict["note"]:
+    # La note ne sort que comme MOTIF d'une rectification — c'est ce que
+    # l'atelier annonce sous le champ. Une note posée sans rien corriger est une
+    # note de travail : elle partait dans `events.json` avec le reste. L'étape
+    # qui publie la ligne la passe par le masque.
+    if verdict["note"] and corrigees:
         ligne["note_revue"] = verdict["note"]
     return ligne
+
+
+def ecartes(revue: dict, objet: str) -> set[int]:
+    """Les identifiants qu'un humain a écartés, pour un type d'objet.
+
+    Pour les étapes qui ne publient pas une ligne revue mais la RELISENT en
+    base — la liste des délégués, la composition des conseils : « écarté »
+    retire du site, pas seulement du fichier qui porte le nom de l'objet.
+    """
+    return {oid for oid, v in revue.get(objet, {}).items() if ecarte(v["statut"])}
 
 
 def etape_revue(conn) -> dict:

@@ -527,6 +527,46 @@ def masquer_donnees_personnelles(texte: str, jour: str | None,
     return courant
 
 
+def porte_une_donnee_personnelle(texte: str | None) -> bool:
+    """Le masque aurait-il quelque chose à retirer de ce texte ?
+
+    Pour ce qui sort TEL QU'IL A ÉTÉ RELU — un dossier, une feuille de séance.
+    Le masquer à la publication publierait un autre texte que celui qu'on a
+    retenu ; on ne le masque donc pas, on refuse de le sortir tant qu'il porte
+    une naissance ou un domicile.
+
+    Pas le courriel : le motif « mot.mot@ » prend aussi une adresse de service
+    (`contact.eau@…`), qu'un dossier cite à bon droit — un refus pour si peu
+    retirerait du site un dossier entier.
+    """
+    if not texte:
+        return False
+    compteur = Counter()
+    masquer_donnees_personnelles(texte, None, set(), compteur)
+    return bool(_RESIDU.search(texte)) or any(
+        compteur[c] for c in ("naissance", "naissance_en_age", "domicile", "tableau_des_elus"))
+
+
+#: Ce qui remplace un champ que le filet refuse : la ligne reste, le champ non.
+CHAMP_RETIRE = "[texte retiré : il porte une donnée personnelle]"
+
+
+def champ_publiable(valeur, jour: str | None, noms_publics: set[str],
+                    compteur: Counter | None = None):
+    """Un champ court saisi ou extrait — objet d'un marché, citation, note,
+    précision d'un lien — tel qu'il sort.
+
+    Ces champs sortaient tels qu'ils étaient en base : seuls les titres et les
+    textes des actes passaient par le masque. Même règle ici : domicile et
+    naissance masqués, et le champ retiré si le filet en trouve encore.
+    """
+    if not isinstance(valeur, str) or not valeur.strip():
+        return valeur
+    texte, refus = texte_publiable(valeur, jour, noms_publics,
+                                   compteur if compteur is not None else Counter())
+    return CHAMP_RETIRE if refus else texte
+
+
 def texte_publiable(texte: str, jour: str | None, noms_publics: set[str],
                     compteur: Counter) -> tuple[str | None, str | None]:
     """Le texte d'une délibération tel qu'il sort — ou le motif de son refus."""

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import Counter
 
 from scripts.snapshot.relations import relation_meta_publique
+from scripts.snapshot.revue import ecartes
 from scripts.snapshot.socle import (COMMUNES_EPCI, EPCI_NOM_C2, EPCI_SIREN_C2, INSEE_C1, jour_utc,
                                     rows, table_exists, write_json)
 
@@ -36,7 +37,7 @@ def etape_elections(conn, out) -> dict:
     return {"elections": elections}
 
 
-def etape_intercommunalite(conn, out, horloge) -> None:
+def etape_intercommunalite(conn, out, horloge, revue) -> None:
     # ── L'intercommunalité (périmètre C2) ────────────────────────────────
     # Réponse publique à « qu'est-ce qui ne se décide plus à la mairie ? ».
     # Trois briques : ce que l'EPCI exerce à la place de la commune, qui
@@ -62,7 +63,8 @@ def etape_intercommunalite(conn, out, horloge) -> None:
     # 2. déduplication par personne, en préférant la source la plus récente
     #    (RNE, publication du 11/08/2026) — sinon `nb_relations` double.
     delegues_bruts = rows(conn, """
-        SELECT e.id, e.name, e.commune, r.relation_type, r.source, r.metadata
+        SELECT e.id, e.name, e.commune, r.id AS relation_id, r.relation_type,
+               r.source, r.metadata
         FROM relations r
         JOIN entities e ON e.id = r.from_id
         WHERE r.relation_type IN ('élu_cc','vice_président_cc','président_cc')
@@ -107,7 +109,13 @@ def etape_intercommunalite(conn, out, horloge) -> None:
 
     par_personne: dict[int, dict] = {}
     perimes: list[str] = []
+    # Écarté par l'atelier : ni la personne ni le mandat jugé faux ne siègent
+    # ici. Les deux se filtraient dans `entities.json` et `relations.json`, pas
+    # dans cette liste, qui relit la base.
+    fiches_ecartees, mandats_ecartes = ecartes(revue, "entity"), ecartes(revue, "relation")
     for d in delegues_bruts:
+        if d["id"] in fiches_ecartees or d["relation_id"] in mandats_ecartes:
+            continue
         if d["id"] in par_personne:
             continue
         etat_au = relation_meta_publique(d.get("metadata")).get("etat_au")
@@ -210,7 +218,7 @@ def etape_intercommunalite(conn, out, horloge) -> None:
     })
 
 
-def etape_elus(conn, out, public_ids) -> dict:
+def etape_elus(conn, out, public_ids, revue) -> dict:
     # Élus : source autoritaire DGCL. `birth_year` et la CSP restent privés
     # (`publication_rules.people.publish_birth_year = false`).
     #
@@ -249,7 +257,10 @@ def etape_elus(conn, out, public_ids) -> dict:
     # la FICHE qui est refusée, pas le nom. Seul cet endroit connaît
     # `public_ids` — la page ne peut pas recalculer ce booléen, et ne doit
     # pas essayer.
-    elus = [{**e, "fiche": e.get("entity_id") in public_ids} for e in elus]
+    # Une fiche écartée par l'atelier quitte le site, cette liste comprise.
+    fiches_ecartees = ecartes(revue, "entity")
+    elus = [{**e, "fiche": e.get("entity_id") in public_ids} for e in elus
+            if e.get("entity_id") not in fiches_ecartees]
     write_json(out / "elus_rne.json", {
         "elus": elus,
         "total": len(elus),

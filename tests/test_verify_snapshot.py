@@ -344,3 +344,41 @@ def test_commune_introuvable_bloque(vs, tmp_path, monkeypatch):
     ]), rep)
     detail = " ".join(sum(rep.errors.values(), []))
     assert "2 flux attendus « sortant »" in detail
+
+
+# ── Un conflit ne cite que du publié ─────────────────────────────────────────
+
+def _conflit(dossier: Path, cas: dict, relations=(), flux=(), actes=()) -> Path:
+    dossier.mkdir(parents=True, exist_ok=True)
+    for nom, cle, liste in (("conflits.json", "cas", [cas]),
+                            ("relations.json", "relations", list(relations)),
+                            ("flows.json", "flows", list(flux)),
+                            ("events.json", "events", list(actes))):
+        (dossier / nom).write_text(json.dumps({cle: liste}), encoding="utf-8")
+    return dossier
+
+
+CAS = {"person_id": 1, "entite_id": 2, "roles_entite": ["président"], "flux_id": 7,
+       "deport": {"event_id": 9}}
+LIEN = {"from_id": 1, "to_id": 2, "relation_type": "président"}
+
+
+def test_un_conflit_fonde_sur_du_publie_passe(vs, tmp_path):
+    rep = vs.Report()
+    vs.check_conflits(_conflit(tmp_path, CAS, [LIEN], [{"id": 7}], [{"id": 9}]), rep)
+    assert rep.errors == {}
+
+
+def test_un_conflit_sans_son_lien_son_versement_ni_son_acte_bloque(vs, tmp_path):
+    rep = vs.Report()
+    vs.check_conflits(_conflit(tmp_path, CAS), rep)
+    assert set(rep.errors) == {"conflit fondé sur un lien non publié",
+                               "conflit citant un versement non publié",
+                               "déport citant un acte non publié"}
+
+
+def test_un_lien_publie_sous_un_autre_role_ne_fonde_pas_le_conflit(vs, tmp_path):
+    rep = vs.Report()
+    vs.check_conflits(_conflit(tmp_path, {**CAS, "flux_id": None, "deport": None},
+                               [{**LIEN, "relation_type": "élu_cm"}]), rep)
+    assert set(rep.errors) == {"conflit fondé sur un lien non publié"}

@@ -18,8 +18,9 @@ from collectors.citations import acte_de_ligne, index_de, lignes_en_base
 from scripts.snapshot.revue import TYPES_REVUS, appliquer_revue
 from scripts.snapshot.socle import (RULES, URL_COMMUNE, URL_EPCI, rows, safe_url,
                                     write_json_compact)
-from scripts.snapshot.textes import (convocation_publique, masquer_donnees_personnelles,
-                                     nettoyer_titre_evenement, texte_publiable)
+from scripts.snapshot.textes import (champ_publiable, convocation_publique,
+                                     masquer_donnees_personnelles, nettoyer_titre_evenement,
+                                     texte_publiable)
 
 
 # Ce qu'un conseil a effectivement délibéré — communal et intercommunal. Sert
@@ -458,7 +459,8 @@ def etape_actes(conn, revue, noms_publics, redige, exclusions) -> dict:
         if corrections_ev:
             public_events[-1]["corrige"] = sorted(corrections_ev)
         if event.get("note_revue"):
-            public_events[-1]["note_revue"] = event["note_revue"]
+            public_events[-1]["note_revue"] = redige(champ_publiable(
+                event["note_revue"], event["date"], noms_publics))
 
     return {
         "event_rows": event_rows,

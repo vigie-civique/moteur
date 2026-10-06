@@ -14,6 +14,7 @@ from collectors.etat_flux import etat_du_flux
 from scripts.snapshot.revue import appliquer_revue
 from scripts.snapshot.actes import PORTEE_PAR_PERIMETRE
 from scripts.snapshot.socle import RULES, rows, table_exists
+from scripts.snapshot.textes import champ_publiable
 
 
 def flux_extremites_publiees(flow: dict, public_ids: set[int]) -> bool:
@@ -348,6 +349,8 @@ def etape_flux(conn, revue, entity_rows, public_person_ids, public_ids,
     # valait `None` lui aussi, il sortait « entrant ».
     for f in public_flows:
         f["description"] = redige(f.get("description"))
+        if f.get("note_revue"):
+            f["note_revue"] = redige(champ_publiable(f["note_revue"], None, set()))
         if COMMUNE_ID is None:
             f["sens"] = "tiers"
         elif f.get("to_id") == COMMUNE_ID and f.get("from_id") != COMMUNE_ID:
@@ -372,7 +375,7 @@ def etape_flux(conn, revue, entity_rows, public_person_ids, public_ids,
 
 
 def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entite,
-                   exclusions) -> dict:
+                   noms_publics, exclusions) -> dict:
     # ── Données financières & foncières officielles (open data) ───────────
     # DGFiP, OFGL, Cerema (DVF), DECP : faits publics par nature → export complet.
     budget_annuel = rows(conn, """
@@ -395,6 +398,8 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
         SELECT year, scope, agregat, value, unit, approx, note, source, source_url
         FROM budget_vote ORDER BY year DESC, scope, id
     """) if table_exists(conn, "budget_vote") else []
+    for b in budget_vote:
+        b["note"] = champ_publiable(b["note"], None, noms_publics)
     dvf_data = rows(conn, """
         SELECT id, date, cadastre_ref, lieu_dit, nature_mutation, nature_bien,
                surface_terrain, surface_bati, price, price_per_m2, lat, lng
@@ -411,10 +416,13 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
     # `montant_base` (HT ou TTC) depuis le 04/10/2026 : un marché lu dans un
     # procès-verbal porte l'un ou l'autre. Absente d'une base plus ancienne.
     base_mp = "montant_base" if "montant_base" in colonnes_mp else "NULL AS montant_base"
+    # La confiance sort avec la ligne : le contrôleur la vérifie quand il la
+    # voit, et il ne la voyait pas — le filtre ci-dessus n'avait aucun témoin.
+    confiance_mp = ", confidence" if "confidence" in colonnes_mp else ""
     marches_data = rows(conn, f"""
         SELECT id, acheteur_id, acheteur_siren, acheteur_nom, titulaire_id, titulaire_nom,
                objet, nature, procedure, montant, {base_mp}, cpv_label, date_notif,
-               lieu_exec, source, source_url
+               lieu_exec, source, source_url{confiance_mp}
         FROM marches_publics {filtre_mp} ORDER BY date_notif DESC, montant DESC
     """)
     rattacher_acheteurs(marches_data, acheteurs_par_siren(conn))
@@ -426,6 +434,13 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
     marches_data = [m for m in (appliquer_revue(m, revue_marches.get(m["id"]))
                                 for m in marches_data) if m is not None]
     exclusions["marches"]["rejete_en_atelier"] = avant_revue - len(marches_data)
+    # Ce qui est écrit par un acheteur, lu dans un procès-verbal ou saisi à
+    # l'atelier passe par le masque, comme le titre d'un acte.
+    for m in marches_data:
+        for champ in ("objet", "lieu_exec"):
+            m[champ] = champ_publiable(m[champ], m.get("date_notif"), noms_publics)
+        if m.get("note_revue"):
+            m["note_revue"] = champ_publiable(m["note_revue"], None, noms_publics)
 
     # Le marché reste, le lien vers une fiche non publiée tombe.
     exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \
@@ -445,11 +460,14 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
     # n'est retenue, les mêler fausserait le décompte des attributions.
     approbations_data = rows(conn, """
         SELECT id, event_id, date, objet, montant_ht, montant_ttc,
-               maitre_ouvrage, citation, source, source_url
+               maitre_ouvrage, citation, source, source_url, confidence
         FROM approbations_projets
         WHERE confidence IN ('verified', 'confirmed')
         ORDER BY date DESC
     """) if table_exists(conn, "approbations_projets") else []
+    for a in approbations_data:
+        for champ in ("objet", "maitre_ouvrage", "citation"):
+            a[champ] = champ_publiable(a[champ], a["date"], noms_publics)
 
     return {
         "budget_annuel": budget_annuel,

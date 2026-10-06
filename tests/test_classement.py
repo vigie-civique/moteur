@@ -73,9 +73,26 @@ def test_hors_territoire_relie_devient_lien(cp, base, entite):
     lointain = entite("SCI ailleurs", commune="Marseille")
     base.execute(
         "INSERT INTO relations (from_id, to_id, relation_type, confidence) "
-        "VALUES (?,?,?,?)", (local, lointain, "dirige", "verified"))
+        "VALUES (?,?,?,?)", (local, lointain, "dirigeant", "verified"))
     base.commit()
     assert cp.classer(base)[lointain] == "lien"
+
+
+@pytest.mark.parametrize("type_, confiance", [
+    ("associé", "hypothesis"),          # une piste
+    ("même_adresse", "verified"),       # un lien privé, quelle que soit sa confiance
+    ("lien_inventé", "verified"),       # un type qu'aucune règle n'admet
+])
+def test_un_lien_qui_ne_sort_pas_nattache_personne(cp, base, entite, type_, confiance):
+    """Sinon la structure extérieure a sa fiche publique, sans le lien qui la
+    justifie — et son seul titre à paraître est une piste ou une adresse."""
+    local = entite("Élu local", type_="person", commune="Testonville")
+    lointain = entite("SCI ailleurs", commune="Marseille")
+    base.execute(
+        "INSERT INTO relations (from_id, to_id, relation_type, confidence) "
+        "VALUES (?,?,?,?)", (local, lointain, type_, confiance))
+    base.commit()
+    assert cp.classer(base)[lointain] == "hors"
 
 
 def test_une_structure_dadhesion_devient_c2(cp, base, entite):

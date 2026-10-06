@@ -199,6 +199,88 @@ def test_une_relation_ecartee_ne_justifie_plus_la_personne(epreuve, tmp_path):
     assert '"maire"' not in sortie["relations.json"]
 
 
+def test_une_note_ne_sort_que_comme_motif_dune_rectification_et_masquee(epreuve, tmp_path):
+    """Le champ de note de l'atelier annonce qu'elle s'affiche avec le repère
+    « rectifié ». Sans rectification, c'est une note de travail : elle partait
+    quand même dans `events.json`, telle que tapée."""
+    note = "parcelle de M. Gaston PIEGENOTE, domicilié 5 rue des Lilas"
+    acte = epreuve[1]["deliberation"][0]
+
+    def publier(dossier, corrections):
+        dossier.mkdir()
+        copie = _copie_avec(epreuve, dossier, {})
+        conn = sqlite3.connect(copie)
+        conn.execute("INSERT INTO annotations (object_type, object_id, review_status, note,"
+                     " corrections) VALUES ('deliberation', ?, 'retenu', ?, ?)",
+                     (acte, note, corrections))
+        conn.commit()
+        conn.close()
+        return _publier(copie, dossier / "snap")
+
+    sortie = publier(tmp_path / "sans", None)
+    assert "Délibération d'épreuve" in sortie["events.json"]
+    assert all("PIEGENOTE" not in texte for texte in sortie.values())
+
+    sortie = publier(tmp_path / "avec", json.dumps({"title": "Délibération rectifiée"}))
+    assert "Délibération rectifiée" in sortie["events.json"]
+    assert "PIEGENOTE" in sortie["corrections.json"]      # le motif sort…
+    assert all("Lilas" not in texte for texte in sortie.values())   # …sans le domicile
+
+
+def _intercommunalite(copie: Path) -> dict[str, int]:
+    """Un acte du conseil communautaire, deux déléguées, et leur ligne au RNE."""
+    conn = sqlite3.connect(copie)
+    mairie = conn.execute("SELECT id FROM entities WHERE name = 'Mairie d''épreuve'"
+                          ).fetchone()[0]
+    ids = {"acte": conn.execute(
+        "INSERT INTO events (type, date, title, source) VALUES ('deliberation_cc',"
+        " '2026-04-02', 'Délibération communautaire d''épreuve', 'interieur')").lastrowid}
+    for cle, nom in (("fiche", "Déléguée Écartée"), ("mandat", "Déléguée Au Mandat Faux")):
+        eid = conn.execute(
+            "INSERT INTO entities (type, name, commune, perimetre, confidence) VALUES"
+            " ('person', ?, 'Voisinbourg', 'C2', 'verified')", (nom,)).lastrowid
+        rid = conn.execute(
+            "INSERT INTO relations (from_id, to_id, relation_type, confidence, source)"
+            " VALUES (?, ?, 'élu_cc', 'verified', 'rne')", (eid, mairie)).lastrowid
+        conn.execute(
+            "INSERT INTO elus_rne (mandat, insee, commune, nom, prenom, date_debut_mandat,"
+            " entity_id) VALUES ('cm', '99002', 'Voisinbourg', ?, 'Déléguée',"
+            " '2026-03-22', ?)", (nom.upper(), eid))
+        ids[cle] = eid if cle == "fiche" else rid
+    conn.commit()
+    conn.close()
+    return ids
+
+
+def test_ecarte_retire_aussi_des_fichiers_qui_relisent_la_base(epreuve, tmp_path):
+    """« Écarté » retire du SITE. Un acte de l'intercommunalité n'était pas dans
+    les types revus ; une déléguée écartée, ou dont le mandat est jugé faux,
+    restait dans la liste des délégués, et la fiche écartée dans la composition
+    des conseils — ces deux fichiers relisent la base au lieu des fiches."""
+    copie = _copie_avec(epreuve, tmp_path, {})
+    ids = _intercommunalite(copie)
+    sortie = _publier(copie, tmp_path / "temoin")
+    assert "Délibération communautaire d'épreuve" in sortie["events.json"]
+    for nom in ("Déléguée Écartée", "Déléguée Au Mandat Faux"):
+        assert nom in sortie["intercommunalite.json"]
+    assert "DÉLÉGUÉE ÉCARTÉE" in sortie["elus_rne.json"]
+
+    conn = sqlite3.connect(copie)
+    conn.executemany(
+        "INSERT INTO annotations (object_type, object_id, review_status) VALUES (?, ?, 'ecarte')",
+        [("deliberation", ids["acte"]), ("entity", ids["fiche"]), ("relation", ids["mandat"])])
+    conn.commit()
+    conn.close()
+    sortie = _publier(copie, tmp_path / "snap")
+    assert "Délibération communautaire d'épreuve" not in sortie["events.json"]
+    for nom in ("Déléguée Écartée", "Déléguée Au Mandat Faux"):
+        assert nom not in sortie["intercommunalite.json"]
+    assert "DÉLÉGUÉE ÉCARTÉE" not in sortie["elus_rne.json"]
+    # Le mandat jugé faux ne retire pas la personne de la composition du conseil
+    # municipal, que le RNE atteste par ailleurs.
+    assert "DÉLÉGUÉE AU MANDAT FAUX" in sortie["elus_rne.json"]
+
+
 def test_retenu_nouvre_pas_ce_que_les_regles_ferment(epreuve, tmp_path):
     """« Une habitante » n'a aucun rôle civique : `retenu` ne la publie pas."""
     db, _ = epreuve

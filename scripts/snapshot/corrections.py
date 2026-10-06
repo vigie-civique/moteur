@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from scripts.snapshot.socle import ROOT, write_json
+from scripts.snapshot.textes import champ_publiable
 
 
 JOURNAL_PATH = Path(os.environ.get("VIGIE_JOURNAL_CORRECTIONS")
@@ -49,8 +50,10 @@ def lire_journal_corrections(path: Path = JOURNAL_PATH) -> list[dict]:
             "date": date,
             # Un chemin du site, jamais une URL : le journal ne renvoie pas ailleurs.
             "page": page if re.fullmatch(r"/[\w\-/]*", page) else None,
-            "constat": constat, "correction": correction,
-            "signale_par": str(e.get("signale_par") or "").strip() or None,
+            "constat": champ_publiable(constat, None, set()),
+            "correction": champ_publiable(correction, None, set()),
+            "signale_par": champ_publiable(
+                str(e.get("signale_par") or "").strip() or None, None, set()),
         })
     return sorted(entrees, key=lambda e: e["date"], reverse=True)
 
