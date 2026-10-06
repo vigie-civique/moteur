@@ -122,6 +122,29 @@ else
   fi
 fi
 
+# UN SEUL BUILD DU SITE À LA FOIS. L'aperçu de l'atelier et ce script lancent le
+# même `npm run build`, qui vide puis remplit `public/.svelte-kit/output` : le
+# 04/10/2026, une mise en ligne partie pendant un aperçu a échoué en ENOTEMPTY,
+# et l'aperçu est sorti à 88 pages sur 1 528, sans feuille de style. Le verrou
+# est celui des aperçus (`publication.py`, qui dit seul où il est) ; il couvre
+# aussi `src/lib/instance.js`, que l'étape 3 réécrit, et `public/build`, que
+# l'étape 4 recopie — deux mises en ligne se le disputeraient de la même façon.
+#
+# Le descripteur 9 est ouvert ICI et `publication.py` y pose le verrou : il
+# tient tant que ce script garde le descripteur, et le noyau le rend si le
+# script meurt. Qui attend le dit à l'écran. Pas de commande `flock` : macOS
+# n'en a pas, et les instances se publient aussi depuis un Mac.
+verrou_build="$("$PY" "$PUBLICATION" verrou-de-build --chemin)"
+exec 9>>"$verrou_build"
+"$PY" "$PUBLICATION" verrou-de-build --fd 9 || {
+  echo "   ✖ rien n'a été construit ni mis en ligne." >&2
+  exit 1
+}
+rendre_le_site() {
+  "$PY" "$PUBLICATION" verrou-de-build --fd 9 --liberer
+  exec 9>&-
+}
+
 echo "3/5 — Build du site (adapter-static → public/build)"
 # Les libellés du site sont dérivés de la même instance que le snapshot : les
 # régénérer ici évite qu'un site publie le nom d'une commune et les chiffres
@@ -152,6 +175,7 @@ if [ -n "$caches" ]; then
 fi
 
 if [ "$DEPLOYER" -eq 0 ]; then
+  rendre_le_site
   echo
   echo "✓ Site construit dans public/build/ — pas mis en ligne (--deployer pour publier)."
   exit 0
@@ -184,10 +208,13 @@ case "$VIGIE_CIBLE" in
     # `VIGIE_CIBLE_RSYNC_PATH` sert quand le compte qui se connecte n'est pas
     # celui qui possède les fichiers — sinon le serveur finit par servir des
     # fichiers que la publication suivante ne peut plus remplacer.
+    #
+    # `9>&-` : ssh n'hérite pas du verrou de build. Un maître de connexion
+    # persistant (ControlPersist) le garderait bien après la fin de ce script.
     rsync -az --delete --delete-excluded --exclude='_redirects' \
       --exclude='.DS_Store' --exclude='._*' --exclude='Thumbs.db' \
       ${VIGIE_CIBLE_RSYNC_PATH:+--rsync-path="$VIGIE_CIBLE_RSYNC_PATH"} \
-      "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/"
+      "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/" 9>&-
     ;;
   local)
     echo "4/5 — Mise en ligne locale ($VIGIE_CIBLE_CHEMIN)"
@@ -224,6 +251,7 @@ case "$VIGIE_CIBLE" in
         --project-name="$CF_PROJECT" --branch=main --commit-dirty=true )
     ;;
 esac
+rendre_le_site
 
 echo "5/5 — Constat : le site en ligne sert-il la version promue ?"
 # Un téléversement qui rend 0 dit que des fichiers sont partis, pas que le site

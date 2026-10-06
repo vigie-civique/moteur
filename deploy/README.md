@@ -46,7 +46,10 @@ refuser :
    gardée dans `audits/versions/` pour revenir en arrière ;
 3. **le build** — `npm run build` échoue si une page est livrée sans son
    contenu (`public/scripts/verifier_build.mjs`). Un build qui porte un fichier
-   caché est refusé : tout `public/static/` part en ligne.
+   caché est refusé : tout `public/static/` part en ligne. Un build incomplet
+   aussi (`_app/immutable` absent, moins de fiches que n'en annonce le manifeste
+   du snapshot). Un seul build à la fois : le script prend le verrou des aperçus
+   de l'atelier, et attend en le disant si l'un d'eux se construit.
 
 Le résultat est dans `public/build/` : un site statique ordinaire, à téléverser
 où vous voulez. Pour que le script le fasse, déclarez **une fois** la

@@ -11,7 +11,7 @@
 // Ce script fait échouer le build si le symptôme réapparaît. Il tourne après
 // `vite build` (cf. package.json).
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 // Même répertoire que celui qu'`adapter-static` vient d'écrire : un aperçu
 // figé (`VIGIE_BUILD_DIR`) doit être contrôlé, pas ignoré.
@@ -197,6 +197,69 @@ if (pages.length === 0) {
   process.exit(1)
 }
 
+// ── Le build est-il ENTIER ? ────────────────────────────────────────────────
+//
+// Tout ce qui précède juge les pages PRÉSENTES. Le 04/10/2026, la mise en ligne
+// a vidé `.svelte-kit/output` sous un aperçu en construction : l'aperçu est
+// sorti à 88 pages sur 1 528, sans `_app/immutable` — donc servi sans feuille de
+// style ni JavaScript — et ce script a annoncé « ✓ 72 pages vérifiées ». Chacune
+// des 72 était pleine. Un build tronqué ne se voit qu'en comptant ce qui manque.
+const incomplet = []
+
+// 1. Le code du site. Sans lui, chaque page est un HTML nu.
+const IMMUTABLE = join(BUILD, '_app', 'immutable')
+if (!existsSync(IMMUTABLE) || readdirSync(IMMUTABLE).length === 0) {
+  incomplet.push("_app/immutable est absent ou vide : le site serait servi sans "
+    + 'feuille de style ni JavaScript')
+}
+
+// 2. Ce que la page d'accueil charge existe. Les ressources seulement (feuilles
+//    de style, modules, images) : les liens entre pages sont l'affaire du
+//    prérendu, qui les suit un à un.
+const ACCUEIL = join(BUILD, 'index.html')
+if (!existsSync(ACCUEIL)) {
+  incomplet.push("index.html est absent : le build n'a pas de page d'accueil")
+} else {
+  const html = readFileSync(ACCUEIL, 'utf8')
+  const refs = new Set()
+  for (const m of html.matchAll(/<(?:link|script|img)\b[^>]*?\s(?:href|src)="([^"]+)"/g)) refs.add(m[1])
+  for (const m of html.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)) refs.add(m[1])
+  for (const ref of refs) {
+    // Ailleurs que sur ce site (canonique, flux d'un tiers) : rien à trouver ici.
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(ref)) continue
+    const chemin = decodeURIComponent(ref.split(/[?#]/)[0])
+    const cible = chemin.startsWith('/') ? join(BUILD, chemin) : resolve(dirname(ACCUEIL), chemin)
+    if (!existsSync(cible)) incomplet.push(`index.html référence ${ref}, qui n'existe pas dans le build`)
+  }
+}
+
+// 3. Pas moins de fiches que le snapshot n'en annonce. Le manifeste du snapshot
+//    (`scripts/snapshot/manifeste.py`) compte les objets de chaque fichier ;
+//    `entity_index.json` est la liste que `entite/[id]` prérend, une page par
+//    entrée. Lu là où le site lit ses données (`src/lib/donnees.server.js`).
+const DONNEES = process.env.VIGIE_DATA_DIR
+  ? resolve(process.env.VIGIE_DATA_DIR)
+  : join(process.cwd(), 'static', 'data')
+const fiches = pages.filter((p) => routeDe(p.slice(BUILD.length + 1)).startsWith('entite/')).length
+let plancher = null
+try {
+  const manifeste = JSON.parse(readFileSync(join(DONNEES, 'manifeste.json'), 'utf8'))
+  plancher = (manifeste.fichiers || []).find((f) => f.chemin === 'entity_index.json')?.objets ?? null
+} catch { /* dit plus bas : un contrôle non fait ne se tait pas */ }
+if (plancher !== null && fiches < plancher) {
+  incomplet.push(`${fiches} fiches sur les ${plancher} qu'annonce le manifeste du snapshot `
+    + `(${pages.length} pages en tout) : le prérendu s'est arrêté en route`)
+}
+
+if (incomplet.length) {
+  console.error(`\n✖ Build INCOMPLET dans ${BUILD} :\n`)
+  for (const i of incomplet) console.error('  ' + i)
+  console.error("\nUn build tronqué vient presque toujours d'un autre build lancé en")
+  console.error("même temps : tous écrivent dans `.svelte-kit/output`. Relancer, seul —")
+  console.error("`deploy/publier-site.sh` et l'atelier prennent le même verrou.\n")
+  process.exit(1)
+}
+
 if (problemes.length) {
   console.error(`\n✖ ${problemes.length} problème(s) dans le rendu :\n`)
   for (const p of problemes) console.error('  ' + p)
@@ -210,3 +273,7 @@ if (problemes.length) {
 }
 
 console.log(`✓ ${pages.length} pages vérifiées : toutes livrent leur contenu dans le HTML.`)
+console.log(plancher !== null
+  ? `✓ build entier : ${fiches} fiches pour ${plancher} annoncées par le manifeste, _app/immutable présent.`
+  : `⚠ nombre de pages NON contrôlé : pas de manifeste lisible dans ${DONNEES} (snapshot `
+    + "d'avant le manifeste, ou dépôt sans données).")

@@ -305,6 +305,9 @@ def test_un_build_qui_porte_un_repertoire_cache_est_refuse(tmp_path):
     sain = tmp_path / "sain"
     sain.mkdir()
     (sain / "index.html").write_text(page, encoding="utf-8")
+    # Un build sans `_app/immutable` est refusé pour lui-même (04/10/2026).
+    (sain / "_app" / "immutable").mkdir(parents=True)
+    (sain / "_app" / "immutable" / "0.js").write_text("", encoding="utf-8")
     (sain / ".well-known").mkdir()
     (sain / ".well-known" / "security.txt").write_text("Contact: x", encoding="utf-8")
     assert lancer(sain).returncode == 0, lancer(sain).stderr

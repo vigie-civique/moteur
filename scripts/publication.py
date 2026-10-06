@@ -87,9 +87,16 @@ VERROU = ROOT / "audits" / "publication.lock"
 # Les aperçus de l'atelier, un répertoire par compte, et leur durée de vie.
 APERCUS = ROOT / "audits" / "apercus"
 APERCU_JOURS = int(os.environ.get("VIGIE_APERCU_JOURS") or 7)   # vide dans .env = défaut
-# Le build du site public écrit dans `public/.svelte-kit/`, commun à tous les
-# builds : deux aperçus construits en même temps s'y marcheraient dessus.
+# Le build du site public écrit dans `public/.svelte-kit/`, commun à TOUS les
+# builds — ceux des aperçus comme celui de la mise en ligne. Jusqu'au 04/10/2026
+# seuls les aperçus prenaient ce verrou : la mise en ligne (`publier-site.sh`)
+# vidait `.svelte-kit/output` sous un aperçu en construction. Le nom du fichier
+# date de ce temps-là ; il reste, pour qu'un moteur d'avant et un moteur d'après
+# qui se croisent pendant une mise à jour se disputent le même verrou.
 VERROU_BUILD = ROOT / "audits" / "apercu-build.lock"
+# Ce que la mise en ligne accepte d'attendre : un aperçu de 1 500 pages se
+# construit en quelques minutes. Au-delà, c'est une panne, et elle le dit.
+ATTENTE_MISE_EN_LIGNE = 1800.0
 
 # Combien de versions servies on garde en arrière. Une seule suffit à revenir
 # en arrière ; en garder davantage occuperait le disque de l'atelier sans que
@@ -1335,6 +1342,9 @@ def etat_mise_en_ligne() -> dict:
         etat["ok"] = _deploiement.returncode == 0
         etat["fin_du_journal"] = _fin_du_journal(25, DEPLOIEMENT_LOG)
     etat["actif"] = actif      # `|=` a pu l'écraser avec une valeur périmée
+    # Qui construit le site en ce moment. Un aperçu : la mise en ligne attend
+    # qu'il ait fini, et la page le dit au lieu d'offrir le bouton.
+    etat["build"] = build_en_cours()
     return etat
 
 
@@ -1451,7 +1461,8 @@ def construire_apercu(cible: Path | None = None, build: Path | None = None) -> d
             "L'aperçu construit le site lui-même, il lui faut de quoi tourner.")
 
     APERCU_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with _verrou_de_build(), APERCU_LOG.open("w", encoding="utf-8") as journal:
+    with _verrou_de_build("un aperçu", genre="apercu"), \
+            APERCU_LOG.open("w", encoding="utf-8") as journal:
         journal.write(f"$ npm run build  (VIGIE_DATA_DIR={cible})\n\n")
         journal.flush()
         issue = subprocess.run(
@@ -1483,22 +1494,82 @@ def construire_apercu(cible: Path | None = None, build: Path | None = None) -> d
             "construit_le": maintenant(), "donnees": str(cible)}
 
 
+def build_en_cours() -> dict | None:
+    """Qui construit le site en ce moment — `None` si personne.
+
+    Lu sur le verrou lui-même, pas sur un témoin : un verrou partagé pris sans
+    attendre échoue tant qu'un build tient l'exclusif, et réussit dès qu'il est
+    fini ou mort. Ce que le fichier CONTIENT (qui, depuis quand) n'est cru que
+    dans le premier cas.
+    """
+    try:
+        f = open(VERROU_BUILD, encoding="utf-8")
+    except OSError:
+        return None
+    with f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                tenant = json.loads(f.read())
+            except (OSError, json.JSONDecodeError):
+                tenant = {}
+            return {"qui": tenant.get("qui") or "un autre build",
+                    "genre": tenant.get("genre"),
+                    "depuis": tenant.get("depuis")}
+        fcntl.flock(f, fcntl.LOCK_UN)
+    return None
+
+
+def _prendre_le_verrou_de_build(fd: int, qui: str, genre: str, delai: float,
+                                dire=None) -> None:
+    """Prend le verrou sur un descripteur DÉJÀ ouvert, en attendant son tour.
+
+    Un build qui attend le dit (`dire`), une fois, en nommant qui il attend ;
+    passé `delai`, il refuse sans avoir rien écrit.
+    """
+    debut = time.monotonic()
+    annonce = False
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            attendu = time.monotonic() - debut
+            tenant = build_en_cours() or {}
+            # Pas à la première seconde : `build_en_cours` prend le verrou en
+            # partagé le temps de regarder, et ce n'est pas un build.
+            if dire and not annonce and attendu >= 1 and tenant:
+                dire(f"⏳ {tenant['qui']} construit déjà le site"
+                     + (f" (depuis {tenant['depuis'][11:16]})"
+                        if tenant.get("depuis") else "")
+                     + f" — {qui} attend son tour : deux builds écrivent au même "
+                       "endroit. Rien n'est touché d'ici là.")
+                annonce = True
+            if attendu >= delai:
+                raise PublicationRefusee(
+                    f"{tenant.get('qui') or 'Un autre build'} construit le site "
+                    f"depuis plus de {int(delai // 60)} min : {qui} n'a pas eu "
+                    "son tour. Rien n'a été construit — réessayer quand il aura fini.")
+            time.sleep(0.5)
+    if dire and annonce:
+        dire(f"✓ le site est libre après {int(time.monotonic() - debut)} s — "
+             f"{qui} commence.")
+    os.ftruncate(fd, 0)
+    os.pwrite(fd, json.dumps({"qui": qui, "genre": genre, "pid": os.getpid(),
+                              "depuis": maintenant()},
+                             ensure_ascii=False).encode("utf-8"), 0)
+
+
 @contextmanager
-def _verrou_de_build(delai: float = 600.0):
+def _verrou_de_build(qui: str = "un aperçu", genre: str = "apercu",
+                     delai: float = 600.0, dire=None):
     """Un build du site à la fois : tous écrivent dans `public/.svelte-kit/`."""
     VERROU_BUILD.parent.mkdir(parents=True, exist_ok=True)
-    fin = time.monotonic() + delai
-    with open(VERROU_BUILD, "w") as f:
-        while True:
-            try:
-                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= fin:
-                    raise PublicationRefusee(
-                        "Un autre aperçu est en construction depuis dix minutes — "
-                        "réessayer plus tard.")
-                time.sleep(0.5)
+    # `a+` et non `w` : ouvrir ne doit pas effacer ce qu'y a écrit celui qui
+    # tient le verrou — c'est ce que lit celui qui attend.
+    with open(VERROU_BUILD, "a+") as f:
+        _prendre_le_verrou_de_build(f.fileno(), qui, genre, delai, dire)
         try:
             yield
         finally:
@@ -1768,6 +1839,14 @@ def main(argv: list[str] | None = None) -> int:
     dest = gestes.add_parser("destination", help="dire où part le site public")
     dest.add_argument("--shell", action="store_true",
                       help="sous forme de variables que le script de publication évalue")
+    verrou = gestes.add_parser(
+        "verrou-de-build", help="prendre le verrou du build du site sur un "
+                                "descripteur hérité (deploy/publier-site.sh)")
+    verrou.add_argument("--chemin", action="store_true",
+                        help="dire où est le fichier du verrou, sans le prendre")
+    verrou.add_argument("--fd", type=int, help="descripteur ouvert par l'appelant")
+    verrou.add_argument("--liberer", action="store_true")
+    verrou.add_argument("--delai", type=float, default=ATTENTE_MISE_EN_LIGNE)
     args = parser.parse_args(argv)
 
     # Qui tape une commande sur la machine qui porte la base a déjà tous les
@@ -1786,6 +1865,24 @@ def main(argv: list[str] | None = None) -> int:
                   f"{(resume.get('stats') or {}).get('entities_public')} entités publiques")
             print((controle.get("rapport") or "").strip())
             return 0 if controle.get("ok") else 1
+
+        if args.geste == "verrou-de-build":
+            # `flock` porte sur la DESCRIPTION de fichier ouverte, que le script
+            # appelant garde après la fin de ce processus : le verrou pris ici
+            # tient jusqu'à ce qu'il le rende ou meure. Pas de commande `flock`
+            # dans le script : macOS n'en a pas.
+            if args.chemin:
+                VERROU_BUILD.parent.mkdir(parents=True, exist_ok=True)
+                print(VERROU_BUILD)
+            elif args.fd is None:
+                parser.error("verrou-de-build : --fd ou --chemin")
+            elif args.liberer:
+                fcntl.flock(args.fd, fcntl.LOCK_UN)
+            else:
+                _prendre_le_verrou_de_build(
+                    args.fd, "la mise en ligne", "mise_en_ligne", args.delai,
+                    dire=lambda ligne: print(f"   {ligne}", flush=True))
+            return 0
 
         if args.geste == "publier":
             publie = publier(auteur=auteur, role="admin")
