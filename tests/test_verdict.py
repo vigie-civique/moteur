@@ -199,6 +199,34 @@ def test_une_relation_ecartee_ne_justifie_plus_la_personne(epreuve, tmp_path):
     assert '"maire"' not in sortie["relations.json"]
 
 
+def test_une_note_ne_sort_que_comme_motif_dune_rectification_et_masquee(epreuve, tmp_path):
+    """Le champ de note de l'atelier annonce qu'elle s'affiche avec le repère
+    « rectifié ». Sans rectification, c'est une note de travail : elle partait
+    quand même dans `events.json`, telle que tapée."""
+    note = "parcelle de M. Gaston PIEGENOTE, domicilié 5 rue des Lilas"
+    acte = epreuve[1]["deliberation"][0]
+
+    def publier(dossier, corrections):
+        dossier.mkdir()
+        copie = _copie_avec(epreuve, dossier, {})
+        conn = sqlite3.connect(copie)
+        conn.execute("INSERT INTO annotations (object_type, object_id, review_status, note,"
+                     " corrections) VALUES ('deliberation', ?, 'retenu', ?, ?)",
+                     (acte, note, corrections))
+        conn.commit()
+        conn.close()
+        return _publier(copie, dossier / "snap")
+
+    sortie = publier(tmp_path / "sans", None)
+    assert "Délibération d'épreuve" in sortie["events.json"]
+    assert all("PIEGENOTE" not in texte for texte in sortie.values())
+
+    sortie = publier(tmp_path / "avec", json.dumps({"title": "Délibération rectifiée"}))
+    assert "Délibération rectifiée" in sortie["events.json"]
+    assert "PIEGENOTE" in sortie["corrections.json"]      # le motif sort…
+    assert all("Lilas" not in texte for texte in sortie.values())   # …sans le domicile
+
+
 def test_retenu_nouvre_pas_ce_que_les_regles_ferment(epreuve, tmp_path):
     """« Une habitante » n'a aucun rôle civique : `retenu` ne la publie pas."""
     db, _ = epreuve

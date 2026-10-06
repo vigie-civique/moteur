@@ -349,6 +349,8 @@ def etape_flux(conn, revue, entity_rows, public_person_ids, public_ids,
     # valait `None` lui aussi, il sortait « entrant ».
     for f in public_flows:
         f["description"] = redige(f.get("description"))
+        if f.get("note_revue"):
+            f["note_revue"] = redige(champ_publiable(f["note_revue"], None, set()))
         if COMMUNE_ID is None:
             f["sens"] = "tiers"
         elif f.get("to_id") == COMMUNE_ID and f.get("from_id") != COMMUNE_ID:
@@ -437,6 +439,8 @@ def etape_finances(conn, revue, public_ids, public_entities, perimetre_par_entit
     for m in marches_data:
         for champ in ("objet", "lieu_exec"):
             m[champ] = champ_publiable(m[champ], m.get("date_notif"), noms_publics)
+        if m.get("note_revue"):
+            m["note_revue"] = champ_publiable(m["note_revue"], None, noms_publics)
 
     # Le marché reste, le lien vers une fiche non publiée tombe.
     exclusions["marches"]["renvoi_vers_fiche_non_publiee"] = \

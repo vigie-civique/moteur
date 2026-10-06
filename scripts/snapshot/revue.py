@@ -83,7 +83,11 @@ def appliquer_revue(ligne: dict, verdict: dict | None) -> dict | None:
         ligne["corrige"] = sorted(corrigees)
     if verdict["confidence"]:
         ligne["confidence"] = verdict["confidence"]
-    if verdict["note"]:
+    # La note ne sort que comme MOTIF d'une rectification — c'est ce que
+    # l'atelier annonce sous le champ. Une note posée sans rien corriger est une
+    # note de travail : elle partait dans `events.json` avec le reste. L'étape
+    # qui publie la ligne la passe par le masque.
+    if verdict["note"] and corrigees:
         ligne["note_revue"] = verdict["note"]
     return ligne
 
