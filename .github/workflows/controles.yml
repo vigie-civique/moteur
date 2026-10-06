@@ -87,7 +87,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Dépendances
-        run: pip install --only-binary=:all: -r requirements.txt pytest
+        run: "pip install --only-binary=:all: -r requirements.txt pytest"
       - name: L'API et les collecteurs se chargent
         env:
           VIGIE_INSTANCE: tests/instance_test.json
