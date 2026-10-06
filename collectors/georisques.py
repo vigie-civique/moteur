@@ -18,9 +18,10 @@ Usage :
 import argparse
 import json
 import time
+import urllib.parse
 
 from .archive import fetch_json
-from .config import COMMUNES, COMMUNES_INSEE, REQUEST_DELAY
+from .config import COMMUNES, COMMUNES_INSEE, REQUEST_DELAY, SIRENE_API
 from .db import get_conn
 
 API = "https://www.georisques.gouv.fr/api/v1"
@@ -42,9 +43,14 @@ def ensure_tables(conn):
             lat            REAL,
             lng            REAL,
             raw_data       TEXT,
-            created_at     TEXT DEFAULT (datetime('now'))
+            created_at     TEXT DEFAULT (datetime('now')),
+            forme_juridique TEXT
         )
     """)
+    # Une base d'avant le 06/10/2026 : la colonne s'ajoute (cf. collectors/db.py).
+    if "forme_juridique" not in {r[1] for r in conn.execute(
+            "PRAGMA table_info(icpe_installations)")}:
+        conn.execute("ALTER TABLE icpe_installations ADD COLUMN forme_juridique TEXT")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS risques_gaspar (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,11 +89,19 @@ def import_icpe(conn, insee: str, items: list[dict]) -> int:
     for it in items:
         adresse = " ".join(filter(None, [it.get("adresse1"), it.get("adresse2"),
                                          it.get("adresse3")]))
+        # Mise à jour en place : `INSERT OR REPLACE` effacerait la forme
+        # juridique relevée aux passes précédentes, et la redemanderait à
+        # l'annuaire pour chaque installation, à chaque collecte.
         conn.execute(
-            "INSERT OR REPLACE INTO icpe_installations"
+            "INSERT INTO icpe_installations"
             " (code_aiot, raison_sociale, insee, commune, adresse, regime,"
             "  seveso, etat_activite, lat, lng, raw_data)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(code_aiot) DO UPDATE SET"
+            "  raison_sociale=excluded.raison_sociale, insee=excluded.insee,"
+            "  commune=excluded.commune, adresse=excluded.adresse, regime=excluded.regime,"
+            "  seveso=excluded.seveso, etat_activite=excluded.etat_activite,"
+            "  lat=excluded.lat, lng=excluded.lng, raw_data=excluded.raw_data",
             (it.get("codeAIOT"), it.get("raisonSociale"), insee,
              it.get("commune"), adresse, it.get("regime"),
              it.get("statutSeveso"), it.get("etatActivite"),
@@ -96,6 +110,53 @@ def import_icpe(conn, insee: str, items: list[dict]) -> int:
         )
         n += 1
     return n
+
+
+# ── Qui exploite : une société, ou une personne ? ────────────────────────────
+# Le registre ne le dit pas : « VICAT » et « DUPONT MARIE » y ont la même forme.
+# Or la publication ne nomme et ne situe l'exploitant que s'il est une personne
+# morale (scripts/snapshot/territoire.py) — faute de le savoir, elle taisait
+# aussi le nom des sociétés. Le SIRET, lui, est dans la réponse de Géorisques :
+# l'annuaire des entreprises rend la catégorie juridique de son SIREN.
+
+def forme_juridique(siren: str) -> str | None:
+    """La catégorie juridique INSEE d'un SIREN (« 5710 », « 1000 »…), ou rien."""
+    url = f"{SIRENE_API}?{urllib.parse.urlencode({'q': siren, 'page': 1, 'per_page': 1})}"
+    for r in fetch_json(url, source="sirene", timeout=15).get("results") or []:
+        if r.get("siren") == siren:
+            return r.get("nature_juridique") or None
+    return None
+
+
+def relever_formes(conn) -> tuple[int, int]:
+    """Demande la forme des exploitants qui n'en ont pas. Rend (relevées, sans réponse).
+
+    Une forme connue n'est pas redemandée ; un échec laisse la colonne vide, et
+    la publication retombe alors sur la raison sociale — elle ne devine pas.
+    """
+    relevees = manquees = 0
+    connues: dict[str, str | None] = {}
+    for iid, siret in conn.execute(
+            "SELECT id, json_extract(raw_data, '$.siret') FROM icpe_installations"
+            " WHERE forme_juridique IS NULL AND json_valid(raw_data)").fetchall():
+        siren = str(siret or "")[:9]
+        if len(siren) != 9 or not siren.isdigit():
+            continue
+        if siren not in connues:
+            try:
+                connues[siren] = forme_juridique(siren)
+            except Exception as e:
+                print(f"  forme juridique de {siren} : erreur — {e}")
+                connues[siren] = None
+            time.sleep(REQUEST_DELAY)
+        if connues[siren]:
+            conn.execute("UPDATE icpe_installations SET forme_juridique = ? WHERE id = ?",
+                         (connues[siren], iid))
+            relevees += 1
+        else:
+            manquees += 1
+    conn.commit()
+    return relevees, manquees
 
 
 def import_risques(conn, insee: str, items: list[dict]) -> int:
@@ -165,6 +226,9 @@ def run(insee_list: list[str] | None = None):
             conn.commit()
             print(f"  {ep}: {len(items)} → {n}")
             time.sleep(REQUEST_DELAY)
+    relevees, manquees = relever_formes(conn)
+    print(f"[georisques] formes juridiques des exploitants : {relevees} relevées, "
+          f"{manquees} sans réponse")
     conn.close()
     print("[georisques] OK")
 

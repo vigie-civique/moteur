@@ -416,10 +416,11 @@ def export_reperes_fiscaux(conn) -> list[dict]:
 # deux instances en ligne : une douzaine de personnes publiées ainsi, avec leur
 # point sur la carte.
 #
-# ⚖️ On ne nomme et ne situe que ce qui est ÉTABLI personne morale : une forme
-# juridique écrite dans la raison sociale, ou un SIREN que la base connaît sous
-# une autre forme que l'entreprise individuelle. Le reste — particulier, mais aussi
-# société dont le nom ne dit pas la forme — garde sa commune, son régime et son
+# ⚖️ On ne nomme et ne situe que ce qui est ÉTABLI personne morale (arbitré par
+# Julien le 06/10/2026) : la catégorie juridique que le collecteur a relevée par
+# SIRET (`icpe_installations.forme_juridique`), à défaut celle d'un SIREN que
+# la base connaît, à défaut une forme écrite dans la raison sociale. Le reste —
+# particulier, ou société dont rien n'établit la forme — garde sa commune, son régime et son
 # état, sans nom, sans adresse, sans coordonnées ni numéro d'installation (qui
 # rendrait le nom en une requête). On y perd le nom de quelques sociétés ; on ne
 # devine pas qu'un « NOM Prénom » est une enseigne.
@@ -441,7 +442,9 @@ def exploitant_designe(raison_sociale: str | None, siret: str | None,
     nom = raison_sociale or ""
     forme = formes.get(str(siret)[:9]) if siret else None
     if forme:
-        return forme != "1000"
+        # 1xxx : entrepreneur individuel. 2xxx : groupement sans personnalité
+        # morale (indivision, société de fait) — des personnes, sous leur nom.
+        return str(forme)[0] not in "12"
     if _EXPLOITANT_INDIVIDUEL.search(nom):
         return False
     return bool(_FORME_MORALE.search(nom))
@@ -454,14 +457,20 @@ def export_icpe(conn) -> tuple[list[dict], int]:
     formes = {r["siren"]: r["legal_form_code"] for r in rows(
         conn, "SELECT siren, legal_form_code FROM businesses "
               "WHERE siren IS NOT NULL AND legal_form_code IS NOT NULL")}
+    # La forme relevée pour l'installation elle-même prime. Absente d'une base
+    # que le collecteur n'a pas revue depuis le 06/10/2026.
+    colonnes = {r["name"] for r in rows(conn, "PRAGMA table_info(icpe_installations)")}
+    releve = "forme_juridique" if "forme_juridique" in colonnes else "NULL"
     sortie, masques = [], 0
-    for i in rows(conn, """
+    for i in rows(conn, f"""
         SELECT code_aiot, raison_sociale, commune, adresse, regime, seveso,
-               etat_activite, lat, lng,
+               etat_activite, lat, lng, {releve} AS forme,
                CASE WHEN json_valid(raw_data) THEN json_extract(raw_data, '$.siret') END AS siret
         FROM icpe_installations ORDER BY commune, raison_sociale
     """):
-        siret = i.pop("siret")
+        siret, forme = i.pop("siret"), i.pop("forme")
+        if forme and siret:
+            formes[str(siret)[:9]] = forme
         if exploitant_designe(i["raison_sociale"], siret, formes):
             sortie.append(i)
             continue
