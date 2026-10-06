@@ -152,10 +152,15 @@ def relever_formes(conn) -> tuple[int, int]:
         if connues[siren]:
             conn.execute("UPDATE icpe_installations SET forme_juridique = ? WHERE id = ?",
                          (connues[siren], iid))
+            # Validé tout de suite : l'archivage de la réponse suivante écrit
+            # par SA connexion (collectors/archive.py), et une transaction
+            # laissée ouverte ici la faisait attendre cinq secondes par SIREN
+            # avant de renoncer — collecte huit fois plus longue, réponses de
+            # l'annuaire non archivées (relevé le 06/10/2026 sur deux instances).
+            conn.commit()
             relevees += 1
         else:
             manquees += 1
-    conn.commit()
     return relevees, manquees
 
 

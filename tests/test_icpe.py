@@ -119,6 +119,27 @@ def test_le_collecteur_releve_la_forme_et_ne_la_redemande_pas(base, monkeypatch)
     assert len(appels) == 3
 
 
+def test_aucune_ecriture_nattend_pendant_quon_interroge_lannuaire(base, monkeypatch):
+    """L'archivage d'une réponse écrit par une autre connexion : si le relevé
+    garde une transaction ouverte d'un SIREN au suivant, elle attend le verrou."""
+    etats = []
+
+    def annuaire(url, **_):
+        etats.append(base.in_transaction)
+        return {"results": [{"siren": url.split("q=")[1].split("&")[0],
+                             "nature_juridique": "5599"}]}
+
+    monkeypatch.setattr(georisques, "fetch_json", annuaire)
+    monkeypatch.setattr(georisques, "REQUEST_DELAY", 0)
+    item = {"codeAIOT": "A1", "raisonSociale": "CIMENTS D'ÉPREUVE", "commune": "Testonville",
+            "siret": "12345678900011"}
+    georisques.import_icpe(base, "99001", [item, {**item, "codeAIOT": "A2",
+                                                  "siret": "22222222200011"}])
+    base.commit()
+    assert georisques.relever_formes(base) == (2, 0)
+    assert etats == [False, False]
+
+
 def test_un_siren_que_lannuaire_ne_rend_pas_reste_sans_forme(monkeypatch):
     monkeypatch.setattr(georisques, "fetch_json",
                         lambda url, **_: {"results": [{"siren": "999999999",
