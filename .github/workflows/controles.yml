@@ -72,16 +72,22 @@ jobs:
     # L'installateur vise Windows, et rien ne le vérifiait : `import fcntl` dans
     # scripts/publication.py empêchait l'API de se charger, donc l'atelier de
     # démarrer. Ce job installe ce que l'installateur installe et charge ce que
-    # le lanceur charge. Python 3.12 : numpy, tel qu'il est épinglé, n'a pas de
-    # roue Windows au-delà.
+    # le lanceur charge. Sur 3.12 ET 3.13 : `amorcage.ps1` cherche 3.13 d'abord.
+    # `--only-binary` : un poste Windows n'a pas de compilateur. Une dépendance
+    # sans roue pour l'une de ces versions (numpy 1.26 n'en avait pas en 3.13)
+    # doit échouer ici, pas chez la personne qui installe.
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - name: Dépendances
-        run: pip install -r requirements.txt pytest
+        run: pip install --only-binary=:all: -r requirements.txt pytest
       - name: L'API et les collecteurs se chargent
         env:
           VIGIE_INSTANCE: tests/instance_test.json
