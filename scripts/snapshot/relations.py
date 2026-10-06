@@ -11,7 +11,7 @@ import json
 
 from collectors.verdict import ecarte
 from scripts.snapshot.socle import RULES, rows
-from scripts.snapshot.textes import norm_nom
+from scripts.snapshot.textes import champ_publiable, norm_nom
 
 
 # Seules clés de `relations.metadata` publiables : elles qualifient le lien
@@ -30,7 +30,12 @@ from scripts.snapshot.textes import norm_nom
 RELATION_META_PUBLIQUE = ("role", "precision", "fonction_rne", "etat_au")
 
 
-def relation_meta_publique(brut: str | None) -> dict:
+def relation_meta_publique(brut: str | None, noms_publics: set[str] | None = None) -> dict:
+    """Les métadonnées d'un lien qui peuvent sortir.
+
+    Avec `noms_publics`, les valeurs passent par le masque : `role` et
+    `precision` sont du texte libre, saisi ou extrait.
+    """
     if not brut:
         return {}
     try:
@@ -39,8 +44,11 @@ def relation_meta_publique(brut: str | None) -> dict:
         return {}
     if not isinstance(meta, dict):
         return {}
-    return {k: meta[k] for k in RELATION_META_PUBLIQUE
-            if isinstance(meta.get(k), str)}
+    publiques = {k: meta[k] for k in RELATION_META_PUBLIQUE
+                 if isinstance(meta.get(k), str)}
+    if noms_publics is None:
+        return publiques
+    return {k: champ_publiable(v, None, noms_publics) for k, v in publiques.items()}
 
 
 def relation_pertinente(rel: dict, civic_ids: set[int],
@@ -122,7 +130,7 @@ def is_public_relation(rel: dict, public_ids: set[int],
 
 
 def etape_relations(conn, revue, public_ids, civic_person_ids, beneficiaires,
-                    ei_ids, exclusions) -> dict:
+                    ei_ids, noms_publics, exclusions) -> dict:
     relation_rows = rows(conn, """
         SELECT r.id, r.from_id, r.to_id, r.relation_type, r.since, r.until,
                r.source, r.confidence, r.metadata,
@@ -169,7 +177,7 @@ def etape_relations(conn, revue, public_ids, civic_person_ids, beneficiaires,
             # `relations.metadata` sert de fourre-tout aux collecteurs : on
             # y trouve aussi bien un rôle en commission qu'une année de
             # naissance. Liste blanche stricte, jamais le bloc entier.
-            **relation_meta_publique(rel.get("metadata")),
+            **relation_meta_publique(rel.get("metadata"), noms_publics),
         })
 
     return {

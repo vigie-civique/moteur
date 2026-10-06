@@ -527,6 +527,26 @@ def masquer_donnees_personnelles(texte: str, jour: str | None,
     return courant
 
 
+#: Ce qui remplace un champ que le filet refuse : la ligne reste, le champ non.
+CHAMP_RETIRE = "[texte retiré : il porte une donnée personnelle]"
+
+
+def champ_publiable(valeur, jour: str | None, noms_publics: set[str],
+                    compteur: Counter | None = None):
+    """Un champ court saisi ou extrait — objet d'un marché, citation, note,
+    précision d'un lien — tel qu'il sort.
+
+    Ces champs sortaient tels qu'ils étaient en base : seuls les titres et les
+    textes des actes passaient par le masque. Même règle ici : domicile et
+    naissance masqués, et le champ retiré si le filet en trouve encore.
+    """
+    if not isinstance(valeur, str) or not valeur.strip():
+        return valeur
+    texte, refus = texte_publiable(valeur, jour, noms_publics,
+                                   compteur if compteur is not None else Counter())
+    return CHAMP_RETIRE if refus else texte
+
+
 def texte_publiable(texte: str, jour: str | None, noms_publics: set[str],
                     compteur: Counter) -> tuple[str | None, str | None]:
     """Le texte d'une délibération tel qu'il sort — ou le motif de son refus."""
