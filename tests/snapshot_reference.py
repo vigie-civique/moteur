@@ -63,11 +63,19 @@ def horloge_de_reference() -> str:
     return json.loads((REFERENCE / "stats.json").read_text(encoding="utf-8"))["generated_at"]
 
 
-def construire(code: Path, travail: Path, horloge: str | None = None) -> Path:
+def construire(code: Path, travail: Path, horloge: str | None = None,
+               avant_amorcage=None, apres_amorcage=None) -> Path:
     """Amorce la base de la CI et construit son snapshot avec le moteur de
-    `code`, dans `travail`. Rend le répertoire du snapshot."""
+    `code`, dans `travail`. Rend le répertoire du snapshot.
+
+    `avant_amorcage(racine)` et `apres_amorcage(db)` laissent un essai altérer
+    la copie — ses fichiers d'épreuve, puis sa base — avant la construction :
+    c'est par là que `tests/test_pieges.py` sème ses pièges.
+    """
     racine = moteur_isole(code, travail / "moteur")
     db = racine / "db" / "ci.db"
+    if avant_amorcage:
+        avant_amorcage(racine)
     env = {k: v for k, v in os.environ.items() if k not in _A_RETIRER}
     env.update(VIGIE_INSTANCE=str(racine / "tests" / "instance_test.json"),
                VIGIE_DB=str(db), VIGIE_CI_DOSSIERS="1")
@@ -75,6 +83,8 @@ def construire(code: Path, travail: Path, horloge: str | None = None) -> Path:
                        capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"amorçage de la base : {r.stderr[-2000:]}")
+    if apres_amorcage:
+        apres_amorcage(db)
     env["VIGIE_RULES"] = str(db.with_suffix(".regles.json"))
     if horloge:
         env["VIGIE_HORLOGE"] = horloge

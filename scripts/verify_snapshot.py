@@ -77,7 +77,33 @@ MOJIBAKE = re.compile(
     "|\ufffd"                            # caractère de remplacement
 )
 # Clés interdites où qu'elles apparaissent dans un objet publié.
-FORBIDDEN_KEYS = {"personnes_citees", "birth_date", "date_naissance", "adresse_personnelle"}
+FORBIDDEN_KEYS = {"personnes_citees", "birth_date", "date_naissance", "adresse_personnelle",
+                  "birth_year", "annee_naissance"}
+
+# ── Ce que le TEXTE publié ne doit pas dire ──────────────────────────────────
+# Jusqu'au 06/10/2026 ce contrôleur ne lisait aucun contenu : des clés, des
+# types, des identifiants. Un snapshot piégé — vingt-huit marqueurs de naissance
+# et de domicile semés dans les titres, les notes, les objets de marché — en
+# ressortait « OK — étanchéité vérifiée » (revue externe du 05/10).
+#
+# Deux voisinages, écrits ICI et pas importés du masque du builder : s'ils
+# partageaient ses motifs, ils en partageraient les angles morts. Une naissance
+# est « né(e) le » suivi d'une date, ou « date de naissance » suivie d'une date ;
+# un domicile est un verbe de domicile suivi, dans la même phrase, d'un numéro
+# de voie. Ce que le builder a masqué (« né le [date masquée] ») ne porte plus
+# de date et ne déclenche rien.
+_MOIS = (r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre"
+         r"|octobre|novembre|d[ée]cembre)")
+_DATE = rf"(?:\d{{1,2}}\s*[/.\-]\s*\d{{1,2}}\s*[/.\-]\s*\d{{4}}|\d{{1,2}}(?:er)?\s+{_MOIS}\s+\d{{4}})"
+_VOIE = (r"(?:grande\s+rue|rue|chemin|all[ée]e|impasse|route|avenue|place|boulevard"
+         r"|quai|lotissement|mont[ée]e|traverse|passage|hameau)")
+TEXTES_INTERDITS = (
+    ("date de naissance publiée", re.compile(
+        rf"\bn[ée](?:\(e\)|e)?\s+le\s+{_DATE}|\bdate\s+de\s+naissance\s*:?\s*{_DATE}", re.I)),
+    ("domicile publié", re.compile(
+        r"\b(?:domicili[ée]e?s?|demeurant|r[ée]sidant)\b[^.;\[\"<]{0,60}?"
+        rf"\b\d{{1,4}}\s*(?:bis|ter)?\s*,?\s*{_VOIE}\b", re.I)),
+)
 # Clés à signaler (non bloquant) si elles portent une valeur.
 SUSPECT_KEYS = {"email", "mail", "telephone", "phone", "tel"}
 
@@ -273,6 +299,11 @@ def check_file(fp, rep, base):
         rep.error("encodage abîmé publié",
                   f"{loc}: …{raw[max(0, idx - 30):idx + 30]!r}…")
         break   # une occurrence suffit à refuser le fichier
+    if fp.suffix in (".json", ".geojson", ".html"):
+        for regle, motif in TEXTES_INTERDITS:
+            m = motif.search(raw)
+            if m:
+                rep.error(regle, f"{loc}: …{raw[max(0, m.start() - 40):m.end() + 20]!r}…")
     if fp.suffix not in (".json", ".geojson"):
         return
     if fp.name == "__data.json":
@@ -535,6 +566,25 @@ def _lire(base, nom, cle):
     return liste if isinstance(liste, list) else None
 
 
+def check_personnes(base, rep):
+    """Une personne n'a de fiche qu'au titre d'un lien publié.
+
+    Les règles ne publient une personne physique que pour un rôle — mandat,
+    fonction, lien avec une structure payée. Ce rôle est une relation : une
+    fiche de personne que `relations.json` ne relie à rien est sortie sans son
+    titre à paraître, et personne ne peut dire pourquoi elle est là.
+    """
+    entites = _lire(base, "entities.json", "entities")
+    relations = _lire(base, "relations.json", "relations")
+    if not entites or relations is None:
+        return
+    reliees = {bout for r in relations for bout in (r.get("from_id"), r.get("to_id"))}
+    for e in entites:
+        if e.get("type") == "person" and e.get("id") not in reliees:
+            rep.error("personne publiée sans aucun lien publié",
+                      f"entities.json: id={e.get('id')} {e.get('name')!r}")
+
+
 def check_conflits(base, rep):
     """Une « situation à vérifier » ne cite que ce qui est publié par ailleurs.
 
@@ -709,6 +759,7 @@ def check_dir(base, rep):
     check_fiches_orphelines(base, rep)
     check_renvois_sortants(base, rep)
     check_sens_flux(base, rep)
+    check_personnes(base, rep)
     check_conflits(base, rep)
     check_manifeste(base, rep)
 
