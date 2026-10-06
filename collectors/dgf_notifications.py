@@ -182,7 +182,9 @@ def import_dgf(year: int, path: Path | None, csv_url: str | None,
     info = detect_columns(headers)
 
     print(f"[dgf] {len(rows)} lignes, {len(headers)} colonnes")
-    print(f"[dgf] INSEE → {info['insee'] or f'(dep={info['dep']} + com={info['com']})'}")
+    # Pas de guillemets réemployés dans une f-string : Python 3.11 ne les lit pas.
+    insee = info["insee"] or f"(dep={info['dep']} + com={info['com']})"
+    print(f"[dgf] INSEE → {insee}")
     print(f"[dgf] composantes détectées :")
     for comp, col in info["composantes"].items():
         print(f"        {comp:34} ← « {col} »")
