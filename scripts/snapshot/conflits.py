@@ -24,7 +24,7 @@ def _mots_significatifs(nom: str) -> set[str]:
             if len(m) >= 4 and m not in vides}
 
 
-def deports_par_deliberation(conn) -> list[dict]:
+def deports_par_deliberation(conn, public_events: list[dict], redige) -> list[dict]:
     """Déports consignés dans les comptes rendus : « X ne participe pas ».
 
     Découverte du 26/07/2026 : `metadata.conflit_interet` de 15 délibérations
@@ -32,18 +32,31 @@ def deports_par_deliberation(conn) -> list[dict]:
     publique : un élu qui dirige une association subventionnée n'est pas en
     faute s'il ne participe pas au vote. Sans cette information, la page
     accuserait là où le conseil a précisément fait ce qu'il devait.
+
+    Seuls les actes PUBLIÉS : la base ne donne que la mention, le titre et le
+    lien sont ceux qu'`events.json` porte — déjà masqués. Un acte que le
+    snapshot ne retient pas ne peut pas ressortir par ici.
     """
-    return rows(conn, """
-        SELECT ev.id, ev.date, ev.title, ev.source_url,
-               json_extract(ev.metadata,'$.conflit_interet') AS mention
-        FROM events ev
-        WHERE json_extract(ev.metadata,'$.conflit_interet') IS NOT NULL
-          AND json_extract(ev.metadata,'$.conflit_interet') NOT IN ('false','0','')
-        ORDER BY ev.date
-    """)
+    publies = {e["id"]: e for e in public_events}
+    return [
+        {"id": d["id"], "date": publies[d["id"]].get("date"),
+         "title": publies[d["id"]].get("title") or "",
+         "source_url": publies[d["id"]].get("source_url"),
+         "mention": redige(str(d["mention"]))}
+        for d in rows(conn, """
+            SELECT ev.id,
+                   json_extract(ev.metadata,'$.conflit_interet') AS mention
+            FROM events ev
+            WHERE json_extract(ev.metadata,'$.conflit_interet') IS NOT NULL
+              AND json_extract(ev.metadata,'$.conflit_interet') NOT IN ('false','0','')
+            ORDER BY ev.date
+        """)
+        if d["id"] in publies
+    ]
 
 
-def export_conflits(conn, public_ids: set[int]) -> dict:
+def export_conflits(conn, public_ids: set[int], public_relations: list[dict],
+                    public_flows: list[dict], public_events: list[dict], redige) -> dict:
     """Situations à vérifier : un élu lié à une structure qui reçoit de l'argent.
 
     Trois précautions structurent cet export :
@@ -60,12 +73,24 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
        deux extrémités sont publiques. `v_adresses_partagees` et
        `v_familles_potentielles` sont **exclues** (arbitrage du 26/07/2026) :
        une adresse commune n'établit rien et relève de la vie privée.
+
+    ⚖️ La vue ne filtre rien — ni confiance, ni verdict de l'atelier, ni sort
+    d'un acte. Elle ne sert qu'à croiser et à dater : un cas n'est retenu que
+    si son mandat ET son lien avec la structure sont dans `relations.json`, un
+    versement que s'il est dans `flows.json`, un déport que si l'acte est dans
+    `events.json`. Cette précaution n'existait que dans le commentaire : une
+    relation `hypothesis` sortait comme « situation à vérifier ».
     """
     if not relation_exists(conn, "v_conflits_potentiels"):
         return {"cas": [], "total": 0, "deports_repertories": 0, "methode": {}}
 
     brut = rows(conn, "SELECT * FROM v_conflits_potentiels")
-    deports = deports_par_deliberation(conn)
+    deports = deports_par_deliberation(conn, public_events, redige)
+    liens_publies = {(frozenset((r["from_id"], r["to_id"])), r["relation_type"])
+                     for r in public_relations}
+    mandats_publies = {(bout, r["relation_type"])
+                       for r in public_relations for bout in (r["from_id"], r["to_id"])}
+    flux_publies = {f["id"] for f in public_flows}
 
     # Historique des mandats par personne. Indispensable pour ne PAS conclure.
     #
@@ -100,6 +125,15 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
             continue
         if norm_nom(r["person_name"]) == norm_nom(r["entite_nom"]):
             continue
+        if ((r["person_id"], r["role_elu"]) not in mandats_publies
+                or (frozenset((r["person_id"], r["entite_id"])), r["role_entite"])
+                not in liens_publies):
+            continue
+        # Un versement que `flows.json` ne publie pas (demande, piste, doublon
+        # écarté) ne se cite pas : reste le lien, sans versement.
+        if r["flux_id"] is not None and r["flux_id"] not in flux_publies:
+            r = {**r, "flux_id": None, "flux_type": None, "flux_montant": None,
+                 "flux_annee": None, "flux_date": None, "chronologie": "lien_sans_flux"}
         cle = (r["person_id"], r["entite_id"], r["flux_id"])
         cas = groupes.get(cle)
         if cas is None:
@@ -120,8 +154,12 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
 
     # Rapprochement des déports : nom de l'élu ET un mot discriminant de
     # l'entité dans le titre de la délibération, même année que le versement.
+    avec_versement = {cle[:2] for cle in groupes if cle[2] is not None}
     cas_final = []
-    for cas in groupes.values():
+    for cle, cas in groupes.items():
+        # « Lien sans versement » ne se dit que d'une paire qui n'en a aucun.
+        if cle[2] is None and cle[:2] in avec_versement:
+            continue
         nom_norm = norm_nom(cas["person_name"])
         tokens_pers = {m for m in nom_norm.split() if len(m) >= 3}
         tokens_entite = _mots_significatifs(cas["entite_nom"])
@@ -200,7 +238,9 @@ def export_conflits(conn, public_ids: set[int]) -> dict:
     }
 
 
-def etape_conflits(conn, out, public_ids) -> dict:
-    conflits = export_conflits(conn, public_ids)
+def etape_conflits(conn, out, public_ids, public_relations, public_flows,
+                   public_events, redige) -> dict:
+    conflits = export_conflits(conn, public_ids, public_relations, public_flows,
+                               public_events, redige)
     write_json(out / "conflits.json", conflits)
     return {"conflits": conflits}

@@ -522,6 +522,58 @@ def check_renvois_sortants(base, rep):
             f"— ex. {sorted(ids)[:5]}")
 
 
+def _lire(base, nom, cle):
+    """La liste publiée sous `cle` dans `nom`, ou None si le fichier manque."""
+    fp = base / nom
+    if not fp.is_file():
+        return None
+    try:
+        data = json.loads(fp.read_text())
+    except json.JSONDecodeError:
+        return None  # déjà signalé par check_file
+    liste = data.get(cle) if isinstance(data, dict) else None
+    return liste if isinstance(liste, list) else None
+
+
+def check_conflits(base, rep):
+    """Une « situation à vérifier » ne cite que ce qui est publié par ailleurs.
+
+    `conflits.json` croise un lien, un versement et un acte. Il les lisait en
+    base, par une vue qui ne regarde ni la confiance ni le sort de l'acte : une
+    relation `hypothesis`, absente de `relations.json`, y sortait comme
+    situation, et le déport citait le titre brut d'un acte non publié (revue
+    externe du 05/10/2026). Le contrôleur ne voyait rien — il n'a aucune règle
+    sur ce fichier, qui ne porte ni `confidence` ni `relation_type`.
+
+    Trois promesses, donc : le lien est dans `relations.json` sous l'un des
+    rôles annoncés, le versement dans `flows.json`, l'acte du déport dans
+    `events.json`. Un fichier de référence absent n'excuse rien : sans lui, un
+    cas ne peut pas être fondé.
+    """
+    cas = _lire(base, "conflits.json", "cas")
+    if not cas:
+        return
+    liens = {(frozenset((r.get("from_id"), r.get("to_id"))), r.get("relation_type"))
+             for r in _lire(base, "relations.json", "relations") or []}
+    flux = {f.get("id") for f in _lire(base, "flows.json", "flows") or []}
+    actes = {e.get("id") for e in _lire(base, "events.json", "events") or []}
+    for c in cas:
+        paire = frozenset((c.get("person_id"), c.get("entite_id")))
+        qui = f"personne id={c.get('person_id')} / structure id={c.get('entite_id')}"
+        if not any((paire, role) in liens for role in c.get("roles_entite") or []):
+            rep.error("conflit fondé sur un lien non publié",
+                      f"conflits.json: {qui} — aucun lien "
+                      f"{c.get('roles_entite')} dans relations.json")
+        if c.get("flux_id") is not None and c["flux_id"] not in flux:
+            rep.error("conflit citant un versement non publié",
+                      f"conflits.json: {qui} — flux {c['flux_id']} absent de flows.json")
+        deport = c.get("deport") or {}
+        if deport and deport.get("event_id") not in actes:
+            rep.error("déport citant un acte non publié",
+                      f"conflits.json: {qui} — acte {deport.get('event_id')} "
+                      "absent de events.json")
+
+
 def _nom_cle(nom):
     """Casse, accents et ponctuation retirés — recopié, pas importé."""
     import unicodedata
@@ -657,6 +709,7 @@ def check_dir(base, rep):
     check_fiches_orphelines(base, rep)
     check_renvois_sortants(base, rep)
     check_sens_flux(base, rep)
+    check_conflits(base, rep)
     check_manifeste(base, rep)
 
 
