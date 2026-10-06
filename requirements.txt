@@ -19,7 +19,7 @@ pydantic==2.12.5
 starlette==1.7.0
 slowapi==0.1.9
 bcrypt==5.0.0
-python-jose==3.5.0
+PyJWT==2.15.1
 python-dotenv==1.2.4
 cryptography==50.0.0
 # Dépôt de documents dans l'atelier : FastAPI en a besoin pour lire un

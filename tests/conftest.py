@@ -36,7 +36,7 @@ os.environ.setdefault("VIGIE_RULES",
 # la première connexion. La suite lui en donne un jetable — sans quoi elle ne
 # passe QUE sur une machine où traîne un `.env`, celle de son auteur, et échoue
 # partout ailleurs sur un défaut qui n'est pas dans le code testé.
-os.environ.setdefault("JWT_SECRET", "secret-de-test-sans-valeur")
+os.environ.setdefault("JWT_SECRET", "secret-de-test-sans-valeur-32-octets")
 
 
 @pytest.fixture(autouse=True)

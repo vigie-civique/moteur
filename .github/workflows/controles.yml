@@ -307,21 +307,9 @@ jobs:
         with:
           node-version: "22"
       - name: Python
-        # PYSEC-2026-1325 (ecdsa) : sans version corrigée, et hors du chemin
-        # d'exécution — python-jose l'installe, mais les jetons de l'atelier
-        # sont signés en HS256, qui n'y passe pas. À retirer d'ici le jour où
-        # une correction existe, ou python-jose est remplacé.
-        # CVE-2026-85394 (python-jose ≤ 3.5.0) : sans version corrigée non
-        # plus. Une clé PUBLIQUE encodée en DER est acceptée comme secret
-        # HMAC, ce qui permet de forger un jeton HS256 à qui la détient.
-        # L'atelier n'a aucune clé publique : `api_auth.py` signe et vérifie
-        # avec le seul JWT_SECRET, algorithme imposé (`algorithms=["HS256"]`).
-        # À retirer avec la précédente.
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt --no-deps --progress-spinner off \
-            --ignore-vuln PYSEC-2026-1325 \
-            --ignore-vuln CVE-2026-85394
+          pip-audit -r requirements.txt --no-deps --progress-spinner off
       - name: Atelier
         working-directory: dashboard
         run: npm audit --omit=dev
