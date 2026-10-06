@@ -488,6 +488,59 @@ def test_un_acte_cite_ses_particuliers_mais_masque_naissance_et_domicile(bps):
         assert masque(intact) == intact
 
 
+def _pieges() -> list[tuple[str, list[str]]]:
+    lignes = (ROOT / "tests" / "fixtures" / "pieges_textes.txt").read_text(encoding="utf-8").splitlines()
+    pieges = []
+    for ligne in lignes:
+        if not ligne.strip() or ligne.startswith("#"):
+            continue
+        phrase, interdits = ligne.split(" | ")
+        pieges.append((phrase.replace("\\n", "\n"), [f.strip() for f in interdits.split(";")]))
+    return pieges
+
+
+@pytest.mark.parametrize("phrase,interdits", _pieges())
+def test_aucun_piege_ne_sort(bps, phrase, interdits):
+    """🔴 tests/fixtures/pieges_textes.txt : chaque phrase est masquée ou refusée.
+
+    Relevé par une revue externe le 05/10/2026 : le masque ne connaissait que
+    « né le DATE à LIEU », s'arrêtait à la première virgule d'une adresse, et le
+    filet cherchait les mêmes formes que lui."""
+    from collections import Counter
+    sortie, refus = bps.texte_publiable(phrase, "2021-05-20", set(), Counter())
+    assert refus or not [f for f in interdits if f in sortie], sortie
+
+
+def test_les_formes_elargies_masquent_sans_refuser_ni_deborder(bps):
+    """Le masque fait le travail, le filet n'est qu'un filet : les formes
+    courantes sortent masquées, et ce qui n'est la naissance ou le domicile de
+    personne ne bouge pas."""
+    from collections import Counter
+    publiable = lambda t, publics=frozenset(): bps.texte_publiable(t, "2021-05-20", set(publics), Counter())
+
+    assert publiable("M. Paul DUPONT, né à Castres le 5 mars 1961, a demandé") == (
+        "M. Paul DUPONT, né le [date et lieu masqués], a demandé", None)
+    assert publiable("Délégué : Paul DURAND né à Castres le 05/03/1961 ;", {"PAUL DURAND"}) == (
+        "Délégué : Paul DURAND âgé de 60 ans ;", None)
+    assert publiable("Date de naissance : 05/03/1961") == ("Date de naissance : [date masquée]", None)
+    assert publiable("Monsieur Paul DUPONT, né en 1961, retraité") == (
+        "Monsieur Paul DUPONT, né en [année masquée], retraité", None)
+    assert publiable("Mme Anne DURAND, demeurant à Testonville, 5 rue des Lilas, sollicite") == (
+        "Mme Anne DURAND, demeurant [domicile masqué], sollicite", None)
+    assert publiable("M. Paul DUPONT, domicilié au lieu-dit Mas de la Combe, demande") == (
+        "M. Paul DUPONT, domicilié [domicile masqué], demande", None)
+    assert publiable("Madame Claire DUPONT née le 12 octobre 1985 est nommée agent à compter du 1er janvier 2022") == (
+        "Madame Claire DUPONT née le [date masquée] est nommée agent à compter du 1er janvier 2022", None)
+
+    for intact in ("Le projet est né à Lasalle d'une rencontre",
+                   "La communauté de communes, née en 2017 de la fusion de trois intercommunalités",
+                   "L'association domiciliée au lieu-dit Mas de la Combe organise",
+                   "La commune ne le fera qu'après le 12 mars 2022",
+                   "Monsieur le Maire propose d'acquérir la parcelle située 12 rue Haute",
+                   "les familles domiciliées sur la commune depuis six mois"):
+        assert publiable(intact) == (intact, None)
+
+
 def test_un_point_de_lordre_du_jour_ne_nomme_pas_un_particulier(bps, base, entite):
     """🔴 L'ordre du jour d'une convocation publiait « Demande de M. X » en clair :
     il ne passait que par le masque des naissances et des domiciles, alors que
