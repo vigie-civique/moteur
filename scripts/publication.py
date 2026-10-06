@@ -39,7 +39,6 @@ from __future__ import annotations
 import argparse
 import atexit
 import errno
-import fcntl
 import getpass
 import hashlib
 import json
@@ -58,6 +57,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from collectors import verrou as verrou_fichier  # noqa: E402
 from scripts.build_public_snapshot import (  # noqa: E402
     DEFAULT_OUT,
     RULES,
@@ -749,7 +749,7 @@ def verrou_de_publication(delai: float = 30.0):
     with open(VERROU, "w") as f:
         while True:
             try:
-                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                verrou_fichier.prendre(f, attendre=False)
                 break
             except BlockingIOError:
                 if time.monotonic() >= fin:
@@ -761,7 +761,7 @@ def verrou_de_publication(delai: float = 30.0):
         try:
             yield
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            verrou_fichier.rendre(f)
 
 
 def empreinte(dossier: Path) -> str:
@@ -1508,7 +1508,7 @@ def build_en_cours() -> dict | None:
         return None
     with f:
         try:
-            fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            verrou_fichier.prendre(f, partage=True, attendre=False)
         except BlockingIOError:
             try:
                 tenant = json.loads(f.read())
@@ -1517,7 +1517,7 @@ def build_en_cours() -> dict | None:
             return {"qui": tenant.get("qui") or "un autre build",
                     "genre": tenant.get("genre"),
                     "depuis": tenant.get("depuis")}
-        fcntl.flock(f, fcntl.LOCK_UN)
+        verrou_fichier.rendre(f)
     return None
 
 
@@ -1532,7 +1532,7 @@ def _prendre_le_verrou_de_build(fd: int, qui: str, genre: str, delai: float,
     annonce = False
     while True:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            verrou_fichier.prendre(fd, attendre=False)
             break
         except BlockingIOError:
             attendu = time.monotonic() - debut
@@ -1555,10 +1555,12 @@ def _prendre_le_verrou_de_build(fd: int, qui: str, genre: str, delai: float,
     if dire and annonce:
         dire(f"✓ le site est libre après {int(time.monotonic() - debut)} s — "
              f"{qui} commence.")
+    # `lseek` + `write` et non `pwrite`, que Windows n'a pas.
     os.ftruncate(fd, 0)
-    os.pwrite(fd, json.dumps({"qui": qui, "genre": genre, "pid": os.getpid(),
-                              "depuis": maintenant()},
-                             ensure_ascii=False).encode("utf-8"), 0)
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.write(fd, json.dumps({"qui": qui, "genre": genre, "pid": os.getpid(),
+                             "depuis": maintenant()},
+                            ensure_ascii=False).encode("utf-8"))
 
 
 @contextmanager
@@ -1573,7 +1575,7 @@ def _verrou_de_build(qui: str = "un aperçu", genre: str = "apercu",
         try:
             yield
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            verrou_fichier.rendre(f)
 
 
 def etat_serveur_apercu() -> dict:
@@ -1877,7 +1879,7 @@ def main(argv: list[str] | None = None) -> int:
             elif args.fd is None:
                 parser.error("verrou-de-build : --fd ou --chemin")
             elif args.liberer:
-                fcntl.flock(args.fd, fcntl.LOCK_UN)
+                verrou_fichier.rendre(args.fd)
             else:
                 _prendre_le_verrou_de_build(
                     args.fd, "la mise en ligne", "mise_en_ligne", args.delai,
