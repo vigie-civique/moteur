@@ -17,8 +17,9 @@ Le classement suit la définition de `collectors/config.PERIMETRES` :
   C2    elle est rattachée à une autre commune membre de l'EPCI, ou c'est
         l'EPCI lui-même / un syndicat auquel la commune adhère ;
   C3    autorité supra-communale (préfecture, département, région, État) ;
-  lien  hors du territoire, mais reliée à un acteur C1 ou C2 par une relation,
-        un marché ou un flux financier — le matériau du graphe d'influence ;
+  lien  hors du territoire, mais reliée à un acteur C1 ou C2 par une relation
+        publiable, un marché ou un flux financier — le matériau du graphe
+        d'influence ;
   hors  ni l'un ni l'autre.
 
 Le rattachement se lit dans `entities.commune`, écrite par les collecteurs.
@@ -43,6 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from collectors.config import (COMMUNE_NAME, COMMUNES, COMMUNES_DELEGUEES,
                                EPCI_NOM, RELATIONS_ADHESION)
 from collectors.db import get_conn
+from scripts.snapshot.relations import sort_du_type
+from scripts.snapshot.socle import RULES
 
 # Marqueurs d'une autorité supra-communale, cherchés dans le nom de l'entité.
 SUPRA = ("préfecture", "prefecture", "sous-préfecture", "département", "departement",
@@ -113,7 +116,15 @@ def classer(conn) -> dict[int, str]:
     #    Trois attaches possibles — une relation, un marché, un flux financier.
     dedans = {i for i, p in classement.items() if p in ("C1", "C2")}
     lies: set[int] = set()
-    for a, b in conn.execute("SELECT from_id, to_id FROM relations"):
+    #    Une relation n'attache que si elle peut elle-même sortir : confiance
+    #    publique, type admis par les règles. Une piste (`hypothesis`) ou un
+    #    lien privé (`même_adresse`) donnait sinon une fiche publique à une
+    #    structure extérieure — la fiche sans le lien qui la justifie.
+    confiances = set(RULES["confidence"]["public"])
+    for a, b, type_, confiance in conn.execute(
+            "SELECT from_id, to_id, relation_type, confidence FROM relations"):
+        if confiance not in confiances or sort_du_type(type_) == "prive":
+            continue
         if a in dedans and b not in dedans:
             lies.add(b)
         if b in dedans and a not in dedans:
