@@ -23,11 +23,11 @@ export const PROVENANCE = {
 export const DOCUMENT = {
   acte: {
     court: 'Document consultable',
-    long: "Un PDF est accessible : la pièce de l'acte, ou — le plus souvent — le recueil ou le compte rendu de la séance qui le contient. Le lien dit lequel.",
+    long: "Un PDF est accessible : la pièce de l'acte, ou, le plus souvent, le recueil ou le compte rendu de la séance qui le contient. Le lien dit lequel.",
   },
   page_source: {
     court: 'Page source',
-    long: "Le lien mène à la page qui contient l'acte — souvent le compte rendu entier, pas la délibération isolée. Il faut y chercher le passage.",
+    long: "Le lien mène à la page qui contient l'acte, souvent le compte rendu entier, pas la délibération isolée. Il faut y chercher le passage.",
   },
   aucun: {
     court: 'Sans document',
@@ -42,7 +42,7 @@ export const TRAITEMENT = {
   },
   extraction: {
     court: 'Extrait d’un document',
-    long: "Lu dans un document rédigé (PDF, compte rendu) par reconnaissance de caractères ou par modèle de langage. C'est ici que naissent les erreurs de lecture — un numéro d'article pris pour un montant, des chiffres accolés.",
+    long: "Lu dans un document rédigé (PDF, compte rendu) par reconnaissance de caractères ou par modèle de langage. C'est ici que naissent les erreurs de lecture : un numéro d'article pris pour un montant, des chiffres accolés.",
   },
   rectifie: {
     court: 'Rectifié',

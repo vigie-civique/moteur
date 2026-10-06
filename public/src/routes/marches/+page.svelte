@@ -51,7 +51,7 @@
   $: totalAttrib = sum(attribues)
   $: attribMax = Math.max(...attribues.map(m => m.montant || 0), 1)
   $: acheteurs = [...new Set(marches.map(m => m.acheteur_nom).filter(Boolean))]
-  $: periode = yearsAvail.length ? `${yearsAvail[yearsAvail.length - 1]}–${yearsAvail[0]}` : '—'
+  $: periode = yearsAvail.length ? `${yearsAvail[yearsAvail.length - 1]}–${yearsAvail[0]}` : '-'
 
   // Nombre de marchés attribués par an (vue annualisée).
   $: attribByYear = (() => {
@@ -66,7 +66,7 @@
   $: yrMontantMax = Math.max(...attribByYear.map(d => d.montant), 1)
 
   function eurosC(n) {
-    if (n == null) return '—'
+    if (n == null) return '-'
     const a = Math.abs(n)
     if (a >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€'
     if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€'
@@ -75,15 +75,15 @@
 </script>
 
 <svelte:head>
-  <title>Marchés publics — {SITE_NOM}</title>
-  <meta name="description" content="Marchés publics de la commune {COMMUNE_DE} et de la {EPCI} : attributions, titulaires, montants — recensés dans les délibérations et les données ouvertes." />
+  <title>Marchés publics - {SITE_NOM}</title>
+  <meta name="description" content="Marchés publics de la commune {COMMUNE_DE} et de la {EPCI} : attributions, titulaires, montants - recensés dans les délibérations et les données ouvertes." />
 </svelte:head>
 
 <section>
   <header class="head">
     <div>
       <h1>Marchés publics</h1>
-      <p class="sub">Qui obtient les marchés de la commune et de l'intercommunalité — travaux, études, fournitures. Attributions recensées dans les délibérations du conseil municipal et les données ouvertes.</p>
+      <p class="sub">Qui obtient les marchés de la commune et de l'intercommunalité : travaux, études, fournitures. Attributions recensées dans les délibérations du conseil municipal et les données ouvertes.</p>
     </div>
     {#if yearsAvail.length}
       <label class="year">Année
@@ -106,7 +106,7 @@
     <b>40 000 €&nbsp;HT</b>. En dessous, un marché est légalement attribué sans
     qu'aucun registre national n'en garde trace&nbsp;: ni le BOAMP, ni les DECP.
     Pour une commune de cette taille, l'essentiel de la commande publique passe
-    sous ce seuil — et ne se lit, quand elle se lit, que dans les procès-verbaux
+    sous ce seuil, et ne se lit, quand elle se lit, que dans les procès-verbaux
     du conseil.
     <!-- La raison du zéro découle de ce que l'instance SAIT (couverture.json),
          jamais d'une phrase fixe : « pas encore relus pour cela » s'affichait
@@ -166,7 +166,7 @@
   {/if}
 
   <!-- Pas de zéro nu : la raison est dite juste au-dessus. -->
-  {#if !marches.length}<p class="err">Aucun marché n'est publié pour l'instant — pour les raisons dites ci-dessus.</p>{/if}
+  {#if !marches.length}<p class="err">Aucun marché n'est publié pour l'instant, pour les raisons dites ci-dessus.</p>{/if}
 
   {#if marches.length}
     <!-- Aucun document ne dit « 2,57 M€ de marchés sur 2016-2026 » : c'est une
@@ -235,7 +235,7 @@
     <!-- Marchés attribués -->
     {#if attribues.length}
       <h2>Marchés attribués</h2>
-      <p class="hint">Titulaire et montant connus — {eurosC(totalAttrib)}{year !== 'all' ? ` en ${year}` : ` sur ${periode}`}.</p>
+      <p class="hint">Titulaire et montant connus : {eurosC(totalAttrib)}{year !== 'all' ? ` en ${year}` : ` sur ${periode}`}.</p>
       <ul class="mlist">
         {#each attribues as m (m.id)}
           <li>
@@ -277,17 +277,17 @@
       <details>
         <summary>Avis de consultation &amp; appels d'offres recensés ({avis.length})</summary>
         <p class="hint">Avis et consultations lancées, sans attribution encore connue : le titulaire ne figure pas dans la source.
-          Quand la délibération vote une enveloppe prévisionnelle, elle est indiquée — c'est une estimation, pas un prix payé,
+          Quand la délibération vote une enveloppe prévisionnelle, elle est indiquée : c'est une estimation, pas un prix payé,
           et elle n'entre pas dans le total des marchés attribués.</p>
         <table>
           <thead><tr><th>Date</th><th>Objet</th><th class="r">Enveloppe</th><th>Acheteur</th><th>Source</th></tr></thead>
           <tbody>
             {#each avis as m (m.id)}
               <tr>
-                <td>{m.date_notif || '—'}</td>
-                <td>{m.objet || '—'}</td>
-                <td class="r">{m.montant ? eurosC(m.montant) : '—'}</td>
-                <td>{m.acheteur_nom || '—'}</td>
+                <td>{m.date_notif || '-'}</td>
+                <td>{m.objet || '-'}</td>
+                <td class="r">{m.montant ? eurosC(m.montant) : '-'}</td>
+                <td>{m.acheteur_nom || '-'}</td>
                 <td>{#if m.source_url}<a href={m.source_url} target="_blank" rel="noopener">{srcTag(m)} ↗</a>{:else}{srcTag(m)}{/if}</td>
               </tr>
             {/each}
@@ -297,15 +297,15 @@
     {/if}
 
     <p class="apart">
-      Le conseil vote aussi des <a href="/projets-approuves">plans de financement</a> — participations
-      à des travaux d'éclairage public ou d'électrification — où aucune entreprise n'est retenue.
+      Le conseil vote aussi des <a href="/projets-approuves">plans de financement</a>, participations
+      à des travaux d'éclairage public ou d'électrification, où aucune entreprise n'est retenue.
       Ce ne sont pas des marchés attribués : ils sont recensés à part.
     </p>
 
     <p class="foot">
-      Sources : délibérations du conseil municipal (choix d'entreprises, maîtrise d'œuvre — <b>seule source pour les marchés sous le seuil de publication</b>),
+      Sources : délibérations du conseil municipal (choix d'entreprises, maîtrise d'œuvre, <b>seule source pour les marchés sous le seuil de publication</b>),
       DECP (données essentielles de la commande publique, ≥ 40 k€), BOAMP et site de la {EPCI}.
-      Une commune de cette taille passant surtout des marchés sous le seuil DECP, les CR du CM sont la source la plus complète — provisoirement l'unique pour plusieurs marchés.
+      Une commune de cette taille passant surtout des marchés sous le seuil DECP, les CR du CM sont la source la plus complète : provisoirement l'unique pour plusieurs marchés.
     </p>
   {/if}
 </section>

@@ -27,13 +27,13 @@
     .filter((e) => fold(e.titre).includes(needle)).length
 
   const fmtDate = (d) => {
-    if (!d) return '—'
+    if (!d) return '-'
     try { return new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
     catch { return d }
   }
 </script>
 
-<svelte:head><title>Délibérations &amp; actes officiels — {SITE_NOM}</title>
+<svelte:head><title>Délibérations &amp; actes officiels - {SITE_NOM}</title>
   <meta name="description" content="Les {total} actes officiels {COMMUNE_DE} et de son intercommunalité, année par année : délibérations du conseil municipal, procès-verbaux communautaires, votes, montants et documents source." /></svelte:head>
 
 <section>
@@ -99,14 +99,14 @@
         <Niveau type="calcul" base="les actes dont le compte rendu détaille le vote">
           Sur <b>{votes.connus}</b> actes dont le vote est connu,
           <b>{votes.sansOpposition}</b> ont été adoptés sans une voix contre ni une
-          abstention — soit <b>{Math.round(100 * votes.sansOpposition / votes.connus)} %</b>.
+          abstention, soit <b>{Math.round(100 * votes.sansOpposition / votes.connus)} %</b>.
           <b>{votes.divises}</b> ont donné lieu à un désaccord exprimé.
         </Niveau>
         <p class="lecture">
           <b>Ce que ce chiffre ne dit pas.</b> Un vote unanime ne signifie pas
           qu'il n'y a pas eu de débat&nbsp;: le compte rendu enregistre le
           résultat, rarement la discussion. Il ne signifie pas non plus que la
-          décision allait de soi — dans un conseil de quinze personnes, un
+          décision allait de soi : dans un conseil de quinze personnes, un
           désaccord se règle souvent avant le vote. Le vote n'est d'ailleurs
           détaillé que pour {votes.connus} des {total} actes des assemblées.
         </p>

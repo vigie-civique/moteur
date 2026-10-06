@@ -4,8 +4,8 @@
 </script>
 
 <svelte:head>
-  <title>Comprendre les mandats et les délibérations — {SITE_NOM}</title>
-  <meta name="description" content="Fiche pédagogique : conseil municipal, maire, adjoints, délégations — et comment lire une délibération ou demander un document administratif." />
+  <title>Comprendre les mandats et les délibérations - {SITE_NOM}</title>
+  <meta name="description" content="Fiche pédagogique : conseil municipal, maire, adjoints, délégations - et comment lire une délibération ou demander un document administratif." />
 </svelte:head>
 
 <article>
@@ -14,7 +14,7 @@
 
   <h2>Le conseil municipal</h2>
   <p>Élu pour <strong>six ans</strong>, il compte 15 conseillers dans une commune de la taille de
-     {COMMUNE}. C'est lui — pas le maire seul — qui vote le budget, les ventes de terrains communaux,
+     {COMMUNE}. C'est lui, pas le maire seul, qui vote le budget, les ventes de terrains communaux,
      les subventions aux associations, les créations de postes. Le maire prépare et exécute ;
      le conseil délibère.</p>
 
@@ -29,11 +29,11 @@
   <p>Chaque décision du conseil laisse une trace écrite : la <strong>délibération</strong>, résumée
      au compte-rendu de séance. Les bons réflexes :</p>
   <ul>
-    <li><strong>Le vote</strong> — unanimité, abstentions, votes contre : une abstention isolée
+    <li><strong>Le vote</strong>, unanimité, abstentions, votes contre : une abstention isolée
         sur une vente de terrain est un signal.</li>
-    <li><strong>Les montants</strong> — et leur comparaison dans le temps (une subvention qui
+    <li><strong>Les montants</strong>, et leur comparaison dans le temps (une subvention qui
         triple, un loyer symbolique…).</li>
-    <li><strong>Les absents et les « ne prend pas part au vote »</strong> — un élu concerné par une
+    <li><strong>Les absents et les « ne prend pas part au vote »</strong> : un élu concerné par une
         affaire doit se déporter ; le compte-rendu le mentionne (ou pas).</li>
   </ul>
 

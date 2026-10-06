@@ -48,7 +48,7 @@
         }).bindPopup(
           `<strong>${t.nature_bien || 'Mutation'}</strong><br>${t.date || ''}<br>` +
           `${t.cadastre_ref || ''} ${t.lieu_dit || ''}<br>` +
-          `Prix : ${t.price ? euros(t.price) : '—'}${t.price_per_m2 ? ` (${Math.round(t.price_per_m2)} €/m²)` : ''}`
+          `Prix : ${t.price ? euros(t.price) : '-'}${t.price_per_m2 ? ` (${Math.round(t.price_per_m2)} €/m²)` : ''}`
         ).addTo(map)
       }
       if (pts.length) map.fitBounds(L.latLngBounds(pts.map((t) => [t.lat, t.lng])).pad(0.1))
@@ -72,7 +72,7 @@
   $: locaux = dvf.filter(t => matches(t, /local/i))
   $: nonBati = dvf.length - maisons.length - apparts.length - dependances.length - locaux.length
   $: years = dvf.map(t => (t.date || '').slice(0, 4)).filter(Boolean).sort()
-  $: periode = years.length ? `${years[0]}–${years[years.length - 1]}` : '—'
+  $: periode = years.length ? `${years[0]}–${years[years.length - 1]}` : '-'
   $: medMaison = median(maisons.map(t => t.price))
   $: medM2 = median(dvf.filter(t => matches(t, /maison|appartement/i)).map(t => t.price_per_m2))
 
@@ -104,15 +104,15 @@
 
   // Répartition par nature de bien
   $: byNature = Object.entries(
-    dvf.reduce((a, t) => { const k = t.nature_bien || '—'; a[k] = (a[k] || 0) + 1; return a }, {})
+    dvf.reduce((a, t) => { const k = t.nature_bien || '-'; a[k] = (a[k] || 0) + 1; return a }, {})
   ).sort((a, b) => b[1] - a[1])
   $: natMax = Math.max(...byNature.map(([, n]) => n), 1)
 
-  $: dvfFiltered = (natureFilter === 'all' ? dvf : dvf.filter(t => (t.nature_bien || '—') === natureFilter))
+  $: dvfFiltered = (natureFilter === 'all' ? dvf : dvf.filter(t => (t.nature_bien || '-') === natureFilter))
   $: dvfTable = dvfFiltered.slice(0, 200)
 
   function eurosC(n) {
-    if (n == null) return '—'
+    if (n == null) return '-'
     const a = Math.abs(n)
     if (a >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€'
     if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€'
@@ -120,7 +120,7 @@
   }
 </script>
 
-<svelte:head><title>Urbanisme &amp; foncier — {SITE_NOM}</title>
+<svelte:head><title>Urbanisme &amp; foncier - {SITE_NOM}</title>
   <meta name="description" content="Transactions foncières (DVF) et marchés publics de travaux {COMMUNE_A}." /></svelte:head>
 
 <section>
@@ -145,7 +145,7 @@
           {#if doc.portee === 'intercommunal'}porté par l'intercommunalité
             {#if doc.titre}(<i>{doc.titre}</i>){/if}{/if},
           {#if doc.date_appro}approuvé le <b>{new Date(doc.date_appro).toLocaleDateString('fr-FR')}</b>{:else}sans date d'approbation lisible{/if},
-          déposé au Géoportail de l'urbanisme — c'est ce dépôt qui le rend opposable.
+          déposé au Géoportail de l'urbanisme, c'est ce dépôt qui le rend opposable.
         </Niveau>
       {/each}
     {:else}
@@ -172,7 +172,7 @@
     {:else if !statutPlu.rnu && documents.length}
       <p class="muted">La répartition du territoire par type de zone n'est pas
         publiée ici : le document déposé ne couvre qu'une partie de la commune
-        {#if urba.couverture != null}({Math.round(urba.couverture * 100)} % du territoire){/if} —
+        {#if urba.couverture != null}({Math.round(urba.couverture * 100)} % du territoire){/if} :
         le plus souvent parce qu'il est antérieur à une fusion de communes. Une
         part calculée sur ce seul morceau ne dirait pas ce qu'elle prétend.</p>
     {/if}
@@ -200,7 +200,7 @@
         Avec {constat.minEchantillon} à {constat.maxEchantillon} ventes par an,
         la médiane annuelle est stable et l'écart ci-dessus se lit&nbsp;: une
         vente atypique ne la déplace plus. Elle ne dit rien, en revanche, de la
-        composition du marché — une année où il se vend surtout de petits
+        composition du marché : une année où il se vend surtout de petits
         appartements de centre-ville rend un prix au m² plus élevé sans qu'aucun
         bien n'ait renchéri.
       {/if}
@@ -210,7 +210,7 @@
     </p>
   {/if}
   {#if mapErreur}<p class="err">La carte n'a pas pu être affichée : {mapErreur}</p>{/if}
-  {#if fondAbsent}<p class="err">Le fond de carte n'a pas pu être chargé —
+  {#if fondAbsent}<p class="err">Le fond de carte n'a pas pu être chargé :
     les mutations ci-dessous restent à leur position exacte. Fond attendu&nbsp;:
     <code>static/carte/fond.pmtiles</code> (<code>scripts/carte_fond.py</code>).</p>{/if}
 
@@ -228,7 +228,7 @@
       </div>
       <div class="tile">
         <span class="tlabel">Prix médian bâti</span>
-        <span class="tval">{medM2 ? Math.round(medM2).toLocaleString('fr-FR') + ' €/m²' : '—'}</span>
+        <span class="tval">{medM2 ? Math.round(medM2).toLocaleString('fr-FR') + ' €/m²' : '-'}</span>
         <span class="tsub">maisons &amp; appartements</span>
       </div>
       <div class="tile">
@@ -256,7 +256,7 @@
       <div class="yrbars">
         {#each dvfByYear as d}
           <div class="ycol" title="{d.year} : {d.medM2 ? Math.round(d.medM2) + ' €/m² médian sur ' + d.nBati + ' vente(s) de bâti' : 'aucune vente de bâti chiffrée'} · {d.n} mutation(s) au total">
-            <span class="ym2">{d.medM2 ? Math.round(d.medM2).toLocaleString('fr-FR') + ' €/m²' : '—'}</span>
+            <span class="ym2">{d.medM2 ? Math.round(d.medM2).toLocaleString('fr-FR') + ' €/m²' : '-'}</span>
             <span class="ytrack"><span class="ybar" class:fragile={d.nBati > 0 && d.nBati < MEDIANE_FRAGILE}
                   style="height:{d.medM2 ? Math.max(2, 100 * d.medM2 / dvfM2Max) : 0}%"></span></span>
             <span class="yn" class:fragile={d.nBati > 0 && d.nBati < MEDIANE_FRAGILE}>{d.n}</span>
@@ -287,21 +287,21 @@
   {/if}
 
   <details>
-    <summary>Transactions {natureFilter !== 'all' ? `— ${natureFilter}` : ''} ({dvfFiltered.length})</summary>
+    <summary>Transactions {natureFilter !== 'all' ? `, ${natureFilter}` : ''} ({dvfFiltered.length})</summary>
     <p class="muted">Le détail vente par vente sert à vérifier un cas précis, pas
-      à lire le marché — les constats ci-dessus s'en chargent. Données brutes et
+      à lire le marché : les constats ci-dessus s'en chargent. Données brutes et
       complètes&nbsp;: <a href="https://explore.data.gouv.fr/immobilier" target="_blank" rel="noopener">DVF sur data.gouv.fr</a>.</p>
     <table>
       <thead><tr><th>Date</th><th>Parcelle</th><th>Nature</th><th class="r">Surface</th><th class="r">Prix</th><th class="r">€/m²</th></tr></thead>
       <tbody>
         {#each dvfTable as t (t.id)}
           <tr>
-            <td>{t.date || '—'}</td>
+            <td>{t.date || '-'}</td>
             <td>{t.cadastre_ref || ''} {t.lieu_dit || ''}</td>
             <td>{t.nature_bien || t.nature_mutation || ''}</td>
-            <td class="r">{t.surface_bati || t.surface_terrain || '—'}</td>
-            <td class="r">{t.price ? euros(t.price) : '—'}</td>
-            <td class="r">{t.price_per_m2 ? Math.round(t.price_per_m2) : '—'}</td>
+            <td class="r">{t.surface_bati || t.surface_terrain || '-'}</td>
+            <td class="r">{t.price ? euros(t.price) : '-'}</td>
+            <td class="r">{t.price_per_m2 ? Math.round(t.price_per_m2) : '-'}</td>
           </tr>
         {/each}
       </tbody>

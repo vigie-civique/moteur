@@ -22,15 +22,15 @@
     // SINOE compte le verre DANS la collecte séparée : les deux lignes ne
     // s'ajoutent pas, et le total est ordures + collecte séparée + déchèterie.
     tri: 'Collecte séparée (emballages, papiers et verre)',
-    papier: '— dont emballages et papiers',
-    verre: '— dont verre', decheterie: 'Apports en déchèterie', total: 'Total',
+    papier: '- dont emballages et papiers',
+    verre: '- dont verre', decheterie: 'Apports en déchèterie', total: 'Total',
   }
   // Le rang se dit en quarts, pas en « bon » ou « mauvais » : beaucoup de tri
   // est une bonne nouvelle, beaucoup d'ordures résiduelles non. La page situe,
   // elle ne note pas.
   const QUARTS = ['', 'dans le quart le plus bas', 'sous la médiane',
                   'au-dessus de la médiane', 'dans le quart le plus élevé']
-  const kg = (v) => v == null ? '—' : `${Math.round(v)} kg`
+  const kg = (v) => v == null ? '-' : `${Math.round(v)} kg`
   // Un syndicat départemental en tient des dizaines : au-delà de ce seuil, la
   // page ne nomme que celles de la commune et compte les autres.
   const DECHETERIES_MAX = 8
@@ -43,9 +43,9 @@
   // ── La forêt et le feu ─────────────────────────────────────────────────────
   // Un feu de 12 m² et un feu de 50 ha ne se lisent pas dans la même unité :
   // « 0,0012 ha » ne dit rien à personne.
-  const surface = (ha) => ha == null ? '—'
+  const surface = (ha) => ha == null ? '-'
     : ha < 1 ? `${nb(Math.round(ha * 10000))} m²` : `${nb(ha)} ha`
-  const fmtAlerte = (a) => a ? fmtDate(a.slice(0, 10)) : '—'
+  const fmtAlerte = (a) => a ? fmtDate(a.slice(0, 10)) : '-'
   let parametre = 'Nitrates'
 
   // ── L'eau du robinet ───────────────────────────────────────────────────────
@@ -85,7 +85,7 @@
     .map(s => ({ ...s, dernier: derniere(s.code_service, 'D204.0') }))
     .filter(s => s.dernier)
   $: anneesPrix = [...new Set(eauPotable.flatMap(s => s.prix.map(p => p.annee)))].sort()
-  const euros = (v) => v == null ? '—'
+  const euros = (v) => v == null ? '-'
     : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) + ' €'
 
   $: parametres = [...new Set(series.map(s => s.parametre))].sort()
@@ -128,12 +128,12 @@
 
   const fmtDate = (d) => d
     ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-    : '—'
-  const nb = (v) => v == null ? '—' : new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(v)
+    : '-'
+  const nb = (v) => v == null ? '-' : new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(v)
 </script>
 
 <svelte:head>
-  <title>Environnement — {SITE_NOM}</title>
+  <title>Environnement - {SITE_NOM}</title>
   <meta name="description" content="Prix et contrôle sanitaire de l'eau potable, qualité des cours d'eau, forêt et feux, déchets ménagers, risques naturels recensés et installations classées {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
@@ -162,7 +162,7 @@
     {#if stations.length}
       <p class="note">
         Les analyses sont celles des stations de surveillance des rivières et
-        des captages (Naïades), pas celles de l'eau distribuée au robinet —
+        des captages (Naïades), pas celles de l'eau distribuée au robinet,
         qui a sa propre section ci-dessous.
         {#if coursSuivis.length}Cours d'eau suivis&nbsp;: {coursSuivis.join(', ')}.{/if}
         {#if stationsIci}{stationsIci} station{stationsIci > 1 ? 's sont' : ' est'} {COMMUNE_A}&nbsp;;
@@ -188,7 +188,7 @@
       {#each eauPotable as s}
         <h3>
           {s.nom || s.libelle || `Service n° ${s.code_service}`}
-          {#if s.mode_gestion}<span class="muted"> — {s.mode_gestion}</span>{/if}
+          {#if s.mode_gestion}<span class="muted"> : {s.mode_gestion}</span>{/if}
         </h3>
         <p class="note">
           {#if s.type_collectivite}{s.type_collectivite}{/if}{#if s.nbCommunes > 1}, {s.nbCommunes} communes desservies{/if}{#if s.siren} <span class="muted">· SIREN {s.siren}</span>{/if}
@@ -260,7 +260,7 @@
         <ul class="plain">
           {#each assainissement as s}
             <li><strong>{euros(s.dernier.valeur)} le m³</strong> en {s.dernier.annee}
-              <span class="muted">— {s.nom || s.libelle || `service n° ${s.code_service}`}</span></li>
+              <span class="muted"> : {s.nom || s.libelle || `service n° ${s.code_service}`}</span></li>
           {/each}
         </ul>
       {/if}
@@ -269,7 +269,7 @@
     <!-- ── Le contrôle sanitaire (ARS) ──────────────────────────────── -->
     {#if controleEau}
       <h3 id="controle-sanitaire">Ce qui sort du robinet : le contrôle sanitaire</h3>
-      <Niveau type="fait" source="Agence régionale de santé, via Hub'Eau — qualité de l'eau potable">
+      <Niveau type="fait" source="Agence régionale de santé, via Hub'Eau, qualité de l'eau potable">
         {#if controleEau.reseaux.length > 1}
           L'eau n'arrive pas partout par le même réseau&nbsp;:
           <b>{controleEau.reseaux.length} réseaux</b> desservent {COMMUNE} en
@@ -301,7 +301,7 @@
                 <td>{r.hors_limites.length ? fmtDate(r.hors_limites[0].date) : 'aucun'}</td>
               {:else}
                 <!-- Un réseau sans prélèvement publié n'est pas un réseau conforme. -->
-                <td colspan="4" class="muted">Aucun prélèvement publié pour ce réseau — ce qui ne dit rien de son eau.</td>
+                <td colspan="4" class="muted">Aucun prélèvement publié pour ce réseau, ce qui ne dit rien de son eau.</td>
               {/if}
             </tr>
           {/each}
@@ -312,8 +312,8 @@
         qualité</b>, le seuil que l'eau doit respecter (bactéries d'origine
         fécale, nitrates, pesticides…). Un dépassement ne vaut pas interdiction de
         boire&nbsp;: c'est l'agence régionale de santé qui en juge, cas par cas.
-        Les écarts aux <b>références de qualité</b> — des témoins du bon
-        fonctionnement des installations, sans effet direct sur la santé — ne
+        Les écarts aux <b>références de qualité</b>, des témoins du bon
+        fonctionnement des installations, sans effet direct sur la santé, ne
         sont pas comptés dans ce tableau. Un même prélèvement peut valoir pour
         plusieurs réseaux&nbsp;: les colonnes ne s'additionnent pas.
       </p>
@@ -326,7 +326,7 @@
             <tbody>
               {#each r.par_annee as a}
                 <tr><td>{a.annee}</td><td class="r">{a.prelevements}</td>
-                  <td class="r">{a.bacteriologie || '—'}</td><td class="r">{a.chimie || '—'}</td></tr>
+                  <td class="r">{a.bacteriologie || '-'}</td><td class="r">{a.chimie || '-'}</td></tr>
               {/each}
             </tbody>
           </table>
@@ -357,8 +357,8 @@
               <div class="bars">
                 {#each row.points as pt, i}
                   <div class="slot" title={pt
-                      ? `${annees[i]} — moyenne ${nb(pt.moyenne)} ${unite} (min ${nb(pt.mini)}, max ${nb(pt.maxi)}, ${pt.n} mesures)`
-                      : `${annees[i]} — aucune mesure`}>
+                      ? `${annees[i]}, moyenne ${nb(pt.moyenne)} ${unite} (min ${nb(pt.mini)}, max ${nb(pt.maxi)}, ${pt.n} mesures)`
+                      : `${annees[i]}, aucune mesure`}>
                     {#if pt}
                       <div class="range" style="height:{Math.max(2, (pt.maxi / maxi) * 100)}%"></div>
                       <div class="bar" style="height:{Math.max(2, (pt.moyenne / maxi) * 100)}%"></div>
@@ -393,14 +393,14 @@
       </table>
       <p class="note">
         « Détecté » signifie que le paramètre a été quantifié au-dessus du seuil de
-        détection du laboratoire — pas qu'un seuil réglementaire est dépassé.
+        détection du laboratoire, pas qu'un seuil réglementaire est dépassé.
       </p>
     {/if}
 
     <h3>Stations de mesure</h3>
     <ul class="plain">
       {#each stations as s}
-        <li><strong>{s.libelle.trim()}</strong>{#if s.cours_eau} — {s.cours_eau}{/if} <span class="muted">({s.code_station})</span></li>
+        <li><strong>{s.libelle.trim()}</strong>{#if s.cours_eau} : {s.cours_eau}{/if} <span class="muted">({s.code_station})</span></li>
       {/each}
     </ul>
 
@@ -437,7 +437,7 @@
       <VersDossier dossier={data.dossiers?.["foret-et-feu"]} />
       {#if incendie.boisement}
         {@const b = incendie.boisement}
-        <Niveau type="fait" source="IGN — Observatoire des forêts, prises de vue de {b.annee_pva}">
+        <Niveau type="fait" source="IGN : Observatoire des forêts, prises de vue de {b.annee_pva}">
           La forêt couvre <b>{nb(b.surface_foret)} des {nb(b.surface_commune)} hectares</b>
           de la commune, soit <b>{nb(b.taux_boisement)}&nbsp;%</b>&nbsp;:
           {nb(b.feuillus)}&nbsp;ha de feuillus, {nb(b.coniferes)}&nbsp;ha de
@@ -518,8 +518,8 @@
             <tr>
               <td>{#if i.exploitant_masque}Exploitant non désigné{:else}<strong>{i.raison_sociale}</strong>{#if i.adresse}<span class="sub2">{i.adresse}</span>{/if}{/if}</td>
               <td>{i.commune}</td>
-              <td>{i.regime || '—'}{#if i.seveso && i.seveso !== 'Non Seveso'}<span class="tag">{i.seveso}</span>{/if}</td>
-              <td>{i.etat_activite || '—'}</td>
+              <td>{i.regime || '-'}{#if i.seveso && i.seveso !== 'Non Seveso'}<span class="tag">{i.seveso}</span>{/if}</td>
+              <td>{i.etat_activite || '-'}</td>
             </tr>
           {/each}
         </tbody>
@@ -527,7 +527,7 @@
       {#if icpe.some((i) => i.exploitant_masque)}
         <p class="note">
           «&nbsp;Exploitant non désigné&nbsp;»&nbsp;: le registre nomme un exploitant
-          dont la raison sociale n'indique pas une société — souvent un
+          dont la raison sociale n'indique pas une société, souvent un
           agriculteur en nom propre. Son nom et son adresse ne sont pas repris ici.
         </p>
       {/if}
@@ -542,7 +542,7 @@
           {dechets.acteurs.length} collectivités se partagent les déchets ici.
           Chacune ne déclare que ce qu'elle prend en charge&nbsp;: un tiret
           signale un service qu'elle n'exerce pas, et leurs totaux ne
-          s'additionnent pas — ils ne portent ni sur les mêmes déchets ni sur
+          s'additionnent pas, ils ne portent ni sur les mêmes déchets ni sur
           les mêmes habitants.
         </p>
       {/if}
@@ -550,7 +550,7 @@
         {@const dernier = a.serie.at(-1)}
         {@const ici = a.decheteries.filter(d => d.insee === INSEE)}
         {@const montrees = a.decheteries.length > DECHETERIES_MAX ? ici : a.decheteries}
-        <Niveau type="fait" source="ADEME — SINOE®, enquête sur la collecte des déchets">
+        <Niveau type="fait" source="ADEME, SINOE®, enquête sur la collecte des déchets">
           {#if dechets.acteurs.length > 1}<b>{a.nom}</b> prend en charge une partie
           des déchets ici.{:else}Ici, les déchets sont collectés par <b>{a.nom}</b>.{/if}
           {#if dernier}Tous les chiffres qui suivent portent sur <b>l'ensemble
@@ -572,7 +572,7 @@
                   <td class="r"><strong>{kg(s.valeur)}</strong></td>
                   <td class="r">{kg(s.france?.p50)}</td>
                   <td class="r">{kg(s.departement?.p50)}</td>
-                  <td class="muted">{QUARTS[s.quart] || '—'}{#if s.france?.p95 != null && s.valeur > s.france.p95}, au-delà de 19 collectivités sur 20{/if}</td>
+                  <td class="muted">{QUARTS[s.quart] || '-'}{#if s.france?.p95 != null && s.valeur > s.france.p95}, au-delà de 19 collectivités sur 20{/if}</td>
                 </tr>
               {/each}
             </tbody>
@@ -615,7 +615,7 @@
           <h3>Où ils partent ({a.destinations.annee})</h3>
           <ul class="plain">
             {#each a.destinations.lignes as l}
-              <li><strong>{tonnes(l.tonnes)}</strong> — {l.libelle}
+              <li><strong>{tonnes(l.tonnes)}</strong> : {l.libelle}
                 <span class="muted">({part(l.tonnes, a.destinations.lignes)})</span></li>
             {/each}
           </ul>
@@ -634,7 +634,7 @@
           {/if}
           <ul class="plain">
             {#each montrees as d}
-              <li><strong>{d.nom}</strong>{#if d.lieu}{' '}— {d.lieu}{/if}
+              <li><strong>{d.nom}</strong>{#if d.lieu}{' '} : {d.lieu}{/if}
                 <span class="muted">{#if d.ouverte_le}ouverte en {d.ouverte_le.slice(0, 4)}{/if}{#if d.gestion}{' '}· {d.gestion.toLowerCase().replace('regie', 'en régie')}{/if}</span></li>
             {/each}
           </ul>
@@ -650,8 +650,8 @@
       <h2>L'état énergétique des logements</h2>
       <Niveau type="calcul" base="les diagnostics de performance énergétique établis depuis juillet 2021">
         <b>{dpe.partPassoires.toLocaleString('fr-FR')} %</b> des logements diagnostiqués
-        sont des passoires thermiques — étiquette F ou G au sens de la loi Climat
-        et résilience —, soit {dpe.passoires} sur {dpe.total} diagnostics.
+        sont des passoires thermiques, étiquette F ou G au sens de la loi Climat
+        et résilience, soit {dpe.passoires} sur {dpe.total} diagnostics.
       </Niveau>
       <div class="dpe">
         {#each dpe.etiquettes as e}
@@ -686,7 +686,7 @@
       ICPE, arrêtés CatNat), IGN (boisement, forêts publiques, zonage du
       débroussaillement), BDIFF (feux de forêt), ADEME (SINOE® pour les
       déchets ; diagnostics de performance énergétique,
-      agrégés à la commune — aucune adresse n'est collectée). Aucune donnée n'est produite par ce site : tout
+      agrégés à la commune, aucune adresse n'est collectée). Aucune donnée n'est produite par ce site : tout
       provient des réseaux publics de mesure et de recensement.
     </p>
   {/if}

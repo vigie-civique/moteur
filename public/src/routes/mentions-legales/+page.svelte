@@ -2,7 +2,7 @@
   import { CODE_POSTAL, COMMUNE_DE, CONTACT_EMAIL, EPCI, HEBERGEUR, PREFECTURE, SITE_NOM } from '$lib/instance.js'
 </script>
 
-<svelte:head><title>Mentions légales — {SITE_NOM}</title>
+<svelte:head><title>Mentions légales - {SITE_NOM}</title>
   <meta name="description" content="Mentions légales du site : éditeur, hébergeur, traitement des données et voies de recours." /></svelte:head>
 
 <section>
@@ -51,9 +51,9 @@
 
   <h2>Base légale (RGPD)</h2>
   <ul>
-    <li>Article 6.1.f — intérêt légitime (transparence démocratique, information du public).</li>
-    <li>Article 9.2.e — données rendues manifestement publiques (SIRENE, RNA, mandats électifs).</li>
-    <li>Article 85 RGPD et article 80 de la loi Informatique et Libertés — liberté d'expression et d'information.</li>
+    <li>Article 6.1.f : intérêt légitime (transparence démocratique, information du public).</li>
+    <li>Article 9.2.e : données rendues manifestement publiques (SIRENE, RNA, mandats électifs).</li>
+    <li>Article 85 RGPD et article 80 de la loi Informatique et Libertés : liberté d'expression et d'information.</li>
   </ul>
 
   <h2>Données publiées</h2>

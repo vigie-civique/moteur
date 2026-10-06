@@ -20,11 +20,11 @@
     .sort((a, b) => (b.participation_pct || 0) - (a.participation_pct || 0))
 
   const nomScrutin = (s) => s.replace('municipales-', 'Municipales ')
-  const pct = (v) => v == null ? '—' : `${Number(v).toFixed(1)} %`
+  const pct = (v) => v == null ? '-' : `${Number(v).toFixed(1)} %`
 </script>
 
 <svelte:head>
-  <title>Les élections — {SITE_NOM}</title>
+  <title>Les élections - {SITE_NOM}</title>
   <meta name="description" content="Résultats des élections municipales {COMMUNE_A} et dans les communes de la {EPCI} : participation, voix par liste, sièges attribués." />
 </svelte:head>
 
@@ -32,7 +32,7 @@
   <header>
     <h1 class="avec-icone"><Icon name="elections" size={26} />Les élections</h1>
     <p class="chapeau">
-      Participation, voix et sièges — d'où vient le mandat de ceux qui décident.
+      Participation, voix et sièges, d'où vient le mandat de ceux qui décident.
       {COMMUNE} et les autres communes de l'intercommunalité.
     </p>
     <!-- L'absence est réelle, pas un trou de collecte : mieux vaut la nommer
@@ -101,7 +101,7 @@
     {/each}
 
     <div class="note">
-      <h3>Ce que ces chiffres disent — et ce qu'ils ne disent pas</h3>
+      <h3>Ce que ces chiffres disent, et ce qu'ils ne disent pas</h3>
       <p>
         Les sièges sont attribués à la proportionnelle avec prime majoritaire :
         la liste arrivée en tête obtient la moitié des sièges, le reste étant
@@ -111,7 +111,7 @@
       <p>
         Ces résultats sont ceux publiés par le ministère de l'Intérieur. Ils ne
         renseignent ni sur les alliances passées entre les deux tours, ni sur les
-        démissions survenues en cours de mandat — pour cela, voir
+        démissions survenues en cours de mandat : pour cela, voir
         <a href="/elus">la composition actuelle du conseil</a>.
       </p>
       <p class="liens">

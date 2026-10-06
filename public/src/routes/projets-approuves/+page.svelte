@@ -15,10 +15,10 @@
   $: totalHT = sum(base)
   $: maxHT = Math.max(...base.map(a => a.montant_ht || 0), 1)
   $: periode = yearsAvail.length
-    ? `${yearsAvail[yearsAvail.length - 1]}–${yearsAvail[0]}` : '—'
+    ? `${yearsAvail[yearsAvail.length - 1]}–${yearsAvail[0]}` : '-'
 
   function eurosC(n) {
-    if (n == null) return '—'
+    if (n == null) return '-'
     const a = Math.abs(n)
     if (a >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€'
     if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€'
@@ -27,7 +27,7 @@
 </script>
 
 <svelte:head>
-  <title>Projets approuvés — {SITE_NOM}</title>
+  <title>Projets approuvés - {SITE_NOM}</title>
   <meta name="description" content="Plans de financement votés par le conseil municipal : participations de la commune aux opérations d'éclairage public et d'électrification." />
 </svelte:head>
 
@@ -35,7 +35,7 @@
   <header class="head">
     <div>
       <h1>Projets approuvés</h1>
-      <p class="sub">Les plans de financement votés par le conseil municipal — la commune approuve un projet
+      <p class="sub">Les plans de financement votés par le conseil municipal : la commune approuve un projet
         et sa participation, sans qu'aucune entreprise ne soit encore retenue.</p>
     </div>
     {#if yearsAvail.length > 1}
@@ -50,7 +50,7 @@
 
   <p class="note">
     <b>Ce n'est pas un marché.</b> Ces délibérations votent le principe d'une opération et son
-    financement — le plus souvent une participation à des travaux d'éclairage public ou
+    financement : le plus souvent une participation à des travaux d'éclairage public ou
     d'électrification portés par un syndicat. L'entreprise qui exécutera les travaux est choisie
     ailleurs, parfois par le syndicat lui-même. C'est pourquoi ces montants sont présentés à part
     des <a href="/marches">marchés attribués</a> : les additionner reviendrait à compter deux fois

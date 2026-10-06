@@ -15,7 +15,7 @@
     marche: () => '/marches', flux: () => '/finances',
   }
   const fmt = (d) => {
-    if (!d) return '—'
+    if (!d) return '-'
     if (/^\d{4}$/.test(d)) return d
     try { return new Date(d.slice(0, 10) + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) }
     catch { return d }
@@ -23,7 +23,7 @@
 </script>
 
 <svelte:head>
-  <title>Journal des corrections — {SITE_NOM}</title>
+  <title>Journal des corrections - {SITE_NOM}</title>
   <meta name="description" content="Les erreurs reconnues sur ce site et leur correction : calculs, doublons, libellés, et données rectifiées après vérification sur le document d'origine." />
 </svelte:head>
 
@@ -64,8 +64,8 @@
 
     <h2>Données rectifiées</h2>
     <p class="aide">
-      Une donnée lue de travers dans un document — un numéro d'article pris
-      pour un montant, une date fausse — est rectifiée après vérification sur
+      Une donnée lue de travers dans un document, un numéro d'article pris
+      pour un montant, une date fausse, est rectifiée après vérification sur
       le document d'origine. La valeur collectée est conservée à côté&nbsp;;
       sur le site, la donnée porte la mention <b>✎ rectifié</b>.
     </p>

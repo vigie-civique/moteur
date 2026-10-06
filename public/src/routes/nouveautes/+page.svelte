@@ -91,7 +91,7 @@
   $: annees = Object.keys(parAnnee).sort((a, b) => b - a)
 
   const moisLabel = (m) => {
-    if (!m) return '—'
+    if (!m) return '-'
     const [a, mo] = m.split('-')
     return new Date(`${a}-${mo}-01T00:00:00`)
       .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
@@ -109,7 +109,7 @@
 </script>
 
 <svelte:head>
-  <title>Ce qui a changé — {SITE_NOM}</title>
+  <title>Ce qui a changé - {SITE_NOM}</title>
   <meta name="description" content="Les dernières décisions, marchés publics, permis et versements publics {COMMUNE_A} et dans son intercommunalité." />
 </svelte:head>
 
@@ -130,7 +130,7 @@
     aide="« {COMMUNE} » : ce que le conseil municipal a décidé et ce qui la
           concerne directement. « {EPCI} » : ce que le conseil communautaire a
           voté, sur ses compétences. « Sur le territoire » : ce qui se passe ici
-          sans qu'aucun élu l'ait voté — annonces légales, permis, vie
+          sans qu'aucun élu l'ait voté, annonces légales, permis, vie
           associative." />
 
   <div class="filtres">

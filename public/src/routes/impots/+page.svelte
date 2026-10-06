@@ -34,7 +34,7 @@
     .sort((a, b) => (val(b, 'TFB_VOTE') ?? 0) - (val(a, 'TFB_VOTE') ?? 0))
   $: annees = [...new Set(taux.map(t => t.annee))].sort()
 
-  const pct = (v) => v == null ? '—' : `${v.toFixed(2)} %`
+  const pct = (v) => v == null ? '-' : `${v.toFixed(2)} %`
   // Évolution du taux communal de foncier bâti sur la période disponible.
   const evolution = (commune) => {
     if (!annees.length) return null
@@ -46,7 +46,7 @@
 </script>
 
 <svelte:head>
-  <title>Impôts locaux — {SITE_NOM}</title>
+  <title>Impôts locaux - {SITE_NOM}</title>
   <meta name="description" content="Taux d'imposition votés {COMMUNE_A} et dans les 15 communes de la {EPCI} : foncier bâti, foncier non bâti, taxe d'habitation, ordures ménagères." />
 </svelte:head>
 
@@ -92,7 +92,7 @@
                 <td class="num">{pct(g)}</td>
                 {#if ligne.vote}
                   <td class="num">
-                    {#if ev == null}—
+                    {#if ev == null}-
                     {:else}<span class:hausse={ev > 0.5} class:stable={Math.abs(ev) <= 0.5}
                       >{ev > 0 ? '+' : ''}{ev.toFixed(1)} %</span>{/if}
                   </td>
@@ -134,7 +134,7 @@
         Un taux ne se traduit pas directement en euros : il s'applique à la
         <strong>valeur locative cadastrale</strong> de chaque bien, révisée par
         l'État. Un taux plus élevé qu'ailleurs ne signifie donc pas
-        mécaniquement un impôt plus élevé — mais il traduit un choix du conseil.
+        mécaniquement un impôt plus élevé, mais il traduit un choix du conseil.
       </p>
       <p>
         La colonne « part votée » est la <strong>seule</strong> dont le conseil

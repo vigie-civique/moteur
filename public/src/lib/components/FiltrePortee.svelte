@@ -30,7 +30,7 @@
   ]
   // Deux portées non vides au minimum, sinon le choix est décoratif.
   $: utile = onglets.filter(([cle, , n]) => cle !== 'tout' && n > 0).length > 1
-  const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const nombre = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
 </script>
 
 {#if utile}

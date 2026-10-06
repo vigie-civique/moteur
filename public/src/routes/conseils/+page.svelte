@@ -15,7 +15,7 @@
 </script>
 
 <svelte:head>
-  <title>Les conseils en clair — {SITE_NOM}</title>
+  <title>Les conseils en clair - {SITE_NOM}</title>
   <meta name="description" content="Chaque séance du conseil municipal et du conseil communautaire : ce qui a été décidé, les pièces qui l'attestent, et pour les séances relues, trois feuilles en clair." />
 </svelte:head>
 
@@ -24,9 +24,9 @@
   <h1>Les conseils en clair</h1>
   <p class="chapeau">
     Chaque séance a sa page&nbsp;: ses délibérations, et les pièces qui les
-    attestent. Une séance <b>mise en clair</b> a en plus trois feuilles A4 —
+    attestent. Une séance <b>mise en clair</b> a en plus trois feuilles A4,
     ce qui était annoncé, ce qui a été décidé, et ce que les documents publics
-    ont de faux ou d'incomplet —, rédigées à partir des procès-verbaux,
+    ont de faux ou d'incomplet, rédigées à partir des procès-verbaux,
     vérifiées automatiquement et relues par une personne.
   </p>
 
@@ -53,7 +53,7 @@
         {#each seances.filter((s) => s.date.startsWith(a)) as s}
           <li>
             <span class="nature" class:cc={s.code === 'cc'}>{s.assemblee}</span>
-            <a href="/conseils/{s.id}"><time datetime={s.date}>{fmt(s.date)}</time>{#if s.en_clair} — {s.en_clair.titre}{/if}</a>
+            <a href="/conseils/{s.id}"><time datetime={s.date}>{fmt(s.date)}</time>{#if s.en_clair} : {s.en_clair.titre}{/if}</a>
             <span class="quand">
               {compte(s.nb_actes)} ·
               {#if s.en_clair}<b class="clair">mise en clair</b>, relue le {s.en_clair.relu_le}

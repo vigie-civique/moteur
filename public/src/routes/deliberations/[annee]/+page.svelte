@@ -56,14 +56,14 @@
     .filter((e) => !q || (e.title || '').toLowerCase().includes(q.toLowerCase()))
 
   const fmtDate = (d) => {
-    if (!d) return '—'
+    if (!d) return '-'
     try { return new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
     catch { return d }
   }
 </script>
 
 <svelte:head>
-  <title>Délibérations {libelleAnnee(annee)} — {SITE_NOM}</title>
+  <title>Délibérations {libelleAnnee(annee)} - {SITE_NOM}</title>
   <meta name="description" content="Les {items.length} actes officiels de {libelleAnnee(annee)} {COMMUNE_A} et dans son intercommunalité : délibérations du conseil municipal, procès-verbaux communautaires, votes et montants." />
 </svelte:head>
 
@@ -150,7 +150,7 @@
               <p class="lecture">
                 Texte extrait automatiquement du document publié par la collectivité :
                 il peut comporter des erreurs de lecture. La pièce qui fait foi est le
-                document d'origine{#if e.pdf_url || e.source_url}&nbsp;— <a href={e.pdf_url || e.source_url} target="_blank" rel="noopener">l'ouvrir ↗</a>{/if}.
+                document d'origine{#if e.pdf_url || e.source_url} : <a href={e.pdf_url || e.source_url} target="_blank" rel="noopener">l'ouvrir ↗</a>{/if}.
               </p>
             {:else if extraits[e.id]?.etat === 'erreur'}
               <p class="lecture">

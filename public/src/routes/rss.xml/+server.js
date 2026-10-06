@@ -59,7 +59,7 @@ export function GET() {
       GENRES[i.genre],
       i.categorie || null,
       i.montant ? `${i.montant} €` : null,
-      i.corrige ? 'Information rectifiée — la donnée collectée est conservée à côté de la rectification.' : null,
+      i.corrige ? 'Information rectifiée : la donnée collectée est conservée à côté de la rectification.' : null,
     ].filter(Boolean).join(' · ')
     return `    <item>
       <title>${echapper(i.titre)}</title>
@@ -74,7 +74,7 @@ export function GET() {
   const body = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>${SITE_NOM} — ce qui a changé</title>
+    <title>${SITE_NOM} - ce qui a changé</title>
     <link>${SITE_URL}/nouveautes</link>
     <atom:link href="${SITE_URL}/rss.xml" rel="self" type="application/rss+xml" />
     <description>Les décisions, marchés, flux financiers et changements de mandat ${COMMUNE_A} et dans son intercommunalité, d'après les documents publics. Agenda culturel exclu.</description>

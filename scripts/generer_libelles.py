@@ -142,6 +142,10 @@ def construire() -> dict:
     # collectors/statut.py, que le snapshot lit aussi — deux textes qui se
     # ressemblent finiraient par diverger.
     statut = normaliser_statut(inst.get("statut"))
+    # Une annonce datée, portée par le bandeau d'état : une réunion, une
+    # permanence. Elle vit dans l'instance, jamais dans le gabarit, et s'éteint
+    # seule après `jusqu_au` (AAAA-MM-JJ) sans qu'il faille republier le code.
+    annonce = inst.get("annonce") if isinstance(inst.get("annonce"), dict) else {}
     # `centroid` est un couple [lat, lng]. Défaut : le centre de la France
     # métropolitaine — visiblement faux plutôt que discrètement faux.
     _c = inst.get("centroid") or []
@@ -175,6 +179,9 @@ def construire() -> dict:
         "STATUT_TEXTE": statut["texte"],
         "STATUT_TENUE_PAR": statut["tenue_par"] or "",
         "STATUT_MENTION": statut["mention"],
+        "ANNONCE_TEXTE": str(annonce.get("texte") or "").strip(),
+        "ANNONCE_JUSQU_AU": str(annonce.get("jusqu_au") or "").strip(),
+        "ANNONCE_LIEN": str(annonce.get("lien") or "").strip(),
         "CONTACT_EMAIL": editeur.get("email", ""),
         "EDITEUR_NOM": editeur.get("nom", ""),
         "EDITEUR_STATUT": editeur.get("statut", ""),

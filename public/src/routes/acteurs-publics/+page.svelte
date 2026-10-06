@@ -84,14 +84,14 @@
   const annee = (d) => (d || '').slice(0, 4)
 </script>
 
-<svelte:head><title>Qui agit ? — {SITE_NOM}</title>
+<svelte:head><title>Qui agit ? - {SITE_NOM}</title>
   <meta name="description" content="Annuaire des services publics, associations et lieux {COMMUNE_DE} et des institutions qui décident pour elle." /></svelte:head>
 
 <section>
   <header class="tete">
     <div>
       <h1 class="avec-icone"><Icon name="acteurs" size={26} />Qui agit&nbsp;?</h1>
-      <p class="sub">Services, associations, entreprises et lieux d'intérêt public — au choix, ceux de la commune ou ceux de l'intercommunalité.</p>
+      <p class="sub">Services, associations, entreprises et lieux d'intérêt public, au choix, ceux de la commune ou ceux de l'intercommunalité.</p>
     </div>
     <!-- La carte est une vue de cet annuaire : elle ne porte que les acteurs
          dont on connaît la position. Le passage doit se faire dans les deux sens. -->
@@ -109,7 +109,7 @@
       {#if scope === 'cites'}
         Acteurs nommés dans au moins une délibération, un flux financier, un marché ou un mandat.
       {:else}
-        Répertoire complet, entreprises SIRENE comprises — la plupart n'apparaissent dans aucun acte public.
+        Répertoire complet, entreprises SIRENE comprises : la plupart n'apparaissent dans aucun acte public.
         Ses {all.length.toLocaleString('fr-FR')} fiches, en activité ou fermées&nbsp;:
         {(repertoire.commune || 0).toLocaleString('fr-FR')} à {COMMUNE}{#if repertoire.intercommunalite},
         {repertoire.intercommunalite.toLocaleString('fr-FR')} dans le reste de la {EPCI}{/if}{#if repertoire.territoire},
@@ -123,7 +123,7 @@
     <FiltrePortee bind:valeur={portee} compte={comptePortee}
       libelleTerritoire="Au-delà"
       aide="{COMMUNE} d'abord : ce sont deux collectivités distinctes, avec
-            leurs propres compétences. La {EPCI} agit aussi ici — sur ses
+            leurs propres compétences. La {EPCI} agit aussi ici, sur ses
             compétences à elle, décidées par son conseil communautaire." />
 
     <div class="scope">
@@ -140,7 +140,7 @@
       {:else if activite === 'dormantes'}
         Sous-ensemble du précédent&nbsp;: aucun registre ne les donne fermées,
         et aucune source publique ne les a nommées depuis {ANCIENNETE} ans.
-        Ce n'est pas une disparition constatée — c'est un silence, et il se
+        Ce n'est pas une disparition constatée : c'est un silence, et il se
         lit comme tel.
       {:else if activite === 'cessees'}
         Radiées au répertoire des entreprises ou dissoutes au Journal officiel.

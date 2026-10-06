@@ -93,6 +93,9 @@ export function load() {
     .filter(Boolean)
     .map(({ id, date, code, assemblee, nb_actes, en_clair }) =>
       ({ id, date, code, assemblee, nb_actes, en_clair: en_clair || null }))
+  // Les années que couvrent les séances publiées : tant qu'il n'y en a qu'une,
+  // le lien de l'accueil la nomme au lieu de promettre « toutes ».
+  const anneesSeances = [...new Set(seances.map((s) => s.date.slice(0, 4)))].sort()
   const lienDeSeance = (i) => {
     const id = `${i.date}_${ASSEMBLEE[i.type]}`
     return pages.has(id) ? `/conseils/${id}` : `/deliberations/${i.date.slice(0, 4)}`
@@ -184,10 +187,15 @@ export function load() {
   return {
     prochains,
     dernieres,
-    // Les dossiers publiés, sans leur corps : l'accueil n'en montre que le titre
-    // et le chapeau. Un dossier « à développer » attend sur /dossiers.
+    anneesSeances,
+    // Trois dossiers publiés, sans leur corps : l'accueil n'en montre que le
+    // titre et le chapeau. Un dossier « à développer » attend sur /dossiers.
+    // Tirés au sort ICI, donc au build : la page est prérendue, le tirage
+    // change à chaque publication et jamais sous les yeux du lecteur.
     dossiers: lireDossiers().filter((d) => d.statut !== 'a_developper')
-      .map(({ slug, titre, chapeau }) => ({ slug, titre, chapeau })),
+      .map(({ slug, titre, chapeau }) => ({ slug, titre, chapeau, rang: Math.random() }))
+      .sort((a, b) => a.rang - b.rang).slice(0, 3)
+      .map(({ rang, ...d }) => d),
     // Sans dossier écrit, ce que les données disent déjà des mêmes sujets :
     // une instance neuve a un accueil qui part des sujets, sans rien à relire.
     sujets: lireSujets().filter((s) => s.donnees && !s.dossier)

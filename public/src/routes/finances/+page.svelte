@@ -36,7 +36,7 @@
     fonds_de_concours: 'Fonds de concours', fonds_concours: 'Fonds de concours',
     cession_fonds: 'Cession de fonds', cession_patrimoine: 'Cession de patrimoine',
   }
-  const typeLabel = (t) => TYPE_LABELS[t] || (t || '—')
+  const typeLabel = (t) => TYPE_LABELS[t] || (t || '-')
 
   // Repris mot pour mot de `collectors/etat_flux` : une seule phrase circule
   // entre la base, le site et le dictionnaire de données.
@@ -131,7 +131,7 @@
   $: inShown = showAllIn ? inBySource : inBySource.slice(0, TOP)
 
   function eurosC(n) {
-    if (n == null) return '—'
+    if (n == null) return '-'
     const a = Math.abs(n)
     if (a >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€'
     if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€'
@@ -139,10 +139,10 @@
   }
   const pct = (n, t) => t ? Math.round(100 * n / t) + ' %' : ''
   const sens = (f) => isInflow(f) ? 'in' : (isOutflow(f) ? 'out' : 'oth')
-  $: periode = year == null ? '—' : String(year)
+  $: periode = year == null ? '-' : String(year)
 </script>
 
-<svelte:head><title>Flux financiers publics — {SITE_NOM}</title>
+<svelte:head><title>Flux financiers publics - {SITE_NOM}</title>
   <meta name="description" content="Où va l'argent public {COMMUNE_A} : subventions votées ou versées, dotations reçues, marchés attribués." /></svelte:head>
 
 <section>
@@ -151,7 +151,7 @@
       <h1>Flux financiers publics</h1>
       <!-- « ce qu'elle verse » affirmait un paiement dès le sous-titre, avant
            même que la page ait regardé ce que les pièces attestent. -->
-      <p class="sub">Ce que la commune reçoit et ce qui en sort — subventions, marchés, dotations et baux recensés dans les données ouvertes et les délibérations, avec l'état de chaque montant.</p>
+      <p class="sub">Ce que la commune reçoit et ce qui en sort : subventions, marchés, dotations et baux recensés dans les données ouvertes et les délibérations, avec l'état de chaque montant.</p>
     </div>
     <label class="year">Période
       <select bind:value={year}>
@@ -170,7 +170,7 @@
     </p>
 
     {#if !dotationCovered}
-      <p class="note">⚠ Les dotations de l'État (DGF, concours) pour {year} ne figurent pas encore dans le jeu de données — le « reçu » de cette année est donc incomplet. Le graphique année par année ci-dessous montre les exercices renseignés.</p>
+      <p class="note">⚠ Les dotations de l'État (DGF, concours) pour {year} ne figurent pas encore dans le jeu de données : le « reçu » de cette année est donc incomplet. Le graphique année par année ci-dessous montre les exercices renseignés.</p>
     {/if}
 
     <!-- Ces totaux sont nos sommes, pas un compte administratif : ils ne
@@ -227,7 +227,7 @@
           <span class="yrhead in">Reçu par la commune</span>
           <div class="yrbars">
             {#each flowsByYear as d}
-              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.in)} reçu — cliquer pour voir le détail"
+              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.in)} reçu, cliquer pour voir le détail"
                       on:click={() => year = d.year}>
                 <span class="yval">{d.in ? eurosC(d.in) : ''}</span>
                 <span class="ytrack"><span class="ybar in" style="height:{Math.max(2, 100 * d.in / inYrMax)}%"></span></span>
@@ -242,7 +242,7 @@
           <span class="yrhead out">Versé par la commune</span>
           <div class="yrbars">
             {#each flowsByYear as d}
-              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.out)} {verbeOut} — cliquer pour voir le détail"
+              <button class="ycol" class:sel={d.year === year} title="{d.year} : {eurosC(d.out)} {verbeOut}, cliquer pour voir le détail"
                       on:click={() => year = d.year}>
                 <span class="yval">{d.out ? eurosC(d.out) : ''}</span>
                 <span class="ytrack"><span class="ybar out" style="height:{Math.max(2, 100 * d.out / outYrMax)}%"></span></span>
@@ -265,11 +265,11 @@
     <!-- Cessions de patrimoine communal (ventes = recettes, sens inverse du flux stocké) -->
     {#if cessions.length}
       <h2 class="ces-h">Cessions de patrimoine communal</h2>
-      <p class="hint">Ventes de biens de la commune (terrains, domaine public déclassé) — <b class="ces">{eurosC(cessionTotal)}</b> sur {periode}. La commune <b>vend et encaisse</b> le prix : c'est une recette, ni une subvention ni un marché.</p>
+      <p class="hint">Ventes de biens de la commune (terrains, domaine public déclassé) : <b class="ces">{eurosC(cessionTotal)}</b> sur {periode}. La commune <b>vend et encaisse</b> le prix : c'est une recette, ni une subvention ni un marché.</p>
       <ul class="clist">
         {#each cessions as f (f.id)}
           <li>
-            <span class="cyear">{f.year || '—'}</span>
+            <span class="cyear">{f.year || '-'}</span>
             <span class="cbody">
               <span class="cbuyer">Vendu à {f.to_name || 'acquéreur non précisé'}</span>
               {#if f.description}<span class="cdesc">{f.description}</span>{/if}
@@ -284,7 +284,7 @@
     {#if outByBenef.length}
       <h2 class="out-h">{titreOut}</h2>
       <p class="hint">
-        Subventions et marchés — {eurosC(outTotal)} sur {periode}.
+        Subventions et marchés : {eurosC(outTotal)} sur {periode}.
         {#if outDecide && !outPaye}
           Ces montants sont ceux des <b>délibérations</b> : le conseil les a votés.
           Les paiements de l'exercice ne sont pas encore consolidés dans les
@@ -317,7 +317,7 @@
     <!-- Reçu par la commune -->
     {#if inBySource.length}
       <h2 class="in-h">D'où vient l'argent reçu</h2>
-      <p class="hint">Financeurs de la commune — {eurosC(inTotal)} sur {periode}.</p>
+      <p class="hint">Financeurs de la commune : {eurosC(inTotal)} sur {periode}.</p>
       <ul class="bars">
         {#each inShown as g}
           <li>
@@ -345,8 +345,8 @@
           <tbody>
             {#each [...others].sort((a, b) => (b.amount || 0) - (a.amount || 0)) as f (f.id)}
               <tr>
-                <td>{f.year || '—'}</td><td>{typeLabel(f.type)}</td>
-                <td class="who">{f.from_name || '—'} → {#if f.to_id}<a href="/entite/{f.to_id}">{f.to_name || '?'}</a>{:else}{f.to_name || '—'}{/if}</td>
+                <td>{f.year || '-'}</td><td>{typeLabel(f.type)}</td>
+                <td class="who">{f.from_name || '-'} → {#if f.to_id}<a href="/entite/{f.to_id}">{f.to_name || '?'}</a>{:else}{f.to_name || '-'}{/if}</td>
                 <td class="r">{euros(f.amount)}</td>
               </tr>
             {/each}
@@ -363,11 +363,11 @@
         <tbody>
           {#each [...inflows, ...outflows].sort((a, b) => (b.year || 0) - (a.year || 0) || (b.amount || 0) - (a.amount || 0)) as f (f.id)}
             <tr>
-              <td>{f.year || '—'}</td>
+              <td>{f.year || '-'}</td>
               <td>{#if isInflow(f)}<span class="tag in">reçu</span>{:else}<span class="tag out">sortant</span>{/if}</td>
               <td><span class="etat e-{etatDe(f)}" title={ETAT_DEF[etatDe(f)]}>{ETAT_LIB[etatDe(f)]}</span></td>
               <td>{typeLabel(f.type)}</td>
-              <td class="who">{f.from_name || '—'} → {#if f.to_id}<a href="/entite/{f.to_id}">{f.to_name || '?'}</a>{:else}{f.to_name || '—'}{/if}</td>
+              <td class="who">{f.from_name || '-'} → {#if f.to_id}<a href="/entite/{f.to_id}">{f.to_name || '?'}</a>{:else}{f.to_name || '-'}{/if}</td>
               <td class="desc">{f.description || ''}</td>
               <td class="r">{euros(f.amount)}</td>
             </tr>

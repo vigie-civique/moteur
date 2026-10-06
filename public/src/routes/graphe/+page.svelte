@@ -129,7 +129,7 @@
           .text(d.name.length > 22 ? d.name.slice(0, 20) + '…' : d.name)
       })
 
-    node.append('title').text(d => `${d.name}\n${TYPE_LABELS[d.type] || d.type} — ${d.degree} relation(s)`)
+    node.append('title').text(d => `${d.name}\n${TYPE_LABELS[d.type] || d.type}, ${d.degree} relation(s)`)
 
     sim = d3.forceSimulation(nodes)
       .alphaDecay(0.025)
@@ -159,8 +159,8 @@
 </script>
 
 <svelte:head>
-  <title>Graphe des relations — {SITE_NOM}</title>
-  <meta name="description" content="Qui est lié à qui {COMMUNE_A} : élus, associations, entreprises, subventions et commissions — relations vérifiées." />
+  <title>Graphe des relations - {SITE_NOM}</title>
+  <meta name="description" content="Qui est lié à qui {COMMUNE_A} : élus, associations, entreprises, subventions et commissions - relations vérifiées." />
 </svelte:head>
 
 <div class="head">

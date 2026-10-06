@@ -15,7 +15,14 @@
   // Les libellés viennent de `instance.js`, donc de `collectors/statut.py` :
   // le même texte est publié dans le snapshot. Deux textes qui se ressemblent
   // finissent par diverger.
-  import { STATUT_TYPE, STATUT_LIBELLE, STATUT_TEXTE, STATUT_TENUE_PAR } from '$lib/instance.js'
+  import { STATUT_TYPE, STATUT_LIBELLE, STATUT_TEXTE, STATUT_TENUE_PAR,
+           ANNONCE_TEXTE, ANNONCE_JUSQU_AU, ANNONCE_LIEN } from '$lib/instance.js'
+
+  // L'annonce de l'instance (config/instance.json, clé « annonce ») : une
+  // réunion, une permanence. Passé `jusqu_au`, elle ne s'affiche plus, que le
+  // site ait été republié ou non.
+  const annonce = ANNONCE_TEXTE
+    && (!ANNONCE_JUSQU_AU || new Date().toLocaleDateString('sv-SE') <= ANNONCE_JUSQU_AU)
 
   // La date de dernière COLLECTE — jamais celle de publication. Une
   // republication ne recollecte rien, et ferait passer un site figé pour un
@@ -39,6 +46,12 @@
 </script>
 
 <aside class="etat {STATUT_TYPE}" aria-label="Statut de ce site">
+  {#if annonce}
+    <p class="annonce">
+      <strong>{ANNONCE_TEXTE}</strong>
+      {#if ANNONCE_LIEN}<a href={ANNONCE_LIEN}>En savoir plus →</a>{/if}
+    </p>
+  {/if}
   <p class="entete">
     <span class="etiquette"><span aria-hidden="true">{marque}</span> {STATUT_LIBELLE}</span>
     {#if derniereCollecte}
@@ -66,6 +79,10 @@
   .constitution  { border-color: var(--ardoise); background: var(--ardoise-pale); }
   .tenue         { border-color: var(--recette); background: #f2f7f4; }
 
+  .annonce {
+    margin: 0 0 .5rem; padding-bottom: .5rem; border-bottom: 1px solid var(--trait);
+    font-size: .95rem; line-height: 1.45; color: var(--encre);
+  }
   .entete { margin: 0 0 .3rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; }
   .etiquette {
     font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;

@@ -12,7 +12,7 @@
 </script>
 
 <svelte:head>
-  <title>Dossiers thématiques — {SITE_NOM}</title>
+  <title>Dossiers thématiques - {SITE_NOM}</title>
   <meta name="description" content="Dossiers thématiques : des faits sourcés reliés autour d'une question d'intérêt public, avec ce que nous ne savons pas encore." />
 </svelte:head>
 
@@ -20,8 +20,8 @@
   <h1>Dossiers thématiques</h1>
   <p class="chapeau">
     Le reste du site est de la donnée publique, rangée. Ici, nous écrivons&nbsp;:
-    un dossier relie des faits épars autour d'une question — ce que l'on paie,
-    qui décide, depuis quand — et dit ce que nous ne savons pas encore. Chaque
+    un dossier relie des faits épars autour d'une question, ce que l'on paie,
+    qui décide, depuis quand, et dit ce que nous ne savons pas encore. Chaque
     fait renvoie à sa source. Une personne citée peut répondre par la page
     <a href="/contact">Droit de réponse</a>{#if CONTACT_EMAIL} ou à
     <a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a>{/if}.

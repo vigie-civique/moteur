@@ -85,7 +85,7 @@
 </script>
 
 <svelte:head>
-  <title>Rechercher — {SITE_NOM}</title>
+  <title>Rechercher - {SITE_NOM}</title>
   <meta name="description" content="Chercher dans tout le site : acteurs, délibérations, marchés publics et versements de la commune {COMMUNE_DE} et de son intercommunalité." />
 </svelte:head>
 
@@ -93,7 +93,7 @@
   <h1>Rechercher</h1>
   <p class="sub">
     Dossiers thématiques, conseils en clair, acteurs, délibérations, marchés
-    publics et versements — tout en même temps.
+    publics et versements : tout en même temps.
     Cherchez un nom, mais aussi un sujet («&nbsp;voirie&nbsp;», «&nbsp;école&nbsp;»),
     un montant ou une année.
   </p>
@@ -132,11 +132,11 @@
     <p class="compte">
       {resultats.length.toLocaleString('fr-FR')} résultat{resultats.length > 1 ? 's' : ''}
       {#if Object.keys(parCategorie).length > 1}
-        <em>— {Object.entries(parCategorie)
+        <em>: {Object.entries(parCategorie)
               .map(([k, n]) => `${n} ${(CATEGORIES[k] || k).toLowerCase()}${n > 1 ? 's' : ''}`)
               .join(' · ')}</em>
       {/if}
-      {#if resultats.length > LIMITE}<em>— {LIMITE} premiers affichés, affinez la recherche</em>{/if}
+      {#if resultats.length > LIMITE}<em>, {LIMITE} premiers affichés : affinez la recherche</em>{/if}
     </p>
     <ul class="liste">
       {#each affiches as e, i (e.u + i)}
@@ -160,7 +160,7 @@
   {/if}
 
   {#if chargement}
-    <p class="etat chargeant">Chargement de l'index complet — la recherche porte pour l'instant sur les acteurs seuls.</p>
+    <p class="etat chargeant">Chargement de l'index complet : la recherche porte pour l'instant sur les acteurs seuls.</p>
   {/if}
 </section>
 

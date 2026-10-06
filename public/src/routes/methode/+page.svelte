@@ -6,7 +6,7 @@
   import Niveau from '$lib/components/Niveau.svelte'
 </script>
 
-<svelte:head><title>Méthode &amp; sources — {SITE_NOM}</title>
+<svelte:head><title>Méthode &amp; sources - {SITE_NOM}</title>
   <meta name="description" content="Comment ces données sont collectées, vérifiées et filtrées : sources officielles, règles de publication, corrections et limites connues." /></svelte:head>
 
 <section>
@@ -36,9 +36,9 @@
     national, un site officiel.
   </p>
   <p>
-    En sens inverse, les pistes de travail de l'atelier — une entreprise
+    En sens inverse, les pistes de travail de l'atelier, une entreprise
     soupçonnée d'être liée à une autre, un rapprochement plausible mais non
-    établi — portent un niveau inférieur et <strong>ne sont jamais publiées</strong>.
+    établi, portent un niveau inférieur et <strong>ne sont jamais publiées</strong>.
     {#if data.ecartes.entites}
       À ce titre, {data.ecartes.entites} acteurs,
       {data.ecartes.relations} liens et {data.ecartes.flux} flux financiers
@@ -50,7 +50,7 @@
     « vérifié » pour une source primaire et « confirmé » pour une donnée recoupée
     par au moins deux sources indépendantes. C'était inexact&nbsp;: aucune donnée
     n'a jamais porté ce second niveau, faute d'une règle d'attribution
-    praticable — quelle est la deuxième source indépendante du procès-verbal d'un
+    praticable, quelle est la deuxième source indépendante du procès-verbal d'un
     conseil municipal&nbsp;? La distinction est retirée plutôt que maintenue à vide.
     Nous préférons décrire ce que la chaîne fait réellement.
   </p>
@@ -66,12 +66,12 @@
     <dl class="axes">
       <dt>D'où vient l'information&nbsp;?</dt>
       <dd>
-        <strong>Source primaire</strong> — publiée par l'autorité qui a pris la
-        décision&nbsp;: {data.provenance.provenance?.primaire ?? '—'} actes.
-        <strong>Registre national</strong> — enregistrée par un tiers officiel,
+        <strong>Source primaire</strong>, publiée par l'autorité qui a pris la
+        décision&nbsp;: {data.provenance.provenance?.primaire ?? '-'} actes.
+        <strong>Registre national</strong> : enregistrée par un tiers officiel,
         qui atteste de la <em>déclaration</em> qui lui a été faite et non du fait
-        déclaré&nbsp;: {data.provenance.provenance?.registre ?? '—'} actes.
-        <strong>Source secondaire</strong> — rapportée par un tiers&nbsp;:
+        déclaré&nbsp;: {data.provenance.provenance?.registre ?? '-'} actes.
+        <strong>Source secondaire</strong>, rapportée par un tiers&nbsp;:
         {data.provenance.provenance?.secondaire ?? 0}. Une source que nous
         n'avons pas classée tombe dans cette dernière catégorie&nbsp;: le doute
         joue contre nous.
@@ -79,23 +79,23 @@
 
       <dt>Pouvez-vous consulter la pièce&nbsp;?</dt>
       <dd>
-        <strong>Document consultable</strong> — un PDF est accessible, la
+        <strong>Document consultable</strong> : un PDF est accessible, la
         pièce de l'acte ou, le plus souvent, le recueil ou le compte rendu de
-        sa séance (le lien de chaque acte dit lequel)&nbsp;: {data.provenance.document?.acte ?? '—'}.
-        <strong>Page source</strong> — le lien mène à la page qui contient
+        sa séance (le lien de chaque acte dit lequel)&nbsp;: {data.provenance.document?.acte ?? '-'}.
+        <strong>Page source</strong> : le lien mène à la page qui contient
         l'acte, le plus souvent le compte rendu entier et non la délibération
-        isolée&nbsp;: {data.provenance.document?.page_source ?? '—'}. C'est notre
+        isolée&nbsp;: {data.provenance.document?.page_source ?? '-'}. C'est notre
         principale faiblesse, et elle se voit ici plutôt que d'être tue.
         <strong>Sans document</strong>&nbsp;: {data.provenance.document?.aucun ?? 0}.
       </dd>
 
       <dt>Qu'avons-nous fait entre la source et l'affichage&nbsp;?</dt>
       <dd>
-        <strong>Donnée structurée</strong> — reprise telle quelle d'un flux, sans
-        étape d'interprétation&nbsp;: {data.provenance.traitement?.structure ?? '—'}.
-        <strong>Extraite d'un document</strong> — lue dans un PDF ou un compte
+        <strong>Donnée structurée</strong>, reprise telle quelle d'un flux, sans
+        étape d'interprétation&nbsp;: {data.provenance.traitement?.structure ?? '-'}.
+        <strong>Extraite d'un document</strong>, lue dans un PDF ou un compte
         rendu par reconnaissance de caractères ou par modèle de langage&nbsp;:
-        {data.provenance.traitement?.extraction ?? '—'}. C'est là que naissent
+        {data.provenance.traitement?.extraction ?? '-'}. C'est là que naissent
         les erreurs de lecture. <strong>Rectifiée</strong> après vérification
         humaine&nbsp;: {data.provenance.traitement?.rectifie ?? 0}.
       </dd>
@@ -103,7 +103,7 @@
   {/if}
 
   <p>
-    Une quatrième dimension serait utile — la <strong>concordance</strong>,
+    Une quatrième dimension serait utile : la <strong>concordance</strong>,
     c'est-à-dire savoir si plusieurs sources indépendantes disent la même chose.
     Nous ne la produisons pas, parce que rien dans notre chaîne ne recoupe
     aujourd'hui deux sources indépendantes. L'afficher reviendrait à répondre
@@ -132,7 +132,7 @@
   </Niveau>
   <p class="apres">
     Un <strong>calcul</strong> n'est écrit dans aucun document&nbsp;: c'est nous
-    qui comptons. Il dépend entièrement de ce qui a été collecté — un marché que
+    qui comptons. Il dépend entièrement de ce qui a été collecté : un marché que
     nous n'avons pas trouvé n'y figure pas, et le total est donc un minimum, pas
     une vérité comptable.
   </p>
@@ -171,8 +171,8 @@
   </p>
 
   <p class="renvoi">
-    Le détail de ce que la collecte couvre — période par source, fraîcheur des
-    collecteurs, documents manquants — est sur la page
+    Le détail de ce que la collecte couvre, période par source, fraîcheur des
+    collecteurs, documents manquants, est sur la page
     <a href="/couverture">Couverture et lacunes</a>.
   </p>
 
@@ -182,7 +182,7 @@
   <p>
     Le site suit la <strong>chaîne de décision</strong>, pas le voisinage
     géographique. Il couvre donc <strong>{COMMUNE}</strong> en profondeur, et la
-    <strong>{EPCI}</strong> — l'échelon
+    <strong>{EPCI}</strong> : l'échelon
     qui exerce à la place de la commune l'eau, l'assainissement, les déchets et
     le développement économique.
   </p>
@@ -191,7 +191,7 @@
     niveau que {COMMUNE}, mais elles ne sont <strong>pas publiées en fiches</strong> :
     elles servent à situer {COMMUNE} parmi ses pairs (fiscalité, population,
     urbanisme, résultats électoraux). Seules apparaissent en fiche les
-    institutions — mairies, intercommunalité, syndicats — et les personnes qui
+    institutions, mairies, intercommunalité, syndicats, et les personnes qui
     siègent au conseil communautaire, parce qu'elles décident pour {COMMUNE}.
   </p>
   <p>
@@ -212,21 +212,21 @@
        page qui en rend compte. -->
   <h2>Ce modèle est fait pour être repris</h2>
   <p>
-    Rien ici ne vaut spécifiquement pour {COMMUNE}. Le même dispositif —
-    collecteurs, base, règles de publication, site — est conçu pour être
+    Rien ici ne vaut spécifiquement pour {COMMUNE}. Le même dispositif,
+    collecteurs, base, règles de publication, site, est conçu pour être
     <strong>rejoué sur n'importe quelle commune française</strong>, et
     singulièrement sur les <strong>petites communes rurales</strong> : le
     régime général d'open data ne vise que les collectivités de plus de
     3 500 habitants employant plus de 50 agents, et {COMMUNE} n'en relève pas.
-    D'autres obligations de publication demeurent — les actes des communes de
+    D'autres obligations de publication demeurent : les actes des communes de
     moins de 3 500 habitants doivent être rendus publics, la commune choisissant
     entre affichage, papier et forme électronique, et l'électronique s'applique
     à défaut de choix. Ce qui manque ici, ce n'est donc pas le droit de savoir :
     c'est un endroit où tout se lit ensemble.
   </p>
   <p>
-    Le périmètre d'une instance — la commune, son intercommunalité, ses communes
-    membres — tient dans un fichier de configuration. Le reste demande du
+    Le périmètre d'une instance, la commune, son intercommunalité, ses communes
+    membres, tient dans un fichier de configuration. Le reste demande du
     travail : les collecteurs nationaux fonctionnent tels quels partout, mais le
     site officiel de chaque mairie a sa propre structure et réclame son propre
     analyseur. Comptez quelques jours, pas une heure.
@@ -249,7 +249,7 @@
   <p>
     Le dispositif a deux moitiés. <strong>Ce site</strong> ne sert que des
     données filtrées, il est entièrement statique et n'interroge aucune base.
-    <strong>L'outil d'édition</strong>, lui, travaille sur la base complète —
+    <strong>L'outil d'édition</strong>, lui, travaille sur la base complète :
     celle qui contient les pistes non vérifiées et les personnes sans rôle
     public, tout ce que le filtre écarte. Il n'a pas vocation à être en ligne&nbsp;:
     chaque instance décide s'il tourne seulement sur la machine de collecte, sur
@@ -272,12 +272,12 @@
   </p>
   <ul>
     <li>
-      <a href="/data/entities.json">entities.json</a> — les acteurs ·
-      <a href="/data/relations.json">relations.json</a> — les liens, datés et
-      sourcés · <a href="/data/events.json">events.json</a> — les actes.
+      <a href="/data/entities.json">entities.json</a> : les acteurs ·
+      <a href="/data/relations.json">relations.json</a> : les liens, datés et
+      sourcés · <a href="/data/events.json">events.json</a> : les actes.
     </li>
     <li>
-      <a href="/data/popolo.json">popolo.json</a> — les mandats au format
+      <a href="/data/popolo.json">popolo.json</a> : les mandats au format
       <a href="https://www.popoloproject.com/" target="_blank" rel="noopener">Popolo</a>,
       le vocabulaire commun des projets de transparence démocratique. Un outil
       qui parle déjà Popolo lit ce fichier sans rien connaître de ce site.
@@ -286,7 +286,7 @@
       <a href="/data/intercommunalite.json">intercommunalite.json</a>,
       <a href="/data/marches.json">marches.json</a>,
       <a href="/data/flows.json">flows.json</a>,
-      <a href="/data/dvf.json">dvf.json</a> et les autres — voir le
+      <a href="/data/dvf.json">dvf.json</a> et les autres : voir le
       dictionnaire.
     </li>
   </ul>

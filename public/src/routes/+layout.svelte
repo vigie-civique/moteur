@@ -174,7 +174,7 @@
 
   <footer>
     <div class="fdesc">
-      Veille citoyenne — données publiques (SIRENE, RNA, DVF, BODACC, OFGL, DECP, délibérations).
+      Veille citoyenne : données publiques (SIRENE, RNA, DVF, BODACC, OFGL, DECP, délibérations).
     </div>
     <nav class="fnav">
       <a href="/nouveautes">Ce qui a changé</a>

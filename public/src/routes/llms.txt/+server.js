@@ -20,7 +20,7 @@ export function GET() {
 
   const arrete = (s.generated_at || '').slice(0, 10) || 'inconnue'
 
-  const body = `# ${SITE_NOM} — ${SITE_BASELINE}
+  const body = `# ${SITE_NOM} : ${SITE_BASELINE}
 
 > Observatoire citoyen de la commune ${COMMUNE_DE} (${CODE_POSTAL}) et de
 > son intercommunalité, la ${EPCI}.
@@ -49,15 +49,15 @@ export function GET() {
 Publiées en JSON, sans inscription ni clé d'API, sous licence ODbL
 (code sous licence MIT) :
 
-- ${SITE_URL}/data/entities.json — acteurs
-- ${SITE_URL}/data/relations.json — liens entre acteurs
-- ${SITE_URL}/data/events.json — actes et événements
-- ${SITE_URL}/data/marches.json — marchés publics
-- ${SITE_URL}/data/flows.json — flux financiers
-- ${SITE_URL}/data/dvf.json — mutations foncières
-- ${SITE_URL}/data/popolo.json — élus et mandats (format Popolo)
-- ${SITE_URL}/data/stats.json — compteurs, exclusions, qualité de localisation
-- ${SITE_URL}/data/README.md — dictionnaire des données
+- ${SITE_URL}/data/entities.json : acteurs
+- ${SITE_URL}/data/relations.json : liens entre acteurs
+- ${SITE_URL}/data/events.json : actes et événements
+- ${SITE_URL}/data/marches.json : marchés publics
+- ${SITE_URL}/data/flows.json : flux financiers
+- ${SITE_URL}/data/dvf.json : mutations foncières
+- ${SITE_URL}/data/popolo.json : élus et mandats (format Popolo)
+- ${SITE_URL}/data/stats.json : compteurs, exclusions, qualité de localisation
+- ${SITE_URL}/data/README.md : dictionnaire des données
 
 ## Précautions d'interprétation
 
@@ -68,7 +68,7 @@ c'est le point le plus important de ce fichier.
   publique ou institutionnelle. Il n'établit ni influence, ni proximité
   politique, ni conflit d'intérêts.
 - Qu'un élu dirige une association subventionnée n'est pas une infraction. La
-  loi lui impose de ne pas participer au vote la concernant — c'est le déport,
+  loi lui impose de ne pas participer au vote la concernant : c'est le déport,
   et c'est cela que le site documente quand la source le permet.
 - L'absence de mention de déport dans un compte rendu ne prouve pas son
   absence : tous les comptes rendus ne détaillent pas les votes.

@@ -10,7 +10,7 @@
   // Chaque carte annonce depuis le 11/08/2026 le volume qu'elle couvre.
   export let data
 
-  const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const nombre = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
   const jour = (d) => (d ? new Date(d).toLocaleDateString('fr-FR') : '')
   $: hatvp = data.hatvp || []
   $: justice = data.justice || []
@@ -36,7 +36,7 @@
     // données ne permettent pas : une relation documentée n'établit pas une
     // influence. Le titre dit maintenant ce que la page montre réellement.
     { icone: 'graphe', titre: 'Les liens entre acteurs', href: '/graphe',
-      sub: 'Qui est lié à qui — relations vérifiées uniquement.',
+      sub: 'Qui est lié à qui, relations vérifiées uniquement.',
       valeur: nombre(data.relations), unite: 'liens vérifiés' },
     { icone: 'recherche', titre: 'Élus et structures subventionnées', href: '/elus-et-structures',
       sub: "Quand un élu dirige une structure qui reçoit de l'argent public : les déports constatés.",
@@ -47,7 +47,7 @@
 </script>
 
 <svelte:head>
-  <title>Qui décide ? — {SITE_NOM}</title>
+  <title>Qui décide ? - {SITE_NOM}</title>
   <meta name="description" content="La gouvernance {COMMUNE_DE} : élus, intercommunalité, délibérations et liens documentés entre acteurs." />
 </svelte:head>
 
@@ -83,7 +83,7 @@
       <ul>
         {#each hatvp as d}
           <li>
-            <b>{d.prenom} {d.nom}</b> — {d.qualite}.
+            <b>{d.prenom} {d.nom}</b> : {d.qualite}.
             Déclaration {d.type_document === 'dsp' ? 'de situation patrimoniale' : "d'intérêts"} :
             <i>{d.statut}</i>{#if d.date_publication} (publiée le {jour(d.date_publication)}){/if}.
             {#if d.url}<a href={d.url} rel="noopener">dossier à la HATVP ↗</a>{/if}
@@ -94,7 +94,7 @@
       <p class="dit">Aucun responsable public n'est ici soumis à l'obligation de
         déclarer ses intérêts à la Haute Autorité : le seuil est de
         20 000 habitants pour les communes comme pour les intercommunalités.
-        <b>Une liste vide ne signale donc aucun manquement</b> — elle dit que la
+        <b>Une liste vide ne signale donc aucun manquement</b> : elle dit que la
         loi n'exige rien à cette échelle.</p>
     {/if}
 
@@ -103,7 +103,7 @@
       <ul>
         {#each justice as d}
           <li>
-            {jour(d.date_dec)} — {d.juridiction}, n° {d.numero}
+            {jour(d.date_dec)} : {d.juridiction}, n° {d.numero}
             {#if d.type_recours}<span class="muted">({d.type_recours})</span>{/if}
             {#if d.url}· <a href={d.url} rel="noopener">texte intégral ↗</a>{/if}
           </li>

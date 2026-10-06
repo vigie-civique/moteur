@@ -47,11 +47,11 @@
   $: delegesCommune = delegues.filter(d => d.commune_fiable && d.commune === communeDuSite?.nom)
   $: delegesAutres = delegues.filter(d => !(d.commune_fiable && d.commune === communeDuSite?.nom))
 
-  const nb = (n) => n?.toLocaleString('fr-FR') ?? '—'
+  const nb = (n) => n?.toLocaleString('fr-FR') ?? '-'
 </script>
 
 <svelte:head>
-  <title>Intercommunalité ({EPCI_COURT}) — {SITE_NOM}</title>
+  <title>Intercommunalité ({EPCI_COURT}) - {SITE_NOM}</title>
   <meta name="description"
         content="Ce que la {EPCI} décide à la place {COMMUNE_DE} : compétences transférées, délégués, poids de chaque commune." />
 </svelte:head>
@@ -69,7 +69,7 @@
   {#if cc}
     <div class="reperes">
       <div class="repere">
-        <span class="chiffre">{cc.membres?.length ?? '—'}</span>
+        <span class="chiffre">{cc.membres?.length ?? '-'}</span>
         <span class="libelle">communes membres</span>
       </div>
       <div class="repere">
@@ -77,11 +77,11 @@
         <span class="libelle">habitants</span>
       </div>
       <div class="repere">
-        <span class="chiffre">{cc.competences?.length ?? '—'}</span>
+        <span class="chiffre">{cc.competences?.length ?? '-'}</span>
         <span class="libelle">compétences exercées</span>
       </div>
       <div class="repere accent">
-        <span class="chiffre">{communeDuSite?.sieges ?? '—'}<span class="sur">/{totalSieges}</span></span>
+        <span class="chiffre">{communeDuSite?.sieges ?? '-'}<span class="sur">/{totalSieges}</span></span>
         <span class="libelle">sièges pour {COMMUNE}</span>
       </div>
     </div>
@@ -146,12 +146,12 @@
                 {#if m.est_commune_du_site}<span class="ici-tag">ici</span>{/if}
               </td>
               <td class="num">{nb(m.population)}</td>
-              <td class="num">{m.sieges || '—'}</td>
+              <td class="num">{m.sieges || '-'}</td>
               <td class="barre-cell">
                 <span class="barre" style="width:{(m.sieges / maxSieges) * 100}%"
                       aria-hidden="true"></span>
               </td>
-              <td class="num">{parSiege(m) ? nb(parSiege(m)) : '—'}</td>
+              <td class="num">{parSiege(m) ? nb(parSiege(m)) : '-'}</td>
             </tr>
           {/each}
         </tbody>
@@ -214,14 +214,14 @@
     {#if events.length}
       <h2>Les actes du conseil communautaire</h2>
       <p class="chapeau">
-        Délibérations, procès-verbaux et arrêtés préfectoraux — les 40 plus récents.
+        Délibérations, procès-verbaux et arrêtés préfectoraux : les 40 plus récents.
         Le site de la communauté de communes ne conserve pas tout en ligne : ces documents
         sont archivés à mesure de leur publication.
       </p>
       <ul class="liste">
         {#each events as e (e.id)}
           <li>
-            <span class="date">{e.date || '—'}</span>
+            <span class="date">{e.date || '-'}</span>
             <span class="titre">{e.title || '(sans titre)'}</span>
             {#if e.source_url}
               <a href={e.source_url} target="_blank" rel="noopener">source ↗</a>
