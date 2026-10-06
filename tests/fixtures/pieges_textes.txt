@@ -1,0 +1,29 @@
+# Les pièges du masquage : des phrases qu'un acte peut porter, et ce qui ne doit
+# JAMAIS en sortir. Une ligne = « phrase | fragment interdit ; autre fragment ».
+# `\n` écrit un retour à la ligne (l'océrisation coupe les adresses).
+#
+# tests/test_publication.py les passe toutes par `texte_publiable` : la phrase
+# est soit masquée, soit refusée — aucun fragment interdit ne sort. Une forme
+# relevée en production s'ajoute ICI d'abord, avant de toucher au masque.
+
+# ── naissance ────────────────────────────────────────────────────────────────
+M. Paul DUPONT, né à Castres le 5 mars 1961, a demandé | Castres ; 5 mars ; 1961
+Madame Claire MARTIN, née à Saint-Jean-du-Gard, le 12/10/1985, est nommée | Saint-Jean ; 12/10 ; 1985
+Mme Claire MARTIN née en Algérie le 3 janvier 1950 sollicite | Algérie ; 3 janvier ; 1950
+Date de naissance : 05/03/1961 | 05/03 ; 1961
+Date et lieu de naissance : 5 mars 1961 à Castres | 5 mars ; 1961 ; Castres
+Monsieur Paul DUPONT, né en 1961, retraité | 1961
+Luc MARTIN, né en 1987, est recruté | 1987
+M. Paul DUPONT né(e) le 05/03/1961 à Castres | 05/03 ; 1961 ; Castres
+M. Paul DUPONT, né le 5 mars 1961 à Castres (Tarn) | 5 mars ; 1961 ; Castres
+M. Paul DUPONT, né à Castres, artisan | Castres
+M. Paul DUPONT est né à la clinique le 5 mars 1961 | 5 mars ; 1961
+Paul dupont, né dans le Tarn en 1961, demande | 1961
+
+# ── domicile ─────────────────────────────────────────────────────────────────
+Mme Anne DURAND, demeurant à Testonville, 5 rue des Lilas, sollicite | 5 rue ; Lilas ; Testonville
+M. Paul DUPONT, domicilié au lieu-dit Mas de la Combe, demande | Mas de la Combe
+Mme Anne DURAND demeurant 5 rue des Lilas, 81100 Castres, sollicite | 5 rue ; Lilas ; 81100 ; Castres
+Anne DURAND, demeurant à Testonville,\n12 bis chemin du Moulin, sollicite | chemin ; Moulin
+M. Paul DUPONT, résidant actuellement dans la commune au 14 impasse des Merles | 14 impasse ; Merles
+M. Paul DUPONT domicilié à testonville, 5 rue des Lilas | 5 rue ; Lilas

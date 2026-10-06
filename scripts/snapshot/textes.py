@@ -323,9 +323,18 @@ def compilateur_redaction(conn, ids_publics: set[int]):
 # Ville » que l'océrisation mêle sur plusieurs lignes. Un courriel nominatif
 # (prénom.nom@) est masqué au titre des coordonnées des personnes.
 #
+# Formes ajoutées le 06/10 après une revue externe, qui les faisait toutes sortir :
+# « né à Castres le 5 mars 1961 » (le lieu avant la date), « Date de naissance :
+# 05/03/1961 », « né en 1961 », « demeurant à Testonville, 5 rue des Lilas » (le
+# masque s'arrêtait à la virgule), « domicilié au lieu-dit Mas de la Combe ».
+# Elles vivent dans tests/fixtures/pieges_textes.txt : une forme nouvelle s'y
+# ajoute d'abord.
+#
 # 🔴 Le filet : ce que ces règles n'ont pas su masquer est cherché une seconde
 # fois, et l'EXTRAIT n'est alors pas publié — l'acte, son titre et le lien vers
-# la pièce restent.
+# la pièce restent. Il ne cherche PAS les mêmes formes que le masque, sinon il
+# en partage les angles morts : il cherche un voisinage — « né » puis une date
+# ou une année du XXe siècle dans les quarante caractères, un verbe de domicile puis un numéro de voie.
 _MOIS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
          "aout", "septembre", "octobre", "novembre", "decembre")
 _MOIS_RE = r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)"
@@ -340,19 +349,35 @@ _LIEU = (rf"(?-i:[{_MAJ}])[\w'’\-]+"
          rf"(?:[ \-](?:sur|sous|en|de|du|des|la|le|les|lès|(?-i:[{_MAJ}][{_MIN}'’\-]+)))*"
          r"(?:\s*\(\s*\d[\d\s]*\))?")
 _NAISSANCE = re.compile(
-    rf"\b(?P<est>est\s+)?n(?P<genre>[ée]e?)\s+le\s+(?P<date>{_DATE_COMPLETE})"
-    rf"(?P<lieu>\s+à\s+{_LIEU})?", re.I)
+    rf"\b(?P<est>est\s+)?n(?P<genre>[ée](?:\(e\)|e)?)\s+(?:"
+    rf"le\s+(?P<date>{_DATE_COMPLETE})(?P<lieu>\s+à\s+{_LIEU})?"
+    # Avec la date d'abord : seul, `_LIEU` emporte le « le » qui la précède.
+    rf"|(?P<lieu_avant>(?:à|au|aux|en)\s+{_LIEU})\s*,?\s*le\s+(?P<date_apres>{_DATE_COMPLETE})"
+    rf"|(?P<lieu_seul>(?:à|au|aux|en)\s+{_LIEU})"
+    r"|en\s+(?P<annee>(?:19|20)\d{2})\b"
+    r")", re.I)
+_DATE_DE_NAISSANCE = re.compile(
+    rf"(date\s+(?:et\s+lieu\s+)?de\s+naissance\s*:?\s*){_DATE_COMPLETE}(?:\s+à\s+{_LIEU})?", re.I)
+# « Né à Castres » ou « né en 1961 », sans date complète, ne dit une naissance
+# que d'une PERSONNE : « le projet est né à Lasalle », « la communauté de
+# communes, née en 2017 de la fusion » restent. Une civilité, ou un « Prénom
+# NOM », dans ce qui précède.
+_PRENOM_NOM_AVANT = re.compile(rf"(?-i:[{_MAJ}][{_MIN}\-]{{2,}}\s+[{_MAJ}][{_MAJ}'’\-]+)[^\n]{{0,30}}$")
 _VOIE = (r"(?:grande\s+rue|rue|chemin|all[ée]e|impasse|route|rte|avenue|place|"
          r"boulevard|quai|lotissement|mont[ée]e|traverse|passage|hameau|"
          r"quartier|domaine|r[ée]sidence)")
 _ADRESSE_NUMEROTEE = (r"\s*(?:au|à|:)?\s*\d{1,4}\s*(?:bis|ter)?\s*,?[^\d,.;]{0,25}?"
                       rf"\b{_VOIE}\b")
+_CP_VILLE = rf"(?:\s*,?\s*\d{{2}}\s?\d{{3}}\s+{_LIEU})?"
 _DOMICILE = re.compile(
     r"\b(?P<verbe>domicili[ée]e?s?|demeurant|r[ée]sidant)(?:"
     rf"\s+à\s+l['’]adresse\s*«[^»]{{0,160}}»(?:\s+à\s+{_LIEU})?"
     rf"|{_ADRESSE_NUMEROTEE}\s*[^,.;\n]{{0,80}}?(?=\s+à\s|\s*[,.;]|\s*\n|\s*$)"
-    rf"(?:\s+à\s+{_LIEU})?"
-    rf"|(?P<lieudit>\s+(?:à|au|aux|en)\s+{_LIEU})"
+    rf"(?:\s+à\s+{_LIEU})?{_CP_VILLE}"
+    # La commune d'abord, la voie ensuite : « demeurant à Testonville, 5 rue des
+    # Lilas ». La voie numérotée est un domicile, civilité ou non.
+    rf"|(?P<lieudit>\s+(?:à|au|aux|en)\s+(?:lieu[- ]dit\s+)?{_LIEU})"
+    rf"(?P<voie_apres>\s*,{_ADRESSE_NUMEROTEE}\s*[^,.;\n]{{0,80}}?(?=\s*[,.;]|\s*\n|\s*$))?"
     r")", re.I)
 # Un domicile sans numéro n'en est un que pour une PERSONNE : « M. et Mme X
 # domiciliés à Croix de Castres » — mais « l'association domiciliée à Viane ».
@@ -372,9 +397,16 @@ _NOM_AVEC_CIVILITE = re.compile(
 _FONCTION_D_ELU = re.compile(
     r"\bMaire\b|\b\d+\s*(?:er|ère|e|ème|nd|nde)\s+adjointe?\b"
     r"|\bConseill(?:er|ère)\s+municipal(?:e)?\b", re.I)
+# « né » exige ici son accent : « ne le fera qu'après le 12 mars 2022 » n'est
+# pas une naissance. Le crochet arrête la recherche : « née le [date masquée]
+# est nommée à compter du 1er janvier 2022 » est déjà masqué.
 _RESIDU = re.compile(
     rf"\bn[ée]e?\s+le\s+{_DATE_COMPLETE}|date\s+de\s+naissance\s+adresse"
-    rf"|\b(?:domicili[ée]e?s?|demeurant|r[ée]sidant){_ADRESSE_NUMEROTEE}", re.I)
+    rf"|\bné(?:\(e\)|e)?s?\b[^.;\[]{{0,40}}?(?:{_DATE_COMPLETE}|\b19\d{{2}}\b)"
+    r"|date\s+(?:et\s+lieu\s+)?de\s+naissance\b[^.;\[]{0,40}?\d"
+    rf"|\b(?:domicili[ée]e?s?|demeurant|r[ée]sidant){_ADRESSE_NUMEROTEE}"
+    r"|\b(?:domicili[ée]e?s?|demeurant|r[ée]sidant)\b[^.;]{0,80}?"
+    rf"\b\d{{1,4}}\s*(?:bis|ter)?\s*,?\s*{_VOIE}\b", re.I)
 
 
 def _age(naissance: str, jour: str | None) -> int | None:
@@ -441,25 +473,46 @@ def masquer_donnees_personnelles(texte: str, jour: str | None,
         return "\n".join(lignes) + "\n"
 
     def naissance(m):
-        feminin = "e" if m.group("genre").lower().endswith("e") else ""
+        genre = m.group("genre").lower()
+        feminin = "(e)" if "(" in genre else "e" if genre.endswith("e") else ""
         est = m.group("est") or ""
-        if _nomme_une_personne_publique(courant[:m.start()], noms_publics):
-            age = _age(m.group("date"), jour)
+        avant = courant[:m.start()]
+        date = m.group("date") or m.group("date_apres")
+        if not date:
+            # Sans date complète : « ne » sans accent est une négation, et il
+            # faut une personne devant.
+            if genre[0] == "e" or not (
+                    _CIVILITE_AVANT.search(avant) or _PRENOM_NOM_AVANT.search(avant)
+                    or _nomme_une_personne_publique(avant, noms_publics)):
+                return m.group(0)
+            compteur["naissance"] += 1
+            if m.group("annee"):
+                return f"{est}né{feminin} en [année masquée]"
+            return f"{est}né{feminin} à [lieu masqué]"
+        if _nomme_une_personne_publique(avant, noms_publics):
+            age = _age(date, jour)
             if age is not None:
                 compteur["naissance_en_age"] += 1
                 return f"{est}âgé{feminin} de {age} ans"
         compteur["naissance"] += 1
-        masque = "[date et lieu masqués]" if m.group("lieu") else "[date masquée]"
+        lieu = m.group("lieu") or m.group("lieu_avant")
+        masque = "[date et lieu masqués]" if lieu else "[date masquée]"
         return f"{est}né{feminin} le {masque}"
 
+    def date_de_naissance(m):
+        compteur["naissance"] += 1
+        return f"{m.group(1)}[date masquée]"
+
     def domicile(m):
-        if m.group("lieudit") is not None and not _CIVILITE_AVANT.search(courant[:m.start()]):
+        if (m.group("lieudit") is not None and m.group("voie_apres") is None
+                and not _CIVILITE_AVANT.search(courant[:m.start()])):
             return m.group(0)
         compteur["domicile"] += 1
         return f"{m.group('verbe')} [domicile masqué]"
 
     courant = _TABLEAU_DES_ELUS.sub(tableau, texte)
     courant = _NAISSANCE.sub(naissance, courant)
+    courant = _DATE_DE_NAISSANCE.sub(date_de_naissance, courant)
     courant = _DOMICILE.sub(domicile, courant)
     courant, n = _COURRIEL_NOMINATIF.subn("[courriel masqué]", courant)
     compteur["courriel"] += n
