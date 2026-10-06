@@ -65,3 +65,23 @@ def test_marches_approbations_et_budget_vote_sortent_masques_avec_leur_confiance
     assert "1961" not in publie and "Lilas" not in publie
     assert faits["marches_data"][0]["confidence"] == "verified"
     assert faits["approbations_data"][0]["confidence"] == "verified"
+
+
+# ── Ce qui sort tel que relu : refusé, jamais masqué ─────────────────────────
+
+from scripts.snapshot.textes import porte_une_donnee_personnelle  # noqa: E402
+
+
+def test_un_texte_relu_qui_porte_naissance_ou_domicile_est_reconnu():
+    assert porte_une_donnee_personnelle(
+        "M. Gaston PIEGEDOSSIER, né le 05/03/1961, domicilié 5 rue des Lilas")
+    assert porte_une_donnee_personnelle("Mme PIEGEDOSSIER demeurant à Testonville, 5 rue des Lilas")
+    assert porte_une_donnee_personnelle("M. PIEGEDOSSIER né un matin de 1961")
+
+
+def test_un_dossier_ordinaire_nest_pas_refuse():
+    assert not porte_une_donnee_personnelle(None)
+    assert not porte_une_donnee_personnelle(
+        "Le service de l'eau est né en 2017 du transfert à la communauté de communes. "
+        "L'association, domiciliée à Testonville, écrit à la régie (`contact.eau@exemple.fr`). "
+        "Le conseil ne le fera qu'après le 12 mars 2022.")

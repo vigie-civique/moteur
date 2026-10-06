@@ -14,6 +14,7 @@ from pathlib import Path
 
 from collectors.graphe import Graphe, personnes_morales_par_acte
 from scripts.snapshot.socle import ROOT, row, write_json
+from scripts.snapshot.textes import porte_une_donnee_personnelle
 
 
 # ── Le conseil en clair : ce que l'atelier a RETENU, et rien d'autre ─────────
@@ -48,6 +49,18 @@ def _liens_en_clair(releve: dict, graphe) -> dict:
     return liens
 
 
+def _chaines(noeud):
+    """Tout le texte d'un relevé, où qu'il soit rangé."""
+    if isinstance(noeud, str):
+        yield noeud
+    elif isinstance(noeud, dict):
+        for v in noeud.values():
+            yield from _chaines(v)
+    elif isinstance(noeud, list):
+        for v in noeud:
+            yield from _chaines(v)
+
+
 def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
     from collectors.en_clair.rendu import document, feuilles, page_erreurs
     from collectors.en_clair.seances import nom_de_fichier, releves, seance_id
@@ -60,7 +73,7 @@ def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
     for f in dossier.glob("*.html"):         # miroir : une feuille retirée sort
         f.unlink()
     index, ecartes = [], {"non_retenus": 0, "en_faute": [], "sans_seance": [],
-                          "modifies": []}
+                          "modifies": [], "donnee_personnelle": []}
     emp = "empreinte" if a_la_colonne_empreinte(conn) else "NULL AS empreinte"
     for chemin, r in releves(root):
         sid = seance_id(conn, r)
@@ -79,6 +92,11 @@ def export_en_clair(conn, out: Path, root: Path, graphe=None) -> dict:
             continue
         if verifier(chemin):
             ecartes["en_faute"].append(chemin.parent.name)
+            continue
+        # `verifier` contrôle les chiffres, pas les personnes. Une feuille sort
+        # telle qu'elle a été relue : on ne la masque pas, on la refuse.
+        if porte_une_donnee_personnelle("\n".join(_chaines(r))):
+            ecartes["donnee_personnelle"].append(chemin.parent.name)
             continue
         # La mention publique ne porte pas l'adresse du relecteur : une date suffit
         # à dire que quelqu'un a regardé et l'assume.
@@ -135,6 +153,11 @@ def export_dossiers(conn, out: Path, root: Path, graphe=None) -> dict:
     from collectors.graphe import Graphe
     graphe = graphe or Graphe()
     sortis, ecartes = publiables(conn, root)
+    # Même règle que pour les feuilles : relu ne veut pas dire sans domicile ni
+    # date de naissance. Le dossier ne sort pas tant que son texte en porte.
+    refuses = [d["slug"] for d in sortis if porte_une_donnee_personnelle(d["texte"])]
+    sortis = [d for d in sortis if d["slug"] not in refuses]
+    ecartes = {**ecartes, "donnee_personnelle": refuses}
     citations = Counter()
     perimes = []
     for d in sortis:

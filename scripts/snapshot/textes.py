@@ -527,6 +527,26 @@ def masquer_donnees_personnelles(texte: str, jour: str | None,
     return courant
 
 
+def porte_une_donnee_personnelle(texte: str | None) -> bool:
+    """Le masque aurait-il quelque chose à retirer de ce texte ?
+
+    Pour ce qui sort TEL QU'IL A ÉTÉ RELU — un dossier, une feuille de séance.
+    Le masquer à la publication publierait un autre texte que celui qu'on a
+    retenu ; on ne le masque donc pas, on refuse de le sortir tant qu'il porte
+    une naissance ou un domicile.
+
+    Pas le courriel : le motif « mot.mot@ » prend aussi une adresse de service
+    (`contact.eau@…`), qu'un dossier cite à bon droit — un refus pour si peu
+    retirerait du site un dossier entier.
+    """
+    if not texte:
+        return False
+    compteur = Counter()
+    masquer_donnees_personnelles(texte, None, set(), compteur)
+    return bool(_RESIDU.search(texte)) or any(
+        compteur[c] for c in ("naissance", "naissance_en_age", "domicile", "tableau_des_elus"))
+
+
 #: Ce qui remplace un champ que le filet refuse : la ligne reste, le champ non.
 CHAMP_RETIRE = "[texte retiré : il porte une donnée personnelle]"
 
