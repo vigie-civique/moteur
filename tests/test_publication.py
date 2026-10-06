@@ -488,6 +488,25 @@ def test_un_acte_cite_ses_particuliers_mais_masque_naissance_et_domicile(bps):
         assert masque(intact) == intact
 
 
+def test_un_point_de_lordre_du_jour_ne_nomme_pas_un_particulier(bps, base, entite):
+    """🔴 L'ordre du jour d'une convocation publiait « Demande de M. X » en clair :
+    il ne passait que par le masque des naissances et des domiciles, alors que
+    rien n'y est encore délibéré. Retiré une première fois le 21/08 pour cette
+    raison, revenu avec les convocations le 01/10."""
+    from collections import Counter
+    _personne(base, entite, "Gaston", "PIEGEPART")
+    _personne(base, entite, "Paul", "DURANDAL")
+    elu = _personne(base, entite, "Jeanne", "VERDIER")
+    redige, _ = bps.compilateur_redaction(base, {elu})
+
+    c = bps.convocation_publique(
+        {"ordre_du_jour": ["Demande de M. PIEGEPART", "Vente à Gaston PIEGEPART",
+                           "Élection de Jeanne VERDIER", "FPIC 2026"]},
+        "2026-09-23", set(), Counter(), redige)
+    assert c["ordre_du_jour"] == ["Demande de un particulier", "Vente à un particulier",
+                                  "Élection de Jeanne VERDIER", "FPIC 2026"]
+
+
 def test_le_tableau_des_elus_garde_les_noms_et_les_fonctions(bps):
     """L'océrisation mêle les colonnes « Date de naissance Adresse CP Ville » sur
     plusieurs lignes : on ne garde de chaque ligne que l'élu et sa fonction."""
