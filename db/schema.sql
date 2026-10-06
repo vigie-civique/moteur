@@ -1325,7 +1325,8 @@ CREATE TABLE IF NOT EXISTS icpe_installations (
     lat            REAL,
     lng            REAL,
     raw_data       TEXT,
-    created_at     TEXT DEFAULT (datetime('now'))
+    created_at     TEXT DEFAULT (datetime('now')),
+    forme_juridique TEXT   -- catégorie juridique INSEE de l'exploitant (par SIRET)
 );
 
 CREATE TABLE IF NOT EXISTS risques_gaspar (

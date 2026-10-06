@@ -45,6 +45,10 @@ def transaction():
 # versionnées, la liste ci-dessous est le rattrapage minimal — chaque entrée
 # est jouée une fois, et ne fait rien si la colonne est déjà là.
 _COLONNES_AJOUTEES = [
+    # 06/10/2026 — la catégorie juridique de l'exploitant d'une installation
+    # classée : c'est elle qui dit si la publication peut le nommer.
+    ("icpe_installations", "forme_juridique", "TEXT"),
+
     ("marches_publics", "confidence",
      "TEXT DEFAULT 'verified'"),   # 20/08/2026 — acheteur non établi = probable
 
