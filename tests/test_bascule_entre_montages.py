@@ -381,10 +381,13 @@ def test_dans_de_vrais_montages(tmp_path):
     snapshot(racine / "public" / "static" / "data", [1], "en ligne")
     scenario = tmp_path / "scenario.py"
     scenario.write_text(SCENARIO, encoding="utf-8")
+    # Dans un espace de noms utilisateur (`unshare -r`) les fichiers restent à
+    # leur propriétaire, et un `chown` vers un compte que l'espace ne connaît
+    # pas échoue (« Invalid argument », VPS du 06/10/2026) : rien à rendre.
+    rendre_a = [] if "-r" in prefixe else [f"{os.getuid()}:{os.getgid()}"]
     r = subprocess.run(
         [*prefixe, sys.executable, str(scenario), str(racine),
-         str(ROOT / "scripts" / "publication.py"),
-         f"{os.getuid()}:{os.getgid()}"],
+         str(ROOT / "scripts" / "publication.py"), *rendre_a],
         capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout.strip().splitlines()[-1]) == \
