@@ -186,11 +186,12 @@
       <b>{nombre(chiffres.marches)}</b>
       <span class="quoi">{chiffres.marches > 1 ? 'marchés attribués' : 'marché attribué'}</span>
       {#if chiffres.marches === 0}
-        <span class="aussi raison">
-          {#if sourceMarches === 'absente'}collecte pas encore lancée
-          {:else if extraitsMarches?.cas === 'en_attente'}{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, qui {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture
-          {:else}rien n'est publié sous 40&nbsp;000&nbsp;€&nbsp;HT{/if}
-        </span>
+        <span class="aussi raison">{sourceMarches === 'absente' ? 'collecte pas encore lancée' : "rien n'est publié sous 40\u00a0000\u00a0€\u00a0HT"}</span>
+        <!-- Ce que les procès-verbaux en disent, indépendamment des sources
+             ouvertes : les deux mentions peuvent se cumuler. -->
+        {#if extraitsMarches?.cas === 'en_attente'}
+          <span class="aussi">{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, qui {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture</span>
+        {/if}
       {/if}
       {#if interco?.marches}<span class="aussi">{EPCI_COURT}&nbsp;: {nombre(interco.marches)}</span>{/if}
     </a>
