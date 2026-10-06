@@ -117,3 +117,63 @@ def test_le_kit_ne_semboite_pas(depot):
     subprocess.run(["git", "-C", str(depot), "add", "-A"], check=True, capture_output=True)
     retenus = {p.relative_to(depot).as_posix() for p in kit.fichiers(depot)}
     assert not any("static/kit" in r for r in retenus)
+
+
+
+# ── L'exception des images (06/10/2026) ──────────────────────────────────────
+# Le dépôt versionne quatre icônes PNG. Elles n'échappent pas au contrôle :
+# elles sont nommées une par une, et ne peuvent porter que de l'image.
+
+def _png(*morceaux_en_plus: tuple[bytes, bytes], suite: bytes = b"") -> bytes:
+    import struct, zlib
+
+    def morceau(genre: bytes, donnees: bytes) -> bytes:
+        return (struct.pack(">I", len(donnees)) + genre + donnees
+                + struct.pack(">I", zlib.crc32(genre + donnees)))
+
+    corps = morceau(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+    for genre, donnees in morceaux_en_plus:
+        corps += morceau(genre, donnees)
+    corps += morceau(b"IDAT", zlib.compress(b"\x00\x00")) + morceau(b"IEND", b"")
+    return b"\x89PNG\r\n\x1a\n" + corps + suite
+
+
+def _verifier_image(depot, monkeypatch, octets: bytes, admise: bool = True):
+    (depot / "icone.png").write_bytes(octets)
+    subprocess.run(["git", "-C", str(depot), "add", "-f", "icone.png"],
+                   check=True, capture_output=True)
+    monkeypatch.setattr(kit, "IMAGES_ADMISES", {"icone.png"} if admise else set())
+    return kit.verifier(depot, kit.fichiers(depot))
+
+
+def test_une_image_nommee_et_propre_est_admise(depot, monkeypatch):
+    assert _verifier_image(depot, monkeypatch, _png()) == []
+
+
+def test_une_image_non_nommee_reste_refusee(depot, monkeypatch):
+    problemes = _verifier_image(depot, monkeypatch, _png(), admise=False)
+    assert any("non contrôlable" in p for p in problemes), problemes
+
+
+def test_une_image_qui_porte_du_texte_est_refusee(depot, monkeypatch):
+    problemes = _verifier_image(
+        depot, monkeypatch, _png((b"tEXt", b"Author\x00Quelqu'un")))
+    assert any("texte libre" in p for p in problemes), problemes
+
+
+def test_des_octets_apres_limage_sont_refuses(depot, monkeypatch):
+    problemes = _verifier_image(depot, monkeypatch, _png(suite=b"SQLite format 3"))
+    assert any("suivent la fin" in p for p in problemes), problemes
+
+
+def test_un_nom_admis_ne_couvre_pas_autre_chose_quun_png(depot, monkeypatch):
+    problemes = _verifier_image(depot, monkeypatch, b"SQLite format 3\x00base")
+    assert any("pas un PNG" in p for p in problemes), problemes
+
+
+def test_les_images_admises_existent_et_passent():
+    """La liste ne nomme que des fichiers présents, et chacun passe son contrôle."""
+    for rel in sorted(kit.IMAGES_ADMISES):
+        f = ROOT / rel
+        assert f.is_file(), f"{rel} est admis mais absent du dépôt"
+        assert kit.refus_image(f.read_bytes()) is None, rel
