@@ -188,7 +188,7 @@
       {#if chiffres.marches === 0}
         <span class="aussi raison">
           {#if sourceMarches === 'absente'}collecte pas encore lancée
-          {:else if extraitsMarches?.cas === 'en_attente'}{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, à relire
+          {:else if extraitsMarches?.cas === 'en_attente'}{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, qui {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture
           {:else}rien n'est publié sous 40&nbsp;000&nbsp;€&nbsp;HT{/if}
         </span>
       {/if}
