@@ -24,9 +24,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 try:
-    from jose import JWTError, jwt
+    import jwt
 except ImportError:
-    raise RuntimeError("python-jose manquant — pip install 'python-jose[cryptography]'")
+    raise RuntimeError("PyJWT manquant — pip install PyJWT")
 
 
 def _hash_pw(password: str) -> str:
@@ -151,7 +151,7 @@ def _decode(token: str) -> dict:
         raise HTTPException(503, "JWT non configuré — JWT_SECRET manquant dans .env")
     try:
         return jwt.decode(token, _SECRET, algorithms=[_ALGO])
-    except JWTError as exc:
+    except jwt.PyJWTError as exc:
         raise HTTPException(401, str(exc))
 
 
