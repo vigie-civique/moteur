@@ -60,6 +60,18 @@ LIBELLES = {
 #: manqué à `validation_status` pendant treize mois.
 OBJETS = ("entity", "relation", "deliberation", "flow", "marche")
 
+#: Les types d'actes (`events.type`) que l'objet `deliberation` recouvre : ceux
+#: que l'atelier présente à la revue ET ceux dont la publication lit le verdict.
+#: Une seule liste, ici : il y en avait deux (la file de l'atelier, le snapshot),
+#: toutes deux arrêtées aux anciens types intercommunaux (`délibérations_cc`,
+#: `pv_cc`) alors que `collectors/conseils.py` écrit `deliberation_cc` et
+#: `conseil_communautaire` — un acte de l'intercommunalité n'entrait pas dans la
+#: file et ne pouvait pas être écarté.
+TYPES_REVUS = {
+    "deliberation": ("deliberation", "deliberation_cc", "conseil_municipal",
+                     "conseil_communautaire", "délibérations_cc", "pv_cc"),
+}
+
 #: Les objets que la publication ne montre QUE s'ils sont RETENUS — la règle
 #: inverse de `OBJETS`. Décidé par Julien le 30/09/2026 pour « le conseil en
 #: clair » : une feuille rédigée (à la main ou par un LLM) sur une séance n'est
