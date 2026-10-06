@@ -99,11 +99,10 @@
      La condition est DANS la balise et non autour : `<svelte:head>` ne peut pas
      se trouver à l'intérieur d'un bloc, le compilateur refuse. -->
 <svelte:head>
-  <!-- Le PNG d'abord, pour les navigateurs qui ne lisent pas une icône SVG ;
-       les autres prennent le SVG, qui suit le thème clair ou sombre. -->
-  <link rel="icon" href="/favicon{icone}-32.png" sizes="32x32" type="image/png" />
+  <!-- En SVG seulement : il suit le thème clair ou sombre, et le dépôt ne
+       versionne aucun binaire (scripts/build_kit.py refuse ce qu'il ne peut
+       pas lire). Pas de PNG de repli ni d'icône d'écran d'accueil, donc. -->
   <link rel="icon" href="/favicon{icone}.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon{icone}.png" />
   {#if SITE_URL}
     <link rel="canonical" href="{SITE_URL}{path}" />
     <meta property="og:url" content="{SITE_URL}{path}" />
