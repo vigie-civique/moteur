@@ -237,7 +237,17 @@ def ecrire_regles_ci() -> Path:
     instance. Sans eux, aucun acte d'assemblée ne sortirait, et la CI
     construirait un site sans délibérations : le parcours qu'elle doit voir."""
     import json
+    from collectors.config import CODE_POSTAL, COMMUNE_INSEE, COMMUNE_NAME
     regles = json.loads((ROOT / "config" / "publication_rules.exemple.json").read_text())
+    # La commune aussi, comme `init_instance.py` : sans elle le contrôleur ne
+    # peut pas juger la part de la commune dans ce qui sort, et il refuse.
+    regles["project"] = {
+        "public_name": f"Vigie Civique {COMMUNE_NAME}",
+        "private_name": f"Atelier Vigie Civique {COMMUNE_NAME}",
+        "commune": COMMUNE_NAME,
+        "insee": COMMUNE_INSEE,
+        "postal_code": CODE_POSTAL,
+    }
     sources = set(regles.setdefault("events", {}).get("public_sources", []))
     regles["events"]["public_sources"] = sorted(sources | {SOURCE_COMMUNE, SOURCE_EPCI})
     chemin = Path(DB_PATH).with_suffix(".regles.json")
