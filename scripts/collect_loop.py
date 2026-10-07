@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import signal
 import sys
 import time
@@ -58,6 +57,7 @@ sys.path.insert(0, str(ROOT))
 
 from collectors.config import DB_PATH, STEP_META          # noqa: E402
 from collectors.db import get_conn, init_db               # noqa: E402
+from collectors.sauvegarde import sauvegarder             # noqa: E402
 from collectors.run_all import STEPS, run_step            # noqa: E402
 
 # Ce que la boucle peut relancer : l'intersection du rythme déclaré et des steps
@@ -169,8 +169,7 @@ def sauvegarde() -> Path:
     racine = Path(os.environ.get("VIGIE_BACKUPS") or Path.home() / "Claude" / ".backups")
     dest = racine / f"vigie-collecte-{datetime.now():%Y%m%d-%H%M%S}"
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(DB_PATH, dest / DB_PATH.name)
-    return dest / DB_PATH.name
+    return sauvegarder(DB_PATH, dest / DB_PATH.name)
 
 
 def main() -> int:

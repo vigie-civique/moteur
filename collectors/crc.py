@@ -58,7 +58,7 @@ import urllib.request
 from .archive import HEADERS, archive_fetch
 from .config import (COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT,
                      DEPARTEMENT_NOM, EPCI_NOM, PREFECTURE_NOM, REQUEST_DELAY)
-from .db import get_conn, log_run_end, log_run_start
+from .db import get_conn
 from .erreurs import ConfigurationManquante
 
 RECHERCHE = "https://www.ccomptes.fr/fr/recherche"
@@ -264,44 +264,32 @@ def run_crc() -> dict:
         cibles.append((EPCI_NOM, "crc_rapport_epci", True))
 
     releve = {"trouves": 0, "neufs": 0, "ecartes": 0, "ecartes_titres": []}
+    # Le journal `collector_runs` est tenu par `run_all.run_step`, comme pour
+    # tout step : ce collecteur s'y inscrivait AUSSI, et chaque passe y laissait
+    # deux lignes. L'apport journalisé reste celui des rapports NEUFS — le
+    # décompte de `STEP_META` porte sur les lignes en base, avant et après.
     with get_conn() as conn:
-        run_id = log_run_start(conn, "crc", None)
-        try:
-            for terme, type_event, epci in cibles:
-                page = _fetch(terme)
-                for publication in extraire(page):
-                    if correspond(publication["titre"], terme, departement, epci=epci):
-                        releve["trouves"] += 1
-                        if _enregistrer(conn, publication, type_event):
-                            releve["neufs"] += 1
-                    else:
-                        releve["ecartes"] += 1
-                        # ⚠️ Une omission doit SE VOIR. Le rapprochement est
-                        # volontairement strict : il préfère ne rien publier
-                        # qu'attribuer un rapport à la mauvaise collectivité.
-                        # Cette prudence a un coût — une variante du titre, un
-                        # sigle, un siège écrit à côté du nom, et un vrai
-                        # rapport passe à la trappe. Constaté sur un titre qui
-                        # ajoutait au nom le sigle de l'EPCI et le nom de la
-                        # commune de son siège.
-                        # Les écarter en silence rendrait ce défaut invisible ;
-                        # les nommer laisse un humain les rattraper.
-                        releve["ecartes_titres"].append(publication["titre"])
-                time.sleep(REQUEST_DELAY)
-        except Exception as erreur:
-            log_run_end(conn, run_id, "error", None, None, error=str(erreur)[:300])
-            raise
-        # `empty` n'est pas un échec : sous 3 500 habitants, une commune n'est
-        # presque jamais contrôlée, et c'est l'intercommunalité qui porte le
-        # rapport quand il y en a un.
-        # ⚠️ Ce qui est JOURNALISÉ comme apport, ce sont les rapports NEUFS,
-        # pas les rapports retenus. La première version passait `trouves` et
-        # un `items_before` de 0 : Saillans, qui porte deux rapports depuis
-        # 2018, déclarait « +2 » à CHAQUE passage. Un tel journal ne peut plus
-        # signaler qu'une source s'est figée — c'est exactement la panne que
-        # `stale_source` cherche (cf. decp_augmente), rendue indétectable.
-        log_run_end(conn, run_id, "ok" if releve["trouves"] else "empty",
-                    releve["trouves"], releve["trouves"] - releve["neufs"])
+        for terme, type_event, epci in cibles:
+            page = _fetch(terme)
+            for publication in extraire(page):
+                if correspond(publication["titre"], terme, departement, epci=epci):
+                    releve["trouves"] += 1
+                    if _enregistrer(conn, publication, type_event):
+                        releve["neufs"] += 1
+                else:
+                    releve["ecartes"] += 1
+                    # ⚠️ Une omission doit SE VOIR. Le rapprochement est
+                    # volontairement strict : il préfère ne rien publier
+                    # qu'attribuer un rapport à la mauvaise collectivité.
+                    # Cette prudence a un coût — une variante du titre, un
+                    # sigle, un siège écrit à côté du nom, et un vrai
+                    # rapport passe à la trappe. Constaté sur un titre qui
+                    # ajoutait au nom le sigle de l'EPCI et le nom de la
+                    # commune de son siège.
+                    # Les écarter en silence rendrait ce défaut invisible ;
+                    # les nommer laisse un humain les rattraper.
+                    releve["ecartes_titres"].append(publication["titre"])
+            time.sleep(REQUEST_DELAY)
     return releve
 
 

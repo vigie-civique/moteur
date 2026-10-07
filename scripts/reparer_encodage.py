@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sqlite3
 import sys
 from datetime import datetime
@@ -48,6 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from collectors.nom_normalise import reparer_encodage  # noqa: E402
+from collectors.sauvegarde import sauvegarder  # noqa: E402
 
 JOURNAL = """
 CREATE TABLE IF NOT EXISTS rectifications_encodage (
@@ -164,7 +164,7 @@ def main(argv=None) -> int:
     if args.appliquer and trouvailles:
         sauvegarde = base.with_suffix(
             base.suffix + f".avant-encodage-{datetime.now():%Y%m%d-%H%M%S}")
-        shutil.copy2(base, sauvegarde)
+        sauvegarder(base, sauvegarde)
         appliquer(conn, trouvailles)
     else:
         sauvegarde = None

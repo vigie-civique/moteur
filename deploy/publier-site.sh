@@ -209,9 +209,18 @@ case "$VIGIE_CIBLE" in
     # celui qui possède les fichiers — sinon le serveur finit par servir des
     # fichiers que la publication suivante ne peut plus remplacer.
     #
+    # `--delay-updates --delete-delay` : les fichiers neufs sont posés à côté
+    # (`.~tmp~`) et ne prennent leur place qu'une fois TOUS reçus ; les
+    # retraits viennent après. Sans eux, une liaison coupée à mi-course laissait
+    # en ligne des pages de la nouvelle version sur les données de l'ancienne.
+    # Ce n'est pas une bascule atomique — la mise en place, à la fin, renomme
+    # fichier par fichier — mais une coupure pendant le TRANSFERT ne change
+    # plus rien à ce qui est servi. Compris d'openrsync comme de rsync 3.
+    #
     # `9>&-` : ssh n'hérite pas du verrou de build. Un maître de connexion
     # persistant (ControlPersist) le garderait bien après la fin de ce script.
-    rsync -az --delete --delete-excluded --exclude='_redirects' \
+    rsync -az --delete --delete-excluded --delay-updates --delete-delay \
+      --exclude='_redirects' \
       --exclude='.DS_Store' --exclude='._*' --exclude='Thumbs.db' \
       ${VIGIE_CIBLE_RSYNC_PATH:+--rsync-path="$VIGIE_CIBLE_RSYNC_PATH"} \
       "$ROOT/public/build/" "$VIGIE_CIBLE_HOTE:$VIGIE_CIBLE_CHEMIN/" 9>&-
@@ -237,7 +246,7 @@ case "$VIGIE_CIBLE" in
     # `--chmod` : le rsync de macOS (openrsync) ne l'applique pas aux fichiers.
     # Mêmes exclusions et même `--delete` que par ssh, pour les mêmes raisons.
     chmod -R u=rwX,go=rX "$ROOT/public/build"
-    rsync -rlpt --delete --delete-excluded \
+    rsync -rlpt --delete --delete-excluded --delay-updates --delete-delay \
       --exclude='_redirects' \
       --exclude='.DS_Store' --exclude='._*' --exclude='Thumbs.db' \
       "$ROOT/public/build/" "$VIGIE_CIBLE_CHEMIN/"

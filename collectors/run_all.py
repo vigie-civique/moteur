@@ -416,6 +416,13 @@ def count_items(conn, name: str):
         return None
 
 
+# Ce que `run_step` ne journalise pas, et POURQUOI.
+SANS_JOURNAL = {
+    "init":  "pas un collecteur : crée le schéma dont le journal a besoin",
+    "liens": "se journalise lui-même — il compte ses candidats et se tait à blanc",
+}
+
+
 def run_step(name: str):
     label, fn = STEPS[name]
     print(f"\n{'='*60}")
@@ -424,8 +431,13 @@ def run_step(name: str):
 
     # Journal collector_runs — c'est le seul moyen de détecter une source morte.
     # Ouvert AVANT l'appel pour qu'un plantage laisse une trace 'error'.
+    # TOUS les steps, pas seulement ceux qui ont un rythme : `origine`,
+    # `saisies`, `approbations` et `budgets_votes` n'ont pas de TTL (ce sont des
+    # dérivés, cf. tests/test_collect_loop.py), et n'étaient donc jamais
+    # journalisés — leur échec ne laissait aucune trace datée. Sans entrée dans
+    # `STEP_META`, le décompte vaut None et la passe se clôt `ok` ou `error`.
     conn = run_id = before = None
-    if name in STEP_META:
+    if name not in SANS_JOURNAL:
         try:
             conn = get_conn()
             before = count_items(conn, name)

@@ -321,6 +321,61 @@ jobs:
           CHROME_PATH="$(command -v google-chrome || command -v chromium)" \
             node scripts/verifier_hors_ligne.mjs build-hors-ligne
 
+  atelier:
+    # L'atelier n'était construit par aucun job : seul `npm audit` le voyait.
+    # Une faute de syntaxe dans un composant, ou une couleur écrite en dur (le
+    # build commence par `verifier_couleurs.mjs`, qui sort en 1), n'apparaissait
+    # qu'au déploiement sur le serveur — là où le script revient en arrière.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Libellés de l'instance factice
+        # `src/lib/instance.js` n'est pas versionné : il se dérive de
+        # l'instance, comme à l'installation (deploy/README.md, étape d).
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+        run: python scripts/generer_libelles.py
+      - name: Build
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+          test -s dist/index.html
+
+  nginx:
+    # Le modèle de configuration du site public (cibles `rsync` et `local`) :
+    # nginx le charge-t-il ? Un modèle qu'on recopie sur un serveur sans l'avoir
+    # jamais donné à nginx casse le jour de l'installation. La version est celle
+    # de Debian 12, où `listen … http2` n'est pas encore déprécié.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t
+        run: |
+          mkdir -p /tmp/tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj "/CN=commune.example.org" \
+            -keyout /tmp/tls/privkey.pem -out /tmp/tls/fullchain.pem 2>/dev/null
+          chmod 644 /tmp/tls/*.pem
+          docker run --rm \
+            -v "$PWD/deploy/nginx-site.conf:/etc/nginx/conf.d/site.conf:ro" \
+            -v "$PWD/deploy/nginx-site-entetes.conf:/etc/nginx/snippets/vigie-site-entetes.conf:ro" \
+            -v /tmp/tls:/etc/letsencrypt/live/commune.example.org:ro \
+            nginx:1.22-alpine nginx -t
+          # Chaque règle de `_redirects` a son `location` dans le modèle.
+          grep -vE '^\s*(#|$)' public/static/_redirects | while read -r de vers code; do
+            grep -qF "location = $de " deploy/nginx-site.conf \
+              || { echo "✖ $de (→ $vers) n'est pas traduite dans deploy/nginx-site.conf"; exit 1; }
+          done
+
   dependances:
     # Les vulnérabilités CONNUES de ce que le dispositif installe. Depuis que
     # l'atelier se met en ligne (lot E, 02/10/2026), la couche HTTP est exposée :

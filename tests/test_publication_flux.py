@@ -306,6 +306,40 @@ def test_rsync_n_envoie_jamais_les_rebuts_et_retire_ceux_du_serveur(tmp_path):
         == ["index.html"]
 
 
+def test_la_mise_en_ligne_ne_remplace_rien_avant_d_avoir_tout_recu(tmp_path):
+    """Les deux rsync écrivaient droit dans le répertoire servi : une liaison
+    coupée à mi-course laissait en ligne un mélange de deux versions. Avec
+    `--delay-updates --delete-delay`, rien ne change de place avant la fin du
+    transfert. Les options sont relues dans le script et jouées avec le rsync
+    de la machine — openrsync sur un Mac, rsync 3 en CI."""
+    import shlex
+    import shutil
+    import subprocess
+
+    script = (ROOT / "deploy" / "publier-site.sh").read_text(encoding="utf-8")
+    appels = re.findall(r"^\s*rsync (-(?:az|rlpt).*?)\"\$ROOT/public/build/\"", script, re.S | re.M)
+    assert len(appels) == 2, "les deux mises en ligne par rsync (ssh, locale) sont attendues"
+    for appel in appels:
+        options = [o for o in shlex.split(appel.replace("\\\n", " ")) if not o.startswith("${")]
+        assert {"--delay-updates", "--delete-delay"} <= set(options), options
+
+        if not shutil.which("rsync"):
+            continue
+        src, dest = tmp_path / options[0] / "build", tmp_path / options[0] / "servi"
+        (src / "data").mkdir(parents=True)
+        (src / "index.html").write_text("neuf")
+        (src / "data" / "stats.json").write_text('{"v": 2}')
+        (dest / "data").mkdir(parents=True)
+        (dest / "index.html").write_text("ancien")
+        (dest / "retiree.html").write_text("page retirée de la collecte")
+
+        subprocess.run(["rsync", *options, f"{src}/", f"{dest}/"], check=True)
+
+        assert sorted(str(f.relative_to(dest)) for f in dest.rglob("*")) \
+            == ["data", "data/stats.json", "index.html"], "ni reste d'attente, ni page retirée"
+        assert (dest / "index.html").read_text() == "neuf"
+
+
 def test_la_copie_locale_rend_le_site_lisible_par_un_autre_compte(tmp_path):
     """Cible `local` : l'atelier sur serveur écrit avec un masque restrictif, et
     le serveur web lit sous un autre compte. Sans `--chmod`, la copie réussit et

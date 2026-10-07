@@ -56,7 +56,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -67,6 +66,7 @@ sys.path.insert(0, str(ROOT))
 from collectors.config import (COMMUNES_FOND, DB_PATH, PROFONDEUR_STEP,  # noqa: E402
                                STEP_META, communes_du_step, registre_du_step)
 from collectors.db import get_conn  # noqa: E402
+from collectors.sauvegarde import sauvegarder  # noqa: E402
 from collectors.formes_juridiques import type_pour_forme  # noqa: E402
 
 
@@ -350,12 +350,12 @@ def run(appliquer: bool = False) -> int:
         conn.close()
         return 0
 
-    # Une base écrasée ne se retrouve pas. `cp -c` demande une copie par
-    # référence : instantanée sur APFS, et sans occuper d'espace tant que la
-    # base n'est pas réécrite. Même convention que `vigie_collecte.sh`.
+    # Une base écrasée ne se retrouve pas. Par l'API de sauvegarde de SQLite :
+    # la base est en WAL, une copie de fichier laisserait derrière elle ce qui
+    # n'a pas encore été reversé du journal.
     horodatage = datetime.now().strftime("%Y%m%d-%H%M%S")
     sauvegarde = DB_PATH.with_suffix(DB_PATH.suffix + f".avant-purge-{horodatage}")
-    shutil.copy2(DB_PATH, sauvegarde)
+    sauvegarder(DB_PATH, sauvegarde)
     print(f"\nsauvegarde : {sauvegarde.name}")
 
     try:

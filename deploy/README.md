@@ -84,6 +84,24 @@ lisent la même déclaration. Les variables `VIGIE_CIBLE`, `VIGIE_CIBLE_HOTE`,
 `VIGIE_CIBLE_CHEMIN`, `VIGIE_CIBLE_RSYNC_PATH` et `CF_PROJECT` restent
 prioritaires, pour une publication ponctuelle ailleurs.
 
+**Sur votre propre serveur (cibles `rsync` et `local`), il faut dire à nginx
+comment servir ces fichiers** — un hébergeur de sites statiques le fait sans le
+dire, un serveur ordinaire non. `deploy/nginx-site.conf` est le modèle, avec
+`deploy/nginx-site-entetes.conf` pour les en-têtes de sécurité ; trois choses y
+tiennent le site debout :
+
+- les pages sont écrites `budgets.html` et demandées `/budgets` : `try_files`
+  cherche **`$uri.html` en premier** (un dossier `budgets/` existe aussi, qui ne
+  contient que des données — le chercher d'abord rend un 403) ;
+- `_redirects` n'est pas envoyé au serveur, qui ne le lirait pas : chaque règle
+  de `public/static/_redirects` doit avoir son `location` dans le modèle ;
+- seul `/_app/immutable/` se garde en cache ; le reste se revalide, sans quoi
+  une publication n'atteint ses lecteurs qu'à l'expiration du cache.
+
+La mise en ligne pose les fichiers neufs à côté des anciens et ne les met en
+place qu'une fois tous reçus : une liaison coupée pendant le transfert ne
+change rien à ce qui est servi.
+
 Après le téléversement, **le script constate** : il relit `version.json` sur le
 site en ligne (`site_url`) et le compare à l'empreinte promue. Un envoi réussi
 dit que des fichiers sont partis, pas que le site les sert.
@@ -210,8 +228,13 @@ Ce que le dispositif fait déjà pour vous, et qu'il ne faut pas défaire :
 
 Ce que le dispositif ne fait PAS pour vous :
 
-- **les sauvegardes de la base.** Un serveur qui porte la seule copie d'une base
-  de collecte est un accident en attente ;
+- **sortir les sauvegardes de la machine, ni les faire tourner.** Le moteur
+  copie la base avant d'y écrire (`collect_loop`, `qa_loop`, les scripts
+  d'entretien), par l'API de sauvegarde de SQLite — la base est en WAL, une
+  copie de fichier y perdrait les dernières écritures. Mais ces copies restent
+  sur le même disque, et rien ne les efface : un serveur qui porte la seule
+  copie d'une base de collecte est un accident en attente. Les rouvrir :
+  `python3 scripts/verifier_sauvegarde.py` ;
 - **la journalisation des accès** au-delà de celle de nginx ;
 - **la mise à jour du serveur.** Un atelier en ligne est une machine à tenir.
 
