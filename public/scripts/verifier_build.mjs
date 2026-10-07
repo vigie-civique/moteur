@@ -12,6 +12,7 @@
 // `vite build` (cf. package.json).
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Même répertoire que celui qu'`adapter-static` vient d'écrire : un aperçu
 // figé (`VIGIE_BUILD_DIR`) doit être contrôlé, pas ignoré.
@@ -291,7 +292,9 @@ const contraste = (a, b) => {
   return (clair + 0.05) / (sombre + 0.05)
 }
 
-const GABARIT = resolve(process.cwd(), 'src/routes/+layout.svelte')
+// À côté de CE script, pas du répertoire courant : le build contrôlé peut être
+// ailleurs (aperçu de l'atelier, essais), la palette est celle du dépôt.
+const GABARIT = fileURLToPath(new URL('../src/routes/+layout.svelte', import.meta.url))
 const jetons = Object.fromEntries(
   [...readFileSync(GABARIT, 'utf8').matchAll(/^\s*--([a-z-]+):\s*(#[0-9a-fA-F]{6});/gm)]
     .map((m) => [m[1], m[2]]))
