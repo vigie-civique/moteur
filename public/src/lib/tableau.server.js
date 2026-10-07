@@ -83,11 +83,13 @@ export function tableauDeBord({ lire, insee, epciCourt, aujourdhui, chiffres, in
     const cm = recentes.filter((x) => x.code === 'cm')
     const cc = recentes.filter((x) => x.code === 'cc')
     if (recentes.length) {
-      const enClair = recentes.filter((x) => x.en_clair).length
+      // Le compte « en clair » porte sur les MÊMES séances que la valeur : pris
+      // sur les deux assemblées, il affichait « 15 séances, 16 en clair ».
+      const enClair = cm.filter((x) => x.en_clair).length
       tuiles.push({
         cle: 'seances', href: '/conseils', libelle: 'Séances du conseil',
         valeur: nombre(cm.length),
-        note: `municipales, 12 derniers mois${enClair ? `, ${enClair} en clair` : ''}`,
+        note: `municipales, 12 derniers mois${enClair ? `, dont ${enClair} en clair` : ''}`,
         aussi: cc.length ? `${epciCourt} : ${nombre(cc.length)}` : null,
         graphe: {
           type: 'frise',
