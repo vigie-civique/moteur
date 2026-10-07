@@ -26,7 +26,7 @@
 </script>
 
 <svelte:head>
-  <title>{s.assemblee} du {fmt(s.date)} — Les conseils en clair — {SITE_NOM}</title>
+  <title>{s.assemblee} du {fmt(s.date)} - Les conseils en clair - {SITE_NOM}</title>
   <meta name="description" content="{s.assemblee} du {fmt(s.date)} : {pluriel(s.nb_actes, 'délibération')} publiée{s.nb_actes > 1 ? 's' : ''}{clair ? ', et la séance mise en clair' : ''}." />
 </svelte:head>
 
@@ -43,7 +43,7 @@
       <p class="etat"><b>Mise en clair</b>, relue à l'atelier le {clair.relu_le}.</p>
       <p class="titre-clair">{clair.titre}</p>
       <p><a class="bouton" href="/data/{clair.fichier}">Lire les trois feuilles en clair</a>
-        <span class="aide">ce qui était annoncé, ce qui a été décidé, ce que les documents ont de faux ou d'incomplet — imprimables en A4</span></p>
+        <span class="aide">ce qui était annoncé, ce qui a été décidé, ce que les documents ont de faux ou d'incomplet : imprimables en A4</span></p>
     </div>
   {:else}
     <p class="etat pas-encore">
@@ -59,9 +59,9 @@
     <div class="ecart">
       <p><b>Deux décomptes pour cette séance.</b></p>
       <ul>
-        <li><b>{clair.nb_actes}</b> — les actes que le relevé a retrouvés dans le
+        <li><b>{clair.nb_actes}</b> : les actes que le relevé a retrouvés dans le
           procès-verbal, un par marque d'acte, et que la relecture a vérifiés&nbsp;;</li>
-        <li><b>{s.nb_actes}</b> — les délibérations que la collecte a découpées dans
+        <li><b>{s.nb_actes}</b> : les délibérations que la collecte a découpées dans
           les pièces de la séance et publiées, listées ci-dessous.</li>
       </ul>
       <p class="aide">L'écart n'est pas encore expliqué acte par acte. Un découpage
@@ -75,7 +75,7 @@
     <h2>Les pièces</h2>
     <ul class="pieces">
       {#each s.pieces as p}
-        <li><a href={p.url} target="_blank" rel="noopener">{PIECES[p.nature] || p.libelle || 'Pièce'}</a>{#if p.libelle && PIECES[p.nature]} <span class="aide">— {p.libelle}</span>{/if}</li>
+        <li><a href={p.url} target="_blank" rel="noopener">{PIECES[p.nature] || p.libelle || 'Pièce'}</a>{#if p.libelle && PIECES[p.nature]} <span class="aide"> : {p.libelle}</span>{/if}</li>
       {/each}
     </ul>
   {/if}
@@ -85,7 +85,7 @@
   {#if actes.length}
     <ol class="actes">
       {#each actes as a}
-        <li><a href={a.lien}>{a.titre || '(sans titre)'}</a>{#if vote(a.vote)} <span class="vote">— {vote(a.vote)}</span>{/if}</li>
+        <li><a href={a.lien}>{a.titre || '(sans titre)'}</a>{#if vote(a.vote)} <span class="vote"> : {vote(a.vote)}</span>{/if}</li>
       {/each}
     </ol>
     <p class="aide">Chaque délibération mène à sa ligne dans le registre de son année, avec son texte quand il a été lu.</p>

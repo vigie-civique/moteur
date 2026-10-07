@@ -48,7 +48,7 @@ TEXTES = {
     ),
     "constitution": (
         "Ce site est tenu sur place et remis à jour régulièrement ; l'atelier "
-        "qui le relit se constitue — c'est ce que ce site cherche à rendre "
+        "qui le relit se constitue, et c'est ce que ce site cherche à rendre "
         "possible. Il comporte encore des manques et des erreurs : il est fait "
         "pour qu'on les lui signale."
     ),

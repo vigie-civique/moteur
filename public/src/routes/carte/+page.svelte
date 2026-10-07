@@ -135,7 +135,7 @@
   })
 </script>
 
-<svelte:head><title>La carte des acteurs — {SITE_NOM}</title>
+<svelte:head><title>La carte des acteurs - {SITE_NOM}</title>
   <meta name="description" content="Carte des entreprises, associations, services publics et lieux {COMMUNE_DE}, à partir des données publiques." /></svelte:head>
 
 <div class="carte">
@@ -167,7 +167,7 @@
           Seuls apparaissent ici les acteurs disposant d'une localisation publique
           suffisamment fiable.
           {#if data.sansLocalisation}{data.sansLocalisation} n'ont aucune adresse exploitable ;{/if}
-          {#if data.domicileMasque}{data.domicileMasque} sont des entrepreneurs individuels dont l'adresse déclarée est le domicile — elle n'est pas cartographiée ;{/if}
+          {#if data.domicileMasque}{data.domicileMasque} sont des entrepreneurs individuels dont l'adresse déclarée est le domicile : elle n'est pas cartographiée ;{/if}
           {#if data.personneMasquee}{data.personneMasquee} sont des personnes physiques, jamais localisées.{/if}
         </span>
       </p>
@@ -175,7 +175,7 @@
   </div>
 
   {#if error}<div class="toast err">Erreur de chargement : {error}</div>{/if}
-  {#if fondAbsent}<p class="sans-fond">Le fond de carte n'a pas pu être chargé —
+  {#if fondAbsent}<p class="sans-fond">Le fond de carte n'a pas pu être chargé :
     les repères ci-dessous restent à leur position exacte. Fond attendu&nbsp;:
     <code>static/carte/fond.pmtiles</code> (<code>scripts/carte_fond.py</code>).</p>{/if}
   {#if loading}<div class="toast">Chargement de la carte…</div>{/if}

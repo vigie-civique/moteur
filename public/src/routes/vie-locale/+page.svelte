@@ -21,7 +21,7 @@
   $: passes = filtered.filter(e => endOf(e) < today)
 
   function fmtDate(d) {
-    if (!d) return '—'
+    if (!d) return '-'
     try {
       return new Date(d + 'T00:00:00').toLocaleDateString('fr-FR',
         { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -43,8 +43,8 @@
 </script>
 
 <svelte:head>
-  <title>Vie locale — {SITE_NOM}</title>
-  <meta name="description" content="Agenda et événements {COMMUNE_DE} : manifestations, culture, vie associative — collectés depuis les sources publiques locales." />
+  <title>Vie locale - {SITE_NOM}</title>
+  <meta name="description" content="Agenda et événements {COMMUNE_DE} : manifestations, culture, vie associative - collectés depuis les sources publiques locales." />
 </svelte:head>
 
 <section>

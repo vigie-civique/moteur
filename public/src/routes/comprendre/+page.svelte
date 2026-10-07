@@ -17,7 +17,7 @@
       d: "Recettes locales (impôts, taxes), dotations de l'État, subventions de la Région ou du Département. Il finance le fonctionnement, l'investissement et les subventions aux associations. Le détail chiffré est dans « Où va l'argent »." },
   ]
   const fiches = [
-    { icone: 'argent', t: 'Le budget communal',        d: 'Fonctionnement, investissement, dette, budgets annexes — mode d\'emploi.', href: '/comprendre/budget' },
+    { icone: 'argent', t: 'Le budget communal',        d: 'Fonctionnement, investissement, dette, budgets annexes, mode d\'emploi.', href: '/comprendre/budget' },
     { icone: 'decide', t: "L'intercommunalité",        d: `La ${EPCI} : compétences, délégués, argent transféré.`, href: '/comprendre/intercommunalite' },
     { icone: 'elections', t: 'Mandats & délibérations',   d: 'Conseil municipal, délégations, et comment lire une délibération.',         href: '/comprendre/mandats' },
   ]
@@ -29,7 +29,7 @@
 </script>
 
 <svelte:head>
-  <title>Comprendre — {SITE_NOM}</title>
+  <title>Comprendre - {SITE_NOM}</title>
   <meta name="description" content="Mode d'emploi du site, fonctionnement des institutions locales, fiabilité et sources des données de la veille citoyenne {COMMUNE_DE}." />
 </svelte:head>
 

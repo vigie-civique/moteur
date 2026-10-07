@@ -18,6 +18,6 @@ export const TYPE_LABELS = {
 }
 
 export function euros(n) {
-  if (n == null) return '—'
+  if (n == null) return '-'
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
 }

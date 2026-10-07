@@ -4,8 +4,8 @@
 </script>
 
 <svelte:head>
-  <title>Comprendre l'intercommunalité — {SITE_NOM}</title>
-  <meta name="description" content="Fiche pédagogique : la {EPCI} — compétences, délégués, financement, et pourquoi cet échelon compte." />
+  <title>Comprendre l'intercommunalité - {SITE_NOM}</title>
+  <meta name="description" content="Fiche pédagogique : la {EPCI} - compétences, délégués, financement, et pourquoi cet échelon compte." />
 </svelte:head>
 
 <article>
@@ -22,18 +22,18 @@
   <h2>Ce qu'elle décide à la place de la commune</h2>
   <p>Les <strong>compétences transférées</strong> ne sont plus votées au conseil municipal :
      collecte des déchets, tourisme, zones d'activité, une partie de l'urbanisme et de l'eau selon
-     les cas… La commune ne peut plus intervenir seule sur ces sujets — d'où l'importance de suivre
+     les cas… La commune ne peut plus intervenir seule sur ces sujets, d'où l'importance de suivre
      aussi les délibérations communautaires, pas seulement celles du village.</p>
 
   <h2>Qui y siège</h2>
   <p>Des <strong>délégués communautaires</strong> : les maires et certains conseillers municipaux,
-     désignés lors des élections municipales. Une petite commune n'a souvent qu'un ou deux sièges —
+     désignés lors des élections municipales. Une petite commune n'a souvent qu'un ou deux sièges :
      son poids y est mécaniquement limité, et les arbitrages se jouent entre communes.</p>
 
   <h2>L'argent qui y transite</h2>
   <p>La {EPCI_COURT} lève sa propre fiscalité et reçoit ses propres dotations. Elle attribue aussi des
      <strong>marchés publics</strong> et reçoit des <strong>subventions</strong> (Région, État,
-     Europe/LEADER) pour des équipements utilisés par les habitants — la réhabilitation de
+     Europe/LEADER) pour des équipements utilisés par les habitants : la réhabilitation de
      bâtiments, les déchèteries, les projets touristiques. Suivre l'argent public local sans regarder
      l'interco, c'est ne voir que la moitié du tableau.</p>
 

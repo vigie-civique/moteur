@@ -9,9 +9,9 @@
   // envie de cliquer, ni la moindre idée de ce qu'on allait y trouver.
   export let data
 
-  const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const nombre = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
   const montant = (n) =>
-    n == null ? '—'
+    n == null ? '-'
     : Math.abs(n) >= 1e6 ? `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M€`
     : `${Math.round(n / 1e3).toLocaleString('fr-FR')} k€`
 
@@ -20,7 +20,7 @@
       sub: "Taux votés par la commune et taux réellement payés, comparés aux communes de l'intercommunalité.",
       valeur: nombre(data.communes), unite: 'communes comparées' },
     { icone: 'argent', titre: 'Le budget de la commune', href: '/budgets',
-      sub: 'Recettes, dépenses, épargne, dette — en clair, pas en jargon comptable.',
+      sub: 'Recettes, dépenses, épargne, dette, en clair, pas en jargon comptable.',
       valeur: montant(data.recettes), unite: `de recettes de fonctionnement en ${data.annee}` },
     { icone: 'subventions', titre: 'Subventions & flux financiers', href: '/finances',
       sub: "Qui reçoit l'argent public : subventions, dotations, cessions de patrimoine.",
@@ -40,7 +40,7 @@
 </script>
 
 <svelte:head>
-  <title>Où va l'argent ? — {SITE_NOM}</title>
+  <title>Où va l'argent ? - {SITE_NOM}</title>
   <meta name="description" content="Les finances {COMMUNE_DE} rendues lisibles : budget, subventions, marchés publics et foncier." />
 </svelte:head>
 

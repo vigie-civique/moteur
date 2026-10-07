@@ -2,7 +2,7 @@
   import { CONTACT_EMAIL, SITE_NOM } from '$lib/instance.js'
 </script>
 
-<svelte:head><title>Contact &amp; droit de réponse — {SITE_NOM}</title>
+<svelte:head><title>Contact &amp; droit de réponse - {SITE_NOM}</title>
   <meta name="description" content="Contact et exercice du droit de réponse : signaler une erreur ou demander une rectification." /></svelte:head>
 
 <section>

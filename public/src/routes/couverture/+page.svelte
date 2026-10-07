@@ -13,11 +13,11 @@
   }
 
   const fmt = (d) => {
-    if (!d) return '—'
+    if (!d) return '-'
     try { return new Date(d.slice(0, 10) + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) }
     catch { return d }
   }
-  const nb = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const nb = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
 
   // Un collecteur qui n'a pas tourné depuis longtemps est une lacune en
   // formation : elle ne se voit pas encore dans les compteurs.
@@ -35,7 +35,7 @@
 </script>
 
 <svelte:head>
-  <title>Couverture et lacunes — {SITE_NOM}</title>
+  <title>Couverture et lacunes - {SITE_NOM}</title>
   <meta name="description" content="Ce que la collecte couvre et ce qu'elle ne couvre pas : périodes par source, fraîcheur des collecteurs, documents manquants et limites connues." />
 </svelte:head>
 
@@ -44,7 +44,7 @@
   <p class="chapeau">
     Un observatoire qui n'affiche que ce qu'il sait ressemble à une boîte noire&nbsp;:
     rien ne permet alors de distinguer « il ne s'est rien passé cette année-là » de
-    « nous n'avons pas collecté cette année-là ». Cette page donne l'inverse — les
+    « nous n'avons pas collecté cette année-là ». Cette page donne l'inverse : les
     limites de ce qui est publié ici.
   </p>
 
@@ -63,7 +63,7 @@
       <p>
         Les autres pages, elles, sont bien alimentées&nbsp;: ce qui manque ici,
         c'est notre capacité à vous dire <em>ce que nous n'avons pas</em>. Tant
-        que c'est le cas, lisez les chiffres du site comme un plancher — ce qui
+        que c'est le cas, lisez les chiffres du site comme un plancher, ce qui
         est affiché a été trouvé&nbsp;; ce qui n'est pas affiché n'a pas
         forcément été cherché.
       </p>
@@ -82,7 +82,7 @@
       <b>{c.part_avec_piece} %</b> des pièces publiées
       ({nb(c.actes_avec_piece)} sur {nb(c.actes_total)}) renvoient vers
       <b>le document de l'acte lui-même</b>. Pour tous les autres, le lien mène à
-      la page qui le contient — le plus souvent le compte rendu entier d'une
+      la page qui le contient : le plus souvent le compte rendu entier d'une
       séance, dans lequel il faut chercher le passage.
     </Niveau>
     <p class="apres">
@@ -154,7 +154,7 @@
       </p>
       <ul class="dormants">
         {#each dormants as [nom, v]}
-          <li><b>{nom}</b> — dernier passage {v.dernier ? fmt(v.dernier) : 'jamais'}
+          <li><b>{nom}</b> : dernier passage {v.dernier ? fmt(v.dernier) : 'jamais'}
             {#if v.ttl}<span class="rythme">(attendu tous les {v.ttl} jours)</span>{/if}
             {#if v.statut && v.statut !== 'ok'}<span class="statut">({v.statut})</span>{/if}
           </li>

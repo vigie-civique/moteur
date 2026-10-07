@@ -8,7 +8,7 @@
   // oriente, puis montre ce qui vient de bouger.
   export let data
   $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains, sourceMarches,
-       extraitsMarches, dernieres, dossiers, sujets } = data)
+       extraitsMarches, dernieres, dossiers, sujets, anneesSeances } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -18,11 +18,12 @@
     vie:       { label: 'Vie locale',      classe: 'g-vie' },
   }
 
-  const nombre = (n) => (n == null ? '—' : n.toLocaleString('fr-FR'))
+  const nombre = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
 
   // Les titres BODACC finissent par la date de l'annonce, déjà affichée dans sa
-  // propre colonne : « … — la commune (2026-08-09) » devient « … — la commune ».
-  const titre = (t) => (t || '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '')
+  // propre colonne : « … — la commune (2026-08-09) » devient « … - la commune ».
+  // Le tiret cadratin des sources devient un tiret simple, comme partout ici.
+  const titre = (t) => (t || '').replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*$/, '').replace(/\s—\s/g, ' - ')
 
   // ── Les séances ─────────────────────────────────────────────────────────
   // « Conseil municipal du 10 septembre 2026 » perd sa date : la colonne de
@@ -44,7 +45,7 @@
     n > 0 ? `${n} délibération${n > 1 ? 's' : ''}`
           : 'aucune délibération lue dans les pièces'
   const millions = (n) =>
-    n == null ? '—'
+    n == null ? '-'
     : n >= 1e6 ? `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M€`
     : `${Math.round(n / 1e3).toLocaleString('fr-FR')} k€`
 
@@ -60,7 +61,7 @@
 </script>
 
 <svelte:head>
-  <title>{COMMUNE} au clair — la commune par les données publiques</title>
+  <title>{COMMUNE} au clair : la commune par les données publiques</title>
   <meta name="description" content="Qui décide, où va l'argent, qui agit : {COMMUNE} et son intercommunalité, la {EPCI}, à partir des seules données publiques." />
 </svelte:head>
 
@@ -68,18 +69,14 @@
      B). Il s'ouvrait sur des compteurs et trois portes vers de la donnée
      rangée ; les séances et les dossiers — ce qui donne accès à la décision et
      à ses enjeux — n'y étaient que deux pastilles d'en-tête, cachées derrière
-     le menu sur mobile. Il part maintenant d'elles ; les données suivent. -->
+     le menu sur mobile. Il part maintenant d'elles ; les données suivent.
+     Resserré le 06/10/2026 : la recherche face au titre, trois dossiers, les
+     données en tuiles, et le fil des décisions après les trois portes. -->
 <section class="entree">
-  <h1>{COMMUNE}, au clair.</h1>
-  <p>
-    <!-- « L'intercommunalité qui décide à sa place » était percutant mais
-         juridiquement faux : les compétences sont transférées par la loi ou
-         par délibération, elles ne sont pas confisquées. Pour un site de
-         vigilance, la précision doit gagner contre l'effet de manche. -->
-    Ce que le conseil décide, les dossiers qui l'expliquent, et les données
-    publiques qui le vérifient — pour la commune et l'intercommunalité qui
-    exerce certaines compétences pour elle.
-  </p>
+  <div>
+    <h1>{COMMUNE}, au clair.</h1>
+    <p>Les séances du conseil, les dossiers, les données publiques.</p>
+  </div>
   <form class="cherche" action="/recherche" method="get" role="search">
     <input type="search" name="q" placeholder="Un sujet, un nom, un montant…"
            aria-label="Rechercher un sujet, un nom, un montant" autocomplete="off" />
@@ -93,7 +90,9 @@
   <section class="conseil">
     <header>
       <h2>Au conseil</h2>
-      <a class="tout" href="/conseils">Toutes les séances <Icon name="fleche" size={14} /></a>
+      <!-- Le lien dit l'année tant que les séances publiées n'en couvrent
+           qu'une : « toutes » promettrait un historique qui n'y est pas. -->
+      <a class="tout" href="/conseils">Toutes les séances{anneesSeances?.length === 1 ? ` ${anneesSeances[0]}` : ''} <Icon name="fleche" size={14} /></a>
     </header>
     {#if dernieres?.length}
       <div class="seances">
@@ -120,13 +119,13 @@
         <article>
           <p class="quand">
             <span class="etiquette">Prochain conseil</span>
-            <strong>{assemblee(s.titre)}</strong> — {dateDuJour(s.date)}{#if s.convocation?.heure}, {s.convocation.heure}{/if}{#if s.convocation?.lieu}, {s.convocation.lieu}{/if}
+            <strong>{assemblee(s.titre)}</strong>, {dateDuJour(s.date)}{#if s.convocation?.heure}, {s.convocation.heure}{/if}{#if s.convocation?.lieu}, {s.convocation.lieu}{/if}
           </p>
           {#if s.convocation?.ordre_du_jour?.length}
             <details>
               <summary>L'ordre du jour : {s.convocation.ordre_du_jour.length} point{s.convocation.ordre_du_jour.length > 1 ? 's' : ''}</summary>
               <ol>{#each s.convocation.ordre_du_jour as point}<li>{point}</li>{/each}</ol>
-              <p class="source">Lu dans la convocation{#if s.convocation.convoque_le}{' '}du {dateLongue(s.convocation.convoque_le)}{/if}{#if s.convocation.url}{' '}— <a href={s.convocation.url} target="_blank" rel="noopener">la lire</a>{/if}.
+              <p class="source">Lu dans la convocation{#if s.convocation.convoque_le}{' '}du {dateLongue(s.convocation.convoque_le)}{/if}{#if s.convocation.url}{' '}(<a href={s.convocation.url} target="_blank" rel="noopener">la lire</a>){/if}.
                 Séance publique : chacun peut y assister.</p>
             </details>
           {:else if s.convocation?.url}
@@ -152,13 +151,13 @@
   </section>
 {/if}
 
+<!-- Trois dossiers, tirés au sort à chaque publication (+page.server.js). -->
 {#if dossiers?.length}
   <section class="dossiers">
     <header>
       <h2>Dossiers thématiques</h2>
       <a class="tout" href="/dossiers">Tous les dossiers <Icon name="fleche" size={14} /></a>
     </header>
-    <p class="chapeau-dossiers">Des faits sourcés reliés autour d'une question — ce que l'on paie, qui décide, depuis quand — et ce que nous ne savons pas encore.</p>
     <ul>
       {#each dossiers as d}
         <li><a href="/dossiers/{d.slug}">{d.titre}</a>{#if d.chapeau}<p>{d.chapeau}</p>{/if}</li>
@@ -166,6 +165,81 @@
     </ul>
   </section>
 {/if}
+
+<!-- Les données : des valeurs, pas des phrases. Chaque tuile porte le chiffre
+     de la COMMUNE ; celui de l'intercommunalité suit, nommé, jamais additionné
+     (ni le même conseil, ni le même bulletin de vote). Un zéro garde sa raison,
+     en une ligne : il dit ce que le SITE a relevé, jamais ce que la commune a
+     fait. Le détail de chaque compte est sur la page où mène la tuile. -->
+<section class="donnees">
+  <header>
+    <h2>Les données</h2>
+    <a class="tout" href="/carte">Explorer la carte <Icon name="fleche" size={14} /></a>
+  </header>
+  <div class="tuiles">
+    <a class="tuile" href="/deliberations">
+      <b>{nombre(chiffres.deliberations)}</b>
+      <span class="quoi">délibérations municipales</span>
+      {#if interco?.deliberations}<span class="aussi">{EPCI_COURT}&nbsp;: {nombre(interco.deliberations)}</span>{/if}
+    </a>
+    <a class="tuile" class:vide={chiffres.marches === 0} href="/marches">
+      <b>{nombre(chiffres.marches)}</b>
+      <span class="quoi">{chiffres.marches > 1 ? 'marchés attribués' : 'marché attribué'}</span>
+      {#if chiffres.marches === 0}
+        <span class="aussi raison">{sourceMarches === 'absente' ? 'collecte pas encore lancée' : "rien n'est publié sous 40\u00a0000\u00a0€\u00a0HT"}</span>
+        <!-- Ce que les procès-verbaux en disent, indépendamment des sources
+             ouvertes : les deux mentions peuvent se cumuler. -->
+        {#if extraitsMarches?.cas === 'en_attente'}
+          <span class="aussi">{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, qui {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture</span>
+        {/if}
+      {/if}
+      {#if interco?.marches}<span class="aussi">{EPCI_COURT}&nbsp;: {nombre(interco.marches)}</span>{/if}
+    </a>
+    <a class="tuile" href="/acteurs-publics">
+      <b>{nombre(chiffres.acteurs)}</b>
+      <span class="quoi">acteurs en activité</span>
+      {#if chiffres.associations}<span class="aussi">dont {nombre(chiffres.associations)} associations</span>{/if}
+    </a>
+    {#if budget}
+      <a class="tuile" href="/budgets">
+        <b>{millions(budget.recettes)}</b>
+        <span class="quoi">recettes de fonctionnement</span>
+        <span class="aussi">{budget.annee}, source OFGL</span>
+      </a>
+      <a class="tuile" href="/budgets">
+        <b>{millions(budget.depenses)}</b>
+        <span class="quoi">dépenses de fonctionnement</span>
+        <span class="aussi">{budget.annee}, source OFGL</span>
+      </a>
+      {#if budget.habitants}
+        <a class="tuile" href="/territoire">
+          <b>{nombre(budget.habitants)}</b>
+          <span class="quoi">habitants</span>
+          <span class="aussi">{budget.annee}, source OFGL</span>
+        </a>
+      {/if}
+    {/if}
+  </div>
+  <p class="provenance">
+    Chiffres de la commune.
+    <a href="/com-com">Ceux de la {EPCI_COURT}</a> · <a href="/methode">Méthode</a>
+  </p>
+</section>
+
+<section class="portes">
+  <a class="porte" href="/qui-decide">
+    <span class="porte-titre"><Icon name="decide" size={18} />Qui décide&nbsp;?</span>
+    <p>Le conseil, l'intercommunalité, les commissions et les liens entre acteurs.</p>
+  </a>
+  <a class="porte" href="/argent">
+    <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
+    <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
+  </a>
+  <a class="porte" href="/acteurs-publics">
+    <span class="porte-titre"><Icon name="acteurs" size={18} />Qui agit&nbsp;?</span>
+    <p>Entreprises, associations, services publics et lieux de la commune.</p>
+  </a>
+</section>
 
 {#if recents.length}
   <section class="flux">
@@ -185,7 +259,7 @@
               <!-- Une séance renvoie vers sa page (cf. +page.server.js) ; ses
                    PIÈCES renvoient vers l'archive d'origine. -->
               <a href={item.lien || '/deliberations'}>{assemblee(item.titre)}</a>
-              <span class="compte">— {compte(item.nb_actes)}</span>
+              <span class="compte">: {compte(item.nb_actes)}</span>
               {#if item.pieces?.length}
                 <span class="pieces">
                   {#each item.pieces as p, i}{#if i}<span class="sep"> · </span>{/if}<a
@@ -209,156 +283,6 @@
     {/if}
   </section>
 {/if}
-
-<section class="hero donnees">
-  <div class="pitch">
-    <h2>Les données</h2>
-    <!-- Cette page ne montre QUE la commune. L'intercommunalité décide aussi
-         pour elle, et sur des compétences lourdes — mais ce n'est ni le même
-         conseil ni le même bulletin de vote, et les additionner sous le mot
-         « délibérations » laissait croire à un conseil municipal deux fois plus
-         actif. Le renvoi est là pour qu'aucune moitié ne se perde. -->
-    {#if interco?.deliberations || interco?.marches || interco?.avis}
-      <p class="cadrage">
-        Ces chiffres sont ceux <b>de la commune</b>. La {EPCI} en tient
-        {[
-          interco.deliberations && `${nombre(interco.deliberations)} délibérations`,
-          interco.marches && `${nombre(interco.marches)} marché${interco.marches > 1 ? 's' : ''} attribué${interco.marches > 1 ? 's' : ''}`,
-          interco.avis && `${nombre(interco.avis)} avis publiés`,
-        ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' et $1')}
-        de plus, décidés pour la commune sans être décidés par elle&nbsp;:
-        <a href="/com-com">voir ce que fait la {EPCI_COURT}</a>.
-      </p>
-    {/if}
-    <div class="chiffres">
-      <span class="chiffre"><b>{nombre(chiffres.acteurs)}</b><span>acteurs de la commune en activité</span></span>
-      <span class="chiffre"><b>{nombre(chiffres.deliberations)}</b><span>délibérations municipales</span></span>
-      <span class="chiffre" class:vide={chiffres.marches === 0}>
-        <b>{nombre(chiffres.marches)}</b>
-        <span>{chiffres.marches > 1 ? 'marchés attribués recensés' : 'marché attribué recensé'}</span>
-      </span>
-      {#if budget}
-        <span class="chiffre"><b>{millions(budget.recettes)}</b><span>recettes de fonctionnement {budget.annee}</span></span>
-      {/if}
-    </div>
-    <!-- Pas de badge « Calcul » ici : ces quatre chiffres n'ont pas la même
-         nature. Les trois premiers sont nos comptes — ils valent ce que vaut la
-         collecte. Le budget est un agrégat publié par OFGL, plus solide que ce
-         que nous savons produire. Un badge unique mentirait sur l'un des deux,
-         et le hero n'est pas l'endroit pour trois étiquettes. La phrase le dit
-         en clair, chaque page de destination porte ensuite sa qualification. -->
-    {#if chiffres.marches === 0}
-      <!-- Zéro n'est pas « la commune ne commande rien » : c'est « nos sources
-           n'en recensent aucun ». La différence est tout le sujet du site. -->
-      <!-- « Ce n'est pas une lacune de collecte » s'affichait ici sur les
-           trois instances, alors que les procès-verbaux de l'une révélaient 77
-           attributions jamais relevées (docs/refonte-du-contenu.md, défaut 2).
-           Le zéro dit ce que le SITE a relevé, jamais ce que la commune a fait. -->
-      <p class="lacune">
-        {#if sourceMarches === 'absente'}
-          La collecte des marchés publics n'a pas encore tourné pour ce site&nbsp;:
-          ce zéro est une question non posée, pas une réponse.
-        {:else}
-          Aucun marché attribué par la commune n'est encore publié ici. Ce zéro
-          n'est pas celui de la commune&nbsp;: les sources ouvertes ne publient
-          rien sous <b>40 000 €&nbsp;HT</b>, et les marchés plus petits ne se
-          lisent que dans les procès-verbaux du conseil.
-        {/if}
-        <!-- Ce que l'instance sait des procès-verbaux, indépendamment de la
-             collecte des sources ouvertes (couverture.extraits, lot 4 b). -->
-        {#if extraitsMarches?.cas === 'en_attente'}
-          <b>{extraitsMarches.enAttente.toLocaleString('fr-FR')}</b>
-          attribution{extraitsMarches.enAttente > 1 ? 's' : ''} de la commune
-          {extraitsMarches.enAttente > 1 ? 'ont été lues' : 'a été lue'} dans les
-          procès-verbaux et {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'}
-          relecture.
-        {:else if extraitsMarches?.cas === 'depouilles'}
-          Un relevé des procès-verbaux a été déposé, et aucune attribution de
-          la commune n'y attend de relecture.
-        {:else if extraitsMarches?.cas === 'non_depouilles'}
-          Les procès-verbaux ne sont pas encore dépouillés pour en relever les marchés.
-        {/if}
-        <a href="/marches">Ce que cela laisse dans l'ombre</a>
-      </p>
-    {/if}
-    <p class="provenance">
-      {#if chiffres.cessees}
-        {nombre(chiffres.cessees)} fiches d'acteurs fermés ou dissous sont
-        conservées hors de ce compte — elles apparaissent dans des
-        délibérations passées. <a href="/acteurs-publics">Les retrouver dans l'annuaire</a>.
-      {/if}
-      Les trois premiers chiffres sont ceux que notre collecte a trouvés&nbsp;;
-      le budget est l'agrégat publié par l'Observatoire des finances locales.
-      <a href="/methode">Comment nous distinguons un fait d'un calcul</a>
-    </p>
-  </div>
-
-  <a class="teaser" href="/carte">
-    <svg viewBox="0 0 320 190" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <path d="M-10 120 C 60 100, 90 140, 150 125 S 260 90, 330 110" fill="none" stroke="#c3d3d8" stroke-width="2.5" />
-      <path d="M-10 60 C 70 70, 120 40, 190 55 S 280 80, 330 60" fill="none" stroke="#dfe4de" stroke-width="1.5" />
-      <g fill="#14556b" opacity=".85">
-        <circle cx="150" cy="112" r="4" /><circle cx="161" cy="105" r="3" />
-        <circle cx="142" cy="120" r="3" /><circle cx="169" cy="118" r="2.5" />
-        <circle cx="133" cy="108" r="2.5" /><circle cx="157" cy="126" r="2.5" />
-      </g>
-      <g fill="#2c6e4f" opacity=".75">
-        <circle cx="96" cy="86" r="3" /><circle cx="212" cy="72" r="3" />
-        <circle cx="248" cy="128" r="2.5" /><circle cx="74" cy="142" r="2.5" />
-        <circle cx="188" cy="148" r="2.5" />
-      </g>
-      <g fill="#9a6b12" opacity=".7">
-        <circle cx="118" cy="60" r="2.5" /><circle cx="272" cy="96" r="2.5" />
-        <circle cx="52" cy="104" r="2.5" /><circle cx="228" cy="42" r="2" />
-      </g>
-    </svg>
-    <span class="teaser-cta">
-      <Icon name="acteurs" size={15} />
-      <!-- « 1 807 acteurs » en haut de page et « 795 sur la carte » ici : le
-           même mot, deux nombres, et le lecteur conclut au bug. L'écart est
-           réel et légitime (tous les acteurs n'ont pas de localisation
-           publique fiable), il suffit de le dire à l'endroit où il se voit. -->
-      Explorer les {nombre(chiffres.surCarte)} acteurs localisables sur la carte
-      <Icon name="fleche" size={15} />
-    </span>
-  </a>
-</section>
-
-<section class="portes">
-  <a class="porte" href="/qui-decide">
-    <span class="porte-titre"><Icon name="decide" size={18} />Qui décide&nbsp;?</span>
-    <p>Le conseil, l'intercommunalité, les commissions et les liens entre acteurs.</p>
-    <span class="porte-n">{nombre(chiffres.deliberations)} délibérations municipales publiées</span>
-  </a>
-  <a class="porte" href="/argent">
-    <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
-    <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
-    <span class="porte-n">
-      {#if budget}{millions(budget.depenses)} de dépenses de fonctionnement en {budget.annee} · {/if}{nombre(chiffres.marches)} marché{chiffres.marches > 1 ? 's' : ''} attribué{chiffres.marches > 1 ? 's' : ''} par la commune{#if interco?.marches || interco?.avis} ; {EPCI_COURT}&nbsp;: {nombre(interco.marches)} attribué{interco.marches > 1 ? 's' : ''}{#if interco.avis}, {nombre(interco.avis)} avis{/if}{/if}
-    </span>
-  </a>
-  <a class="porte" href="/acteurs-publics">
-    <span class="porte-titre"><Icon name="acteurs" size={18} />Qui agit&nbsp;?</span>
-    <p>Entreprises, associations, services publics et lieux de la commune — et, au choix, ceux de l'intercommunalité.</p>
-    <!-- Le total et TOUTES ses parts, pour que l'addition tombe juste : « 246
-         associations et 357 entreprises » sous « 713 acteurs » laissait le
-         lecteur chercher les 110 manquants (services, lieux, et 19 personnes
-         que l'annuaire ne compte pas). -->
-    <!-- « 294 associations et 744 entreprises » comptait 37 associations
-         dissoutes, 388 entreprises cessées et 112 sociétés dont l'activité
-         déclarée est la gestion immobilière. Le chiffre unique décrivait un
-         tissu économique qui n'existe pas. -->
-    <span class="porte-n">
-      {nombre(chiffres.acteurs)} en activité&nbsp;: {nombre(chiffres.associations)} associations,
-      {nombre(chiffres.entreprisesProductives)} entreprises{#if chiffres.entreprisesPatrimoniales},
-      {nombre(chiffres.entreprisesPatrimoniales)} sociétés de patrimoine{/if}{#if chiffres.services},
-      {nombre(chiffres.services)} services publics{/if}{#if chiffres.lieux}{' '}et
-      {nombre(chiffres.lieux)} lieux{/if}
-    </span>
-  </a>
-</section>
-
-
 
 <!-- L'agenda garde sa place, mais après la décision publique et sous son propre
      nom. Mélangé au reste et trié par date, il occupait tout le fil. -->
@@ -398,18 +322,6 @@
 </section>
 
 <style>
-  /* Le cadrage de périmètre : une phrase, pas un bandeau. Elle doit se lire
-     avant les chiffres sans leur voler la vedette. */
-  .cadrage {
-    margin: .6rem 0 0; font-size: .88rem; color: var(--gris);
-    border-left: 3px solid var(--trait); padding-left: .7rem;
-  }
-  .cadrage b { color: var(--encre); }
-  .chiffre.vide b { color: var(--gris); }
-  .lacune {
-    margin: .6rem 0 0; font-size: .85rem; color: var(--gris);
-    border-left: 3px solid var(--ambre); padding-left: .7rem;
-  }
   .ailleurs {
     margin: .7rem 0 0; font-size: .85rem; color: var(--gris);
     border-top: 1px dashed var(--trait); padding-top: .6rem;
@@ -443,10 +355,15 @@
   section { max-width: 1080px; margin: 0 auto; padding: 0 1.4rem; }
 
   /* ---------- entrée, conseil, dossiers (04/10/2026) ---------- */
-  .entree { padding-top: 2.4rem; padding-bottom: 1.6rem; }
-  .entree h1 { font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; margin: 0 0 .6rem; }
-  .entree p { margin: 0 0 1.1rem; color: var(--gris); font-size: 1.02rem; max-width: 56ch; }
-  .cherche { display: flex; gap: .5rem; max-width: 34rem; }
+  /* Le titre à gauche, la recherche en face, calée à droite ; elle passe
+     dessous quand la largeur manque. */
+  .entree {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem 2rem; flex-wrap: wrap; padding-top: 2.4rem; padding-bottom: 1.6rem;
+  }
+  .entree h1 { font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; margin: 0 0 .4rem; }
+  .entree p { margin: 0; color: var(--gris); font-size: 1.02rem; }
+  .cherche { display: flex; gap: .5rem; flex: 0 1 26rem; margin-left: auto; }
   .cherche input {
     flex: 1; min-width: 0; padding: .6rem .85rem; font-size: 1rem; color: var(--encre);
     border: 1px solid var(--trait); border-radius: var(--rayon); background: var(--blanc);
@@ -457,8 +374,8 @@
     background: var(--ardoise); color: var(--blanc); cursor: pointer;
   }
   .conseil, .dossiers { padding-bottom: 2.2rem; }
-  .conseil header, .dossiers header { display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap; margin-bottom: .7rem; }
-  .conseil h2, .dossiers h2 { font-size: 1.35rem; margin: 0; }
+  .conseil header, .dossiers header, .donnees header { display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap; margin-bottom: .7rem; }
+  .conseil h2, .dossiers h2, .donnees h2 { font-size: 1.35rem; margin: 0; }
   .seances { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem; margin-bottom: 1rem; }
   .seance {
     display: flex; flex-direction: column; gap: .25rem; padding: .85rem 1rem; color: inherit;
@@ -480,46 +397,28 @@
                  border-radius: var(--rayon); }
   .dossiers li a { font-family: var(--display); font-size: 1.05rem; font-weight: 600; }
   .dossiers li p { margin: .3rem 0 0; font-size: .84rem; color: var(--gris); line-height: 1.45; }
-  .donnees h2 { font-size: 1.35rem; margin: 0 0 .8rem; }
 
-  /* ---------- hero ---------- */
-  .hero {
-    display: grid; grid-template-columns: 1.15fr .85fr; gap: 2.5rem;
-    align-items: center; padding-top: 2.6rem; padding-bottom: 2rem;
+  /* ---------- les données, en tuiles ---------- */
+  .donnees { padding-bottom: 1.4rem; }
+  .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .7rem; }
+  .tuile {
+    display: flex; flex-direction: column; gap: .2rem; padding: .8rem .9rem; color: inherit;
+    background: var(--blanc); border: 1px solid var(--trait); border-radius: var(--rayon);
   }
-  .pitch h1 { font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; margin: 0 0 .6rem; }
-  .pitch p { margin: 0 0 1.4rem; color: var(--gris); font-size: 1.02rem; max-width: 46ch; }
-
-  .provenance {
-    margin: .9rem 0 0; font-size: .78rem; line-height: 1.5; color: var(--gris);
-    max-width: 46ch;
-  }
-  .provenance a { color: var(--ardoise); }
-
-  .chiffres { display: flex; gap: 1.8rem; flex-wrap: wrap; }
-  .chiffre { display: flex; flex-direction: column; }
-  .chiffre b {
+  .tuile:hover { text-decoration: none; border-color: var(--ardoise); }
+  .tuile b {
     font-family: var(--display); font-size: 1.7rem; line-height: 1;
     font-variant-numeric: tabular-nums; color: var(--encre);
   }
-  .chiffre span {
+  .tuile.vide b { color: var(--gris); }
+  .tuile .quoi {
     font-family: var(--data); font-size: .66rem; letter-spacing: .09em;
-    text-transform: uppercase; color: var(--gris-clair); margin-top: .25rem;
+    text-transform: uppercase; color: var(--gris);
   }
-
-  .teaser {
-    position: relative; display: block; overflow: hidden;
-    border: 1px solid var(--trait); border-radius: var(--rayon);
-    background: #eef1ec; height: 200px; color: inherit;
-  }
-  .teaser:hover { text-decoration: none; border-color: var(--ardoise); }
-  .teaser svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .teaser-cta {
-    position: absolute; left: 0; right: 0; bottom: 0;
-    display: flex; align-items: center; gap: .4rem;
-    padding: .55rem .75rem; background: rgba(255,255,255,.93);
-    border-top: 1px solid var(--trait); font-size: .84rem; color: var(--ardoise);
-  }
+  .tuile .aussi { font-size: .76rem; color: var(--gris); font-variant-numeric: tabular-nums; }
+  .tuile .raison { color: var(--ambre); }
+  .provenance { margin: .6rem 0 0; font-size: .78rem; color: var(--gris); }
+  .provenance a { color: var(--ardoise); }
 
   /* ---------- portes ---------- */
   .portes { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; padding-bottom: 2.4rem; }
@@ -537,11 +436,6 @@
   }
   .porte-titre :global(.icon) { color: var(--ardoise); }
   .porte p { margin: 0; font-size: .87rem; color: var(--gris); }
-  .porte-n {
-    margin-top: .45rem; padding-top: .5rem; border-top: 1px solid var(--trait-pale);
-    font-family: var(--data); font-size: .72rem; color: var(--gris);
-    font-variant-numeric: tabular-nums;
-  }
 
   /* ---------- flux ---------- */
   .flux { padding-bottom: 2.6rem; }
@@ -590,7 +484,7 @@
   .secondaires small { font-size: .78rem; color: var(--gris); line-height: 1.35; }
 
   @media (max-width: 900px) {
-    .hero { grid-template-columns: 1fr; gap: 1.5rem; padding-top: 1.8rem; }
+    .cherche { flex-basis: 100%; }
     .portes, .secondaires { grid-template-columns: 1fr; }
     .flux li { grid-template-columns: 4.6rem 1fr; row-gap: .2rem; }
     .genre { grid-column: 2; justify-self: start; }

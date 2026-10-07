@@ -35,7 +35,7 @@
   }
 </script>
 
-<svelte:head><title>Conseils municipaux — {SITE_NOM}</title>
+<svelte:head><title>Conseils municipaux - {SITE_NOM}</title>
   <meta name="description" content="Composition des conseils municipaux {COMMUNE_DE} et des communes de la {EPCI} : maires, adjoints, conseillers et délégués communautaires." /></svelte:head>
 
 <section>

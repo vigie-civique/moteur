@@ -79,7 +79,7 @@
       const out = []
       if (r.since) {
         out.push({ date: r.since, genre: 'debut',
-                   texte: `${libelleRel(r)} — ${autre}` })
+                   texte: `${libelleRel(r)}, ${autre}` })
       }
       // Une relation dont le début et la fin tombent le même jour décrit un
       // fait ponctuel — une candidature à une élection — et non une période.
@@ -87,7 +87,7 @@
       // n'apprenait rien et faisait douter des dates.
       if (r.until && r.until !== r.since) {
         out.push({ date: r.until, genre: 'fin',
-                   texte: `Fin : ${libelleRel(r)} — ${autre}` })
+                   texte: `Fin : ${libelleRel(r)}, ${autre}` })
       }
       return out
     }),
@@ -95,14 +95,14 @@
     ...flows.filter((f) => f.year).map((f) => ({
       date: String(f.year),
       genre: 'argent',
-      texte: `${f.type_norm || f.type || 'Flux'} — ${f.to_id === id ? (f.from_name || '') : (f.to_name || '')}`,
+      texte: `${f.type_norm || f.type || 'Flux'}, ${f.to_id === id ? (f.from_name || '') : (f.to_name || '')}`,
       montant: f.amount,
     })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
   const anneeDe = (d) => (d || '').slice(0, 4)
   $: chronoParAnnee = chronologie.reduce((acc, e) => {
-    const a = anneeDe(e.date) || '—'
+    const a = anneeDe(e.date) || '-'
     ;(acc[a] = acc[a] || []).push(e)
     return acc
   }, {})
@@ -216,7 +216,7 @@
 
   const fmt = (d) => d
     ? new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-    : '—'
+    : '-'
   const relLabel = (r) => {
     const l = REL_LABELS[r.relation_type]
     if (!l) return (r.relation_type || '').replace(/_/g, ' ')
@@ -255,9 +255,9 @@
 <!-- Maintenant que la page est prérendue, ces balises servent enfin à quelque
      chose : c'est ce qu'un moteur de recherche et un partage de lien affichent. -->
 <svelte:head>
-  <title>{entity?.name || 'Fiche'} — {entity?.commune || '{COMMUNE}'} | {SITE_NOM}</title>
+  <title>{entity?.name || 'Fiche'} - {entity?.commune || '{COMMUNE}'} | {SITE_NOM}</title>
   <meta name="description" content={
-    `${entity?.name || ''} — ${TYPE_LABELS[entity?.type] || ''}`
+    `${entity?.name || ''} : ${TYPE_LABELS[entity?.type] || ''}`
     + (entity?.commune ? ` à ${entity.commune}` : '')
     + `. ${liens.length} acte(s) public(s) le citant, ${relActives.length} lien(s) en cours`
     + (recu > 0 ? `, ${euros(recu)} reçus de fonds publics` : '')
@@ -307,8 +307,7 @@
               Les registres ne le disent pas.
               {#if entity.derniere_trace}
                 Dernière fois qu'une source publique la nomme&nbsp;:
-                <b>{entity.derniere_trace}</b>{#if entity.derniere_trace < ANNEE - 5}
-                  — soit il y a plus de cinq ans{/if}.
+                <b>{entity.derniere_trace}</b>{#if entity.derniere_trace < ANNEE - 5}, soit il y a plus de cinq ans{/if}.
               {:else}
                 Aucune source publique ne la nomme.
               {/if}
@@ -365,12 +364,12 @@
             <tbody>
               {#each flows as f}
                 <tr class:demande={f.statut === 'demande'}>
-                  <td>{f.year || '—'}</td>
+                  <td>{f.year || '-'}</td>
                   <td>
                     <span class="ftype">{(f.type_norm || f.type || '').replace(/_/g, ' ')}</span>
                     {#if f.statut === 'demande'}<span class="tag">demandé</span>{/if}
                     {#if f.description}<span class="fdesc">{f.description}</span>{/if}
-                    <span class="fsens">{f.to_id === id ? `de ${f.from_name || '—'}` : `à ${f.to_name || '—'}`}</span>
+                    <span class="fsens">{f.to_id === id ? `de ${f.from_name || '-'}` : `à ${f.to_name || '-'}`}</span>
                   </td>
                   <td class="r">{euros(f.amount)}</td>
                 </tr>
@@ -427,9 +426,9 @@
             <tbody>
               {#each marches as m}
                 <tr>
-                  <td>{m.date_notif || '—'}</td>
-                  <td>{m.objet}<span class="fsens">{m.titulaire_id === id ? `pour ${m.acheteur_nom}` : `titulaire : ${m.titulaire_nom || '—'}`}</span></td>
-                  <td class="r">{m.montant ? euros(m.montant) : '—'}</td>
+                  <td>{m.date_notif || '-'}</td>
+                  <td>{m.objet}<span class="fsens">{m.titulaire_id === id ? `pour ${m.acheteur_nom}` : `titulaire : ${m.titulaire_nom || '-'}`}</span></td>
+                  <td class="r">{m.montant ? euros(m.montant) : '-'}</td>
                 </tr>
               {/each}
             </tbody>
@@ -522,7 +521,7 @@
 
       {#if entity.lat && entity.lng}
         <div class="map" bind:this={mapEl}></div>
-        {#if fondAbsent}<p class="sans-fond">Fond de carte indisponible — le
+        {#if fondAbsent}<p class="sans-fond">Fond de carte indisponible : le
           repère reste à sa position exacte.</p>{/if}
       {/if}
     </div>

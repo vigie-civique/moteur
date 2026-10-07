@@ -59,7 +59,7 @@
 </script>
 
 <svelte:head>
-  <title>Élus et structures subventionnées — {SITE_NOM}</title>
+  <title>Élus et structures subventionnées - {SITE_NOM}</title>
   <meta name="description" content="Les élus {COMMUNE_DE} qui dirigent une association ou une société, et ce que la commune verse à ces structures : situations à vérifier, déports constatés, méthode et droit de réponse." />
 </svelte:head>
 
@@ -68,7 +68,7 @@
   <aside class="reponse">
     <strong>Vous êtes concerné par une de ces situations ?</strong>
     Cette page peut contenir des erreurs ou des informations incomplètes.
-    <a href="/contact">Demandez une rectification ou exercez votre droit de réponse</a> —
+    <a href="/contact">Demandez une rectification ou exercez votre droit de réponse</a>,
     toute correction justifiée est appliquée et signalée.
   </aside>
 
@@ -83,7 +83,7 @@
     <p class="avertissement">
       <strong>Un lien n'est pas une faute.</strong> Dans une commune de mille
       habitants, les élus sont souvent les mêmes personnes que celles qui font
-      vivre le tissu associatif. C'est normal, et c'est même souhaitable — ce qui
+      vivre le tissu associatif. C'est normal, et c'est même souhaitable : ce qui
       compte est que la décision publique reste régulière.
     </p>
   </header>
@@ -106,7 +106,7 @@
       dont <b>{deportConstate}</b> où le retrait du vote de l'élu concerné est
       consigné au compte rendu.
       Par ailleurs, <b>{conflits.deports_repertories}</b> délibérations mentionnent
-      un déport, toutes situations confondues — y compris des retraits sans
+      un déport, toutes situations confondues, y compris des retraits sans
       rapport avec les liens listés ici.
     </Niveau>
 
@@ -138,7 +138,7 @@
               {#if c.deport}
                 <p class="deport">
                   ✓ <strong>« {c.deport.mention} »</strong>
-                  — {c.deport.titre}{#if c.deport.date}, {c.deport.date}{/if}
+                  : {c.deport.titre}{#if c.deport.date}, {c.deport.date}{/if}
                   {#if c.deport.source_url}
                     · <a href={c.deport.source_url} target="_blank" rel="noopener">compte rendu</a>
                   {/if}
@@ -158,7 +158,7 @@
           des comptes rendus du conseil. Seuls les liens vérifiés sont publiés :
           les hypothèses et les liens présumés restent hors ligne.</li>
         <li><strong>Les versements</strong> sont les subventions et flux
-          financiers de la commune effectivement réalisés — les demandes de
+          financiers de la commune effectivement réalisés : les demandes de
           subvention non obtenues sont exclues.</li>
         <li><strong>Les déports</strong> sont les mentions « ne participe pas »
           relevées dans les comptes rendus du conseil municipal.</li>

@@ -7,7 +7,7 @@
 </script>
 
 <svelte:head>
-  <title>Répliquer ce dispositif sur votre commune — {SITE_NOM}</title>
+  <title>Répliquer ce dispositif sur votre commune - {SITE_NOM}</title>
   <meta name="description" content="Le code de ce site est réutilisable pour observer une autre commune : collecteurs de données publiques, règles de publication, site statique. Licence MIT." />
 </svelte:head>
 
@@ -15,7 +15,7 @@
   <h1>Répliquer sur votre commune</h1>
   <p class="chapeau">
     Ce site n'a rien d'unique. En dessous de 3 500 habitants, l'obligation légale
-    d'ouvrir ses données ne s'applique pas — et c'est là que vivent la moitié des
+    d'ouvrir ses données ne s'applique pas, et c'est là que vivent la moitié des
     communes françaises. Le dispositif qui produit cette page est réutilisable&nbsp;;
     voici ce qu'il fait, ce qu'il coûte, et ce qu'il ne fera pas à votre place.
   </p>
@@ -31,7 +31,7 @@
         <code>git clone {DEPOT_URL}</code>, puis
         <code>python3 scripts/init_instance.py &lt;code INSEE&gt;</code>. Le dépôt
         porte son propre historique&nbsp;: vous pouvez voir ce qui a changé, quand,
-        et pourquoi — y compris les erreurs et leurs corrections. C'est le point
+        et pourquoi, y compris les erreurs et leurs corrections. C'est le point
         d'une publication de code&nbsp;; une archive ne le donne pas.
       </p>
     </div>
@@ -45,11 +45,11 @@
 
   <h2>Ce que le dépôt contient</h2>
   <ul class="contenu">
-    <li><b>Les collecteurs</b> — SIRENE, RNA, BODACC, DVF, OFGL/DGFiP, DECP et BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, INSEE, Hub'Eau.</li>
-    <li><b>La chaîne de publication</b> — le script qui extrait de la base un instantané filtré, et les règles qui décident ce qui sort.</li>
-    <li><b>Le site</b> — celui que vous lisez, sans serveur ni base de données en ligne.</li>
-    <li><b>L'outil d'édition</b> — facultatif, et qui travaille sur la base complète&nbsp;: il n'a pas vocation à être mis en ligne.</li>
-    <li><b>Les contrôles</b> — refus de publier une page vide, refus de laisser fuiter un chemin local, refus de publier ce que le périmètre n'autorise pas, et une suite de tests sur les trois fonctions qui décident de ce qui sort.</li>
+    <li><b>Les collecteurs</b> : SIRENE, RNA, BODACC, DVF, OFGL/DGFiP, DECP et BOAMP, Sitadel, Géorisques, RNE, résultats électoraux, INSEE, Hub'Eau.</li>
+    <li><b>La chaîne de publication</b> : le script qui extrait de la base un instantané filtré, et les règles qui décident ce qui sort.</li>
+    <li><b>Le site</b> : celui que vous lisez, sans serveur ni base de données en ligne.</li>
+    <li><b>L'outil d'édition</b>, facultatif, et qui travaille sur la base complète&nbsp;: il n'a pas vocation à être mis en ligne.</li>
+    <li><b>Les contrôles</b>, refus de publier une page vide, refus de laisser fuiter un chemin local, refus de publier ce que le périmètre n'autorise pas, et une suite de tests sur les trois fonctions qui décident de ce qui sort.</li>
   </ul>
 
   <h2>Ce qu'il ne contient pas</h2>
@@ -77,7 +77,7 @@
     Et surtout&nbsp;: les collecteurs qui lisent le site de la mairie et celui de
     l'intercommunalité sont écrits pour la structure de <em>ces</em> sites. Le
     dépôt en fournit pour deux familles courantes, mais il n'existe aucun format
-    commun aux sites de mairie — c'est la raison de fond pour laquelle ce genre
+    commun aux sites de mairie : c'est la raison de fond pour laquelle ce genre
     d'outil n'existe pas déjà partout, et c'est le travail que personne ne peut
     faire à votre place. Comptez quelques jours, pas une heure.
   </p>
@@ -91,8 +91,8 @@
     peut suggérer une conclusion que rien n'établit.
   </p>
   <p>
-    Le code porte cette discipline — la distinction entre un fait, un calcul et
-    une lecture, la provenance affichée sur chaque acte, les lacunes publiées —
+    Le code porte cette discipline, la distinction entre un fait, un calcul et
+    une lecture, la provenance affichée sur chaque acte, les lacunes publiées,
     mais il ne la tiendra pas à votre place. Lisez
     <a href="/methode">la méthode</a> et <a href="/couverture">les lacunes</a>
     avant de vous lancer&nbsp;: c'est là qu'est le vrai contenu du projet.

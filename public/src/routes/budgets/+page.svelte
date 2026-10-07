@@ -38,7 +38,7 @@
   $: voteDep = votePrincipal.find(r => r.agregat === 'Dépenses de fonctionnement')?.value ?? null
   $: voteEquilScale = Math.max(voteRec || 0, voteDep || 0, 1)
   function fmtVote(r) {
-    if (r.value == null) return '—'
+    if (r.value == null) return '-'
     if (r.unit === 'pct') return r.value.toLocaleString('fr-FR') + ' %'
     if (r.unit === 'annees') return r.value.toLocaleString('fr-FR') + ' ans'
     return (r.approx ? '≈ ' : '') + eurosC(r.value)
@@ -143,13 +143,13 @@
 
   // ─── Formatage ─────────────────────────────────────────────────────────────────
   function eurosC(n) {
-    if (n == null) return '—'
+    if (n == null) return '-'
     const a = Math.abs(n)
     if (a >= 1e6) return (n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' M€'
     if (a >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k€'
     return euros(n)
   }
-  const perHab = (n) => n == null ? '—' : Math.round(n).toLocaleString('fr-FR') + ' €/hab.'
+  const perHab = (n) => n == null ? '-' : Math.round(n).toLocaleString('fr-FR') + ' €/hab.'
 
   // Un montant seul n'apprend rien : 1,83 M€, est-ce beaucoup ? Trois questions
   // rendent un chiffre lisible — combien, comparé à quoi, comment ça évolue.
@@ -188,14 +188,14 @@
   const pct = (n, total) => total ? Math.round(100 * n / total) + ' %' : ''
 </script>
 
-<svelte:head><title>Budget communal — {SITE_NOM}</title>
+<svelte:head><title>Budget communal - {SITE_NOM}</title>
   <meta name="description" content="Budget de la commune {COMMUNE_DE} : recettes, dépenses, budgets annexes et comparaison avec les communes semblables (OFGL)." /></svelte:head>
 
 <section>
   <header class="head">
     <div>
       <h1>Budget communal</h1>
-      <p class="sub">Ce que la commune perçoit, dépense, épargne et doit — en un coup d'œil.</p>
+      <p class="sub">Ce que la commune perçoit, dépense, épargne et doit, en un coup d'œil.</p>
     </div>
     {#if years.length}
       <label class="year">Exercice
@@ -215,7 +215,7 @@
     {#if isVoteYear}
       <!-- Budget primitif VOTÉ (prévisionnel) — source unique provisoire : CR du CM -->
       <div class="votebanner">
-        <b>Budget primitif voté {year}</b> — chiffres <b>prévisionnels</b> adoptés par le conseil municipal,
+        <b>Budget primitif voté {year}</b> : chiffres <b>prévisionnels</b> adoptés par le conseil municipal,
         non encore consolidés par la DGFiP / OFGL. Source unique provisoire :
         {voteSource}{#if voteSourceUrl} · <a href={voteSourceUrl} target="_blank" rel="noopener">voir le CR ↗</a>{/if}.
       </div>
@@ -324,7 +324,7 @@
           soi un mauvais signe&nbsp;: la dette finance des investissements, et emprunter
           quand les taux sont bas pour réaliser des travaux durables est une
           décision courante. Ce que ces chiffres ne disent pas, c'est
-          <em>ce qui</em> a été financé — cela se cherche dans
+          <em>ce qui</em> a été financé : cela se cherche dans
           <a href="/deliberations">les délibérations</a> des années concernées.
         </p>
       {/if}
@@ -362,7 +362,7 @@
     <!-- 3 ─ Équilibre du fonctionnement -->
     {#if recF && depF}
       <h2>L'équilibre du fonctionnement</h2>
-      <p class="hint">Ce qui reste entre recettes et dépenses courantes forme l'épargne — la capacité de la commune à investir sans emprunter.</p>
+      <p class="hint">Ce qui reste entre recettes et dépenses courantes forme l'épargne : la capacité de la commune à investir sans emprunter.</p>
       <div class="equil">
         <div class="erow">
           <span class="ekey"><i class="sw in"></i> Recettes</span>
@@ -386,13 +386,13 @@
 
     <!-- 4 ─ Où va l'argent / D'où vient l'argent (détail DGFiP par compte) -->
     {#if !hasDetail}
-      <p class="note">Le détail comptable par poste (« où va / d'où vient l'argent ») n'est pas encore publié pour {year} — la DGFiP diffuse les comptes détaillés avec environ 18 mois de décalage. Les chiffres-clés et l'épargne ci-dessus proviennent des agrégats OFGL, disponibles plus tôt.{#if lastDetailYear}{' '}Dernier exercice détaillé : <b>{lastDetailYear}</b>.{/if}</p>
+      <p class="note">Le détail comptable par poste (« où va / d'où vient l'argent ») n'est pas encore publié pour {year} : la DGFiP diffuse les comptes détaillés avec environ 18 mois de décalage. Les chiffres-clés et l'épargne ci-dessus proviennent des agrégats OFGL, disponibles plus tôt.{#if lastDetailYear}{' '}Dernier exercice détaillé : <b>{lastDetailYear}</b>.{/if}</p>
     {/if}
     <div class="cols">
       {#if depRows.length}
         <div class="col">
           <h2 class="out-h">Où va l'argent</h2>
-          <p class="hint">Dépenses de fonctionnement {year} — {eurosC(depTotalDG)}</p>
+          <p class="hint">Dépenses de fonctionnement {year} : {eurosC(depTotalDG)}</p>
           <ul class="bars">
             {#each depRows as r}
               <li>
@@ -409,7 +409,7 @@
       {#if recRows.length}
         <div class="col">
           <h2 class="in-h">D'où vient l'argent</h2>
-          <p class="hint">Recettes de fonctionnement {year} — {eurosC(recTotalDG)}</p>
+          <p class="hint">Recettes de fonctionnement {year} : {eurosC(recTotalDG)}</p>
           <ul class="bars">
             {#each recRows as r}
               <li>
@@ -471,7 +471,7 @@
                   {#each ofglYears as y}
                     {@const c = ofglCell(name, y)}
                     <td class="r" class:cur={y === year}>
-                      {#if c}{showPerHab ? (c.euros_par_habitant != null ? Math.round(c.euros_par_habitant) + ' €' : '—') : eurosC(c.montant)}{:else}·{/if}
+                      {#if c}{showPerHab ? (c.euros_par_habitant != null ? Math.round(c.euros_par_habitant) + ' €' : '-') : eurosC(c.montant)}{:else}·{/if}
                     </td>
                   {/each}
                 </tr>
@@ -484,7 +484,7 @@
 
     <!-- 7 ─ Budgets annexes : synthèse par structure et par année -->
     {#if annexeByStruct.length}
-      <h3>Budgets annexes — par structure</h3>
+      <h3>Budgets annexes, par structure</h3>
       <p class="hint">Régies et budgets rattachés (hors budget principal). Solde de fonctionnement et subvention versée par la commune, année par année.</p>
       {#each annexeByStruct as s}
         <div class="annexe-struct">
@@ -500,9 +500,9 @@
                       {#if y.soldeVal != null}
                         <span class:neg={y.soldeVal < 0} class:pos={y.soldeVal >= 0}>{eurosC(y.soldeVal)}</span>
                         {#if y.soldeLbl}<span class="sublbl">{y.soldeLbl}</span>{/if}
-                      {:else}—{/if}
+                      {:else}-{/if}
                     </td>
-                    <td class="r">{y.subvComm != null ? eurosC(y.subvComm) : '—'}</td>
+                    <td class="r">{y.subvComm != null ? eurosC(y.subvComm) : '-'}</td>
                     <td class="src">{y.source}</td>
                   </tr>
                 {/each}
@@ -524,7 +524,7 @@
       {/each}
     {/if}
 
-    <p class="foot">Sources : comptes administratifs DGFiP (détail par compte), agrégats OFGL (€/habitant), délibérations budgétaires du CM (budgets votés {voteYears.length ? voteYears.slice().sort((a,b)=>a-b).join(', ') : '—'}). Les agrégats OFGL couvrent {ofglYears.length ? `${Math.min(...ofglYears)}–${Math.max(...ofglYears)}` : '—'} ; le détail par compte court jusqu'à {lastDetailYear ?? '—'}.</p>
+    <p class="foot">Sources : comptes administratifs DGFiP (détail par compte), agrégats OFGL (€/habitant), délibérations budgétaires du CM (budgets votés {voteYears.length ? voteYears.slice().sort((a,b)=>a-b).join(', ') : '-'}). Les agrégats OFGL couvrent {ofglYears.length ? `${Math.min(...ofglYears)}–${Math.max(...ofglYears)}` : '-'} ; le détail par compte court jusqu'à {lastDetailYear ?? '-'}.</p>
   {/if}
 </section>
 

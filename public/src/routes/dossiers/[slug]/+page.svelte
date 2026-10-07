@@ -42,14 +42,14 @@
 </script>
 
 <svelte:head>
-  <title>{d.titre} — {SITE_NOM}</title>
+  <title>{d.titre} - {SITE_NOM}</title>
   <meta name="description" content={d.chapeau || d.titre} />
 </svelte:head>
 
 <article>
   <nav class="fil" aria-label="Fil d'Ariane"><a href="/dossiers">Dossiers thématiques</a> › {d.titre}</nav>
   {#if d.statut === 'brouillon'}
-    <p class="bandeau">Brouillon — aperçu local, cette page n'est pas publiée.</p>
+    <p class="bandeau">Brouillon : aperçu local, cette page n'est pas publiée.</p>
   {/if}
   <h1>{d.titre}</h1>
   {#if d.perime}
@@ -60,7 +60,7 @@
         Le texte ci-dessous est celui qui a été relu ; vérifiez l'acte avant de vous y fier.</p>
       <ul>
         {#each d.perime.elements as el}
-          <li>{el.libelle}{#if el.titre}{' '}— {el.titre}{/if} :
+          <li>{el.libelle}{#if el.titre}, {el.titre}{/if} :
             {el.quoi === 'disparu' ? "n'est plus publiée" : `${el.champs.join(', ') || 'son contenu'} ${el.champs.length > 1 ? 'ont' : 'a'} changé`}</li>
         {/each}
       </ul>

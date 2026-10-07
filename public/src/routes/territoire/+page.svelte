@@ -147,13 +147,13 @@
   // vient du serveur, où le nom de commune existe encore.
   $: voisinesMax = Math.max(...voisines.map(v => v.valeur), 1)
 
-  const nb = (v, d = 0) => v == null ? '—'
+  const nb = (v, d = 0) => v == null ? '-'
     : new Intl.NumberFormat('fr-FR', { maximumFractionDigits: d }).format(v)
-  const eur = (v) => v == null ? '—'
+  const eur = (v) => v == null ? '-'
     : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v)
-  const pct = (v) => v == null ? '—' : `${v.toFixed(1).replace('.', ',')} %`
-  const taux = (v) => v == null ? '—' : `${(v * 100).toFixed(2).replace('.', ',')} %`
-  const jour = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR') : '—'
+  const pct = (v) => v == null ? '-' : `${v.toFixed(1).replace('.', ',')} %`
+  const taux = (v) => v == null ? '-' : `${(v * 100).toFixed(2).replace('.', ',')} %`
+  const jour = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR') : '-'
   const trimestre = (t) => {
     const [a, q] = (t || '').split('_T')
     return `${q === '1' ? '1ᵉʳ' : q + 'ᵉ'} trimestre ${a}`
@@ -167,8 +167,8 @@
 </script>
 
 <svelte:head>
-  <title>Le territoire en chiffres — {SITE_NOM}</title>
-  <meta name="description" content="Population, logement, revenus et emploi {COMMUNE_A} — portrait statistique de la commune à partir des recensements INSEE." />
+  <title>Le territoire en chiffres - {SITE_NOM}</title>
+  <meta name="description" content="Population, logement, revenus et emploi {COMMUNE_A} - portrait statistique de la commune à partir des recensements INSEE." />
 </svelte:head>
 
 <section>
@@ -187,19 +187,19 @@
       en {constat.premier.annee} et <b>{nb(constat.dernier.valeur)}</b> en
       {constat.dernier.annee}
       {#if constat.regime === 'stable'}
-        — le même nombre à {Math.abs(constat.ecart)} près{#if constat.creuxInterne}, après un creux à
+        : le même nombre à {Math.abs(constat.ecart)} près{#if constat.creuxInterne}, après un creux à
         {nb(constat.creux.valeur)} habitants en {constat.creux.annee}. La commune a donc regagné
         <b>{constat.reprise} %</b> depuis son point bas{/if}.
       {:else if constat.regime === 'baisse'}
-        — <b>{Math.abs(constat.ecartTotal)} % de moins</b>, et son point bas est
+        : <b>{Math.abs(constat.ecartTotal)} % de moins</b>, et son point bas est
         l'année la plus récente&nbsp;: la baisse n'est pas enrayée.
       {:else if constat.regime === 'reprise'}
-        — <b>{Math.abs(constat.ecartTotal)} % de moins</b> qu'au départ, mais
+        : <b>{Math.abs(constat.ecartTotal)} % de moins</b> qu'au départ, mais
         <b>{constat.reprise} % de plus</b> qu'au creux de {constat.creux.annee}
         ({nb(constat.creux.valeur)} habitants)&nbsp;: la population remonte sans avoir
         retrouvé son niveau de {constat.premier.annee}.
       {:else}
-        — <b>{constat.ecartTotal} % de plus</b>{#if constat.creuxInterne}, après un creux à
+        : <b>{constat.ecartTotal} % de plus</b>{#if constat.creuxInterne}, après un creux à
         {nb(constat.creux.valeur)} habitants en {constat.creux.annee}{/if}.
       {/if}
     </Niveau>
@@ -366,8 +366,8 @@
         Niveau de vie médian par commune ({anneeFilo}) : la moitié des habitants
         appartient à un ménage dont le niveau de vie est inférieur à ce montant,
         l'autre moitié supérieur. Ce n'est ni un salaire ni un revenu par
-        personne&nbsp;: c'est le revenu disponible du ménage — impôts directs
-        déduits, prestations comprises — rapporté à sa composition (1 unité pour
+        personne&nbsp;: c'est le revenu disponible du ménage, impôts directs
+        déduits, prestations comprises, rapporté à sa composition (1 unité pour
         le premier adulte, 0,5 par personne de 14 ans ou plus, 0,3 par enfant).
       </p>
       <div class="ages">
@@ -383,7 +383,7 @@
     {/if}
 
     <p class="src">
-      Source : INSEE — recensements de la population, séries historiques,
+      Source : INSEE, recensements de la population, séries historiques,
       dispositif FiLoSoFi (niveaux de vie), récupérés via l'API Melodi. Le
       niveau de vie médian est publié à l'échelle communale, en euros par an et
       par unité de consommation ; l'INSEE le couvre du secret statistique sur
@@ -401,7 +401,7 @@
       {@const d = e.serie.at(-1)}
       {@const p = e.serie[0]}
       {@const elevesMax = Math.max(...e.serie.map(s => s.eleves || 0), 1)}
-      <Niveau type="fait" source="Ministère de l'éducation nationale — effectifs d'élèves et nombre de classes par école, constat de rentrée">
+      <Niveau type="fait" source="Ministère de l'éducation nationale : effectifs d'élèves et nombre de classes par école, constat de rentrée">
         À la rentrée {d.rentree}, <b>{e.nom}</b>{#if precision(e, homonymes)}{' '}({precision(e, homonymes)}){/if}
         compte <b>{nb(d.eleves)} élèves</b>{#if d.maternelle}, dont {nb(d.maternelle)} en maternelle{/if}{#if d.classes},
         dans {d.classes} classe{d.classes > 1 ? 's' : ''}{/if}.
@@ -444,7 +444,7 @@
     {#if accueil}
       {@const a = accueil.dernier}
       <h3>Avant l'école : l'accueil des moins de trois ans</h3>
-      <Niveau type="fait" source="Caisse nationale des allocations familiales — capacité théorique d'accueil du jeune enfant">
+      <Niveau type="fait" source="Caisse nationale des allocations familiales, capacité théorique d'accueil du jeune enfant">
         🔴 Ces chiffres ne sont <b>pas communaux</b>&nbsp;: la CAF ne les publie,
         pour les petites communes, qu'à l'échelle de l'intercommunalité. En
         {a.annee}, celle-ci compte <b>{nb(a.total)} places</b> d'accueil pour les
@@ -484,7 +484,7 @@
   {#if equipements.etat?.length}
     <h2>Ce qu'il y a sur place</h2>
     <p class="note">Équipements et services recensés dans la commune par la base
-      permanente des équipements de l'INSEE{#if equipements.total} — {equipements.total} au total{/if}.</p>
+      permanente des équipements de l'INSEE{#if equipements.total} : {equipements.total} au total{/if}.</p>
     <div class="chart-wrap">
       <table>
         <thead><tr><th>Équipement ou service</th><th class="r">Nombre</th></tr></thead>
@@ -498,7 +498,7 @@
 
     {#if mouvements.pertes?.length || mouvements.gains?.length}
       <h3>Ce qui a fermé, ce qui a ouvert</h3>
-      <Niveau type="fait" source="INSEE — base permanente des équipements">
+      <Niveau type="fait" source="INSEE, base permanente des équipements">
         🔴 Cette évolution n'est <b>pas communale</b> : l'INSEE ne publie la série
         qu'à partir de l'intercommunalité. Elle porte sur
         {equipements.epciNom || "l'intercommunalité"}, entre {mouvements.debut} et {mouvements.fin}.
@@ -534,7 +534,7 @@
       </Niveau>
       {#if mobilite.reseaux?.length}
         <ul class="liste">
-          {#each mobilite.reseaux as r}<li>{r.reseau} — {r.n} arrêt(s)</li>{/each}
+          {#each mobilite.reseaux as r}<li>{r.reseau} : {r.n} arrêt(s)</li>{/each}
         </ul>
       {/if}
     {/if}
@@ -542,7 +542,7 @@
       <p class="note">Programmes nationaux dont la commune bénéficie, d'après la
         table de croisement de l'Agence nationale de la cohésion des territoires.</p>
       <ul class="liste">
-        {#each dispositifs as d}<li>{d.libelle || d.code}<span class="muted"> — {d.reference}</span></li>{/each}
+        {#each dispositifs as d}<li>{d.libelle || d.code}<span class="muted"> : {d.reference}</span></li>{/each}
       </ul>
     {/if}
   {/if}
@@ -597,7 +597,7 @@
 
     {#if reseau}
       <h3>Le réseau fibre et ses pannes</h3>
-      <Niveau type="fait" source="ARCEP — déploiements de la fibre">
+      <Niveau type="fait" source="ARCEP : déploiements de la fibre">
         La commune est en <b>{ZONES[reseau.zone] || reseau.zone}</b>. Le réseau
         fibre y est exploité par <b>{qualite?.oi || reseau.nom || reseau.oi}</b>{#if qualite?.maison_mere}
         (groupe {qualite.maison_mere.replace(/\s*\(.*\)\s*$/, '')}){/if}, l'opérateur d'infrastructure&nbsp;: c'est lui
@@ -634,7 +634,7 @@
 
     {#if mobile}
       <h3>Le mobile</h3>
-      <Niveau type="fait" source="ARCEP — sites mobiles, {trimestre(mobile.trimestre)}">
+      <Niveau type="fait" source="ARCEP : sites mobiles, {trimestre(mobile.trimestre)}">
         {#if mobile.dans_la_commune.length === 0}
           <b>Aucun site mobile</b> n'est implanté dans la commune.
         {:else if mobile.dans_la_commune.length === 1}
@@ -662,7 +662,7 @@
                     <td class="muted">{i === 0 ? s.site : ''}{#if i === 0 && s.zones_blanches} · zones blanches{/if}{#if i === 0 && s.couverture_ciblee} · couverture ciblée{/if}</td>
                     <td>{o.nom}</td>
                     <td class="r">{i === 0 ? `${nb(s.distance_km, 1)} km` : ''}</td>
-                    {#each ['2g', '3g', '4g', '5g'] as t}<td>{o[t] ? 'oui' : '—'}</td>{/each}
+                    {#each ['2g', '3g', '4g', '5g'] as t}<td>{o[t] ? 'oui' : '-'}</td>{/each}
                   </tr>
                 {/each}
               {/each}
@@ -684,7 +684,7 @@
     {/if}
 
     {#if pannes}
-      <Niveau type="fait" source="ARCEP — sites mobiles indisponibles, relevé quotidien">
+      <Niveau type="fait" source="ARCEP, sites mobiles indisponibles, relevé quotidien">
         Les opérateurs déclarent chaque jour leurs sites hors service. Sur
         <b>{nb(pannes.jours)} jours lus</b>, du {jour(pannes.du)} au {jour(pannes.au)},
         {#if pannes.declarees === 0}<b>aucune indisponibilité</b> n'a été déclarée
@@ -702,7 +702,7 @@
       par la box.
     </p>
     <p class="src">
-      Source : ARCEP, <a href="https://data.arcep.fr/" rel="noopener">data.arcep.fr</a> —
+      Source : ARCEP, <a href="https://data.arcep.fr/" rel="noopener">data.arcep.fr</a>,
       Ma connexion internet (éligibilité par technologie, par trimestre),
       déploiements de la fibre (zone et opérateur d'infrastructure), qualité des
       réseaux en fibre optique (indicateurs par réseau, six mois glissants), sites
