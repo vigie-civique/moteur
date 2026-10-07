@@ -1510,8 +1510,10 @@ def _etat_complet(x_admin_key: Optional[str], user: Optional[dict]) -> dict:
     return pub.etat_publication((user or {}).get("id")) | {
         "role": role,
         "peut_agir": pub.peut_publier(role),
-        # Générer et regarder un aperçu : tout compte (arbitré le 17/09/2026).
-        "peut_apercevoir": bool(user) or _cle_admin_valide(x_admin_key),
+        # Générer et regarder un aperçu : validateur et au-dessus (Julien,
+        # 07/10/2026 — tout compte depuis le 17/09, la page ne s'ouvre plus
+        # au contributeur).
+        "peut_apercevoir": au_moins(user, "validator") or _cle_admin_valide(x_admin_key),
         "project": contexte["project"],
         "rules": contexte["rules"],
         "rules_path": contexte["rules_path"],
@@ -1522,13 +1524,14 @@ def _etat_complet(x_admin_key: Optional[str], user: Optional[dict]) -> dict:
 @app.get("/api/admin/publication")
 def publication_etat(x_admin_key: Optional[str] = Header(default=None),
                      user=Depends(optional_user)):
-    """L'état du flux, en LECTURE SEULE — ouvert à tout l'atelier.
+    """L'état du flux, en LECTURE SEULE — validateur et au-dessus.
 
     Un validateur ne publie pas, mais il doit pouvoir savoir si la correction
     qu'il vient de faire est en ligne, et si le dernier contrôle est rouge.
-    Réserver cette page aux admins ne protégeait rien : elle ne dit rien de plus
-    que le site public, plus un verdict de contrôle.
+    Le contributeur propose : ce qui part en ligne ne se décide pas à son poste
+    (Julien, 07/10/2026). Jusque-là la route ne contrôlait rien du tout.
     """
+    _check_admin(x_admin_key, user, role_min="validator")
     return _etat_complet(x_admin_key, user)
 
 
@@ -1537,16 +1540,17 @@ def publication_apercu(x_admin_key: Optional[str] = Header(default=None),
                        user=Depends(optional_user)):
     """Construit l'aperçu et le contrôle. Rien de servi ne bouge.
 
-    Ouvert à TOUT compte depuis le 17/09/2026 : chacun génère le sien, daté,
-    dans `audits/apercus/<compte>/`, qui remplace son précédent. La clé de
-    service, sans compte, génère le brouillon de la ligne de commande.
+    Ouvert au validateur et au-dessus (tout compte du 17/09 au 07/10/2026) :
+    chacun génère le sien, daté, dans `audits/apercus/<compte>/`, qui remplace
+    son précédent. La clé de service, sans compte, génère le brouillon de la
+    ligne de commande.
 
     Un contrôle rouge n'est PAS une erreur de cette route : l'aperçu a bien été
     produit, c'est son verdict qui est rouge — et c'est exactement ce qu'on
     voulait pouvoir regarder. Répondre 500 ici ferait disparaître le rapport
     dans une bannière d'erreur au lieu de l'afficher.
     """
-    _check_admin(x_admin_key, user, role_min="contributor")
+    _check_admin(x_admin_key, user, role_min="validator")
     from scripts.build_public_snapshot import PerimetreNonClasse
     # Un aperçu reconstruit le snapshot ENTIER, sous le verrou de publication :
     # relancé en boucle par un seul compte, il immobilise le serveur et la
@@ -1616,7 +1620,7 @@ def publication_verifier_en_ligne(x_admin_key: Optional[str] = Header(default=No
 
     Ouvert au validateur : constater n'écrit rien dans les données.
     """
-    _check_admin(x_admin_key, user, role_min="contributor")
+    _check_admin(x_admin_key, user, role_min="validator")
     verdict = pub.verifier_en_ligne()
     _journal_publication(user, "verification-en-ligne", {
         "url": verdict.get("url_interrogee"),
@@ -1677,43 +1681,83 @@ def publication_revenir(x_admin_key: Optional[str] = Header(default=None),
 @app.get("/api/admin/publication/modifications")
 def publication_modifications(x_admin_key: Optional[str] = Header(default=None),
                               user=Depends(optional_user)):
-    """Les fiches touchées depuis la dernière publication.
+    """Ce qui partira avec la prochaine publication, et ce qui attend encore.
 
-    C'est la question que se pose vraiment celui qui vient de corriger : « ce
-    que j'ai changé, ça donne quoi en ligne ? » Sans cette liste, l'aperçu
-    oblige à retrouver ses propres modifications à la main dans un site de
-    quinze cents pages.
+    C'est la question que se pose vraiment celui qui s'apprête à publier :
+    « qu'est-ce qui a changé, par qui, et est-ce que je le laisse partir ? »
+    Trois listes, chacune avec son quoi / qui / quand / pourquoi :
+
+    - `propositions` : ce qu'un contributeur a voulu écrire sur un objet publié,
+      et qui attend. Les marchés lus dans un procès-verbal n'y sont que comptés :
+      ils se relisent l'acte sous les yeux, dans leur file.
+    - `contributions` : les fiches touchées depuis la dernière publication.
+    - `nouvelles` : les fiches entrées en base depuis.
 
     `dans_apercu` dit si la fiche existe dans le brouillon : une entité écartée
     par le filtre de publication n'a pas de page, et proposer le lien enverrait
     sur un 404 en laissant croire à une panne.
     """
-    _check_admin(x_admin_key, user, role_min="contributor")
+    _check_admin(x_admin_key, user, role_min="validator")
     etat = pub.etat_publication((user or {}).get("id"))
     depuis = (etat.get("publie") or {}).get("publie_le")
     borne = pub.horodatage_base(depuis)
+    verdict = ("LEFT JOIN annotations d ON d.object_type = 'entity' "
+               "AND d.object_id = e.id")
 
-    conn = get_db()
+    conn = get_db_rw()
     try:
-        lignes = rows(conn, """
-            SELECT e.id, e.name, e.type,
+        _propositions.assurer_schema(conn)
+        conn.commit()
+        attendent = _propositions.lister(conn, "en_attente")
+        propositions = [
+            {c: p[c] for c in ("id", "nature", "object_type", "object_id", "entity_id",
+                               "fiche", "charge", "avant", "propose_par", "propose_le")}
+            for p in attendent if p["nature"] != _marches_extraits.NATURE]
+        contributions = rows(conn, f"""
+            SELECT e.id, e.name, e.type, e.confidence,
                    COUNT(*) AS modifications,
-                   MAX(al.at) AS derniere
+                   MAX(al.at) AS derniere,
+                   GROUP_CONCAT(DISTINCT al.field) AS champs,
+                   GROUP_CONCAT(DISTINCT u.email) AS par,
+                   COALESCE(d.review_status, 'jamais_relu') AS verdict, d.note
             FROM audit_log al
             JOIN entities e ON e.id = al.entity_id
+            LEFT JOIN users u ON u.id = al.user_id
+            {verdict}
             WHERE al.entity_id IS NOT NULL
-              AND (? IS NULL OR al.at > ?)
-            GROUP BY e.id, e.name, e.type
+              AND COALESCE(al.table_name, '') <> 'propositions'
+              AND (? IS NULL OR (al.at > ? AND e.created_at <= ?))
+            GROUP BY e.id
             ORDER BY derniere DESC
             LIMIT 50
-        """, (borne, borne))
+        """, (borne, borne, borne))
+        # Sans publication antérieure, tout serait « nouveau » : la liste ne
+        # dirait rien. Elle commence à la première publication.
+        nouvelles = rows(conn, f"""
+            SELECT e.id, e.name, e.type, e.confidence, e.origine,
+                   e.created_at AS derniere,
+                   (SELECT u.email FROM audit_log al JOIN users u ON u.id = al.user_id
+                     WHERE al.entity_id = e.id ORDER BY al.id LIMIT 1) AS par,
+                   COALESCE(d.review_status, 'jamais_relu') AS verdict, d.note
+            FROM entities e {verdict}
+            WHERE e.created_at > ?
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT 50
+        """, (borne,)) if borne else []
+        total_nouvelles = row(conn, "SELECT COUNT(*) AS n FROM entities WHERE created_at > ?",
+                              (borne,))["n"] if borne else 0
     finally:
         conn.close()
 
     brouillon = Path((etat.get("brouillon") or {}).get("repertoire") or pub.BROUILLON)
-    for ligne in lignes:
+    for ligne in contributions + nouvelles:
+        ligne["verdict"] = verdict_de(ligne["verdict"]) or JAMAIS_RELU
         ligne["dans_apercu"] = (brouillon / "entite" / f"{ligne['id']}.json").is_file()
-    return {"depuis": depuis, "modifications": lignes}
+    return {"depuis": depuis, "propositions": propositions,
+            "marches_a_relire": len(attendent) - len(propositions),
+            "contributions": contributions,
+            "nouvelles": nouvelles, "total_nouvelles": total_nouvelles,
+            "peut_trancher": au_moins(user, "validator")}
 
 
 @app.post("/api/admin/publication/apercu/serveur")
@@ -1727,12 +1771,12 @@ def publication_apercu_serveur(req: ApercuServeurRequest = ApercuServeurRequest(
     seule façon qu'un aperçu ressemble à ce qui sera publié — et il est servi à
     la RACINE de ce port parce que les liens du site sont absolus.
 
-    Tout compte montre SON aperçu ; tous passent par le même port, le serveur
+    Chaque validateur montre SON aperçu ; tous passent par le même port, le serveur
     choisissant l'aperçu d'après le lien. L'arrêter coupe celui de tout le
     monde : réservé à l'admin.
     """
     _check_admin(x_admin_key, user,
-                 role_min="admin" if req.action == "arreter" else "contributor")
+                 role_min="admin" if req.action == "arreter" else "validator")
     try:
         if req.action == "arreter":
             return pub.arreter_serveur_apercu()
@@ -2140,7 +2184,7 @@ LIBELLE_TABLE_JOURNAL = {
     "entities": "fiche", "annotations": "décision", "saisies": "saisie",
     "relations": "relation", "entity_websites": "site", "relation_candidates":
     "relation candidate", "users": "compte", "publication": "publication",
-    "propositions": "proposition",
+    "propositions": "proposition", "reglages": "réglage",
 }
 
 
@@ -2150,7 +2194,9 @@ def atelier_journal(
     offset: int = Query(0, ge=0),
     qui: Optional[str] = Query(None, description="adresse de l'auteur"),
     quoi: Optional[str] = Query(None, description="table : entities, annotations…"),
-    user=Depends(require_auth),
+    # Le journal nomme qui a écrit quoi : validateur et au-dessus (Julien,
+    # 07/10/2026). L'historique d'UNE fiche reste lisible de qui l'édite.
+    user=Depends(require_au_moins("validator", "Lire le journal")),
 ):
     filtres, params = [], []
     # Qui a été invité, quel rôle a changé, quel compte est désactivé : cela ne
@@ -4284,6 +4330,13 @@ def atelier_propositions(etat: str = "en_attente", nature: Optional[str] = None,
                 # doit apparaître comme doublon possible de la ligne d'aujourd'hui.
                 if etat == "en_attente":
                     p["doublons"] = _marches_extraits.doublons(conn, p["charge"])
+        # Les propositions des contributeurs restent en tête, les plus anciennes
+        # d'abord : quelqu'un attend. Les marchés lus viennent ensuite, l'acte
+        # le plus récent d'abord (Julien, 07/10/2026) — un rapport couvre dix
+        # ans de procès-verbaux, et la file s'ouvrait sur 2016.
+        lus = [p for p in lignes if p["nature"] == _marches_extraits.NATURE]
+        lus.sort(key=lambda p: (p.get("acte") or {}).get("date") or "", reverse=True)
+        lignes = [p for p in lignes if p["nature"] != _marches_extraits.NATURE] + lus
         return {"propositions": lignes, "peut_trancher": au_moins(user, "validator"),
                 "corrigeables": {_marches_extraits.NATURE: list(_marches_extraits.CORRIGEABLES)}}
     finally:
@@ -4859,6 +4912,121 @@ def rag_config(user=Depends(require_auth)):
         "chat_model": _CHAT_MODEL,
         "chunks": chunks,
     }
+
+
+# ─── Brancher une IA depuis l'atelier (admin) ────────────────────────────────
+# Jusqu'au 07/10/2026 un modèle ne se branchait que par `.env`, donc par qui a
+# la main sur le serveur. Un administrateur d'atelier peut maintenant brancher
+# un modèle LOCAL — et seulement local : il choisit parmi ceux que l'Ollama de
+# cette machine annonce. Il ne saisit ni adresse ni clé, ce qui ferme d'avance
+# les deux portes qu'un réglage libre ouvrirait à une session admin volée :
+# faire requêter le serveur vers une adresse de son choix, et lui faire envoyer
+# des extraits de la base de travail chez un tiers. Un service DISTANT reste une
+# décision de serveur (`IA_URL` + `IA_HORS_MACHINE=1`), que cette page constate
+# sans pouvoir la prendre.
+#
+# Le réglage vit dans `audits/`, pas en base : il décrit CETTE machine, et la
+# base voyage (sauvegardes, copies tirées).
+REGLAGE_IA = BASE_DIR / "audits" / "ia_locale.json"
+_IA_DU_SERVEUR = bool(_IA_URL)          # réglé dans .env : l'atelier n'y touche pas
+_RAG_DU_SERVEUR = RAG_ENABLED
+_CHAT_DU_SERVEUR = _CHAT_MODEL
+
+
+def _ollama_local() -> bool:
+    from urllib.parse import urlsplit
+    return (urlsplit(_OLLAMA_URL).hostname or "") in ("localhost", "127.0.0.1", "::1")
+
+
+def _modeles_ollama() -> Optional[list[str]]:
+    """Les modèles que l'Ollama de cette machine annonce ; None s'il ne répond pas."""
+    if not _ollama_local():
+        return None
+    try:
+        r = _requests.get(f"{_OLLAMA_URL}/api/tags", timeout=3)
+        r.raise_for_status()
+        return sorted(m["name"] for m in r.json().get("models", []))
+    except Exception:                               # noqa: BLE001
+        return None
+
+
+def _a_le_modele(modeles: list[str], nom: str) -> bool:
+    """`nomic-embed-text` est annoncé `nomic-embed-text:latest`."""
+    return any(m == nom or m.split(":")[0] == nom for m in modeles)
+
+
+def _appliquer_reglage_ia(reglage: dict) -> None:
+    global _IA_URL, _IA_MODELE, _IA_CLE, _IA_PROTOCOLE, RAG_ENABLED, _CHAT_MODEL
+    modele = (reglage.get("modele") or "").strip()
+    if not _IA_DU_SERVEUR:
+        _IA_URL = f"{_OLLAMA_URL}/v1" if modele else ""
+        _IA_MODELE, _IA_CLE, _IA_PROTOCOLE = modele, "", "openai"
+    _CHAT_MODEL = modele or _CHAT_DU_SERVEUR
+    RAG_ENABLED = _RAG_DU_SERVEUR or bool(reglage.get("recherche"))
+
+
+if _ollama_local():
+    _appliquer_reglage_ia(_read_json_file(REGLAGE_IA, {}) or {})
+
+
+class ReglageIA(BaseModel):
+    modele: Optional[str] = None      # None ou vide : aucun modèle branché
+    recherche: bool = False           # la recherche par sens (`/api/rag/*`)
+
+
+def _etat_ia() -> dict:
+    modeles = _modeles_ollama()
+    return {
+        "ollama": {"url": _OLLAMA_URL, "local": _ollama_local(),
+                   "joignable": modeles is not None, "modeles": modeles or []},
+        "reglage": {"modele": None, "recherche": False}
+                   | (_read_json_file(REGLAGE_IA, {}) or {}),
+        # Ce que le serveur a décidé dans `.env`, et que l'atelier ne défait pas.
+        "serveur": {"ia": _IA_DU_SERVEUR, "recherche": _RAG_DU_SERVEUR},
+        "ia": ia_config(None),
+        "recherche": rag_config(None)
+                     | {"embed_present": bool(modeles) and _a_le_modele(modeles, _EMBED_MODEL)},
+    }
+
+
+_REGLER_IA = "Brancher une IA sur l'atelier"
+
+
+@app.get("/api/admin/ia")
+def admin_ia(user=Depends(require_au_moins("admin", _REGLER_IA))):
+    return _etat_ia()
+
+
+@app.put("/api/admin/ia")
+def admin_regler_ia(req: ReglageIA, user=Depends(require_au_moins("admin", _REGLER_IA))):
+    modele = (req.modele or "").strip()
+    if modele or req.recherche:
+        modeles = _modeles_ollama()
+        if modeles is None:
+            raise HTTPException(409, "Ollama ne répond pas sur cette machine "
+                                     f"({_OLLAMA_URL}) : il n'y a pas de modèle à brancher.")
+        # Le nom vient de la liste, jamais d'une saisie libre.
+        if modele and modele not in modeles:
+            raise HTTPException(400, f"« {modele} » n'est pas installé dans Ollama — "
+                                     f"modèles présents : {', '.join(modeles) or 'aucun'}.")
+        if req.recherche and not _a_le_modele(modeles, _EMBED_MODEL):
+            raise HTTPException(400, "La recherche par sens demande le modèle "
+                                     f"d'embeddings : `ollama pull {_EMBED_MODEL}`.")
+    reglage = {"modele": modele or None, "recherche": req.recherche}
+    REGLAGE_IA.parent.mkdir(parents=True, exist_ok=True)
+    provisoire = REGLAGE_IA.with_suffix(".tmp")
+    provisoire.write_text(json.dumps(reglage, ensure_ascii=False), encoding="utf-8")
+    provisoire.replace(REGLAGE_IA)
+    _appliquer_reglage_ia(reglage)
+    conn = get_db_rw()
+    try:
+        conn.execute("INSERT INTO audit_log(user_id, table_name, action, new_value) "
+                     "VALUES(?, 'reglages', 'ia', ?)",
+                     (user["id"], json.dumps(reglage, ensure_ascii=False)))
+        conn.commit()
+    finally:
+        conn.close()
+    return _etat_ia()
 
 
 def _embed(text: str) -> np.ndarray:

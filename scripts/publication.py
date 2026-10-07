@@ -216,12 +216,13 @@ def maintenant() -> str:
 
 # Ce que le journal d'audit contient sans que cela change une ligne du site : les
 # gestes de publication eux-mêmes (republier à cause de sa propre trace
-# boucle), et les propositions de citoyens, qui n'entrent dans les données
-# qu'une fois validées — la validation, elle, écrit son propre geste. La liste
+# boucle), les propositions de citoyens, qui n'entrent dans les données
+# qu'une fois validées — la validation, elle, écrit son propre geste — et les
+# réglages de l'atelier (le modèle branché), qui ne touchent aucune donnée. La liste
 # est une EXCLUSION et non une liste de tables à surveiller : un nouveau geste
 # journalisé doit republier par défaut. Le défaut inverse, c'est la panne
 # d'origine — une correction qui reste en base sans jamais être mise en ligne.
-GESTES_SANS_EFFET_SUR_LE_SITE = ("publication", "propositions")
+GESTES_SANS_EFFET_SUR_LE_SITE = ("publication", "propositions", "reglages")
 
 
 def horodatage_base(iso_local: str | None) -> str | None:

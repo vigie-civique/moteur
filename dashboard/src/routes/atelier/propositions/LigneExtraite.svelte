@@ -39,6 +39,14 @@
 
   let motif = ''
 
+  // L'extrait déborde de son cadre de part et d'autre du passage cité : on
+  // l'ouvre SUR le passage, et le contexte se lit en remontant ou en descendant.
+  function auCentre(marque) {
+    const cadre = marque.parentElement
+    cadre.scrollTop = marque.offsetTop - cadre.offsetTop
+      - (cadre.clientHeight - marque.offsetHeight) / 2
+  }
+
   // Le passage cité et son contexte, découpés par l'API comme
   // `citation_presente` les a reconnus (ponctuation et accents compris). Le
   // navigateur cherchait lui-même, plus strictement : le surlignage échouait là
@@ -58,7 +66,7 @@
 
   <blockquote>
     {#if extrait}
-      {extrait.avant}<mark>{extrait.cite}</mark>{extrait.apres}
+      {extrait.avant}<mark use:auCentre>{extrait.cite}</mark>{extrait.apres}
     {:else}
       <mark>{c.citation}</mark>
     {/if}
@@ -127,7 +135,7 @@
   .ligne { display: flex; flex-direction: column; gap: .5rem; }
   .acte a { color: var(--info); }
   blockquote { margin: 0; padding: .6rem .8rem; background: var(--fond); border-left: 3px solid var(--bordure-forte);
-               color: var(--texte-2); max-height: 14rem; overflow: auto; white-space: pre-wrap; font-size: .85rem; }
+               color: var(--texte-2); max-height: 20rem; overflow: auto; white-space: pre-wrap; font-size: .85rem; }
   mark { background: var(--alerte-doux); color: var(--texte); }
   .signal { color: var(--alerte-texte); font-size: .85rem; }
   .muted { color: var(--texte-doux); }

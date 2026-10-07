@@ -310,7 +310,9 @@ class TestJournal:
         c.patch(f"/api/atelier/entities/{eid}", headers=atelier["contrib"],
                 json={"updated_at": AVANT, "address": "1 rue Basse"})
 
-        vu = c.get("/api/atelier/journal", headers=atelier["contrib"]).json()
+        # Le journal ne s'ouvre plus au contributeur (07/10/2026).
+        assert c.get("/api/atelier/journal", headers=atelier["contrib"]).status_code == 403
+        vu = c.get("/api/atelier/journal", headers=atelier["valid"]).json()
         assert [l["quoi"] for l in vu["lignes"]] == ["entities"]
         assert vu["total"] == 1 and "users" not in vu["tables"]
         assert "nouvelle@exemple.fr" not in str(vu)

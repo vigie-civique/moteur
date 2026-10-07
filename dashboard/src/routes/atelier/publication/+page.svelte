@@ -1,45 +1,33 @@
 <script>
-  import { onDestroy } from 'svelte'
-  // Publication en quatre temps : ce qui est en ligne, un aperçu, ses contrôles,
-  // puis — et seulement si tout est vert — la publication.
+  import { onDestroy, onMount } from 'svelte'
+  // Quatre gestes, dans l'ordre où on les fait : générer l'aperçu, le voir,
+  // mettre en ligne, voir en ligne. Entre le deuxième et le troisième, la liste
+  // de ce qui part — quoi, qui, quand, pourquoi — où chaque ligne se tranche.
   //
   // Avant le 22/08/2026, cette page portait un bouton unique, « Générer &
   // synchroniser le snapshot », qui construisait par-dessus le répertoire servi
-  // et le poussait vers le site dans la foulée. Le contrôle d'étanchéité
-  // arrivait bien avant la synchro, mais le mal était déjà fait côté atelier :
-  // le seul moyen de regarder ce qu'on publiait, c'était de l'avoir publié.
+  // et le poussait vers le site dans la foulée : le seul moyen de regarder ce
+  // qu'on publiait, c'était de l'avoir publié. Puis elle en a porté sept —
+  // générer, construire, ouvrir, publier, mettre en ligne, vérifier, revenir —
+  // et il fallait connaître la mécanique pour savoir lequel venait ensuite
+  // (07/10/2026). La promotion locale et la vérification en ligne existent
+  // toujours : elles ne demandent plus de clic.
   import { SITE_NOM, SITE_NOM_ATELIER } from '$lib/instance.js'
-  import { onMount } from 'svelte'
   import { api } from '$lib/api.js'
-  import { currentUser } from '$lib/stores/auth.js'
-  import { LIBELLE_ROLE } from '$lib/roles.js'
+  import { currentUser, authFetch } from '$lib/stores/auth.js'
+  import { LIBELLE_ROLE, auMoins, messageErreur } from '$lib/roles.js'
+  import { heureLocale } from '$lib/heure.js'
+  import { LIBELLES } from '$lib/champs.js'
 
-  const KEY_STORAGE = 'vigie-admin-key'
-
-  const ETAPES = [
-    { cle: 'publie_actuel', titre: 'État publié' },
-    { cle: 'apercu',        titre: 'Aperçu' },
-    { cle: 'controles',     titre: 'Contrôles' },
-    { cle: 'publication',   titre: 'Publication' },
-  ]
-
-  // Les cinq états du flux, nommés. Un bouton grisé sans phrase laisse chercher
-  // ce qui manque ; ici l'état se lit.
-  // `publie` disait deux choses à la fois : « l'atelier a promu le snapshot »
-  // et « le site public le sert ». Entre les deux il y a un build et un
-  // déploiement que l'atelier ne fait pas — et la page l'écrivait plus bas,
-  // après avoir affiché « Publié » en tête. Qui lit le badge et ferme l'onglet
-  // croit son site à jour.
   const LIBELLE_ETAPE = {
     aucun_apercu:        { texte: 'Aucun aperçu',        ton: 'neutre' },
-    pret_a_publier:      { texte: 'Prêt à publier',      ton: 'ok' },
+    pret_a_publier:      { texte: 'Prêt à mettre en ligne', ton: 'ok' },
     controles_en_echec:  { texte: 'Contrôles en échec',  ton: 'ko' },
-    promu_localement:    { texte: 'Promu localement',    ton: 'attente' },
+    promu_localement:    { texte: 'Pas encore en ligne', ton: 'attente' },
     en_ligne:            { texte: 'En ligne, vérifié',   ton: 'ok' },
   }
 
   const LIENS_APERCU = [
-    { chemin: '/',              label: 'Accueil' },
     { chemin: '/deliberations', label: 'Délibérations' },
     { chemin: '/finances',      label: 'Finances' },
     { chemin: '/budgets',       label: 'Budgets' },
@@ -47,9 +35,19 @@
     { chemin: '/couverture',    label: 'Couverture' },
   ]
 
-  let adminKey = ''
+  const NATURE = { fiche: 'Fiche', coords: 'Point sur la carte', relation: 'Relation',
+                   correction: 'Chiffre corrigé' }
+  const VERDICT = {
+    jamais_relu: { texte: 'jamais relu', ton: 'neutre' },
+    retenu:      { texte: 'retenu',      ton: 'ok' },
+    a_revoir:    { texte: 'à revoir',    ton: 'attente' },
+    ecarte:      { texte: 'écarté',      ton: 'ko' },
+  }
+  const ORIGINE = { institutionnel: 'collecte (registre)', verbatim: 'collecte (document)',
+                    atelier: 'atelier' }
+
   let etat = null
-  let modifications = null
+  let aRelire = null
   let loading = false
   let generating = false
   let publishing = false
@@ -57,26 +55,16 @@
   let deploying = false
   let serveurEnCours = false
   let error = ''
-  let controleDeplie = false
   let autoTried = false
 
+  // L'API tient le droit ; ceci évite seulement d'afficher une page qui
+  // refuserait tout, à qui est arrivé par l'adresse.
+  $: admis = auMoins($currentUser, 'validator')
   $: role = etat?.role || $currentUser?.role || null
   $: peutAgir = etat?.peut_agir === true
-  // Générer et regarder SON aperçu : tout compte. Publier : l'admin seul.
   $: peutApercevoir = etat?.peut_apercevoir === true
-  // Chaque lien porte le compte : le serveur d'aperçu montre à chacun le sien.
-  // Le serveur d'aperçu est commun à l'atelier : qu'il tourne ne dit pas que
-  // CE compte a un site à montrer. Sans cette nuance, la page offrait « Ouvrir
-  // l'aperçu » à qui n'avait rien construit — ou dont le site se construisait.
-  $: apercuPret = apercu.actif && apercu.build?.existe !== false
-  function lienApercu(chemin) {
-    return `${apercu.url}${chemin}${apercu.parametre ? `?${apercu.parametre}` : ''}`
-  }
   $: etape = etat?.etape || 'aucun_apercu'
-  // « Prêt à publier » ne dit rien à qui ne publie pas : pour lui, l'aperçu est vert.
-  $: badge = (etape === 'pret_a_publier' && etat && !peutAgir)
-    ? { texte: 'Aperçu vert', ton: 'ok' }
-    : (LIBELLE_ETAPE[etape] || LIBELLE_ETAPE.aucun_apercu)
+  $: badge = LIBELLE_ETAPE[etape] || LIBELLE_ETAPE.aucun_apercu
   $: brouillon = etat?.brouillon || {}
   $: publie = etat?.publie || {}
   $: controle = brouillon.controle || null
@@ -84,39 +72,24 @@
   $: project = etat?.project || {}
   $: enLigne = etat?.en_ligne || {}
   $: deploiement = etat?.mise_en_ligne || {}
+  $: urlPublique = etat?.site?.url || null
+  // Le serveur d'aperçu est commun à l'atelier : qu'il tourne ne dit pas que
+  // CE compte a un site à montrer, ni que ce site est celui du dernier aperçu.
+  const pret = (a) => !!a?.actif && a.build?.existe !== false && !a.build?.perime
+  const lien = (a, chemin) => `${a.url}${chemin}${a.parametre ? `?${a.parametre}` : ''}`
+  $: apercuPret = pret(apercu)
   // Un aperçu en construction et la mise en ligne écrivent au même endroit
-  // (`public/.svelte-kit`) : l'une attend l'autre. Le bouton ne s'offre pas
-  // pendant ce temps — celui de cette page (`serveurEnCours`) comme celui d'un
-  // autre compte, que l'état rapporte.
+  // (`public/.svelte-kit`) : l'une attend l'autre.
   $: apercuEnConstruction = deploiement.build?.genre === 'apercu'
   $: if (apercuEnConstruction && !suivi) suivre()
-  $: urlPublique = etat?.site?.url || null
-  $: promu = etape === 'promu_localement' || etape === 'en_ligne'
-  $: peutPublier = peutAgir && etape === 'pret_a_publier'
-  // Exporter ou importer des décisions passe par `require_role("admin")` :
-  // une clé admin ne suffit pas, il faut une session au bon rôle.
+  $: enCours = deploying || deploiement.actif
+  $: occupe = generating || serveurEnCours || publishing || enCours || apercuEnConstruction
+  $: aMettreEnLigne = etape === 'pret_a_publier' || etape === 'promu_localement'
   $: estAdmin = role === 'admin'
 
-  // Un utilisateur connecté charge l'état sans rien saisir : il est en lecture
-  // seule de toute façon, et la clé n'ouvre que les actions. Le store d'auth se
-  // réhydrate de façon asynchrone, donc l'utilisateur peut arriver après le
-  // montage — d'où les deux déclencheurs, et le garde-fou dans `charger()` pour
-  // qu'ils ne tirent pas deux requêtes.
-  $: if ($currentUser && !autoTried) charger()
-
-  onMount(() => {
-    adminKey = sessionStorage.getItem(KEY_STORAGE) || ''
-    if (adminKey || $currentUser) charger()
-  })
-
-  function rememberKey() {
-    if (adminKey.trim()) sessionStorage.setItem(KEY_STORAGE, adminKey.trim())
-  }
-
-  function forgetKey() {
-    sessionStorage.removeItem(KEY_STORAGE)
-    adminKey = ''
-  }
+  // Le store d'auth se réhydrate de façon asynchrone : l'utilisateur peut
+  // arriver après le montage.
+  $: if (admis && !autoTried) charger()
 
   // `postAdmin` remonte ses échecs en « 409 {"detail": …} ». Le détail est
   // parfois un objet — message + rapport de contrôle. On rend le contenu, pas
@@ -139,9 +112,8 @@
     error = ''
     controleEchec = null
     try {
-      rememberKey()
-      etat = await fn(adminKey.trim())
-      await chargerModifications()
+      etat = await fn()
+      await chargerARelire()
     } catch (e) {
       const lu = lireErreur(e.message)
       error = lu.texte
@@ -160,9 +132,8 @@
     loading = true
     if (!silencieux) error = ''
     try {
-      rememberKey()
-      etat = await api.publicationEtat(adminKey.trim())
-      await chargerModifications()
+      etat = await api.publicationEtat()
+      await chargerARelire()
     } catch (e) {
       if (!silencieux) error = lireErreur(e.message).texte
     } finally {
@@ -170,46 +141,68 @@
     }
   }
 
-  async function chargerModifications() {
-    try {
-      modifications = await api.publicationModifications(adminKey.trim())
-    } catch {
-      modifications = null   // liste d'appoint : son absence ne casse pas la page
-    }
-  }
-
+  // ─── ① Générer l'aperçu ─────────────────────────────────────────────────
   async function genererApercu() {
     generating = true
-    controleDeplie = false
     await appeler(api.publicationApercu, () => (generating = false))
-    // Un aperçu doit se REGARDER. Le 17/09/2026, ce bouton rendait les chiffres
-    // du brouillon et rien à ouvrir : le site restait à construire par un
-    // second bouton, plus bas — ou, s'il tournait déjà, montrait l'ancien.
+    // Un aperçu doit se REGARDER : le site est construit dans la foulée, pour
+    // que « Voir l'aperçu » n'ait plus qu'à l'ouvrir.
     if (!error && etat?.brouillon?.existe && etat?.apercu?.installe) {
       await serveurApercu('demarrer')
     }
+    if (!error) aRegenerer = false
   }
 
-  async function publier() {
-    publishing = true
-    await appeler(api.publicationPublier, () => (publishing = false))
+  async function serveurApercu(action) {
+    serveurEnCours = true
+    error = ''
+    try {
+      const r = await api.publicationServeurApercu(action)
+      etat = { ...etat, apercu: r }
+    } catch (e) {
+      error = lireErreur(e.message).texte
+    } finally {
+      serveurEnCours = false
+    }
   }
 
+  // ─── ② Voir l'aperçu ────────────────────────────────────────────────────
+  // Prêt, c'est un lien. Sinon (serveur arrêté, site plus ancien que l'aperçu)
+  // le site est reconstruit puis ouvert : l'onglet est ouvert DANS le clic, un
+  // navigateur refuse celui qu'on ouvre après dix secondes d'attente.
+  async function voirApercu() {
+    const onglet = window.open('', '_blank')
+    await serveurApercu('demarrer')
+    if (!error && pret(etat?.apercu)) {
+      if (onglet) onglet.location = lien(etat.apercu, '/')
+    } else {
+      onglet?.close()
+    }
+  }
+
+  // ─── ③ Mettre en ligne ──────────────────────────────────────────────────
+  // Deux gestes côté serveur, un seul ici : promouvoir l'aperçu contrôlé, puis
+  // construire le site et le téléverser. Le premier sans le second ne changeait
+  // rien pour le public, et la page affichait « publié ».
+  let aVerifier = false
   async function mettreEnLigne() {
     if (!confirm(
       `Mettre en ligne sur ${urlPublique || 'le site public'} ?\n\n`
-      + 'Le site est construit depuis la version promue, puis téléversé chez '
-      + "l'hébergeur. C'est le seul geste de l'atelier qui change ce que le "
-      + 'public voit. Compter plusieurs minutes.')) return
+      + "Votre aperçu contrôlé devient la version servie : le site est construit "
+      + "puis téléversé chez l'hébergeur. C'est le seul geste de l'atelier qui "
+      + 'change ce que le public voit. Compter plusieurs minutes.')) return
     deploying = true
+    if (etat?.etape === 'pret_a_publier') {
+      await appeler(api.publicationPublier, () => {})
+      if (error) { deploying = false; return }
+    }
     await appeler(api.publicationMettreEnLigne, () => (deploying = false))
-    // Le déploiement continue en arrière-plan : on suit son avancement.
-    suivre()
+    if (!error) { aVerifier = true; suivre() }
   }
 
-  // Tant que le déploiement tourne, l'état est relu régulièrement — sinon la
-  // page resterait sur « en cours » jusqu'au prochain clic, et personne ne
-  // saurait si le site est à jour.
+  // Tant que le déploiement tourne, l'état est relu régulièrement. Quand il
+  // finit sans erreur, le site est interrogé d'office : « terminé » ne dit pas
+  // « en ligne », et personne ne pensait à cliquer « Vérifier ».
   let suivi = null
   function suivre() {
     clearInterval(suivi)
@@ -217,6 +210,10 @@
       await charger({ silencieux: true })
       if (!etat?.mise_en_ligne?.actif && !etat?.mise_en_ligne?.build) {
         clearInterval(suivi); suivi = null
+        if (aVerifier) {
+          aVerifier = false
+          if (etat?.mise_en_ligne?.ok) await verifierEnLigne()
+        }
       }
     }, 5000)
   }
@@ -231,24 +228,78 @@
     if (!confirm(
       'Remettre en service la version précédente ?\n\n'
       + 'Les deux emplacements servis repassent au snapshot d’avant la dernière '
-      + 'publication. Le site public, lui, ne changera qu’après un nouveau build '
-      + 'et un nouveau déploiement.')) return
+      + 'publication. Le site public, lui, ne changera qu’après « Mettre en ligne ».')) return
     publishing = true
     await appeler(api.publicationRevenir, () => (publishing = false))
   }
 
-  async function serveurApercu(action) {
-    serveurEnCours = true
-    error = ''
+  // ─── Ce qui part : quoi, qui, quand, pourquoi ───────────────────────────
+  let onglet = 'propositions'
+  let pourquoi = {}        // clé de ligne → motif ou note saisis
+  let tranche = null       // clé de la ligne en cours d'écriture
+  let erreurListe = ''
+  // Une décision change la base, pas l'aperçu déjà généré : le dire, sinon on
+  // met en ligne un aperçu qui ne porte pas ce qu'on vient de trancher.
+  let aRegenerer = false
+  let ongletChoisi = false
+
+  $: listes = aRelire ? [
+    ['propositions',  'Propositions',  aRelire.propositions.length],
+    ['contributions', 'Contributions', aRelire.contributions.length],
+    ['nouvelles',     'Nouvelles fiches', aRelire.total_nouvelles],
+  ] : []
+
+  async function chargerARelire() {
     try {
-      rememberKey()
-      const r = await api.publicationServeurApercu(action, adminKey.trim())
-      etat = { ...etat, apercu: r }
-    } catch (e) {
-      error = lireErreur(e.message).texte
-    } finally {
-      serveurEnCours = false
+      aRelire = await api.publicationModifications()
+      for (const l of [...aRelire.contributions, ...aRelire.nouvelles]) {
+        if (!(`f${l.id}` in pourquoi)) pourquoi[`f${l.id}`] = l.note || ''
+      }
+      if (!ongletChoisi) {
+        ongletChoisi = true
+        onglet = ['propositions', 'contributions', 'nouvelles']
+          .find(c => aRelire[c].length) || 'propositions'
+      }
+    } catch {
+      aRelire = null       // liste d'appoint : son absence ne casse pas la page
     }
+  }
+
+  const dire = (v) => (v == null || v === '' ? '—' : String(v))
+  // Le journal note une décision sous « entity/12 » : c'est le verdict.
+  const champ = (c) => (c.includes('/') ? 'verdict' : (LIBELLES[c] ?? c))
+  const champs = (liste) => [...new Set((liste || '').split(',').filter(Boolean).map(champ))].join(', ')
+
+  async function trancherProposition(p, accepter) {
+    const motif = (pourquoi[`p${p.id}`] || '').trim()
+    if (!accepter && !motif) {
+      erreurListe = 'Écarter une proposition demande de dire pourquoi : la personne qui a proposé doit savoir quoi corriger.'
+      return
+    }
+    tranche = `p${p.id}`; erreurListe = ''
+    try {
+      const r = await authFetch(`/atelier/propositions/${p.id}/decision`, {
+        method: 'POST', body: JSON.stringify({ accepter, motif, corrections: {} }),
+      })
+      if (!r.ok) { erreurListe = messageErreur((await r.json()).detail); return }
+      aRegenerer = true
+      await chargerARelire()
+    } finally { tranche = null }
+  }
+
+  async function trancherFiche(l, verdict) {
+    tranche = `f${l.id}`; erreurListe = ''
+    const note = (pourquoi[`f${l.id}`] || '').trim()
+    try {
+      const r = await authFetch(`/atelier/entities/${l.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ verdict, statut_lu: l.verdict,
+                               ...(note !== (l.note || '') ? { note } : {}) }),
+      })
+      if (!r.ok) { erreurListe = messageErreur((await r.json()).detail); return }
+      aRegenerer = true
+      await chargerARelire()
+    } finally { tranche = null }
   }
 
   function fmt(n) {
@@ -272,7 +323,7 @@
   let decisions = null
   let rapport = null
   let sansPersonnes = false
-  let occupe = ''
+  let occupeDecisions = ''
 
   async function etatDecisions() {
     try { decisions = await api.decisionsEtat() } catch { decisions = null }
@@ -280,22 +331,22 @@
   onMount(etatDecisions)
 
   async function exporter() {
-    occupe = 'export'; error = ''; rapport = null
+    occupeDecisions = 'export'; error = ''; rapport = null
     try {
       const r = await api.decisionsExporter(sansPersonnes)
       rapport = { type: 'export', ...r }
       await etatDecisions()
-    } catch (e) { error = e.message } finally { occupe = '' }
+    } catch (e) { error = e.message } finally { occupeDecisions = '' }
   }
 
   // Deux temps, toujours : on lit le rapport, ensuite seulement on écrit.
   // Un import contredit parfois ses propres arbitrages, et c'est irréversible.
   async function importer(appliquer) {
-    occupe = appliquer ? 'import' : 'blanc'; error = ''
+    occupeDecisions = appliquer ? 'import' : 'blanc'; error = ''
     try {
       rapport = { type: appliquer ? 'import' : 'blanc',
                   ...(await api.decisionsImporter(appliquer)) }
-    } catch (e) { error = e.message } finally { occupe = '' }
+    } catch (e) { error = e.message } finally { occupeDecisions = '' }
   }
 </script>
 
@@ -307,43 +358,17 @@
   <section class="topbar">
     <div>
       <p class="eyebrow">{project.private_name || SITE_NOM_ATELIER}</p>
-      <h1>Publication <span class="badge {badge.ton}">{badge.texte}</span></h1>
+      <h1>Publication {#if etat}<span class="badge {badge.ton}">{badge.texte}</span>{/if}</h1>
     </div>
-    <div class="auth">
-      {#if peutAgir}
-        <span class="muted">Admin — clé facultative</span>
-      {:else if role}
-        <span class="muted">{LIBELLE_ROLE[role] ?? role} — aperçu, sans publication</span>
-      {/if}
-      <!-- La clé de service sert aux scripts, jamais à quelqu'un de connecté. -->
-      {#if !$currentUser}
-        <input
-          type="password"
-          bind:value={adminKey}
-          placeholder="Clé admin (facultative)"
-          on:keydown={(e) => e.key === 'Enter' && charger()}
-        />
-      {/if}
-      <button class="secondary" on:click={() => charger()} disabled={loading}>
-        {loading ? 'Lecture…' : 'Recharger'}
-      </button>
-      {#if !$currentUser}
-        <button class="ghost" on:click={forgetKey}>Oublier la clé</button>
-      {/if}
-    </div>
+    {#if admis}
+      <div class="auth">
+        <span class="muted">{LIBELLE_ROLE[role] ?? role}{peutAgir ? '' : ' — aperçu et relecture, sans mise en ligne'}</span>
+        <button class="secondary" on:click={() => charger()} disabled={loading}>
+          {loading ? 'Lecture…' : 'Actualiser'}
+        </button>
+      </div>
+    {/if}
   </section>
-
-  <ol class="pipeline">
-    {#each ETAPES as e, i}
-      <li class:courant={
-        (e.cle === 'apercu' && etape === 'aucun_apercu') ||
-        (e.cle === 'controles' && etape === 'controles_en_echec') ||
-        (e.cle === 'publication' && (etape === 'pret_a_publier' || promu))
-      }>
-        <span class="num">{i + 1}</span>{e.titre}
-      </li>
-    {/each}
-  </ol>
 
   {#if error}
     <div class="error">
@@ -354,102 +379,285 @@
     </div>
   {/if}
 
-  {#if !etat}
+  {#if $currentUser && !admis}
     <section class="carte">
-      <p class="muted">Se connecter à l’atelier, ou saisir la clé admin, pour lire l’état de publication.</p>
+      <p class="ligne">
+        Cette page est réservée aux validateurs et aux administrateurs. Vos
+        corrections et vos propositions y sont relues avant de partir en ligne.
+      </p>
     </section>
+  {:else if !etat}
+    <section class="carte"><p class="muted">{loading ? 'Lecture de l’état…' : 'État de publication indisponible.'}</p></section>
   {:else}
 
-  <!-- ① Ce qui est en ligne ------------------------------------------------ -->
+  <!-- Les quatre gestes, dans l'ordre. Sous chaque bouton, l'état en une ligne :
+       un bouton grisé sans phrase laisse chercher ce qui manque. -->
+  <ol class="gestes">
+    <li class:fait={brouillon.existe && !aRegenerer}>
+      <button class="primary" on:click={genererApercu} disabled={!peutApercevoir || occupe}>
+        <span class="num">1</span>
+        {generating ? 'Génération…' : serveurEnCours ? 'Construction du site…' : 'Générer l’aperçu'}
+      </button>
+      <p>
+        {#if aRegenerer}
+          <strong class="txt-attente">À regénérer</strong> — vous avez tranché depuis le dernier aperçu.
+        {:else if !brouillon.existe}
+          Le site tel qu’il serait avec la base d’aujourd’hui. Rien en ligne ne bouge.
+        {:else}
+          Généré le {date(brouillon.genere_le)} ·
+          {#if !controle}contrôles non passés
+          {:else if controle.ok}<span class="txt-ok">contrôles verts</span>
+          {:else}<strong class="txt-ko">{fmt(controle.compte_erreurs)} violation(s)</strong>{/if}
+        {/if}
+      </p>
+    </li>
+
+    <li class:fait={apercuPret}>
+      {#if apercuPret}
+        <a class="bouton secondary" href={lien(apercu, '/')} target="_blank" rel="noreferrer">
+          <span class="num">2</span>Voir l’aperçu ↗
+        </a>
+      {:else}
+        <button class="secondary" on:click={voirApercu}
+                disabled={!brouillon.existe || !apercu.installe || !peutApercevoir || occupe}>
+          <span class="num">2</span>{serveurEnCours ? 'Construction…' : 'Voir l’aperçu ↗'}
+        </button>
+      {/if}
+      <p>
+        {#if !brouillon.existe}Générer l’aperçu d’abord.
+        {:else if !apercu.installe}Dépendances du site absentes (<code>cd public &amp;&amp; npm install</code>).
+        {:else if apercuPret}
+          {#if apercu.build?.pages}{fmt(apercu.build.pages)} pages · {/if}s’ouvre dans un onglet, non publié.
+        {:else}Le site sera reconstruit sur l’aperçu, puis ouvert.{/if}
+      </p>
+    </li>
+
+    <li class:fait={etape === 'en_ligne'}>
+      <button class="danger" on:click={mettreEnLigne}
+              disabled={!peutAgir || !aMettreEnLigne || aRegenerer || enCours
+                        || generating || publishing || serveurEnCours || apercuEnConstruction}>
+        <span class="num">3</span>{enCours ? 'Mise en ligne…' : 'Mettre en ligne'}
+      </button>
+      <p>
+        {#if !peutAgir}Réservé aux administrateurs.
+        {:else if enCours && apercuEnConstruction}En attente : un aperçu se construit, la mise en ligne commencera ensuite.
+        {:else if enCours}En cours vers <code>{deploiement.destination_visee || deploiement.destination}</code> — plusieurs minutes.
+        {:else if serveurEnCours || apercuEnConstruction}
+          « Mettre en ligne » attend : un aperçu se construit, et deux builds du
+          site écrivent au même endroit. Le bouton revient dès qu’il a fini.
+        {:else if etape === 'aucun_apercu'}Générer l’aperçu d’abord.
+        {:else if etape === 'controles_en_echec'}<strong class="txt-ko">Bloqué</strong> : contrôles rouges. Corriger, puis regénérer.
+        {:else if aRegenerer}Regénérer l’aperçu d’abord.
+        {:else if deploiement.code_retour !== undefined && !deploiement.ok}
+          <strong class="txt-ko">Dernier déploiement en échec</strong> (code {deploiement.code_retour}) — le site n’a pas changé.
+        {:else if etape === 'en_ligne'}Cette version est en ligne.
+        {:else if !deploiement.destination}
+          <span class="txt-attente">Aucune destination déclarée</span> (bloc <code>publication</code> de <code>config/instance.json</code>).
+        {:else}Votre aperçu du {date(brouillon.genere_le)} part vers <code>{deploiement.destination}</code>.{/if}
+      </p>
+    </li>
+
+    <li class:fait={enLigne.ok}>
+      {#if urlPublique}
+        <a class="bouton secondary" href={urlPublique} target="_blank" rel="noreferrer">
+          <span class="num">4</span>Voir en ligne ↗
+        </a>
+      {:else}
+        <button class="secondary" disabled><span class="num">4</span>Voir en ligne ↗</button>
+      {/if}
+      <p>
+        {#if !urlPublique}Aucune adresse déclarée (<code>site_url</code>).
+        {:else if verifying}Vérification du site…
+        {:else if enLigne.ok && !enLigne.perimee}<span class="txt-ok">À jour</span>, vérifié le {date(enLigne.verifie_le)}.
+        {:else if enLigne.verifie_le && !enLigne.perimee}<strong class="txt-ko">Pas à jour</strong> : {enLigne.motif}
+        {:else if publie.existe}Sert la version du {date(publie.publie_le)} — non vérifié depuis.
+        {:else}Rien n’a encore été mis en ligne d’ici.{/if}
+      </p>
+    </li>
+  </ol>
+
+  <!-- Ce qui part ----------------------------------------------------------- -->
   <section class="carte">
     <header>
-      <h2>① Ce que l’atelier sert</h2>
-      {#if publie.existe}
-        <span class="tag ok">promu localement</span>
-      {:else}
-        <span class="tag neutre">rien de promu</span>
-      {/if}
+      <h2>Ce qui part avec la prochaine mise en ligne</h2>
+      <span class="muted">
+        {#if aRelire?.depuis}depuis la publication du {date(aRelire.depuis)}{:else}jamais publié d’ici{/if}
+      </span>
     </header>
 
-    {#if publie.existe}
-      <p class="ligne">
-        Publié le <strong>{date(publie.publie_le)}</strong>
-        {#if publie.publie_par}par <strong>{publie.publie_par}</strong>{:else}
-          <em class="muted">— auteur inconnu, publication antérieure au journal</em>{/if}
-      </p>
-      <div class="metrics">
-        <div class="metric"><span>{fmt(publie.stats?.entities_public)}</span><small>entités</small></div>
-        <div class="metric"><span>{fmt(publie.stats?.events_public)}</span><small>événements</small></div>
-        <div class="metric"><span>{fmt(publie.stats?.relations_public)}</span><small>relations</small></div>
-        <div class="metric"><span>{fmt(publie.stats?.map_features_public)}</span><small>points carte</small></div>
+    {#if !aRelire}
+      <p class="muted">Liste indisponible.</p>
+    {:else}
+      <div class="onglets">
+        {#each listes as [cle, titre, n]}
+          <button class:actif={onglet === cle} on:click={() => { onglet = cle; erreurListe = '' }}>
+            {titre} <span class="compte" class:plein={n > 0}>{fmt(n)}</span>
+          </button>
+        {/each}
       </div>
-      {#if publie.synchro}
+
+      {#if erreurListe}<p class="alerte">{erreurListe}</p>{/if}
+
+      {#if onglet === 'propositions'}
         <p class="muted">
-          {fmt(publie.synchro.count)} fichiers vers <code>{publie.synchro.dest}</code>
-          {#if publie.synchro.fichiers_retires?.length}
-            · {publie.synchro.fichiers_retires.length} fichier(s) retiré(s)
+          Ce qu’un contributeur a voulu écrire sur une donnée déjà publiée. Rien
+          n’est appliqué tant qu’un validateur ne l’a pas validé.
+          {#if aRelire.marches_a_relire}
+            <a class="lien" href="/atelier/propositions?nature=marche">
+              + {fmt(aRelire.marches_a_relire)} marché(s) lus dans des procès-verbaux, à relire l’acte sous les yeux →</a>
           {/if}
         </p>
-      {/if}
-      {#if entries(publie.differences).length}
-        <p class="alerte">
-          Écart entre l’aperçu contrôlé et la copie publiée :
-          {#each entries(publie.differences) as [cle, v]}
-            <code>{cle}</code> {fmt(v.apercu)} → {fmt(v.publie)}{' '}
-          {/each}
-          — à regarder, une copie ne doit rien changer.
+        {#if !aRelire.propositions.length}
+          <p class="vide">Aucune proposition en attente.</p>
+        {:else}
+          <div class="table"><table>
+            <thead><tr><th>Quoi</th><th>Qui</th><th>Quand</th><th>Pourquoi</th><th></th></tr></thead>
+            <tbody>
+              {#each aRelire.propositions as p (p.id)}
+                <tr>
+                  <td>
+                    <span class="nature">{NATURE[p.nature] ?? p.nature}</span>
+                    {#if p.entity_id}
+                      <a class="lien" href="/atelier/entite/{p.entity_id}">{p.fiche ?? `fiche ${p.entity_id}`}</a>
+                    {:else}
+                      <a class="lien" href="/atelier/propositions">{p.object_type} n° {p.object_id}</a>
+                    {/if}
+                    {#each entries(p.charge) as [c, v]}
+                      <div class="change">
+                        <span class="muted">{LIBELLES[c] ?? c} :</span>
+                        <span class="avant">{dire(p.avant?.[c])}</span> → <strong>{dire(v)}</strong>
+                      </div>
+                    {/each}
+                  </td>
+                  <td>{p.propose_par ?? '—'}</td>
+                  <td class="quand">{heureLocale(p.propose_le)}</td>
+                  <td><input bind:value={pourquoi[`p${p.id}`]} placeholder="Motif (requis pour écarter)" /></td>
+                  <td class="gestes-ligne">
+                    <button class="valider" on:click={() => trancherProposition(p, true)} disabled={tranche}>Valider</button>
+                    <button class="ecarter" on:click={() => trancherProposition(p, false)} disabled={tranche}>Écarter</button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table></div>
+        {/if}
+      {:else}
+        {@const lignes = onglet === 'contributions' ? aRelire.contributions : aRelire.nouvelles}
+        <p class="muted">
+          {#if onglet === 'contributions'}
+            Les fiches modifiées dans l’atelier depuis la dernière publication.
+          {:else}
+            Les fiches entrées en base depuis la dernière publication, par la collecte ou par l’atelier.
+            {#if aRelire.total_nouvelles > lignes.length}Les {lignes.length} plus récentes sur {fmt(aRelire.total_nouvelles)} —
+              <a class="lien" href="/atelier/fiches">toutes les fiches →</a>{/if}
+          {/if}
+          Le nom ouvre la fiche, où tout se corrige. Valider la retient pour le
+          site, écarter l’en retire.
         </p>
+        {#if !lignes.length}
+          <p class="vide">{onglet === 'contributions' ? 'Aucune fiche modifiée.' : 'Aucune fiche nouvelle.'}</p>
+        {:else}
+          <div class="table"><table>
+            <thead><tr><th>Quoi</th><th>Qui</th><th>Quand</th><th>Pourquoi</th><th></th></tr></thead>
+            <tbody>
+              {#each lignes as l (l.id)}
+                <tr>
+                  <td>
+                    <a class="lien" href="/atelier/entite/{l.id}">{l.name}</a>
+                    <span class="tag {VERDICT[l.verdict]?.ton ?? 'neutre'}">{VERDICT[l.verdict]?.texte ?? l.verdict}</span>
+                    {#if l.champs}<div class="change muted">{fmt(l.modifications)} écriture(s) : {champs(l.champs)}</div>{/if}
+                    {#if l.dans_apercu && apercuPret}
+                      <a class="lien" href={lien(apercu, `/entite/${l.id}`)} target="_blank" rel="noreferrer">dans l’aperçu ↗</a>
+                    {:else if !l.dans_apercu && brouillon.existe}
+                      <span class="muted">absente de l’aperçu</span>
+                    {/if}
+                  </td>
+                  <td>{l.par ?? ORIGINE[l.origine] ?? 'collecte'}</td>
+                  <td class="quand">{heureLocale(l.derniere)}</td>
+                  <td><input bind:value={pourquoi[`f${l.id}`]} placeholder="Note de décision" /></td>
+                  <td class="gestes-ligne">
+                    <button class="valider" on:click={() => trancherFiche(l, 'retenu')}
+                            disabled={tranche || (l.verdict === 'retenu' && (pourquoi[`f${l.id}`] || '') === (l.note || ''))}>Valider</button>
+                    <button class="ecarter" on:click={() => trancherFiche(l, 'ecarte')}
+                            disabled={tranche || (l.verdict === 'ecarte' && (pourquoi[`f${l.id}`] || '') === (l.note || ''))}>Écarter</button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table></div>
+        {/if}
       {/if}
-      <p class="muted">
-        Prochaine étape, hors atelier : <code>cd public &amp;&amp; npm run build</code>, puis mise en ligne.
-      </p>
-    {:else}
-      <p class="muted">
-        Aucun snapshot dans <code>{publie.repertoire}</code>. Générer un aperçu, puis publier.
-      </p>
     {/if}
   </section>
 
-  <!-- ② L'aperçu ----------------------------------------------------------- -->
-  <section class="carte">
-    <header>
-      <h2>② {$currentUser ? 'Mon aperçu' : 'Aperçu brouillon'}</h2>
-      <div class="actions">
-        {#if brouillon.existe}
-          <span class="tag ok">aperçu généré</span>
-        {:else}
-          <span class="tag neutre">aucun aperçu</span>
-        {/if}
-        {#if peutApercevoir}
-          <button class="primary" on:click={genererApercu}
-                  disabled={generating || serveurEnCours || publishing}>
-            {generating ? 'Génération…' : serveurEnCours ? 'Construction du site…' : 'Générer un aperçu'}
-          </button>
-        {/if}
-      </div>
-    </header>
-
-    {#if $currentUser}
-      <p class="muted">
-        Votre aperçu : le site tel qu’il serait publié avec la base d’aujourd’hui.
-        Rien de ce qui est en ligne ne bouge. Il est remplacé par le prochain aperçu
-        que vous générez{#if brouillon.expire_le}, et s’efface le {date(brouillon.expire_le)}{:else},
-        et s’efface au bout de {brouillon.duree_jours ?? 7} jours{/if}.
-      </p>
-    {:else}
-      <p class="muted">
-        Construit dans <code>{brouillon.repertoire}</code> — rien de servi n’est touché
-        à cette étape.
-      </p>
-    {/if}
-
-    {#if !brouillon.existe}
-      <p class="muted">Aucun aperçu pour l’instant.</p>
+  <!-- Le détail, replié : ce qu'on ne lit que quand quelque chose cloche. -->
+  <details class="carte" open={controle && !controle.ok}>
+    <summary>
+      <h2>Contrôles d’étanchéité</h2>
+      {#if !controle}<span class="tag neutre">pas encore passés</span>
+      {:else if controle.ok}<span class="tag ok">verts</span>
+      {:else}<span class="tag ko">{fmt(controle.compte_erreurs)} violation(s)</span>{/if}
+    </summary>
+    {#if !controle}
+      <p class="muted">Générer un aperçu lance <code>scripts/verify_snapshot.py</code> dessus.</p>
     {:else}
       <p class="ligne">
-        Généré le <strong>{date(brouillon.genere_le)}</strong>
-        {#if brouillon.genere_par}par <strong>{brouillon.genere_par}</strong>{/if}
+        {fmt(controle.fichiers)} fichiers inspectés ·
+        {fmt(controle.compte_erreurs)} violation(s) bloquante(s) ·
+        {fmt(controle.compte_avertissements)} avertissement(s)
+        <span class="muted">— {date(controle.controle_le)}</span>
       </p>
+
+      {#if !controle.ok}
+        <p class="alerte">
+          Mise en ligne bloquée. Ces violations sont ce que le contrôleur — écrit
+          comme un adversaire du générateur — refuse de laisser sortir.
+        </p>
+      {/if}
+
+      {#if controle.erreurs?.length || controle.avertissements?.length}
+        {#each [['BLOQUANT', controle.erreurs], ['avertissement', controle.avertissements]] as [niveau, groupes]}
+          {#each groupes || [] as g}
+            <div class="regle" class:bloquante={niveau === 'BLOQUANT'}>
+              <h3>{g.regle} <span class="muted">— {fmt(g.total)} cas</span></h3>
+              <ul>
+                {#each g.cas as cas}
+                  <li>
+                    {#if cas.fichier}<code>{cas.fichier}</code>{/if}
+                    {#if cas.champ}<code class="champ">{cas.champ}</code>{/if}
+                    <span>{cas.message}</span>
+                    {#each cas.identifiants || [] as id}
+                      {#if cas.objet === 'entite'}
+                        <a class="lien" href="/atelier/entite/{id}">fiche #{id} ↗</a>
+                      {/if}
+                    {/each}
+                  </li>
+                {/each}
+                {#if g.total > g.cas.length}
+                  <li class="muted">… {fmt(g.total - g.cas.length)} autres, cf. le rapport complet</li>
+                {/if}
+              </ul>
+            </div>
+          {/each}
+        {/each}
+        <details class="bloc">
+          <summary>Rapport complet de <code>verify_snapshot.py</code></summary>
+          <pre>{controle.rapport}</pre>
+        </details>
+      {/if}
+    {/if}
+  </details>
+
+  {#if brouillon.existe}
+  <details class="carte">
+    <summary>
+      <h2>L’aperçu en chiffres</h2>
+      <span class="muted">{fmt(brouillon.stats?.entities_public)} entités · {fmt(brouillon.stats?.events_public)} événements</span>
+    </summary>
+    <p class="muted">
+      Généré le {date(brouillon.genere_le)}{#if brouillon.genere_par} par {brouillon.genere_par}{/if}.
+      Il est remplacé par le prochain aperçu que vous générez{#if brouillon.expire_le}, et s’efface le {date(brouillon.expire_le)}{/if}.
+    </p>
       <div class="metrics">
         <div class="metric">
           <span>{fmt(brouillon.stats?.entities_public)}</span><small>entités publiques</small>
@@ -486,236 +694,50 @@
           {/each}
         </div>
       </details>
-
-      <!-- Le site public lui-même, branché sur le brouillon. -->
-      <div class="apercu">
-        <div class="apercu-barre">
-          <strong>Prévisualisation</strong>
-          {#if apercuPret && apercu.build?.perime}
-            <span class="tag ko">en marche · build plus ancien que le brouillon</span>
-          {:else if apercuPret}
-            <span class="tag ok">en marche · {apercu.url}</span>
-          {:else if !apercu.installe}
-            <span class="tag ko">dépendances du site absentes</span>
-          {:else}
-            <span class="tag neutre">arrêtée</span>
-          {/if}
-          {#if peutApercevoir}
-            {#if apercuPret}
-              {#if apercu.build?.perime}
-                <!-- Un aperçu régénéré dont le site n'est pas encore reconstruit. -->
-                <button class="secondary" on:click={() => serveurApercu('demarrer')} disabled={serveurEnCours}>
-                  {serveurEnCours ? 'Construction…' : 'Reconstruire l’aperçu'}
-                </button>
-              {/if}
-              {#if peutAgir}
-                <!-- Le serveur montre les aperçus de tout l'atelier : l'arrêter les coupe tous. -->
-                <button class="secondary" on:click={() => serveurApercu('arreter')} disabled={serveurEnCours}>
-                  Arrêter
-                </button>
-              {/if}
-            {:else}
-              <button class="secondary" on:click={() => serveurApercu('demarrer')}
-                      disabled={serveurEnCours || !apercu.installe}>
-                {serveurEnCours ? 'Construction…' : 'Construire et ouvrir l’aperçu'}
-              </button>
-            {/if}
-          {/if}
-          {#if apercuPret}
-            <a class="lien" href={lienApercu('/')} target="_blank" rel="noreferrer">
-              Ouvrir l’aperçu ↗
-            </a>
-          {/if}
-        </div>
-
-        {#if !apercu.installe}
-          <p class="muted">
-            L’aperçu fait tourner le site public lui-même :
-            <code>cd public &amp;&amp; npm install</code> une fois, puis il démarre d’ici.
-          </p>
-        {:else if apercuPret}
-          <!-- L'aperçu s'ouvre dans un onglet, il ne s'encadre plus.
-               L'iframe était pilotée des DEUX côtés : les puces changeaient son
-               `src`, mais naviguer dans le site embarqué ne les mettait pas à
-               jour — impossible, l'aperçu tourne sur un autre port, donc une
-               autre origine. Cliquer sur « Où va l'argent » dans le site laissait
-               la puce sur « Accueil », « Ouvrir dans un onglet » pointait
-               toujours la racine, et recliquer sur Accueil ne faisait rien
-               puisque la valeur était déjà `/`. Le cadre et son contenu ne
-               racontaient plus la même chose.
-
-               Un onglet à part règle les trois : la navigation appartient au
-               site, l'atelier n'en garde que les portes d'entrée. -->
-          <p class="cadre-bandeau">
-            APERÇU — non publié. C’est le site tel qu’il partirait en ligne,
-            construit sur {$currentUser ? 'votre aperçu' : 'le brouillon'}
-            du {date(brouillon.genere_le)}.
-            {#if apercu.build?.pages}({apercu.build.pages} pages, construites le
-            {date(apercu.build.construit_le)}){/if}
-            Il s’ouvre dans un onglet séparé : la navigation y appartient au site.
-          </p>
-          <div class="apercu-liens">
-            {#each LIENS_APERCU as l}
-              <a class="puce" href={lienApercu(l.chemin)} target="_blank"
-                 rel="noreferrer">{l.label} ↗</a>
-            {/each}
-            {#if modifications?.modifications?.length}
-              <span class="separateur">fiches modifiées :</span>
-              {#each modifications.modifications.slice(0, 8) as m}
-                {#if m.dans_apercu}
-                  <a class="puce" href={lienApercu(`/entite/${m.id}`)} target="_blank"
-                     rel="noreferrer"
-                     title="{m.modifications} modification(s), dernière le {m.derniere}">
-                    {m.name} ↗
-                  </a>
-                {/if}
-              {/each}
-            {/if}
-          </div>
-        {:else}
-          <p class="muted">
-            La prévisualisation <strong>construit</strong> le site public sur le
-            brouillon — les mêmes pages que celles qui partiront en ligne, passées
-            par le même contrôle de build — puis les sert sur son propre port.
-            Compter une poignée de secondes. Rien n’est copié.
-          </p>
-        {/if}
+    {#if apercuPret}
+      <div class="apercu-liens">
+        <span class="separateur">ouvrir l’aperçu sur :</span>
+        {#each LIENS_APERCU as l}
+          <a class="puce" href={lien(apercu, l.chemin)} target="_blank" rel="noreferrer">{l.label} ↗</a>
+        {/each}
       </div>
     {/if}
-  </section>
-
-  <!-- ③ Les contrôles ------------------------------------------------------ -->
-  <section class="carte">
-    <header>
-      <h2>③ Contrôles d’étanchéité</h2>
-      {#if !controle}
-        <span class="tag neutre">pas encore passés</span>
-      {:else if controle.ok}
-        <span class="tag ok">verts</span>
-      {:else}
-        <span class="tag ko">{fmt(controle.compte_erreurs)} violation(s)</span>
-      {/if}
-    </header>
-
-    {#if !controle}
-      <p class="muted">Générer un aperçu lance <code>scripts/verify_snapshot.py</code> dessus.</p>
-    {:else}
-      <p class="ligne">
-        {fmt(controle.fichiers)} fichiers inspectés ·
-        {fmt(controle.compte_erreurs)} violation(s) bloquante(s) ·
-        {fmt(controle.compte_avertissements)} avertissement(s)
-        <span class="muted">— {date(controle.controle_le)}</span>
-      </p>
-
-      {#if !controle.ok}
-        <p class="alerte">
-          Publication bloquée. Ces violations sont ce que le contrôleur — écrit
-          comme un adversaire du générateur — refuse de laisser sortir.
-        </p>
-      {/if}
-
-      {#if controle.erreurs?.length || controle.avertissements?.length}
-        <button class="secondary" on:click={() => (controleDeplie = !controleDeplie)}>
-          {controleDeplie ? 'Masquer le détail' : 'Voir les erreurs'}
-        </button>
-      {/if}
-
-      {#if controleDeplie}
-        {#each [['BLOQUANT', controle.erreurs], ['avertissement', controle.avertissements]] as [niveau, groupes]}
-          {#each groupes || [] as g}
-            <div class="regle" class:bloquante={niveau === 'BLOQUANT'}>
-              <h3>{g.regle} <span class="muted">— {fmt(g.total)} cas</span></h3>
-              <ul>
-                {#each g.cas as cas}
-                  <li>
-                    {#if cas.fichier}<code>{cas.fichier}</code>{/if}
-                    {#if cas.champ}<code class="champ">{cas.champ}</code>{/if}
-                    <span>{cas.message}</span>
-                    {#each cas.identifiants || [] as id}
-                      {#if cas.objet === 'entite'}
-                        <a class="lien" href="/atelier/entite/{id}">fiche #{id} ↗</a>
-                      {/if}
-                    {/each}
-                  </li>
-                {/each}
-                {#if g.total > g.cas.length}
-                  <li class="muted">… {fmt(g.total - g.cas.length)} autres, cf. le rapport complet</li>
-                {/if}
-              </ul>
-            </div>
-          {/each}
-        {/each}
-        <details class="bloc">
-          <summary>Rapport complet de <code>verify_snapshot.py</code></summary>
-          <pre>{controle.rapport}</pre>
-        </details>
-      {/if}
-    {/if}
-  </section>
-
-  <!-- ④ Publier ------------------------------------------------------------ -->
-  <section class="carte">
-    <header>
-      <h2>④ Publier</h2>
-      {#if etape === 'en_ligne'}<span class="tag ok">en ligne, vérifié</span>
-      {:else if promu}<span class="tag attente">promu, pas encore vérifié en ligne</span>{/if}
-    </header>
-
-    {#if !peutAgir}
-      <p class="muted">
-        Publier est réservé aux administrateurs, à partir de leur propre aperçu.
-        Le vôtre sert à regarder l’effet de vos corrections avant qu’elles partent.
-      </p>
-    {:else if etape === 'aucun_apercu'}
-      <p class="muted">Générer un aperçu d’abord.</p>
-    {:else if etape === 'controles_en_echec'}
-      <p class="alerte">
-        Contrôles rouges — le bouton n’est pas proposé. Corriger dans l’atelier,
-        puis regénérer un aperçu.
-      </p>
-    {:else if promu}
-      <p class="muted">
-        Cet aperçu est en place dans <code>{publie.repertoire}</code> et dans
-        <code>{etat.site?.repertoire}</code>. Regénérer un aperçu pour prendre en
-        compte des corrections plus récentes.
-      </p>
-    {:else}
-      <p class="ligne">
-        {$currentUser ? 'Votre aperçu' : 'L’aperçu'} du {date(brouillon.genere_le)} est contrôlé. Publier construit
-        chaque copie <em>à côté</em> de ce qui est servi, la contrôle, puis la met
-        en service d’un seul geste — <code>{publie.repertoire}</code> puis
-        <code>{etat.site?.repertoire}</code>. Un refus laisse la version
-        précédente entière et servie.
-      </p>
-    {/if}
-
-    {#if peutPublier}
-      <button class="danger" on:click={publier} disabled={publishing || generating}>
-        {publishing ? 'Publication…' : 'Publier ce snapshot'}
+    {#if peutAgir && apercu.actif}
+      <!-- Le serveur montre les aperçus de tout l'atelier : l'arrêter les coupe tous. -->
+      <button class="secondary" on:click={() => serveurApercu('arreter')} disabled={serveurEnCours}>
+        Arrêter le serveur d’aperçu
       </button>
     {/if}
-  </section>
+  </details>
+  {/if}
 
-  <!-- ⑤ En ligne ----------------------------------------------------------- -->
-  <!-- L'étape que l'atelier ne fait PAS, et qu'il ne peut donc que constater :
-       entre la promotion locale et le site public il y a un build et un
-       déploiement. Tant que personne n'a interrogé le site, « déployé » est une
-       supposition — et la page l'affichait comme un fait. -->
-  {#if promu}
-  <section class="carte">
-    <header>
-      <h2>⑤ En ligne</h2>
-      {#if enLigne.ok}<span class="tag ok">vérifié</span>
-      {:else if enLigne.verifie_le}<span class="tag ko">pas à jour</span>
+  <details class="carte">
+    <summary>
+      <h2>En ligne — le détail</h2>
+      {#if enLigne.ok && !enLigne.perimee}<span class="tag ok">vérifié</span>
+      {:else if enLigne.verifie_le && !enLigne.perimee}<span class="tag ko">pas à jour</span>
       {:else}<span class="tag attente">non vérifié</span>{/if}
-    </header>
+    </summary>
 
-    <p class="ligne">
-      Promouvoir écrit dans les répertoires de cette machine. Le site public,
-      lui, sert ce que le dernier <strong>build</strong> et le dernier
-      <strong>déploiement</strong> y ont mis. Ces deux gestes ne sont pas faits
-      d’ici : cette carte se contente de constater.
-    </p>
+    {#if publie.existe}
+      <p class="ligne">
+        Version servie par l’atelier : promue le <strong>{date(publie.publie_le)}</strong>
+        {#if publie.publie_par}par <strong>{publie.publie_par}</strong>{/if}
+        — {fmt(publie.stats?.entities_public)} entités, {fmt(publie.stats?.events_public)} événements,
+        {fmt(publie.stats?.relations_public)} relations, {fmt(publie.stats?.map_features_public)} points carte.
+      </p>
+      {#if entries(publie.differences).length}
+        <p class="alerte">
+          Écart entre l’aperçu contrôlé et la copie publiée :
+          {#each entries(publie.differences) as [cle, v]}
+            <code>{cle}</code> {fmt(v.apercu)} → {fmt(v.publie)}{' '}
+          {/each}
+          — à regarder, une copie ne doit rien changer.
+        </p>
+      {/if}
+    {:else}
+      <p class="muted">Rien n’a encore été promu depuis cet atelier.</p>
+    {/if}
 
     <div class="ligne">
       <span class="etiq">Adresse publique</span>
@@ -755,56 +777,29 @@
       <p class="muted">Jamais vérifié depuis cette machine.</p>
     {/if}
 
-    {#if deploiement.actif && apercuEnConstruction}
-      <p class="ligne"><span class="tag attente">mise en ligne en attente</span>
-        Un aperçu se construit{deploiement.build.depuis ? ` depuis ${date(deploiement.build.depuis)}` : ''} :
-        la mise en ligne commencera dès qu'il aura fini. Rien n'est encore touché.
-      </p>
-    {:else if deploiement.actif}
+    {#if deploiement.actif}
       <p class="ligne"><span class="tag attente">déploiement en cours</span>
-        Vers <code>{deploiement.destination_visee || deploiement.destination}</code>, empreinte
-        <code>{deploiement.empreinte_visee}</code>. Construction des pages puis
-        téléversement — plusieurs minutes. Journal :
-        <code>{deploiement.journal}</code>
+        empreinte <code>{deploiement.empreinte_visee}</code> — journal : <code>{deploiement.journal}</code>
       </p>
-    {:else if deploiement.code_retour !== undefined}
-      <p class:alerte={!deploiement.ok} class:muted={deploiement.ok}>
-        {deploiement.ok
-          ? 'Dernier déploiement terminé sans erreur. Vérifier ci-dessous que le site sert bien cette version.'
-          : `Dernier déploiement en ÉCHEC (code ${deploiement.code_retour}) — le site n'a pas changé.`}
-      </p>
-      {#if !deploiement.ok && deploiement.fin_du_journal}
-        <details><summary>Fin du journal</summary><pre>{deploiement.fin_du_journal}</pre></details>
-      {/if}
+    {:else if deploiement.code_retour !== undefined && !deploiement.ok && deploiement.fin_du_journal}
+      <details><summary>Fin du journal du dernier déploiement (échec, code {deploiement.code_retour})</summary>
+        <pre>{deploiement.fin_du_journal}</pre></details>
     {/if}
 
-    {#if peutAgir}
-      <button class="danger" on:click={mettreEnLigne}
-              disabled={deploying || deploiement.actif || publishing
-                        || serveurEnCours || apercuEnConstruction}>
-        {deploying || deploiement.actif ? 'Mise en ligne…' : 'Mettre en ligne'}
+    <div class="actions">
+      <button class="secondary" on:click={verifierEnLigne} disabled={verifying || !publie.existe}>
+        {verifying ? 'Vérification…' : 'Revérifier ce qui est en ligne'}
       </button>
-      {#if !deploiement.actif && (serveurEnCours || apercuEnConstruction)}
-        <p class="muted">
-          « Mettre en ligne » attend : un aperçu se construit{deploiement.build?.depuis
-            ? ` depuis ${date(deploiement.build.depuis)}` : ''}, et deux builds du site
-          écrivent au même endroit. Le bouton revient dès qu'il a fini.
-        </p>
-      {/if}
-      <button class="secondary" on:click={verifierEnLigne} disabled={verifying}>
-        {verifying ? 'Vérification…' : 'Vérifier ce qui est en ligne'}
-      </button>
-      {#if publie.existe}
-        <button class="secondary" on:click={revenir} disabled={publishing || generating}>
+      {#if peutAgir && publie.existe}
+        <button class="secondary" on:click={revenir} disabled={occupe}>
           Revenir à la version précédente
         </button>
       {/if}
-    {/if}
-  </section>
-  {/if}
+    </div>
+  </details>
 
-  <section class="carte regles">
-    <h2>Règles de publication actives</h2>
+  <details class="carte regles">
+    <summary><h2>Règles de publication actives</h2></summary>
     <div class="puces">
       <span>confiance : {(etat.rules?.public_confidence || []).join(', ') || '—'}</span>
       <span>relations : {(etat.rules?.public_relation_types || []).length}</span>
@@ -812,33 +807,30 @@
       <span>sources événements : {(etat.rules?.public_event_sources || []).join(', ') || '—'}</span>
       <span>règles : <code>{etat.rules_path}</code></span>
     </div>
-  </section>
+  </details>
 
-  <section class="decisions">
-    <div class="dec-tete">
-      <div>
-        <h2>Décisions — exporter, reprendre</h2>
-        <p class="muted">
-          La base se refait toute seule avec le code et un code INSEE. Ce qui ne
-          se refait pas, c'est le travail humain : les arbitrages, les
-          corrections, les sites validés, les saisies. C'est ça qu'on transporte.
-        </p>
-      </div>
-    </div>
+  {#if estAdmin}
+  <details class="carte decisions">
+    <summary><h2>Décisions — exporter, reprendre</h2></summary>
+    <p class="muted">
+      La base se refait toute seule avec le code et un code INSEE. Ce qui ne
+      se refait pas, c'est le travail humain : les arbitrages, les
+      corrections, les sites validés, les saisies. C'est ça qu'on transporte.
+    </p>
 
     <div class="dec-actions">
       <label class="dec-opt">
         <input type="checkbox" bind:checked={sansPersonnes} />
         Retirer ce qui porte sur des personnes physiques
       </label>
-      <button class="secondary" on:click={exporter} disabled={occupe || !estAdmin}>
-        {occupe === 'export' ? 'Export…' : 'Exporter mes décisions'}
+      <button class="secondary" on:click={exporter} disabled={occupeDecisions || !estAdmin}>
+        {occupeDecisions === 'export' ? 'Export…' : 'Exporter mes décisions'}
       </button>
-      <button class="secondary" on:click={() => importer(false)} disabled={occupe || !estAdmin}>
-        {occupe === 'blanc' ? 'Lecture…' : 'Lire un import (à blanc)'}
+      <button class="secondary" on:click={() => importer(false)} disabled={occupeDecisions || !estAdmin}>
+        {occupeDecisions === 'blanc' ? 'Lecture…' : 'Lire un import (à blanc)'}
       </button>
-      <button class="primary" on:click={() => importer(true)} disabled={occupe || !estAdmin}>
-        {occupe === 'import' ? 'Import…' : 'Appliquer l\'import'}
+      <button class="primary" on:click={() => importer(true)} disabled={occupeDecisions || !estAdmin}>
+        {occupeDecisions === 'import' ? 'Import…' : 'Appliquer l\'import'}
       </button>
     </div>
 
@@ -893,7 +885,8 @@
         {/if}
       </div>
     {/if}
-  </section>
+  </details>
+  {/if}
   {/if}
 </div>
 
@@ -949,7 +942,6 @@
   .primary { background: var(--bouton); color: var(--sur-accent); }
   .secondary { background: var(--surface-2); color: var(--texte); }
   .danger { background: var(--danger-bordure); color: var(--danger-texte); }
-  .ghost { color: var(--texte-doux); }
 
   .badge, .tag {
     font-size: .7rem;
@@ -963,41 +955,6 @@
   .neutre { background: var(--surface); color: var(--texte-doux); border: 1px solid var(--bordure); }
   .ok { background: var(--succes-doux); color: var(--succes-texte); border: 1px solid var(--succes-bordure); }
   .ko { background: var(--danger-doux); color: var(--danger-texte); border: 1px solid var(--danger-bordure); }
-
-  .pipeline {
-    display: flex;
-    gap: .4rem;
-    list-style: none;
-    margin: 0 0 1rem;
-    padding: 0;
-    flex-wrap: wrap;
-  }
-
-  .pipeline li {
-    flex: 1 1 160px;
-    display: flex;
-    align-items: center;
-    gap: .45rem;
-    background: var(--surface);
-    border: 1px solid var(--bordure);
-    border-radius: 8px;
-    padding: .5rem .7rem;
-    font-size: .8rem;
-    color: var(--texte-doux);
-  }
-
-  .pipeline li.courant { border-color: var(--bouton); color: var(--texte); background: var(--info-doux); }
-
-  .pipeline .num {
-    display: inline-grid;
-    place-items: center;
-    width: 1.2rem;
-    height: 1.2rem;
-    border-radius: 999px;
-    background: var(--fond);
-    font-size: .7rem;
-    font-weight: 700;
-  }
 
   .carte {
     background: var(--surface);
@@ -1100,18 +1057,6 @@
 
   .lien { color: var(--info); font-size: .76rem; text-decoration: underline; }
 
-  .apercu { margin-top: .8rem; border-top: 1px solid var(--bordure); padding-top: .7rem; }
-
-  .apercu-barre {
-    display: flex;
-    align-items: center;
-    gap: .5rem;
-    flex-wrap: wrap;
-    margin-bottom: .5rem;
-    font-size: .84rem;
-    color: var(--texte);
-  }
-
   .apercu-liens { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: .5rem; align-items: center; }
 
   .puce {
@@ -1132,21 +1077,6 @@
   .etiq { display: inline-block; min-width: 11rem; color: var(--texte-doux); font-size: .8rem; }
   .separateur { color: var(--texte-doux); font-size: .72rem; margin-left: .35rem; }
 
-  /* Le bandeau reste dans l'ATELIER, jamais dans le site : l'aperçu doit
-     montrer le site publié, pas un site décoré pour l'occasion. */
-  .cadre-bandeau {
-    background: var(--alerte-bordure);
-    color: var(--sur-accent);
-    font-size: .74rem;
-    font-weight: 700;
-    padding: .35rem .6rem;
-    margin: 0 0 .5rem;
-    border-radius: 6px;
-    letter-spacing: .02em;
-  }
-
-  .cadre-bandeau code { background: var(--alerte-doux); color: var(--alerte-texte); }
-
   .regles .puces { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 
   .regles .puces span {
@@ -1166,9 +1096,6 @@
 
   .sync-ok { color: var(--succes-texte); margin: 0 0 .35rem; font-size: .9rem; }
 
-  .decisions { margin: 1.25rem 0; padding: 1rem; background: var(--fond);
-               border: 1px solid var(--bordure-douce); border-radius: 8px; }
-  .decisions h2 { font-size: 1rem; margin: 0 0 .3rem; }
   .dec-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
                  margin: .8rem 0 .5rem; }
   .dec-opt { display: flex; align-items: center; gap: .35rem; font-size: .8rem;
@@ -1179,4 +1106,64 @@
   .dec-liste { margin: .3rem 0 0; padding-left: 1.1rem; color: var(--texte-doux); font-size: .78rem; }
   .decisions code { background: var(--fond); padding: 1px 6px; border-radius: 4px;
                     color: var(--texte-2); font-size: .78rem; }
+
+  /* Les quatre gestes : une rangée, un bouton et sa phrase d'état. */
+  .gestes { list-style: none; margin: 0 0 .9rem; padding: 0; display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; }
+  .gestes li { background: var(--surface); border: 1px solid var(--bordure); border-radius: 8px;
+               padding: .7rem; display: flex; flex-direction: column; gap: .45rem; }
+  .gestes li.fait { border-color: var(--succes-bordure); }
+  .gestes li > button, .gestes .bouton {
+    display: flex; align-items: center; justify-content: center; gap: .45rem;
+    border-radius: 6px; padding: .6rem .7rem; font-size: .88rem; font-weight: 650;
+    text-decoration: none; text-align: center;
+  }
+  .gestes p { font-size: .76rem; color: var(--texte-doux); line-height: 1.4; margin: 0; }
+  .gestes .num { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem;
+                 border-radius: 999px; background: var(--fond); color: var(--texte);
+                 font-size: .7rem; font-weight: 700; flex-shrink: 0; }
+  .txt-ok { color: var(--succes-texte); }
+  .txt-ko { color: var(--danger-texte); }
+  .txt-attente { color: var(--alerte); }
+
+  .onglets { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .6rem;
+             border-bottom: 1px solid var(--bordure); }
+  .onglets button { border-radius: 6px 6px 0 0; color: var(--texte-doux); font-weight: 600;
+                    border-bottom: 2px solid transparent; }
+  .onglets button.actif { color: var(--texte); border-bottom-color: var(--bouton); }
+  .compte { font-size: .7rem; padding: 0 .4rem; border-radius: 999px; background: var(--fond);
+            color: var(--texte-doux); margin-left: .2rem; }
+  .compte.plein { background: var(--info-doux); color: var(--info); }
+
+  .table { overflow-x: auto; margin-top: .5rem; }
+  th { text-align: left; color: var(--texte-doux); font-weight: 500; font-size: .74rem;
+       padding: .35rem .5rem; border-bottom: 1px solid var(--bordure); }
+  .table td { padding: .5rem; vertical-align: top; font-size: .8rem; color: var(--texte);
+              text-align: left; font-weight: 400; }
+  .table td:first-child { color: var(--texte); min-width: 16rem; }
+  .table td input { width: 100%; min-width: 11rem; }
+  .table .lien { font-size: .82rem; font-weight: 600; }
+  .quand { white-space: nowrap; }
+  .nature { font-size: .68rem; text-transform: uppercase; letter-spacing: .03em;
+            color: var(--texte-doux); margin-right: .3rem; }
+  .change { font-size: .76rem; margin-top: .15rem; overflow-wrap: anywhere; }
+  .avant { color: var(--danger-texte); text-decoration: line-through; }
+  .gestes-ligne { white-space: nowrap; text-align: right; }
+  .valider { background: var(--succes-doux); color: var(--succes-texte); border: 1px solid var(--succes-bordure); }
+  .ecarter { background: var(--danger-doux); color: var(--danger-texte); border: 1px solid var(--danger-bordure); }
+  .vide { color: var(--texte-doux); font-size: .82rem; padding: .6rem 0; }
+
+  details.carte > summary { display: flex; align-items: center; gap: .6rem; cursor: pointer;
+                            list-style: none; }
+  details.carte > summary::before { content: '▸'; color: var(--texte-doux); font-size: .8rem; }
+  details.carte[open] > summary::before { content: '▾'; }
+  details.carte[open] > summary { margin-bottom: .6rem; }
+  details.carte .actions { flex-wrap: wrap; margin-top: .6rem; }
+
+  @media (max-width: 900px) {
+    .gestes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    .gestes { grid-template-columns: 1fr; }
+  }
 </style>

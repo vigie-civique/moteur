@@ -333,8 +333,10 @@ def extrait(texte: str, citation: str, marge: int = 500) -> dict | None:
 
 def extrait_de(conn, acte: dict, citation: str) -> dict | None:
     """Le passage dans l'acte, ou dans l'acte de la même pièce qui le porte."""
+    # 1 500 caractères de part et d'autre : avec 500, le relecteur n'avait pas
+    # toujours l'en-tête de la délibération ni son dispositif (07/10/2026).
     for texte in [acte.get("content") or ""] + _voisins(conn, acte):
-        e = extrait(texte, citation)
+        e = extrait(texte, citation, marge=1500)
         if e:
             return e
     return None
