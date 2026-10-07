@@ -334,6 +334,15 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Libellés de l'instance factice
+        # `src/lib/instance.js` n'est pas versionné : il se dérive de
+        # l'instance, comme à l'installation (deploy/README.md, étape d).
+        env:
+          VIGIE_INSTANCE: tests/instance_test.json
+        run: python scripts/generer_libelles.py
       - name: Build
         working-directory: dashboard
         run: |
