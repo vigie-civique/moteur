@@ -76,7 +76,7 @@ import urllib.request
 from .archive import fetch_json
 from .config import (COMMUNE_INSEE, HEADERS, NATIONAL_STORE, REQUEST_DELAY,
                      communes_du_step)
-from .db import get_conn, log_run_end, log_run_start
+from .db import get_conn
 from .national_store import ecrire_atomiquement, est_frais
 
 SOURCE = "sispea"
@@ -546,42 +546,35 @@ def run_sispea(avec_millesimes: bool = True) -> dict:
     moisson = _moisson_hubeau()
     with get_conn() as conn:
         ensure_tables(conn)
-        run_id = log_run_start(conn, "sispea", None)
-        try:
-            connus: dict[str, str] = {}
-            for competence, ligne in moisson:
-                trouve = _identite(ligne, competence)
-                if not trouve:
+        # Journal tenu par `run_all.run_step` — s'y inscrire ici aussi
+        # laissait deux lignes par passe.
+        connus: dict[str, str] = {}
+        for competence, ligne in moisson:
+            trouve = _identite(ligne, competence)
+            if not trouve:
+                continue
+            code, identite = trouve
+            if code not in connus:
+                connus[code] = competence
+                releve["services"] += 1
+            _ecrire_service(conn, code, competence, identite)
+            annee = int(ligne.get("annee") or 0)
+            if not annee:
+                continue
+            for indicateur, valeur in (ligne.get("indicateurs") or {}).items():
+                if indicateur not in INDICATEURS[competence]:
                     continue
-                code, identite = trouve
-                if code not in connus:
-                    connus[code] = competence
-                    releve["services"] += 1
-                _ecrire_service(conn, code, competence, identite)
-                annee = int(ligne.get("annee") or 0)
-                if not annee:
+                propre = nombre(valeur)
+                if propre is None or (propre == 0 and indicateur in INDICATEURS_SANS_ZERO):
                     continue
-                for indicateur, valeur in (ligne.get("indicateurs") or {}).items():
-                    if indicateur not in INDICATEURS[competence]:
-                        continue
-                    propre = nombre(valeur)
-                    if propre is None or (propre == 0 and indicateur in INDICATEURS_SANS_ZERO):
-                        continue
-                    if _ecrire_indicateur(conn, code, annee, competence,
-                                          indicateur, propre, "hubeau"):
-                        releve["mesures"] += 1
-                        releve["annees"].add(annee)
+                if _ecrire_indicateur(conn, code, annee, competence,
+                                      indicateur, propre, "hubeau"):
+                    releve["mesures"] += 1
+                    releve["annees"].add(annee)
 
-            if avec_millesimes and connus:
-                completer_par_millesimes(conn, connus, releve)
-            conn.commit()
-        except Exception as erreur:
-            log_run_end(conn, run_id, "error", None, None, error=str(erreur)[:300])
-            raise
-        # `empty` n'est pas un échec : une commune peut n'avoir aucun service
-        # déclaré à l'observatoire, qui est alimenté par les services eux-mêmes.
-        log_run_end(conn, run_id, "ok" if releve["services"] else "empty",
-                    releve["services"], releve["mesures"])
+        if avec_millesimes and connus:
+            completer_par_millesimes(conn, connus, releve)
+        conn.commit()
     return releve
 
 

@@ -134,3 +134,43 @@ def test_aucun_collecteur_ne_sort_du_processus():
 def test_les_sorties_admises_existent_encore():
     fantomes = sorted(set(SORTIES_ADMISES) - _sorties())
     assert fantomes == [], f"exemption(s) sans sortie correspondante : {fantomes}"
+
+
+# ── Le journal : chaque step une fois, ni zéro ni deux ───────────────────────
+# `run_step` ne journalisait que les steps de `STEP_META` : `origine`,
+# `saisies`, `approbations` et `budgets_votes` passaient sans laisser de ligne,
+# pendant que `crc` et `sispea`, qui s'inscrivaient aussi eux-mêmes, en
+# laissaient deux.
+
+def test_un_step_sans_rythme_est_journalise(run_all, monkeypatch):
+    monkeypatch.setitem(run_all.STEPS, "derive", ("step d'épreuve dérivé", lambda: None))
+    assert "derive" not in run_all.STEP_META
+    assert run_all.run_step("derive") == ("ok", None)
+    assert run_all.lire() == [{"collector": "derive", "status": "ok", "error": None}]
+
+
+def test_l_echec_d_un_step_sans_rythme_laisse_une_trace(run_all, monkeypatch):
+    def casse():
+        raise RuntimeError("table absente")
+    monkeypatch.setitem(run_all.STEPS, "derive", ("step d'épreuve dérivé", casse))
+    run_all.run_step("derive")
+    [ligne] = run_all.lire()
+    assert ligne["status"] == "error" and "table absente" in ligne["error"]
+
+
+def test_ce_qui_echappe_au_journal_de_run_step_est_nomme(run_all):
+    assert set(run_all.SANS_JOURNAL) <= set(run_all.STEPS), \
+        "exemption de journal sans step correspondant"
+
+
+def test_seul_run_step_ouvre_le_journal():
+    """Un collecteur qui appelle `log_run_start` est journalisé deux fois dès
+    qu'il passe par `run_all`. `detect_links` est le seul admis : il compte ses
+    candidats, et `run_step` le lui laisse (`SANS_JOURNAL`)."""
+    admis = {"db.py", "run_all.py", "detect_links.py"}
+    racine = ROOT / "collectors"
+    fautifs = sorted(
+        chemin.relative_to(racine).as_posix() for chemin in racine.rglob("*.py")
+        if chemin.relative_to(racine).as_posix() not in admis
+        and "log_run_start" in chemin.read_text(encoding="utf-8"))
+    assert fautifs == [], f"se journalisent eux-mêmes : {fautifs}"
