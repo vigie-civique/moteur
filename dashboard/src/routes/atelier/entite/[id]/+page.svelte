@@ -551,7 +551,14 @@
         <Contacts {contacts} bind:brouillon={brouillon.contacts} />
         <Sites sites={websites} {tranche} bind:brouillon={brouillon.sites} />
       {:else}
-        <Notes {notes} bind:brouillon={brouillon.notes} />
+        {#if entity.notes_reservees}
+          <section class="card">
+            <h2>Notes</h2>
+            <p class="muted">Les notes libres sur une personne sont réservées aux validateurs.</p>
+          </section>
+        {:else}
+          <Notes {notes} bind:brouillon={brouillon.notes} />
+        {/if}
         <Historique {audit} />
       {/if}
     </div>

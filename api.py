@@ -1177,6 +1177,10 @@ def atelier_ia_extraire(request: StarletteRequest, req: ExtraireRequest,
 def candidates(
     status: str = "pending",
     signal: Optional[str] = None,
+    # Un lien PRÉSUMÉ entre deux noms est une hypothèse sur des personnes : il se
+    # lit par qui peut le trancher, pas par tout compte (registre des
+    # traitements, point 2 — minimisation, 08/10/2026).
+    user=Depends(require_au_moins("validator", "Lire les liens présumés")),
 ):
     filters = ["rc.review_status = ?"]
     params: list = [status]
@@ -3620,7 +3624,11 @@ def atelier_entity_detail(entity_id: int = FPath(..., ge=1), user=Depends(requir
             LIMIT 30
         """, (entity_id,))
 
-        e["notes"] = rows(conn,
+        # Les notes libres sur une PERSONNE PHYSIQUE sont réservées aux
+        # validateurs : c'est du texte sans forme, sur quelqu'un, que rien ne
+        # filtre (registre des traitements, point 2 — 08/10/2026).
+        e["notes_reservees"] = _notes_reservees(e, user)
+        e["notes"] = [] if e["notes_reservees"] else rows(conn,
             "SELECT id, date, note, source, confidence FROM entity_notes"
             " WHERE entity_id=? ORDER BY date DESC, id DESC",
             (entity_id,))
@@ -4638,12 +4646,22 @@ class NoteUpdate(BaseModel):
     source:     Optional[str] = None
     confidence: Optional[str] = None
 
+def _notes_reservees(fiche: Optional[dict], user: dict) -> bool:
+    return bool(fiche) and fiche.get("type") == "person" and not au_moins(user, "validator")
+
+
+_NOTE_SUR_PERSONNE = "Écrire une note sur une personne physique"
+
+
 @app.post("/api/atelier/entities/{entity_id}/notes")
 def create_note(entity_id: int = FPath(..., ge=1), req: NoteCreate = ..., user=Depends(require_auth)):
     conn = get_db_rw()
     try:
-        if not row(conn, "SELECT 1 FROM entities WHERE id=?", (entity_id,)):
+        fiche = row(conn, "SELECT type FROM entities WHERE id=?", (entity_id,))
+        if not fiche:
             raise HTTPException(404, "Entité introuvable")
+        if _notes_reservees(fiche, user):
+            exiger(user, "validator", _NOTE_SUR_PERSONNE)
         date = req.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
         cur = conn.execute(
             "INSERT INTO entity_notes (entity_id, date, note, source, confidence)"
@@ -4663,6 +4681,9 @@ def update_note(note_id: int = FPath(..., ge=1), req: NoteUpdate = ..., user=Dep
         existing = row(conn, "SELECT * FROM entity_notes WHERE id=?", (note_id,))
         if not existing:
             raise HTTPException(404, "Note introuvable")
+        if _notes_reservees(row(conn, "SELECT type FROM entities WHERE id=?",
+                                (existing["entity_id"],)), user):
+            exiger(user, "validator", _NOTE_SUR_PERSONNE)
         updates, vals = [], []
         if req.note is not None:
             updates.append("note=?"); vals.append(req.note.strip())
