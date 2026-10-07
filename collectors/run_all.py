@@ -438,7 +438,17 @@ def run_step(name: str):
     status, err = "ok", None
     try:
         fn()
-    except Exception as e:
+    except KeyboardInterrupt:
+        # Le seul arrêt qui doit remonter : il est noté, puis il part.
+        status, err = "error", "KeyboardInterrupt: interrompu au clavier"
+        raise
+    except SystemExit as e:
+        # `SystemExit` n'est pas une `Exception` : un collecteur qui sortait
+        # ainsi était journalisé `ok` (donc `empty`), et emportait tous les
+        # steps suivants avec lui. Un code nul reste une fin normale.
+        if e.code not in (None, 0):
+            status, err = "error", f"SystemExit: {e.code}"
+    except BaseException as e:
         status, err = "error", f"{type(e).__name__}: {e}"
     finally:
         elapsed = time.time() - t0

@@ -183,9 +183,12 @@ class TestDepartement:
         import collectors.crc as crc
         monkeypatch.setattr(crc, "DEPARTEMENT_NOM", "")
         monkeypatch.setattr(crc, "PREFECTURE_NOM", "Sous-préfecture de Nulle Part")
+        # Une exception, pas `SystemExit` : le refus vaut pour ce step, il
+        # n'arrête pas la collecte entière (cf. tests/test_run_step.py).
+        from collectors.erreurs import ConfigurationManquante
         try:
             crc.departement_nom()
-        except SystemExit as refus:
+        except ConfigurationManquante as refus:
             assert "departement_nom" in str(refus)
         else:
             raise AssertionError("une préfecture illisible doit faire refuser, pas deviner")

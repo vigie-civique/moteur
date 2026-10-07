@@ -31,6 +31,7 @@ import urllib.request
 
 from .config import CENTROID, EAU_COURS_EAU, HEADERS, communes_du_step
 from .db import get_conn
+from .erreurs import ConfigurationManquante
 
 API = "https://hubeau.eaufrance.fr/api/v2/qualite_rivieres"
 PAGE_SIZE = 5000
@@ -269,7 +270,7 @@ def show_report():
 def proposer(rayon_km: float):
     """Cours d'eau surveillés autour de la commune, pour remplir collecte.cours_eau."""
     if len(CENTROID) != 2:
-        raise SystemExit("config/instance.json : pas de « centroid »")
+        raise ConfigurationManquante("config/instance.json : pas de « centroid »")
     params = {"latitude": CENTROID[0], "longitude": CENTROID[1], "distance": rayon_km,
               "size": 500, "format": "json",
               "fields": "code_station,libelle_station,code_cours_eau,nom_cours_eau,date_arret"}
