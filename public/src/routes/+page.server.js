@@ -9,6 +9,8 @@ import { TYPES_ACTEURS } from '$lib/actes.js'
 import { etatSource, extraitsMarches } from '$lib/couverture.js'
 import { lireDossiers } from '$lib/dossiers.server.js'
 import { lireSujets } from '$lib/sujets.server.js'
+import { tableauDeBord } from '$lib/tableau.server.js'
+import { EPCI_COURT, INSEE } from '$lib/instance.js'
 
 export const prerender = true
 
@@ -21,7 +23,6 @@ export function load() {
   const stats = lire('stats.json')
   const actualite = lire('actualite.json', { items: [] })
   const index = lire('entity_index.json', { entities: [] })
-  const ofgl = lire('ofgl.json', { ofgl: [] })
 
   // Le flux mélange l'agenda à venir et les actes passés : l'accueil ne montre
   // que ce qui est déjà arrivé, pour ne pas ouvrir sur un concert de septembre.
@@ -170,19 +171,41 @@ export function load() {
   const portees = (index.entities || []).some((e) => e.p)
   const marchesPortes = marches.some((m) => m.portee)
 
-  // Dernier exercice OFGL publié : un budget daté vaut mieux qu'un montant nu.
-  const lignes = ofgl.ofgl || []
-  const annee = lignes.reduce((max, l) => (l.year > max ? l.year : max), 0)
-  const agregat = (nom) =>
-    lignes.find((l) => l.year === annee && l.agregat === nom)?.montant ?? null
-  const budget = annee
-    ? {
-        annee,
-        recettes: agregat('Recettes de fonctionnement'),
-        depenses: agregat('Dépenses de fonctionnement'),
-        habitants: lignes.find((l) => l.year === annee)?.population ?? null,
-      }
-    : null
+  const chiffres = {
+    acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
+    // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
+    // autorisations d'urbanisme comprises. L'afficher sous le mot
+    // « décisions » faisait dire à l'accueil ce qu'aucune source ne dit.
+    // Le compteur porte maintenant ce qu'il nomme.
+    deliberations: delibParPortee.commune ?? stats.deliberations_public ?? null,
+    evenements: stats.events_public ?? null,
+    marches: marchesPortes ? marchesCommune : (stats.marches_rows ?? null),
+    surCarte: stats.map_features_public ?? null,
+    associations: portees ? (parTypeCommune.association ?? 0) : (parType.association ?? null),
+    entreprises: portees ? (parTypeCommune.business ?? 0) : (parType.business ?? null),
+    services: portees ? (parTypeCommune.service ?? 0) : (parType.service ?? null),
+    lieux: portees ? (parTypeCommune.place ?? 0) : (parType.place ?? null),
+    // Ce que le chiffre unique cachait : la part qui produit, la part qui
+    // détient, et ce qui a fermé.
+    entreprisesProductives: (parNature.societe || 0) + (parNature.individuelle || 0),
+    entreprisesPatrimoniales: parNature.patrimoniale || 0,
+    cessees: cesseesCommune,
+  }
+  // Ce que l'intercommunalité décide POUR la commune. Annoncé à part, avec
+  // son propre renvoi : ne pas le montrer serait cacher la moitié de ce qui
+  // engage la commune ; le mêler serait mentir sur qui l'a voté.
+  const interco = {
+    deliberations: delibParPortee.intercommunalite ?? 0,
+    acteurs: (index.entities || []).filter((e) => e.p === 'intercommunalite').length,
+    marches: marchesInterco.filter(estAttribue).length,
+    avis: marchesInterco.filter((m) => !estAttribue(m)).length,
+    recents: ailleurs,
+  }
+  // Ce que vaut un zéro de marchés : une question non posée (collecte
+  // absente) n'est pas un résultat (cf. $lib/couverture.js).
+  const couverture = lire('couverture.json', {})
+  const sourceMarches = etatSource(couverture, 'marches').etat
+  const extraits = extraitsMarches(couverture, 'commune')
 
   return {
     prochains,
@@ -200,41 +223,11 @@ export function load() {
     // une instance neuve a un accueil qui part des sujets, sans rien à relire.
     sujets: lireSujets().filter((s) => s.donnees && !s.dossier)
       .map(({ titre, sections }) => ({ titre, lien: `${sections[0].page}${sections[0].ancre ? `#${sections[0].ancre}` : ''}` })),
-    chiffres: {
-      acteurs: portees ? acteursCommune : (stats.entities_public ?? null),
-      // `events_public` compte TOUT ce qui est publié — BODACC, agenda,
-      // autorisations d'urbanisme comprises. L'afficher sous le mot
-      // « décisions » faisait dire à l'accueil ce qu'aucune source ne dit.
-      // Le compteur porte maintenant ce qu'il nomme.
-      deliberations: delibParPortee.commune ?? stats.deliberations_public ?? null,
-      evenements: stats.events_public ?? null,
-      marches: marchesPortes ? marchesCommune : (stats.marches_rows ?? null),
-      surCarte: stats.map_features_public ?? null,
-      associations: portees ? (parTypeCommune.association ?? 0) : (parType.association ?? null),
-      entreprises: portees ? (parTypeCommune.business ?? 0) : (parType.business ?? null),
-      services: portees ? (parTypeCommune.service ?? 0) : (parType.service ?? null),
-      lieux: portees ? (parTypeCommune.place ?? 0) : (parType.place ?? null),
-      // Ce que le chiffre unique cachait : la part qui produit, la part qui
-      // détient, et ce qui a fermé.
-      entreprisesProductives: (parNature.societe || 0) + (parNature.individuelle || 0),
-      entreprisesPatrimoniales: parNature.patrimoniale || 0,
-      cessees: cesseesCommune,
-    },
-    // Ce que l'intercommunalité décide POUR la commune. Annoncé à part, avec
-    // son propre renvoi : ne pas le montrer serait cacher la moitié de ce qui
-    // engage la commune ; le mêler serait mentir sur qui l'a voté.
-    interco: {
-      deliberations: delibParPortee.intercommunalite ?? 0,
-      acteurs: (index.entities || []).filter((e) => e.p === 'intercommunalite').length,
-      marches: marchesInterco.filter(estAttribue).length,
-      avis: marchesInterco.filter((m) => !estAttribue(m)).length,
-      recents: ailleurs,
-    },
-    budget,
-    // Ce que vaut un zéro de marchés : une question non posée (collecte
-    // absente) n'est pas un résultat (cf. $lib/couverture.js).
-    sourceMarches: etatSource(lire('couverture.json', {}), 'marches').etat,
-    extraitsMarches: extraitsMarches(lire('couverture.json', {}), 'commune'),
+    interco,
+    // Le tableau de bord : douze indicateurs au plus, chacun avec sa série
+    // et la page où il se détaille (cf. $lib/tableau.server.js).
+    tableau: tableauDeBord({ lire, insee: INSEE, epciCourt: EPCI_COURT, aujourdhui, chiffres,
+                             interco, sourceMarches, extraitsMarches: extraits }),
     recents,
     agenda,
     arreteLe: actualite.arrete_le || null,

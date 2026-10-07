@@ -1,14 +1,15 @@
 <script>
   import { COMMUNE, EPCI, EPCI_COURT } from '$lib/instance.js'
   import Icon from '$lib/components/Icon.svelte'
+  import Mini from '$lib/components/Mini.svelte'
 
   // Accueil refondu le 11/08/2026. C'était une carte plein écran : 1 135 points
   // en quatre couleurs, un encart flottant, et rien qui dise ce qu'est ce site
   // ni ce qu'on peut y chercher. La carte devient /carte ; l'accueil annonce,
   // oriente, puis montre ce qui vient de bouger.
   export let data
-  $: ({ chiffres, budget, recents, agenda, arreteLe, interco, prochains, sourceMarches,
-       extraitsMarches, dernieres, dossiers, sujets, anneesSeances } = data)
+  $: ({ tableau, recents, agenda, arreteLe, interco, prochains,
+       dernieres, dossiers, sujets, anneesSeances } = data)
 
   const GENRES = {
     acte:      { label: 'Acte public',     classe: 'g-acte' },
@@ -17,8 +18,6 @@
     'légal':   { label: 'Annonce légale',  classe: 'g-legal' },
     vie:       { label: 'Vie locale',      classe: 'g-vie' },
   }
-
-  const nombre = (n) => (n == null ? '-' : n.toLocaleString('fr-FR'))
 
   // Les titres BODACC finissent par la date de l'annonce, déjà affichée dans sa
   // propre colonne : « … — la commune (2026-08-09) » devient « … - la commune ».
@@ -44,11 +43,6 @@
   const compte = (n) =>
     n > 0 ? `${n} délibération${n > 1 ? 's' : ''}`
           : 'aucune délibération lue dans les pièces'
-  const millions = (n) =>
-    n == null ? '-'
-    : n >= 1e6 ? `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M€`
-    : `${Math.round(n / 1e3).toLocaleString('fr-FR')} k€`
-
   const jour = (d) => {
     if (!d) return ''
     const dt = new Date(d + 'T00:00:00')
@@ -71,7 +65,11 @@
      à ses enjeux — n'y étaient que deux pastilles d'en-tête, cachées derrière
      le menu sur mobile. Il part maintenant d'elles ; les données suivent.
      Resserré le 06/10/2026 : la recherche face au titre, trois dossiers, les
-     données en tuiles, et le fil des décisions après les trois portes. -->
+     données en tuiles, et le fil des décisions après les trois portes.
+     Refondu le 07/10/2026 : les tuiles deviennent un tableau de bord, douze
+     indicateurs avec leur série ; les trois portes tiennent sur une ligne, et
+     « Pour situer les chiffres » s'efface, le tableau menant déjà au
+     territoire et à l'environnement. -->
 <section class="entree">
   <div>
     <h1>{COMMUNE}, au clair.</h1>
@@ -166,80 +164,40 @@
   </section>
 {/if}
 
-<!-- Les données : des valeurs, pas des phrases. Chaque tuile porte le chiffre
-     de la COMMUNE ; celui de l'intercommunalité suit, nommé, jamais additionné
-     (ni le même conseil, ni le même bulletin de vote). Un zéro garde sa raison,
-     en une ligne : il dit ce que le SITE a relevé, jamais ce que la commune a
-     fait. Le détail de chaque compte est sur la page où mène la tuile. -->
-<section class="donnees">
-  <header>
-    <h2>Les données</h2>
-    <a class="tout" href="/carte">Explorer la carte <Icon name="fleche" size={14} /></a>
-  </header>
-  <div class="tuiles">
-    <a class="tuile" href="/deliberations">
-      <b>{nombre(chiffres.deliberations)}</b>
-      <span class="quoi">délibérations municipales</span>
-      {#if interco?.deliberations}<span class="aussi">{EPCI_COURT}&nbsp;: {nombre(interco.deliberations)}</span>{/if}
-    </a>
-    <a class="tuile" class:vide={chiffres.marches === 0} href="/marches">
-      <b>{nombre(chiffres.marches)}</b>
-      <span class="quoi">{chiffres.marches > 1 ? 'marchés attribués' : 'marché attribué'}</span>
-      {#if chiffres.marches === 0}
-        <span class="aussi raison">{sourceMarches === 'absente' ? 'collecte pas encore lancée' : "rien n'est publié sous 40\u00a0000\u00a0€\u00a0HT"}</span>
-        <!-- Ce que les procès-verbaux en disent, indépendamment des sources
-             ouvertes : les deux mentions peuvent se cumuler. -->
-        {#if extraitsMarches?.cas === 'en_attente'}
-          <span class="aussi">{nombre(extraitsMarches.enAttente)} lu{extraitsMarches.enAttente > 1 ? 's' : ''} dans les procès-verbaux, qui {extraitsMarches.enAttente > 1 ? 'attendent leur' : 'attend sa'} relecture</span>
-        {/if}
-      {/if}
-      {#if interco?.marches}<span class="aussi">{EPCI_COURT}&nbsp;: {nombre(interco.marches)}</span>{/if}
-    </a>
-    <a class="tuile" href="/acteurs-publics">
-      <b>{nombre(chiffres.acteurs)}</b>
-      <span class="quoi">acteurs en activité</span>
-      {#if chiffres.associations}<span class="aussi">dont {nombre(chiffres.associations)} associations</span>{/if}
-    </a>
-    {#if budget}
-      <a class="tuile" href="/budgets">
-        <b>{millions(budget.recettes)}</b>
-        <span class="quoi">recettes de fonctionnement</span>
-        <span class="aussi">{budget.annee}, source OFGL</span>
-      </a>
-      <a class="tuile" href="/budgets">
-        <b>{millions(budget.depenses)}</b>
-        <span class="quoi">dépenses de fonctionnement</span>
-        <span class="aussi">{budget.annee}, source OFGL</span>
-      </a>
-      {#if budget.habitants}
-        <a class="tuile" href="/territoire">
-          <b>{nombre(budget.habitants)}</b>
-          <span class="quoi">habitants</span>
-          <span class="aussi">{budget.annee}, source OFGL</span>
+<!-- Le tableau de bord : une tuile par indicateur, entière cliquable vers la
+     page qui le détaille. Chaque tuile porte le chiffre de la COMMUNE ; celui
+     de l'intercommunalité suit, nommé, jamais additionné. Un zéro garde sa
+     raison. Les séries et leurs règles : $lib/tableau.server.js. -->
+{#if tableau?.length}
+  <section class="tableau">
+    <header>
+      <h2>{COMMUNE} en chiffres</h2>
+      <a class="tout" href="/carte">La carte <Icon name="fleche" size={14} /></a>
+    </header>
+    <div class="tuiles">
+      {#each tableau as t (t.cle)}
+        <a class="tuile" class:vide={t.vide} href={t.href}>
+          <span class="quoi">{t.libelle}</span>
+          <b>{t.valeur}</b>
+          <span class="graphe">{#if t.graphe}<Mini graphe={t.graphe} />{/if}</span>
+          {#if t.raison}<span class="aussi raison">{t.raison}</span>{/if}
+          {#if t.note}<span class="aussi">{t.note}</span>{/if}
+          {#if t.aussi}<span class="aussi">{t.aussi}</span>{/if}
         </a>
-      {/if}
-    {/if}
-  </div>
-  <p class="provenance">
-    Chiffres de la commune.
-    <a href="/com-com">Ceux de la {EPCI_COURT}</a> · <a href="/methode">Méthode</a>
-  </p>
-</section>
+      {/each}
+    </div>
+    <p class="provenance">
+      Chiffres de la commune.
+      <a href="/com-com">Ceux de la {EPCI_COURT}</a> · <a href="/methode">Méthode</a>
+    </p>
+  </section>
+{/if}
 
-<section class="portes">
-  <a class="porte" href="/qui-decide">
-    <span class="porte-titre"><Icon name="decide" size={18} />Qui décide&nbsp;?</span>
-    <p>Le conseil, l'intercommunalité, les commissions et les liens entre acteurs.</p>
-  </a>
-  <a class="porte" href="/argent">
-    <span class="porte-titre"><Icon name="argent" size={18} />Où va l'argent&nbsp;?</span>
-    <p>Budget, impôts, subventions, marchés publics et transactions foncières.</p>
-  </a>
-  <a class="porte" href="/acteurs-publics">
-    <span class="porte-titre"><Icon name="acteurs" size={18} />Qui agit&nbsp;?</span>
-    <p>Entreprises, associations, services publics et lieux de la commune.</p>
-  </a>
-</section>
+<nav class="portes" aria-label="Les trois questions du site">
+  <a href="/qui-decide"><Icon name="decide" size={17} />Qui décide&nbsp;?</a>
+  <a href="/argent"><Icon name="argent" size={17} />Où va l'argent&nbsp;?</a>
+  <a href="/acteurs-publics"><Icon name="acteurs" size={17} />Qui agit&nbsp;?</a>
+</nav>
 
 {#if recents.length}
   <section class="flux">
@@ -307,20 +265,6 @@
   </section>
 {/if}
 
-<section class="contexte">
-  <h2>Pour situer les chiffres</h2>
-  <div class="secondaires">
-    <a href="/territoire"><Icon name="territoire" size={17} />
-      <span><strong>Le territoire</strong><small>Population, logement, revenus et emploi depuis 1968.</small></span></a>
-    <a href="/environnement"><Icon name="environnement" size={17} />
-      <span><strong>Environnement</strong><small>Qualité des cours d'eau, risques naturels, installations classées.</small></span></a>
-    <a href="/vie-locale"><Icon name="vie" size={17} />
-      <span><strong>Vie locale</strong><small>Événements, manifestations et vie associative locale.</small></span></a>
-    <a href="/comprendre"><Icon name="comprendre" size={17} />
-      <span><strong>Comprendre</strong><small>Méthode, sources, fiabilité : comment ce site est fabriqué.</small></span></a>
-  </div>
-</section>
-
 <style>
   .ailleurs {
     margin: .7rem 0 0; font-size: .85rem; color: var(--gris);
@@ -352,7 +296,7 @@
   .prochain .source a { color: var(--ardoise); }
   .flux.agenda h2 { font-size: 1rem; color: var(--gris); }
 
-  section { max-width: 1080px; margin: 0 auto; padding: 0 1.4rem; }
+  section, nav.portes { max-width: 1080px; margin: 0 auto; padding: 0 1.4rem; }
 
   /* ---------- entrée, conseil, dossiers (04/10/2026) ---------- */
   /* Le titre à gauche, la recherche en face, calée à droite ; elle passe
@@ -374,8 +318,8 @@
     background: var(--ardoise); color: var(--blanc); cursor: pointer;
   }
   .conseil, .dossiers { padding-bottom: 2.2rem; }
-  .conseil header, .dossiers header, .donnees header { display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap; margin-bottom: .7rem; }
-  .conseil h2, .dossiers h2, .donnees h2 { font-size: 1.35rem; margin: 0; }
+  .conseil header, .dossiers header, .tableau header { display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap; margin-bottom: .7rem; }
+  .conseil h2, .dossiers h2, .tableau h2 { font-size: 1.35rem; margin: 0; }
   .seances { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: .8rem; margin-bottom: 1rem; }
   .seance {
     display: flex; flex-direction: column; gap: .25rem; padding: .85rem 1rem; color: inherit;
@@ -398,44 +342,45 @@
   .dossiers li a { font-family: var(--display); font-size: 1.05rem; font-weight: 600; }
   .dossiers li p { margin: .3rem 0 0; font-size: .84rem; color: var(--gris); line-height: 1.45; }
 
-  /* ---------- les données, en tuiles ---------- */
-  .donnees { padding-bottom: 1.4rem; }
-  .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .7rem; }
+  /* ---------- le tableau de bord ---------- */
+  /* Quatre tuiles de front sur un écran large, deux sur un téléphone. Toutes
+     ont la même ossature, dans le même ordre : libellé, valeur, graphique,
+     provenance — le regard compare sans relire. */
+  .tableau { padding-bottom: 1.2rem; }
+  .tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
   .tuile {
-    display: flex; flex-direction: column; gap: .2rem; padding: .8rem .9rem; color: inherit;
-    background: var(--blanc); border: 1px solid var(--trait); border-radius: var(--rayon);
+    display: flex; flex-direction: column; gap: .18rem; min-width: 0; padding: .7rem .8rem .65rem;
+    color: inherit; background: var(--blanc); border: 1px solid var(--trait); border-radius: var(--rayon);
   }
-  .tuile:hover { text-decoration: none; border-color: var(--ardoise); }
+  .tuile:hover { text-decoration: none; border-color: var(--ardoise); box-shadow: var(--ombre); }
+  .tuile .quoi {
+    font-family: var(--data); font-size: .64rem; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--gris);
+  }
   .tuile b {
-    font-family: var(--display); font-size: 1.7rem; line-height: 1;
+    font-family: var(--display); font-size: 1.55rem; line-height: 1.1;
     font-variant-numeric: tabular-nums; color: var(--encre);
   }
   .tuile.vide b { color: var(--gris); }
-  .tuile .quoi {
-    font-family: var(--data); font-size: .66rem; letter-spacing: .09em;
-    text-transform: uppercase; color: var(--gris);
-  }
-  .tuile .aussi { font-size: .76rem; color: var(--gris); font-variant-numeric: tabular-nums; }
+  /* La place du graphique est réservée même sans série : les valeurs restent
+     alignées d'une tuile à l'autre. */
+  .tuile .graphe { display: block; height: 2.1rem; margin: .15rem 0 .2rem; }
+  .tuile .aussi { font-size: .74rem; line-height: 1.3; color: var(--gris); font-variant-numeric: tabular-nums; }
   .tuile .raison { color: var(--ambre); }
   .provenance { margin: .6rem 0 0; font-size: .78rem; color: var(--gris); }
   .provenance a { color: var(--ardoise); }
 
   /* ---------- portes ---------- */
-  .portes { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; padding-bottom: 2.4rem; }
-  .porte {
-    display: flex; flex-direction: column; gap: .35rem;
-    background: var(--blanc); border: 1px solid var(--trait);
-    border-left: 3px solid var(--ardoise); border-radius: var(--rayon);
-    padding: 1rem 1.1rem; color: inherit;
-    transition: border-color .15s, box-shadow .15s;
+  /* Une ligne : les trois questions sont déjà dans l'en-tête, elles rappellent
+     ici d'où part le reste du site sans redire ce que chaque page contient. */
+  nav.portes { display: flex; flex-wrap: wrap; gap: .5rem; padding-bottom: 2.4rem; }
+  .portes a {
+    display: inline-flex; align-items: center; gap: .45rem; padding: .45rem .85rem;
+    font-family: var(--display); font-size: 1rem; font-weight: 600; color: var(--encre);
+    background: var(--blanc); border: 1px solid var(--trait); border-radius: 2rem;
   }
-  .porte:hover { text-decoration: none; box-shadow: var(--ombre); border-color: var(--ardoise); }
-  .porte-titre {
-    display: flex; align-items: center; gap: .5rem;
-    font-family: var(--display); font-size: 1.08rem; font-weight: 600; color: var(--encre);
-  }
-  .porte-titre :global(.icon) { color: var(--ardoise); }
-  .porte p { margin: 0; font-size: .87rem; color: var(--gris); }
+  .portes a:hover { text-decoration: none; border-color: var(--ardoise); }
+  .portes a :global(.icon) { color: var(--ardoise); }
 
   /* ---------- flux ---------- */
   .flux { padding-bottom: 2.6rem; }
@@ -468,24 +413,9 @@
   .g-legal { background: var(--ambre-pale); color: var(--ambre); }
   .g-vie { background: #efeaf2; color: #62487a; }
 
-  /* ---------- contexte ---------- */
-  .contexte { padding-bottom: 3.5rem; }
-  .contexte h2 { font-size: 1.15rem; margin: 0 0 .8rem; }
-  .secondaires { display: grid; grid-template-columns: repeat(4, 1fr); gap: .7rem; }
-  .secondaires a {
-    display: flex; gap: .55rem; align-items: flex-start;
-    padding: .75rem .85rem; background: var(--blanc);
-    border: 1px solid var(--trait); border-radius: var(--rayon); color: inherit;
-  }
-  .secondaires a:hover { text-decoration: none; border-color: var(--ardoise); }
-  .secondaires a :global(.icon) { color: var(--gris); margin-top: .15rem; }
-  .secondaires span { display: flex; flex-direction: column; gap: .15rem; }
-  .secondaires strong { font-size: .88rem; font-weight: 600; }
-  .secondaires small { font-size: .78rem; color: var(--gris); line-height: 1.35; }
-
   @media (max-width: 900px) {
     .cherche { flex-basis: 100%; }
-    .portes, .secondaires { grid-template-columns: 1fr; }
+    .tuiles { grid-template-columns: repeat(2, 1fr); }
     .flux li { grid-template-columns: 4.6rem 1fr; row-gap: .2rem; }
     .genre { grid-column: 2; justify-self: start; }
   }

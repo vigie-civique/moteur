@@ -173,15 +173,15 @@
   </main>
 
   <footer>
-    <div class="fdesc">
-      Veille citoyenne : données publiques (SIRENE, RNA, DVF, BODACC, OFGL, DECP, délibérations).
-    </div>
-    <nav class="fnav">
+    <!-- Resserré le 07/10/2026 : une ligne de liens. La phrase qui énumérait
+         les sources est sur /methode ; « Dossiers thématiques » ne reste ici
+         que si l'en-tête ne le porte pas. -->
+    <nav class="fnav" aria-label="Pied de page">
       <a href="/nouveautes">Ce qui a changé</a>
       <a href="/territoire">Le territoire</a>
       <a href="/environnement">Environnement</a>
       <a href="/vie-locale">Vie locale</a>
-      <a href="/dossiers">Dossiers thématiques</a>
+      {#if !data?.aDossiers}<a href="/dossiers">Dossiers thématiques</a>{/if}
       <a href="/methode">Méthode &amp; sources</a>
       <a href="/corrections">Corrections</a>
       <a href="/repliquer">Répliquer</a>
@@ -333,11 +333,9 @@
 
   footer {
     padding: 1.6rem 1.4rem; background: var(--encre); color: #9fb0b6;
-    font-size: .85rem; display: flex; justify-content: space-between;
-    gap: 1rem 1.5rem; flex-wrap: wrap;
+    font-size: .85rem;
   }
-  .fdesc { max-width: 46ch; }
-  .fnav { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+  .fnav { display: flex; gap: .5rem 1.2rem; flex-wrap: wrap; justify-content: center; }
   footer a { color: #cfdadd; }
 
   /* Six entrées depuis le 30/09/2026 (« Conseil en clair ») : entre le menu
