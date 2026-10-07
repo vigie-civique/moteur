@@ -370,3 +370,65 @@ def test_lelu_qui_sort_de_la_salle_nempeche_pas_de_lire_la_ligne():
 
 def test_un_nom_coupe_par_un_mot_de_liaison_est_recolle():
     assert lignes(CC_TROIS_COLONNES)["UNIVERSITE SAUVAGE ET POPULAIRE"] == 1275
+
+
+# ── Une subvention, une ligne — quelle que soit l'orthographe de l'acte ──────
+
+@pytest.fixture
+def collecte_sur_fichier(tmp_path, schema_sql, monkeypatch):
+    """`run_subventions` ouvre et FERME ses connexions : une base de fichier."""
+    import contextlib
+    import sqlite3
+    from collectors import cm_finances
+
+    chemin = tmp_path / "subventions.db"
+
+    def ouvrir():
+        conn = sqlite3.connect(chemin)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    @contextlib.contextmanager
+    def transaction():
+        conn = ouvrir()
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    with transaction() as conn:
+        conn.executescript(schema_sql)
+    monkeypatch.setattr(cm_finances, "get_conn", ouvrir)
+    monkeypatch.setattr(cm_finances, "transaction", transaction)
+    return transaction
+
+
+def _vote(conn, date, titre, phrase):
+    conn.execute(
+        "INSERT INTO events (type, date, title, content, source) VALUES ('deliberation',?,?,?,?)",
+        (date, titre, f"Le conseil municipal décide d'{phrase}.", SITE_COMMUNE))
+
+
+@pytest.mark.parametrize("second", [
+    "attribuer au Comite des Fetes une subvention de 500 €",          # sans accents
+    "attribuer à l'association Comité des Fêtes une subvention de 500 €",  # autre libellé, même entité
+])
+def test_deux_actes_qui_ecrivent_le_meme_beneficiaire_font_un_flux(
+        collecte_sur_fichier, second):
+    from collectors import cm_finances
+    from collectors.db import upsert_entity
+
+    with collecte_sur_fichier() as conn:
+        upsert_entity(conn, type="association", name="COMITE DES FETES", confidence="verified")
+        _vote(conn, "2024-03-12", "Subvention au comité des fêtes",
+              "attribuer au Comité des Fêtes une subvention de 500 €")
+        _vote(conn, "2024-06-18", "Subvention au comité des fêtes", second)
+
+    cm_finances.run_subventions(commit=True)
+    cm_finances.run_subventions(commit=True)      # et la passe suivante n'ajoute rien
+
+    with collecte_sur_fichier() as conn:
+        flux = conn.execute(
+            "SELECT year, amount FROM financial_flows WHERE type='subvention'").fetchall()
+    assert [tuple(f) for f in flux] == [(2024, 500)]

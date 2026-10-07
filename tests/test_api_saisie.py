@@ -276,3 +276,83 @@ class TestSaisie:
         restantes = conn.execute("SELECT COUNT(*) FROM budget_vote").fetchone()[0]
         conn.close()
         assert restantes == 0
+
+
+class TestPropositionDeContributeur:
+    """Ce qu'un contributeur propose ne doit rien laisser de publiable — ni
+    pendant que la saisie attend, ni après qu'il l'a retirée. Le tiers et la
+    relation naissaient `confirmed` : la passe suivante publiait la fiche d'une
+    association que personne n'avait validée."""
+
+    FLUX = {
+        "objet": "flux",
+        "valeurs": {"type": "subvention", "year": 2026, "amount": 800, "sens": "verse",
+                    "tiers": {"nom": "Amicale d'épreuve", "type": "association"},
+                    "description": "Subvention lue au procès-verbal"},
+        "source": {"sans_document_motif": "registre consulté en mairie",
+                   "citation": "« une subvention de 800 € »"},
+        "confidence": "probable"}
+
+    @staticmethod
+    def _publiables(chemin):
+        """Les fiches et les liens que la publication retiendrait : le périmètre
+        ET la confiance, comme le générateur — sans passer par lui."""
+        from scripts.classer_perimetre import classer
+        from scripts.snapshot.perimetre import publiable_dans_perimetre
+        from scripts.snapshot.socle import RULES
+
+        publiques = set(RULES["confidence"]["public"])
+        conn = sqlite3.connect(chemin)
+        conn.row_factory = sqlite3.Row
+        try:
+            perimetre = classer(conn)
+            fiches = [r["name"] for r in conn.execute(
+                "SELECT id, name, type, confidence FROM entities WHERE origine=?", (ATELIER,))
+                if r["confidence"] in publiques
+                and publiable_dans_perimetre(perimetre.get(r["id"]), r["type"], False)]
+            liens = [r["source"] for r in conn.execute(
+                "SELECT source, confidence FROM relations WHERE source LIKE 'atelier%'")
+                if r["confidence"] in publiques]
+            return fiches, liens
+        finally:
+            conn.close()
+
+    @pytest.fixture
+    def contributeur(self, client):
+        import api
+        from api_auth import require_auth
+        api_client, chemin = client
+        conn = sqlite3.connect(chemin)
+        conn.execute("INSERT INTO users(id, email, password_hash, role) "
+                     "VALUES(2, 'benevole@exemple.fr', 'x', 'contributor')")
+        conn.commit()
+        conn.close()
+        api.app.dependency_overrides[require_auth] = lambda: {
+            "id": 2, "email": "benevole@exemple.fr", "role": "contributor"}
+        return api_client, chemin
+
+    def test_confirmer_lui_est_refuse(self, contributeur):
+        api_client, _ = contributeur
+        r = api_client.post("/api/atelier/saisies",
+                            json={**self.FLUX, "confidence": "confirmed"})
+        assert r.status_code == 403
+
+    def test_sa_proposition_ne_publie_ni_fiche_ni_lien(self, contributeur):
+        api_client, chemin = contributeur
+        r = api_client.post("/api/atelier/saisies", json=self.FLUX)
+        assert r.status_code == 201, r.text
+        assert self._publiables(chemin) == ([], [])
+
+    def test_la_retirer_ne_laisse_rien(self, contributeur):
+        api_client, chemin = contributeur
+        cree = api_client.post("/api/atelier/saisies", json=self.FLUX)
+        r = api_client.delete(f"/api/atelier/saisies/{cree.json()['saisie']['id']}")
+        assert r.status_code == 200, r.text
+
+        conn = sqlite3.connect(chemin)
+        reste = [conn.execute(sql).fetchone()[0] for sql in (
+            "SELECT COUNT(*) FROM financial_flows",
+            "SELECT COUNT(*) FROM relations WHERE source LIKE 'atelier%'",
+            "SELECT COUNT(*) FROM entities WHERE name = 'Amicale d''épreuve'")]
+        conn.close()
+        assert reste == [0, 0, 0]

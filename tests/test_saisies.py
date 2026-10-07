@@ -209,6 +209,95 @@ class TestRetrait:
         assert restantes[0]["origine"] == INSTITUTIONNEL
 
 
+class TestCeQuUnFluxFaitNaitre:
+    """Un flux saisi crée son tiers et la relation qui les lie. Les deux
+    naissaient `confirmed` quelle que soit la saisie, et survivaient au retrait :
+    une proposition `probable` laissait en base une fiche et un lien publiables.
+    """
+
+    def _etat(self, atelier):
+        return (atelier["lire"]("SELECT name, confidence, origine FROM entities"
+                                " WHERE name='Foyer rural'"),
+                atelier["lire"]("SELECT confidence, source FROM relations"))
+
+    def test_une_saisie_probable_ne_cree_rien_de_publiable(self, atelier):
+        from collectors.saisies import import_saisies
+
+        atelier["ecrire"](saisie_flux(confidence="probable"))
+        import_saisies()
+
+        fiches, liens = self._etat(atelier)
+        assert fiches == [{"name": "Foyer rural", "confidence": "probable",
+                           "origine": ATELIER}]
+        assert liens == [{"confidence": "probable", "source": "atelier:a1b2c3d4"}]
+
+    def test_retirer_une_saisie_probable_emporte_tout(self, atelier):
+        from collectors.saisies import import_saisies
+
+        atelier["ecrire"](saisie_flux(confidence="probable"))
+        import_saisies()
+        atelier["ecrire"](saisie_flux(confidence="probable", retire=True))
+        import_saisies()
+
+        assert self._etat(atelier) == ([], [])
+        assert atelier["lire"]("SELECT id FROM financial_flows") == []
+
+    def test_une_fiche_confirmee_survit_au_retrait(self, atelier):
+        """Confirmée, la fiche a été tranchée : seuls le flux et son lien partent."""
+        from collectors.saisies import import_saisies
+
+        atelier["ecrire"](saisie_flux())
+        import_saisies()
+        atelier["ecrire"](saisie_flux(retire=True))
+        import_saisies()
+
+        fiches, liens = self._etat(atelier)
+        assert [f["confidence"] for f in fiches] == ["confirmed"] and liens == []
+
+    def test_un_tiers_deja_en_base_nest_ni_requalifie_ni_emporte(self, atelier):
+        import sqlite3
+
+        from collectors.saisies import import_saisies
+
+        conn = sqlite3.connect(atelier["db"])
+        eid = conn.execute(
+            "INSERT INTO entities(type, name, confidence, origine)"
+            " VALUES('association', 'Foyer rural', 'verified', ?)",
+            (INSTITUTIONNEL,)).lastrowid
+        conn.commit()
+        conn.close()
+
+        def ligne(**k):
+            s = saisie_flux(confidence="probable", **k)
+            s["valeurs"] = {**s["valeurs"], "tiers": {"id": eid}}
+            return s
+
+        atelier["ecrire"](ligne())
+        import_saisies()
+        atelier["ecrire"](ligne(retire=True))
+        import_saisies()
+
+        fiches, liens = self._etat(atelier)
+        assert fiches == [{"name": "Foyer rural", "confidence": "verified",
+                           "origine": INSTITUTIONNEL}]
+        assert liens == []
+
+    def test_deux_saisies_un_seul_lien_qui_survit_au_retrait_de_lune(self, atelier):
+        from collectors.saisies import import_saisies
+
+        seconde = saisie_flux(id="e5f6a7b8")
+        seconde["valeurs"] = {**seconde["valeurs"], "year": 2025}
+        atelier["ecrire"](saisie_flux(), seconde)
+        import_saisies()
+        assert len(self._etat(atelier)[1]) == 1
+
+        atelier["ecrire"](saisie_flux(retire=True), seconde)
+        import_saisies()
+        assert self._etat(atelier)[1] == [
+            {"confidence": "confirmed", "source": "atelier:e5f6a7b8"}]
+        assert len(atelier["lire"]("SELECT id FROM financial_flows")) == 1
+
+
 class TestContratDesChamps:
     def test_chaque_objet_declare_sa_table(self):
         from collectors.saisies import CHAMPS_SAISIE

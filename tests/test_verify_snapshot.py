@@ -89,6 +89,22 @@ def test_derive_signalee_avant_de_bloquer(vs, tmp_path, monkeypatch):
     assert rep.warnings, "60 % doit alerter sans interrompre la publication"
 
 
+def test_commune_non_declaree_bloque(vs, tmp_path, monkeypatch):
+    """Sans commune déclarée, rien ne peut être jugé : le contrôle refuse. Il
+    avertissait, et c'était l'état de la CI — un contrôle jamais joué."""
+    monkeypatch.setitem(vs.RULES, "project", {"commune": ""})
+    rep = vs.Report()
+    vs.check_perimetre(_publier(tmp_path / "muet", _fiches("Testonville", 5)), rep)
+    assert "périmètre non vérifiable" in rep.errors
+
+
+def test_commune_non_declaree_sans_fiche_ne_dit_rien(vs, tmp_path, monkeypatch):
+    monkeypatch.setitem(vs.RULES, "project", {})
+    rep = vs.Report()
+    vs.check_perimetre(_publier(tmp_path / "rien", []), rep)
+    assert rep.errors == {} and rep.warnings == {}
+
+
 def test_index_absent_ne_fait_rien(vs, tmp_path):
     """Un répertoire sans index n'est pas une violation : c'est un autre dossier."""
     rep = vs.Report()

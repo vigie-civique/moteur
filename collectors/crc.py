@@ -59,6 +59,7 @@ from .archive import HEADERS, archive_fetch
 from .config import (COMMUNE_INSEE, COMMUNE_NAME, DEPARTEMENT,
                      DEPARTEMENT_NOM, EPCI_NOM, PREFECTURE_NOM, REQUEST_DELAY)
 from .db import get_conn, log_run_end, log_run_start
+from .erreurs import ConfigurationManquante
 
 RECHERCHE = "https://www.ccomptes.fr/fr/recherche"
 BASE = "https://www.ccomptes.fr"
@@ -113,7 +114,7 @@ def departement_nom() -> str:
         r"^Préfecture\s+(?:de\s+la\s+|du\s+|de\s+l['’]|des\s+|de\s+)(.+)$",
         (PREFECTURE_NOM or "").strip())
     if not trouve:
-        raise SystemExit(
+        raise ConfigurationManquante(
             f"Impossible de tirer le nom du département de « {PREFECTURE_NOM} ». "
             "Ajouter `departement_nom` à config/instance.json — sans lui, le "
             "rapprochement ne peut pas être sûr.")

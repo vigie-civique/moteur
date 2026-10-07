@@ -348,10 +348,6 @@ def check_perimetre(base, rep):
     if not fp.is_file():
         return
     commune = (RULES.get("project") or {}).get("commune")
-    if not commune:
-        rep.warn("périmètre non vérifiable",
-                 f"{fp.name}: publication_rules.project.commune absent")
-        return
     try:
         entities = json.loads(fp.read_text()).get("entities") or []
     except json.JSONDecodeError:
@@ -359,6 +355,15 @@ def check_perimetre(base, rep):
 
     communes = [e.get("c") for e in entities if e.get("c")]
     if not communes:
+        return
+    if not commune:
+        # Une configuration qui manque ferme, elle n'ouvre pas : des fiches
+        # sortent, et rien ne dit de quelle commune elles devraient être.
+        # C'était un avertissement, et c'était l'état de la CI — le contrôle
+        # né du 14/08 n'y était donc jamais joué.
+        rep.error("périmètre non vérifiable",
+                  f"{fp.name}: {len(communes)} fiche(s) situées, et "
+                  "publication_rules.project.commune absent")
         return
     par_commune = {}
     for c in communes:

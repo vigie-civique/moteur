@@ -2,6 +2,16 @@
 from __future__ import annotations
 
 
+class ConfigurationManquante(RuntimeError):
+    """Il manque à `config/instance.json` ce que le collecteur exige.
+
+    Une exception, et non `sys.exit` : sortir du processus depuis un collecteur
+    arrête la collecte entière, là où il ne manque qu'un réglage à UN step.
+    `tests/test_run_step.py` refuse tout `sys.exit` sous `collectors/`, hors
+    des points d'entrée en ligne de commande.
+    """
+
+
 class SourceInterrompue(RuntimeError):
     """La source a cessé de répondre avant la fin de la collecte.
 

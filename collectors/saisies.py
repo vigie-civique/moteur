@@ -246,8 +246,17 @@ def _existe(conn, table: str, source: str) -> bool:
                         (source,)).fetchone() is not None
 
 
-def _entite_du_tiers(conn, tiers: dict) -> int:
+#: Ce qu'une saisie peut écrire de publiable. Tout le reste attend un verdict.
+PUBLIABLES = ("verified", "confirmed")
+
+
+def _entite_du_tiers(conn, tiers: dict, confiance: str) -> int:
     """Retrouve ou crée l'entité désignée par une saisie.
+
+    Créée, elle porte la confiance de la SAISIE. Elle naissait `confirmed`
+    quelle que soit la saisie : un contributeur proposait un flux `probable`,
+    et son bénéficiaire avait une fiche publiable avant qu'un validateur n'ait
+    rien vu. Une entité déjà en base n'est pas touchée.
 
     `tiers` vient du formulaire : soit un identifiant déjà choisi dans la
     recherche (`{"id": 4471}`), soit un nom et un type à créer. On ne devine
@@ -257,21 +266,55 @@ def _entite_du_tiers(conn, tiers: dict) -> int:
     """
     if tiers.get("id"):
         return int(tiers["id"])
-    return upsert_entity(
+    dernier = conn.execute("SELECT COALESCE(MAX(id), 0) FROM entities").fetchone()[0]
+    eid = upsert_entity(
         conn,
         type=tiers.get("type") or "association",
         name=tiers["nom"],
         commune=tiers.get("commune"),
-        confidence="confirmed",
+        confidence=confiance,
     )
+    if eid > dernier:
+        # Née de cette saisie : d'origine `atelier`, comme une fiche saisie —
+        # c'est aussi ce qui autorise le retrait à l'emporter.
+        conn.execute("UPDATE entities SET origine=? WHERE id=?", (ATELIER, eid))
+    return eid
+
+
+def _relier(conn, s: dict, from_id: int, to_id: int) -> None:
+    """La relation qu'un flux saisi justifie, à la confiance de la saisie.
+
+    Sa source est celle de la saisie (`atelier:<id>`), pour que le retrait
+    l'emporte avec le flux. Une seule relation par couple et par type : si une
+    autre, publiable ou d'égale confiance, dit déjà la même chose, on n'en
+    ajoute pas — deux subventions saisies ne font pas deux liens sur la fiche.
+    Rejouée à chaque passage : si la relation qui dispensait d'écrire celle-ci
+    est retirée, celle-ci revient.
+    """
+    v = s["valeurs"]
+    type_ = "subventionné" if v["type"].startswith("subvention") else v["type"]
+    confiance = s.get("confidence", "confirmed")
+    source = _source_de(s)
+    deja = [r[0] for r in conn.execute(
+        "SELECT confidence FROM relations WHERE from_id=? AND to_id=?"
+        " AND relation_type=? AND source != ?", (from_id, to_id, type_, source))]
+    if any(c in PUBLIABLES for c in deja) or (deja and confiance not in PUBLIABLES):
+        return
+    upsert_relation(
+        conn, from_id=from_id, to_id=to_id, rel_type=type_,
+        source=source, confidence=confiance,
+        metadata=json.dumps({"year": v["year"], "amount": v["amount"]}))
 
 
 def _inserer_flux(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
     source = _source_de(s)
-    if _existe(conn, "financial_flows", source):
+    deja = conn.execute("SELECT from_id, to_id FROM financial_flows WHERE source=?",
+                        (source,)).fetchone()
+    if deja:
+        _relier(conn, s, deja[0], deja[1])
         return False
     v = s["valeurs"]
-    tiers_id = _entite_du_tiers(conn, v["tiers"])
+    tiers_id = _entite_du_tiers(conn, v["tiers"], s.get("confidence", "confirmed"))
     cote_id = pivot_ids(conn)["epci"] if v.get("assemblee") == "epci" else commune_id
     verse = v.get("sens", "verse") == "verse"
     conn.execute(
@@ -285,14 +328,7 @@ def _inserer_flux(conn, s: dict, commune_id: int, doc_id: int | None) -> bool:
          v["description"], source, s.get("confidence", "confirmed"),
          v.get("statut", "realise"),
          ATELIER, doc_id, s.get("saisi_par"), s.get("saisi_le")))
-    upsert_relation(
-        conn,
-        from_id=cote_id if verse else tiers_id,
-        to_id=tiers_id if verse else cote_id,
-        rel_type="subventionné" if v["type"].startswith("subvention") else v["type"],
-        source="atelier",
-        confidence="confirmed",
-        metadata=json.dumps({"year": v["year"], "amount": v["amount"]}))
+    _relier(conn, s, cote_id if verse else tiers_id, tiers_id if verse else cote_id)
     return True
 
 
@@ -469,8 +505,69 @@ def _retirer(conn, s: dict) -> bool:
         # compris venus de collecteurs. La retirer du répertoire se fait par le
         # statut de validation, dans la file de revue — pas ici.
         return False
-    cur = conn.execute(f"DELETE FROM {table} WHERE source=?", (_source_de(s),))
+    source = _source_de(s)
+    tiers_id = None
+    if table == "financial_flows":
+        tiers_id = _tiers_cree_par(conn, s)
+    cur = conn.execute(f"DELETE FROM {table} WHERE source=?", (source,))
+    if table == "financial_flows":
+        # Le flux parti, ce qu'il avait fait naître part avec lui : la relation
+        # restait `confirmed` en base, et la passe suivante la republiait.
+        conn.execute("DELETE FROM relations WHERE source=?", (source,))
+        if tiers_id is not None and not _encore_cite(conn, tiers_id):
+            conn.execute("DELETE FROM entities WHERE id=?", (tiers_id,))
     return cur.rowcount > 0
+
+
+# Ce qui retient une fiche en base. Une table absente d'une base ancienne ne
+# retient rien ; une table qu'on aurait oubliée ici, si — d'où la liste longue.
+_ACCROCHES = (
+    ("financial_flows", "from_id"), ("financial_flows", "to_id"),
+    ("relations", "from_id"), ("relations", "to_id"),
+    ("marches_publics", "titulaire_id"), ("marches_publics", "acheteur_id"),
+    ("event_entities", "entity_id"), ("entity_notes", "entity_id"),
+    ("elus_rne", "entity_id"), ("budget_indicators", "entity_id"),
+    ("budget_annexe", "entity_id"),
+    ("urbanisme_autorisations", "demandeur_entity_id"),
+)
+
+
+def _tiers_cree_par(conn, s: dict) -> int | None:
+    """Le tiers que CETTE saisie a fait naître, s'il n'a pas été jugé depuis.
+
+    Lu sur le flux avant qu'il parte. Trois conditions, toutes nécessaires : la
+    saisie nommait un tiers au lieu d'en choisir un, la fiche est d'origine
+    `atelier`, et elle n'est pas publiable — une fiche confirmée a été tranchée,
+    elle ne disparaît pas avec la saisie qui l'a proposée.
+    """
+    v = s.get("valeurs") or {}
+    if (v.get("tiers") or {}).get("id") or not (v.get("tiers") or {}).get("nom"):
+        return None
+    flux = conn.execute("SELECT from_id, to_id FROM financial_flows WHERE source=?",
+                        (_source_de(s),)).fetchone()
+    if not flux:
+        return None
+    tiers_id = flux[1] if v.get("sens", "verse") == "verse" else flux[0]
+    fiche = conn.execute("SELECT origine, confidence FROM entities WHERE id=?",
+                         (tiers_id,)).fetchone()
+    if not fiche or fiche[0] != ATELIER or fiche[1] in PUBLIABLES:
+        return None
+    return tiers_id
+
+
+def _encore_cite(conn, entite_id: int) -> bool:
+    import sqlite3
+    if conn.execute("SELECT 1 FROM annotations WHERE object_type='entity'"
+                    " AND object_id=?", (entite_id,)).fetchone():
+        return True
+    for table, colonne in _ACCROCHES:
+        try:
+            if conn.execute(f"SELECT 1 FROM {table} WHERE {colonne}=?",
+                            (entite_id,)).fetchone():
+                return True
+        except sqlite3.OperationalError:
+            continue
+    return False
 
 
 def import_saisies(chemin: Path | None = None) -> dict[str, int]:
@@ -491,9 +588,13 @@ def import_saisies(chemin: Path | None = None) -> dict[str, int]:
                 "[saisies] l'entité de la commune n'existe pas encore : "
                 "lancer la collecte avant de rejouer les saisies.")
 
+        # Les retraits d'abord : une relation retirée peut être celle qui
+        # dispensait une autre saisie d'écrire la sienne (cf. `_relier`).
         for s in lignes:
             if s.get("retire"):
                 retirees += 1 if _retirer(conn, s) else 0
+        for s in lignes:
+            if s.get("retire"):
                 continue
             inserteur = _INSERTEURS.get(s.get("objet"))
             if inserteur is None:
