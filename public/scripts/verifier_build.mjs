@@ -272,7 +272,51 @@ if (problemes.length) {
   process.exit(1)
 }
 
+// ── Contraste des jetons ─────────────────────────────────────────────────────
+// Une couleur de texte se juge contre les fonds sur lesquels elle s'écrit. Le
+// site n'a qu'une palette, déclarée une fois (`:root` de +layout.svelte) : la
+// mesurer là vaut pour toutes les pages. `--gris-clair` y a tenu 2,8:1 sur 68
+// textes sans qu'aucun contrôle ne le dise (WCAG 2.1 AA : 4,5:1).
+const TEXTES = ['encre', 'gris', 'gris-clair', 'ardoise', 'ardoise-fonce', 'ambre', 'recette', 'depense']
+const FONDS = ['papier', 'blanc', 'ardoise-pale', 'ambre-pale']
+const CONTRASTE_MIN = 4.5
+
+const luminance = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+const contraste = (a, b) => {
+  const [clair, sombre] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (clair + 0.05) / (sombre + 0.05)
+}
+
+const GABARIT = resolve(process.cwd(), 'src/routes/+layout.svelte')
+const jetons = Object.fromEntries(
+  [...readFileSync(GABARIT, 'utf8').matchAll(/^\s*--([a-z-]+):\s*(#[0-9a-fA-F]{6});/gm)]
+    .map((m) => [m[1], m[2]]))
+const ternes = []
+for (const nom of [...TEXTES, ...FONDS]) {
+  if (!jetons[nom]) ternes.push(`--${nom} : jeton introuvable dans src/routes/+layout.svelte`)
+}
+if (!ternes.length) {
+  for (const texte of TEXTES) for (const fond of FONDS) {
+    const c = contraste(jetons[texte], jetons[fond])
+    if (c < CONTRASTE_MIN) {
+      ternes.push(`--${texte} ${jetons[texte]} sur --${fond} ${jetons[fond]} : ${c.toFixed(2)}:1`)
+    }
+  }
+}
+if (ternes.length) {
+  console.error(`\n✖ ${ternes.length} couple(s) de jetons sous ${CONTRASTE_MIN}:1 :\n`)
+  for (const t of ternes) console.error('  ' + t)
+  console.error("\nFoncer la couleur de texte dans `:root` (src/routes/+layout.svelte) —")
+  console.error("pas éclaircir le fond, et pas retirer le couple de cette liste.\n")
+  process.exit(1)
+}
+
 console.log(`✓ ${pages.length} pages vérifiées : toutes livrent leur contenu dans le HTML.`)
+console.log(`✓ contraste : ${TEXTES.length} couleurs de texte sur ${FONDS.length} fonds, toutes à ${CONTRASTE_MIN}:1 ou plus.`)
 console.log(plancher !== null
   ? `✓ build entier : ${fiches} fiches pour ${plancher} annoncées par le manifeste, _app/immutable présent.`
   : `⚠ nombre de pages NON contrôlé : pas de manifeste lisible dans ${DONNEES} (snapshot `

@@ -205,14 +205,18 @@
     --ardoise:    #14556b;
     --ardoise-fonce: #0e3f51;
     --ardoise-pale:  #eef3f5;
-    --ambre:      #9a6b12;
+    --ambre:      #8e620e;
     --ambre-pale: #f7f1e4;
     --recette:    #2c6e4f;
     --depense:    #a4453a;
     --gris:       #5c6b72;
-    --gris-clair: #8a969b;
+    --gris-clair: #617076;
     --trait:      #dde2df;
     --trait-pale: #eceeea;
+    /* Toute couleur de TEXTE tient 4,5:1 sur papier, blanc et les deux fonds
+       pâles — `scripts/verifier_build.mjs` le mesure et refuse le build sinon.
+       `--gris-clair` valait #8a969b (2,8:1) sur 68 textes de 10 à 13 px, et
+       `--ambre` #9a6b12 (4,2:1 sur son propre fond pâle). */
 
     --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
     --texte:   system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -230,6 +234,9 @@
   }
   :global(a) { color: var(--ardoise); text-decoration: none; }
   :global(a:hover) { text-decoration: underline; }
+  /* Dans une phrase, un lien ne se reconnaît pas à sa seule couleur : il est
+     souligné. Les liens de navigation, de liste et de tuile ne le sont pas. */
+  :global(p a) { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
   :global(:focus-visible) { outline: 2px solid var(--ardoise); outline-offset: 2px; border-radius: 3px; }
   :global(h1), :global(h2), :global(h3) { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
   :global(h1) { text-wrap: balance; }
