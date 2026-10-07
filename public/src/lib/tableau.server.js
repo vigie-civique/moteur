@@ -165,7 +165,8 @@ export function tableauDeBord({ lire, insee, epciCourt, aujourdhui, chiffres, in
       libelle: n > 1 ? 'Marchés attribués' : 'Marché attribué',
       valeur: nombre(n), vide: n === 0,
       raison: raisons[0] || null,
-      note: lus ? `${nombre(lus)} lu${s(lus)} dans les procès-verbaux, à relire`
+      // La formule est celle de /marches, et la CI la cherche sur l'accueil.
+      note: lus ? `${nombre(lus)} lu${s(lus)} dans les procès-verbaux, qui ${lus > 1 ? 'attendent leur' : 'attend sa'} relecture`
           : n > 0 ? 'par la commune' : null,
       aussi: interco?.marches ? `${epciCourt} : ${nombre(interco.marches)}` : null,
       graphe: n > 0 && tracable(points) ? { type: 'barres', points } : null,
