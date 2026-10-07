@@ -330,7 +330,9 @@ def extract_subventions(conn):
             amount = _to_int(m.group(2))
             if amount <= 0 or amount > 200000:
                 continue
-            key = (year, qui, benef.lower())
+            # `_cle_nom`, comme le régime du tableau : « Comité des Fêtes » et
+            # « Comite des Fetes » sont le même bénéficiaire du même exercice.
+            key = (year, qui, _cle_nom(benef))
             if key in seen:
                 continue
             seen.add(key)
@@ -707,15 +709,22 @@ def run_subventions(commit: bool):
     print(f"[subventions] {len(subs)} extraites du contenu CR "
           f"({len(phrases)} en phrase, {len(tableaux)} en tableau)\n")
     to_insert, to_create, dupes = [], [], 0
+    # `flow_exists` interroge la base, et rien n'y est écrit avant la fin de
+    # cette boucle : deux libellés qui se résolvent vers la même entité y
+    # passaient tous les deux. Le lot se dédoublonne donc lui-même, sur
+    # l'identité que `flow_exists` reconnaîtra à la passe suivante.
+    dans_le_lot = set()
     for year, benef, amount, eid, qui in subs:
         from_id = pivots[qui]
         to_id, matched = res.resolve(benef)
         if to_id is None:
             to_create.append((year, amount, benef, eid, qui))     # nouvelle asso à créer
             continue
-        if flow_exists(conn, "subvention", year, amount, to_id, from_id):
+        if (flow_exists(conn, "subvention", year, amount, to_id, from_id)
+                or (year, from_id, to_id, amount) in dans_le_lot):
             dupes += 1
             continue
+        dans_le_lot.add((year, from_id, to_id, amount))
         to_insert.append((year, amount, to_id, matched, benef, eid, qui))
     from collections import Counter
     allyears = [x[0] for x in to_insert] + [x[0] for x in to_create]
