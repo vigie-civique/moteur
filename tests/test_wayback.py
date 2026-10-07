@@ -196,3 +196,45 @@ def test_collecter_archives_annonce_le_vide_quand_il_est_reel(monkeypatch, capsy
     conseils.collecter_archives("commune")
 
     assert "aucun procès-verbal archivé trouvé" in capsys.readouterr().out
+
+
+# ── La source première, elle aussi ───────────────────────────────────────────
+# La règle valait pour `raa`, `wayback` et `cm_archive`, pas pour `cm` : cinq
+# procès-verbaux catalogués, aucun n'ouvre, et le step finissait « ok ».
+
+def _collecte_du_site(monkeypatch, statuts: list[str]):
+    pytest.importorskip("pdfplumber", reason="job « tests-deps »")
+    import contextlib
+    from collectors import conseils
+    from collectors.connecteurs.base import DocumentPublie
+
+    docs = [DocumentPublie(date=f"2026-01-{i + 1:02d}", url=f"https://exemple.invalid/pv{i}.pdf",
+                           libelle=f"pv {i}", source="exemple.invalid")
+            for i in range(len(statuts))]
+    suite = iter(statuts)
+    monkeypatch.setattr(conseils, "charger", lambda portee: type(
+        "C", (), {"catalogue_pv": staticmethod(lambda p: list(docs))}))
+    monkeypatch.setattr(conseils, "complement_mediatheque", lambda portee, documents: [])
+    monkeypatch.setattr(conseils, "transaction", lambda: contextlib.nullcontext())
+    monkeypatch.setattr(conseils, "traiter", lambda conn, doc, portee, avec_ocr=False:
+                        {"statut": next(suite), "delibs": 0})
+    return conseils
+
+
+def test_collecter_refuse_de_conclure_quand_rien_ne_repond(monkeypatch):
+    conseils = _collecte_du_site(monkeypatch, ["inaccessible"] * 5)
+    with pytest.raises(wayback.SourceInterrompue, match="5 procès-verbal"):
+        conseils.collecter("commune")
+
+
+def test_collecter_refuse_au_dela_d_une_piece_sur_cinq(monkeypatch):
+    conseils = _collecte_du_site(monkeypatch, ["ok"] * 7 + ["inaccessible"] * 3)
+    with pytest.raises(wayback.SourceInterrompue):
+        conseils.collecter("commune")
+
+
+def test_collecter_tolere_un_lien_mort(monkeypatch, capsys):
+    """Une pièce retirée du site est une lacune connue, pas une panne."""
+    conseils = _collecte_du_site(monkeypatch, ["ok"] * 8 + ["texte_trop_court", "inaccessible"])
+    conseils.collecter("commune")
+    assert "1 inaccessibles" in capsys.readouterr().out

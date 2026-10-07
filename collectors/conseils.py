@@ -784,6 +784,10 @@ def traiter(conn, doc, portee: str, verbose: bool = True,
 
 # ── Point d'entrée ───────────────────────────────────────────────────────────
 
+# Au-delà, les pièces sans réponse ne sont plus quelques liens morts du site :
+# c'est la source qui a lâché en cours de collecte.
+PART_MUETTE_TOLEREE = 0.20
+
 def complement_mediatheque(portee: str, documents: list) -> list:
     """Les pièces déposées dans la médiathèque WordPress que la page n'a pas liées.
 
@@ -858,6 +862,19 @@ def collecter(portee: str = "commune", depuis: str | None = None,
           + (f", {resume['date_non_attestee']} pièce(s) de médiathèque écartée(s) : "
              f"date du nom de fichier absente du texte"
              if resume.get("date_non_attestee") else ""))
+
+    # Une pièce retirée du site est une lacune connue ; un site qui ne répond
+    # plus, non. Aucune réponse du tout, ou plus d'une pièce sur cinq sans
+    # réponse : la source a été interrompue, et le step ne se dit pas « ok ».
+    # Après le traitement, jamais avant — ce qui a été lu est en base.
+    muets = resume["inaccessible"]
+    tentes = sum(n for statut, n in resume.items() if statut != "delibs")
+    if muets and (muets == tentes or muets > PART_MUETTE_TOLEREE * tentes):
+        from .erreurs import SourceInterrompue
+        raise SourceInterrompue(
+            f"{muets} procès-verbal(aux) sur {tentes} n'ont pas répondu — le "
+            f"site n'a pas été lu en entier, ce n'est pas qu'il n'a rien publié. "
+            f"Relancer le step reprendra ce qui manque.")
 
 
 def collecter_archives(portee: str = "commune", limit: int = 0,
