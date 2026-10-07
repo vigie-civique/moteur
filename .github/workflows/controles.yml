@@ -321,6 +321,26 @@ jobs:
           CHROME_PATH="$(command -v google-chrome || command -v chromium)" \
             node scripts/verifier_hors_ligne.mjs build-hors-ligne
 
+  atelier:
+    # L'atelier n'était construit par aucun job : seul `npm audit` le voyait.
+    # Une faute de syntaxe dans un composant, ou une couleur écrite en dur (le
+    # build commence par `verifier_couleurs.mjs`, qui sort en 1), n'apparaissait
+    # qu'au déploiement sur le serveur — là où le script revient en arrière.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Build
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+          test -s dist/index.html
+
   dependances:
     # Les vulnérabilités CONNUES de ce que le dispositif installe. Depuis que
     # l'atelier se met en ligne (lot E, 02/10/2026), la couche HTTP est exposée :
