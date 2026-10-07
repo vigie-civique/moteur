@@ -82,7 +82,10 @@ elif [ "${ajouts:-0}" -eq 0 ] && [ "${corrections:-0}" -eq 0 ]; then
 else
     echo "3/3 — Aperçu, contrôle, promotion, build, mise en ligne, constat"
     PY="$PY" deploy/publier-site.sh --deployer || {
-        echo "   ✖ publication interrompue — le site sert toujours sa version précédente"
+        # Pas « le site sert toujours sa version précédente » : c'est vrai si
+        # l'arrêt précède la mise en ligne, on n'en sait rien s'il la suit.
+        echo "   ✖ publication interrompue — ce que le site sert n'est pas constaté."
+        echo "     Le relire en ligne : $PY scripts/publication.py verifier"
         exit 1
     }
 fi
