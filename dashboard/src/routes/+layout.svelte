@@ -70,7 +70,7 @@
 <div class="app">
   <header data-pagefind-ignore>
     <a href="/atelier" class="brand">
-      <span class="dot"></span>
+      <img class="logo" src="/favicon.svg" alt="" width="22" height="22" />
       <span class="title">{SITE_NOM}</span>
       <span class="sub">{CODE_POSTAL} — atelier de veille</span>
     </a>
@@ -171,16 +171,7 @@
     white-space: nowrap;
     color: var(--texte);
   }
-  .dot {
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--danger);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .4; }
-  }
+  .logo { display: block; flex: none; border-radius: 5px; }
   .title { font-weight: 700; font-size: 1rem; }
   .sub   { font-size: .75rem; color: var(--texte-doux); }
 

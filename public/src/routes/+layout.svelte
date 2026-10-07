@@ -121,7 +121,7 @@
 <div class="app" class:sept={nav.length > 5}>
   <header>
     <a class="brand" href="/">
-      <Icon name="decide" size={22} />
+      <img class="logo" src="/favicon{icone}.svg" alt="" width="24" height="24" />
       <span><strong>Vigie Civique</strong> <em>{COMMUNE}</em></span>
     </a>
 
@@ -254,7 +254,7 @@
     font-family: var(--display); font-size: 1.08rem; color: var(--encre);
   }
   .brand:hover { text-decoration: none; }
-  .brand :global(.icon) { color: var(--ardoise); }
+  .brand .logo { display: block; flex: none; }
   .brand strong { font-weight: 600; }
   .brand em { font-style: normal; color: var(--gris); }
 
