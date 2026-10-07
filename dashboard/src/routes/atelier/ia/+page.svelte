@@ -1,6 +1,7 @@
 <script>
   import { COMMUNE } from '$lib/instance.js'
-  import { authFetch } from '$lib/stores/auth.js'
+  import { authFetch, currentUser } from '$lib/stores/auth.js'
+  import { auMoins, messageErreur } from '$lib/roles.js'
   import { onMount } from 'svelte'
 
   let question  = ''
@@ -15,12 +16,50 @@
   // recherche quel que soit l'état réel : fonction désactivée, index jamais
   // construit et index prêt donnaient la même page, et la même erreur de
   // connexion incompréhensible. Les trois états sont maintenant distingués.
-  onMount(async () => {
+  async function lireConfig() {
     try {
       const r = await authFetch('/rag/config')
       if (r.ok) config = await r.json()
     } catch { /* API muette : la page le dira */ }
-  })
+  }
+  onMount(lireConfig)
+
+  // ─── Brancher une IA (admin) ────────────────────────────────────────────
+  // Un modèle LOCAL seulement, choisi dans la liste que l'Ollama de la machine
+  // annonce : ni adresse ni clé à saisir. Un service distant enverrait des
+  // extraits de la base de travail chez un tiers — décision de serveur.
+  let branchement = null    // état rendu par /admin/ia
+  let choix = { modele: '', recherche: false }
+  let enregistrement = false
+  let avisBranchement = ''
+  $: estAdmin = auMoins($currentUser, 'admin')
+  $: if (estAdmin && branchement === null) lireBranchement()
+
+  function recevoir(d) {
+    branchement = d
+    choix = { modele: d.reglage.modele || '', recherche: !!d.reglage.recherche }
+  }
+  async function lireBranchement() {
+    branchement = undefined
+    try {
+      const r = await authFetch('/admin/ia')
+      if (r.ok) recevoir(await r.json())
+    } catch { /* la carte ne s'affiche pas */ }
+  }
+  async function brancher() {
+    enregistrement = true; avisBranchement = ''
+    try {
+      const r = await authFetch('/admin/ia', {
+        method: 'PUT',
+        body: JSON.stringify({ modele: choix.modele || null, recherche: choix.recherche }),
+      })
+      const d = await r.json()
+      if (!r.ok) { avisBranchement = messageErreur(d.detail); return }
+      recevoir(d)
+      avisBranchement = 'Enregistré.'
+      await lireConfig()
+    } finally { enregistrement = false }
+  }
 
   const SOURCE_LABELS = {
     entity_notes:    'Note',
@@ -74,6 +113,59 @@
       </span>
     {/if}
   </div>
+
+  {#if estAdmin && branchement}
+    <details class="branchement" open={!config?.enabled && !branchement.ia.configuree}>
+      <summary>
+        Brancher une IA
+        <span class="muted">
+          {#if branchement.ia.configuree}{branchement.ia.modele}{:else}aucun modèle{/if}
+          · recherche par sens {config?.enabled ? 'active' : 'éteinte'}
+        </span>
+      </summary>
+      <p class="muted">
+        Seul un modèle <strong>local</strong> se branche d'ici : il tourne sur la
+        machine de l'atelier, rien n'en sort. Un service distant recevrait des
+        extraits de la base de travail — des noms, des pistes non établies : cela
+        se décide sur le serveur (<code>IA_URL</code> et <code>IA_HORS_MACHINE=1</code>
+        dans <code>.env</code>), pas depuis cette page.
+      </p>
+      {#if !branchement.ollama.joignable}
+        <p class="garde">
+          Aucun Ollama ne répond sur cette machine (<code>{branchement.ollama.url}</code>) :
+          il n'y a pas de modèle à brancher. Sur un serveur qui n'en porte pas, le
+          travail du modèle se fait depuis un poste qui en a un, et arrive ici
+          sous forme de propositions à relire.
+        </p>
+      {:else}
+        <div class="champ">Modèle
+          {#if branchement.serveur.ia}
+            <span class="muted">réglé par le serveur : {branchement.ia.modele}</span>
+          {:else}
+            <select bind:value={choix.modele} aria-label="Modèle">
+              <option value="">— aucun —</option>
+              {#each branchement.ollama.modeles as m}<option value={m}>{m}</option>{/each}
+            </select>
+          {/if}
+          <span class="muted">propose des lignes à la saisie d'un procès-verbal, et résume ici</span>
+        </div>
+        <label class="champ">
+          <input type="checkbox" bind:checked={choix.recherche}
+                 disabled={branchement.serveur.recherche || !branchement.recherche.embed_present} />
+          Recherche par sens
+          <span class="muted">
+            {#if branchement.serveur.recherche}activée par le serveur
+            {:else if !branchement.recherche.embed_present}demande <code>ollama pull {branchement.recherche.embed_model}</code>
+            {:else}{(branchement.recherche.chunks || 0).toLocaleString('fr-FR')} extraits indexés{/if}
+          </span>
+        </label>
+        <button class="btn-submit" on:click={brancher} disabled={enregistrement}>
+          {enregistrement ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+      {/if}
+      {#if avisBranchement}<span class="muted">{avisBranchement}</span>{/if}
+    </details>
+  {/if}
 
   <div class="mode-toggle">
     <button class:active={mode === 'search'} on:click={() => mode='search'}>Chercher</button>
@@ -143,8 +235,8 @@
 
   {#if config && !config.enabled}
     <p class="hint muted">
-      L'assistance par modèle est désactivée sur cet atelier.<br>
-      Elle demande un Ollama joignable en local&nbsp;: <code>RAG_ENABLED=1</code> dans <code>.env</code>.
+      La recherche par sens est éteinte sur cet atelier.<br>
+      Elle demande un Ollama sur la machine de l'atelier&nbsp;: un administrateur la branche depuis cette page.
     </p>
   {:else if config && config.chunks === 0}
     <p class="hint muted">
@@ -165,6 +257,15 @@
   .page-header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: .8rem; }
   h1 { font-size: 1.1rem; font-weight: 700; color: var(--texte); margin: 0; }
   .muted { color: var(--texte-doux); font-size: .75rem; }
+
+  .branchement { background: var(--surface); border: 1px solid var(--bordure); border-radius: 8px;
+                 padding: .7rem .9rem; margin-bottom: .9rem; font-size: .82rem; color: var(--texte); }
+  .branchement summary { cursor: pointer; font-weight: 700; }
+  .branchement summary .muted { font-weight: 400; margin-left: .5rem; }
+  .branchement p { margin: .6rem 0; line-height: 1.5; }
+  .branchement .champ { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+  .branchement select { background: var(--fond); border: 1px solid var(--bordure); color: var(--texte);
+                        border-radius: 5px; padding: .3rem .45rem; }
 
   .mode-toggle { display: flex; gap: .4rem; margin-bottom: .75rem; }
   .mode-toggle button {

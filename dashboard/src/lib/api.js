@@ -245,8 +245,8 @@ export const api = {
   generatePublicSnapshot: (adminKey) =>
     postAdmin('/admin/public-snapshot/generate', {}, adminKey),
 
-  // Publication en deux temps. `publicationEtat` est en lecture seule et ouvert
-  // à tout l'atelier : savoir ce qui est en ligne n'est pas un droit d'admin.
+  // Publication en deux temps. `publicationEtat` est en lecture seule, ouvert
+  // au validateur et au-dessus (07/10/2026).
   publicationEtat: (adminKey) =>
     getAdmin('/admin/publication', adminKey),
 

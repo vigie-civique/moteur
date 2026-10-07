@@ -3,7 +3,7 @@
   import { onMount } from 'svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { currentUser, logout, rafraichir } from '$lib/stores/auth.js'
+  import { currentUser, logout, rafraichir, authFetch } from '$lib/stores/auth.js'
   import { LIBELLE_ROLE, auMoins } from '$lib/roles.js'
 
   let ready = false
@@ -70,12 +70,34 @@
     { href: '/atelier/fiches',                 label: 'Toutes les fiches' },
     { href: '/atelier/saisie',                 label: 'Saisir une donnée' },
     { href: '/atelier/analyses',               label: 'Analyses croisées', min: 'validator' },
-    { href: '/atelier/ia',                     label: 'Recherche IA' },
-    { href: '/atelier/publication',            label: 'Publication' },
-    { href: '/atelier/journal',                label: 'Journal' },
+    { href: '/atelier/ia',                     label: 'Recherche IA', ia: true },
+    { href: '/atelier/publication',            label: 'Publication', min: 'validator', grise: true },
+    { href: '/atelier/journal',                label: 'Journal', min: 'validator', grise: true },
     { href: '/atelier/comptes',                label: 'Comptes', min: 'admin' },
   ]
-  $: nav = NAV.filter(n => !n.min || auMoins($currentUser, n.min))
+  // `grise` : l'entrée reste au menu, éteinte, avec sa raison — le contributeur
+  // sait que la page existe et à qui la demander. Sans `grise`, elle disparaît.
+  // La recherche IA s'éteint de même tant qu'aucun modèle n'est branché ;
+  // `null` = on ne sait pas encore, et on n'éteint pas sur une ignorance.
+  let iaBranchee = null
+  $: if (ready && $currentUser && iaBranchee === null) lireIA()
+  async function lireIA() {
+    iaBranchee = undefined
+    try {
+      const r = await authFetch('/rag/config')
+      if (r.ok) iaBranchee = (await r.json()).enabled === true
+    } catch { /* API muette : l'entrée reste ouverte, la page dira pourquoi */ }
+  }
+  function raison(n, user, ia) {
+    if (n.min && !auMoins(user, n.min)) {
+      return n.grise ? `Réservé au rôle ${LIBELLE_ROLE[n.min].toLowerCase()} et au-dessus` : null
+    }
+    // L'admin garde l'entrée : c'est de cette page qu'il branche un modèle.
+    if (n.ia && ia === false && !auMoins(user, 'admin')) return "Aucune IA n'est branchée sur cet atelier"
+    return ''
+  }
+  $: nav = NAV.map(n => ({ ...n, raison: raison(n, $currentUser, iaBranchee) }))
+          .filter(n => n.raison !== null)
 </script>
 
 {#if isLogin}
@@ -90,7 +112,11 @@
 
       <nav class="sidebar-nav">
         {#each nav as n}
-          <a href={n.href} class:active={$page.url.pathname === n.href}>{n.label}</a>
+          {#if n.raison}
+            <span class="eteint" title={n.raison} aria-disabled="true">{n.label}</span>
+          {:else}
+            <a href={n.href} class:active={$page.url.pathname === n.href}>{n.label}</a>
+          {/if}
         {/each}
       </nav>
 
@@ -159,13 +185,14 @@
     gap: 2px;
   }
 
-  .sidebar-nav a {
+  .sidebar-nav a, .sidebar-nav .eteint {
     padding: .4rem .65rem;
     border-radius: 5px;
     font-size: .8rem;
     color: var(--texte-doux);
     transition: background .12s;
   }
+  .sidebar-nav .eteint { opacity: .4; cursor: not-allowed; }
   .sidebar-nav a.active { background: var(--accent); color: var(--sur-accent); }
   .sidebar-nav a:hover:not(.active) { background: var(--fond); color: var(--texte); }
 
@@ -214,7 +241,7 @@
     }
     .sidebar-header { border-bottom: none; margin: 0; padding: 0 .4rem; gap: .4rem; }
     .sidebar-nav { flex-direction: row; flex: none; padding: 0; }
-    .sidebar-nav a { white-space: nowrap; }
+    .sidebar-nav a, .sidebar-nav .eteint { white-space: nowrap; }
     .sidebar-footer { flex-direction: row; align-items: center; border-top: none; padding: 0 .4rem; }
     .user-email { display: none; }
   }

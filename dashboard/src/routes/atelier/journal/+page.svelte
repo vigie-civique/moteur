@@ -26,7 +26,7 @@
     apercu: 'aperçu', publication: 'publication', 'mise-en-ligne': 'mise en ligne',
     'verification-en-ligne': 'vérification en ligne',
     proposer: 'proposition', acceptee: 'proposition acceptée', refusee: 'proposition refusée',
-    retiree: 'proposition retirée',
+    retiree: 'proposition retirée', ia: "branchement de l'IA",
   }
 
   onMount(() => charger(true))

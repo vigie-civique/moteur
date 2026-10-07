@@ -314,14 +314,26 @@ def flux(atelier, tmp_path, monkeypatch):
 
 
 class TestApercuEtPublication:
-    def test_tout_compte_genere_son_apercu(self, atelier, flux):
+    def test_la_publication_ne_souvre_pas_au_contributeur(self, atelier, flux):
+        """Ni l'état, ni l'aperçu, ni la liste à relire (Julien, 07/10/2026)."""
         c = atelier["client"]
-        h, j = atelier["compte"]("contrib@exemple.fr", "contributor")
+        h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        assert c.get("/api/admin/publication", headers=h).status_code == 403
+        assert c.get("/api/admin/publication").status_code in (401, 403)
+        assert c.get("/api/admin/publication/modifications", headers=h).status_code == 403
+        assert c.post("/api/admin/publication/apercu", headers=h).status_code == 403
+        assert c.post("/api/admin/publication/apercu/serveur", headers=h,
+                      json={"action": "demarrer"}).status_code == 403
+        assert not flux.APERCUS.exists() or not any(flux.APERCUS.iterdir())
+
+    def test_le_validateur_genere_son_apercu(self, atelier, flux):
+        c = atelier["client"]
+        h, j = atelier["compte"]("valid@exemple.fr", "validator")
         r = c.post("/api/admin/publication/apercu", headers=h)
         assert r.status_code == 200, r.text
         etat = r.json()
         assert etat["peut_apercevoir"] and not etat["peut_agir"]
-        assert etat["brouillon"]["genere_par"] == "contrib@exemple.fr"
+        assert etat["brouillon"]["genere_par"] == "valid@exemple.fr"
         assert etat["brouillon"]["compte"] == j["user"]["id"]
         assert etat["etape"] == "pret_a_publier"
         assert (flux.APERCUS / str(j["user"]["id"]) / "donnees" / "stats.json").is_file()
@@ -330,12 +342,12 @@ class TestApercuEtPublication:
     def test_un_compte_ne_relance_pas_son_apercu_en_boucle(self, atelier, flux):
         """Un aperçu reconstruit tout le snapshot sous le verrou de publication."""
         c = atelier["client"]
-        h, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        h, _ = atelier["compte"]("valid@exemple.fr", "validator")
         assert c.post("/api/admin/publication/apercu", headers=h).status_code == 200
         r = c.post("/api/admin/publication/apercu", headers=h)
         assert r.status_code == 429 and "attendre" in r.json()["detail"]
         # Le délai est par compte : un autre n'attend pas.
-        h2, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        h2, _ = atelier["compte"]("valid2@exemple.fr", "validator")
         assert c.post("/api/admin/publication/apercu", headers=h2).status_code == 200
 
     def test_ni_contributeur_ni_validateur_ne_publient(self, atelier, flux):
@@ -363,8 +375,93 @@ class TestApercuEtPublication:
         assert r.json()["publie"]["apercu_genere_par"] == "admin@exemple.fr"
         assert (flux.PUBLIE / "stats.json").is_file()
 
+    def test_la_liste_a_relire_dit_quoi_qui_quand(self, atelier, flux):
+        """Ce qu'un contributeur propose et ce qu'un validateur écrit se lisent
+        dans la liste, avec auteur, champs et verdict — et s'y tranchent."""
+        c, eid = atelier["client"], atelier["fiche"]()
+        h_c, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        h_v, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        r = c.patch(f"/api/atelier/entities/{eid}", headers=h_c,
+                    json={"updated_at": AVANT, "address": "1 rue Basse"})
+        assert r.status_code == 202, r.text
+
+        vu = c.get("/api/admin/publication/modifications", headers=h_v).json()
+        [prop] = vu["propositions"]
+        assert (prop["nature"], prop["propose_par"], prop["charge"], prop["entity_id"]) == (
+            "fiche", "contrib@exemple.fr", {"address": "1 rue Basse"}, eid)
+        assert vu["nouvelles"] == [] and vu["marches_a_relire"] == 0
+
+        assert c.patch(f"/api/atelier/entities/{eid}/status", headers=h_v,
+                       json={"verdict": "ecarte", "note": "adresse privée"}).status_code == 200
+        [ligne] = c.get("/api/admin/publication/modifications", headers=h_v).json()["contributions"]
+        assert (ligne["id"], ligne["par"], ligne["verdict"], ligne["note"]) == (
+            eid, "valid@exemple.fr", "ecarte", "adresse privée")
+
     def test_arreter_le_serveur_dapercu_est_reserve_a_ladmin(self, atelier, flux):
         h, _ = atelier["compte"]("valid@exemple.fr", "validator")
         r = atelier["client"].post("/api/admin/publication/apercu/serveur", headers=h,
                                    json={"action": "arreter"})
         assert r.status_code == 403
+
+
+# ─── Brancher une IA depuis l'atelier ─────────────────────────────────────────
+
+class TestBrancherUneIA:
+    @pytest.fixture
+    def ia(self, atelier, tmp_path, monkeypatch):
+        import api
+        # Posés par monkeypatch pour être RENDUS après l'essai : le réglage
+        # écrit des variables du module.
+        for nom in ("_IA_URL", "_IA_MODELE", "_IA_CLE", "_IA_PROTOCOLE",
+                    "RAG_ENABLED", "_CHAT_MODEL"):
+            monkeypatch.setattr(api, nom, getattr(api, nom))
+        monkeypatch.setattr(api, "_IA_DU_SERVEUR", False)
+        monkeypatch.setattr(api, "_RAG_DU_SERVEUR", False)
+        monkeypatch.setattr(api, "REGLAGE_IA", tmp_path / "ia_locale.json")
+        monkeypatch.setattr(api, "_modeles_ollama",
+                            lambda: ["nomic-embed-text:latest", "qwen2.5:14b"])
+        return api
+
+    def test_reserve_a_ladmin(self, atelier, ia):
+        c = atelier["client"]
+        for email, role in (("contrib@exemple.fr", "contributor"), ("valid@exemple.fr", "validator")):
+            h, _ = atelier["compte"](email, role)
+            assert c.get("/api/admin/ia", headers=h).status_code == 403
+            assert c.put("/api/admin/ia", headers=h, json={"modele": "qwen2.5:14b"}).status_code == 403
+        assert not ia.REGLAGE_IA.exists()
+
+    def test_ladmin_branche_un_modele_local_et_la_recherche(self, atelier, ia):
+        c = atelier["client"]
+        h, _ = atelier["compte"]("admin@exemple.fr", "admin")
+        assert c.get("/api/ia/config", headers=h).json()["configuree"] is False
+        r = c.put("/api/admin/ia", headers=h, json={"modele": "qwen2.5:14b", "recherche": True})
+        assert r.status_code == 200, r.text
+        vu = c.get("/api/ia/config", headers=h).json()
+        assert (vu["configuree"], vu["modele"], vu["locale"]) == (True, "qwen2.5:14b", True)
+        assert c.get("/api/rag/config", headers=h).json()["enabled"] is True
+        assert atelier["sql"]("SELECT table_name, action FROM audit_log")[0] == [
+            {"table_name": "reglages", "action": "ia"}]
+        # Débrancher rend l'atelier à son état d'avant.
+        assert c.put("/api/admin/ia", headers=h, json={}).status_code == 200
+        assert c.get("/api/ia/config", headers=h).json()["configuree"] is False
+        assert c.get("/api/rag/config", headers=h).json()["enabled"] is False
+
+    def test_ni_adresse_ni_modele_libres(self, atelier, ia, monkeypatch):
+        """Le nom vient de la liste d'Ollama ; aucune adresse ne se saisit."""
+        c = atelier["client"]
+        h, _ = atelier["compte"]("admin@exemple.fr", "admin")
+        r = c.put("/api/admin/ia", headers=h, json={"modele": "gpt-x", "url": "https://ailleurs.test/v1"})
+        assert r.status_code == 400 and "n'est pas installé" in r.json()["detail"]
+        assert ia._IA_URL == "" and not ia.REGLAGE_IA.exists()
+        monkeypatch.setattr(ia, "_modeles_ollama", lambda: None)
+        r = c.put("/api/admin/ia", headers=h, json={"modele": "qwen2.5:14b"})
+        assert r.status_code == 409 and "ne répond pas" in r.json()["detail"]
+
+    def test_un_modele_regle_par_le_serveur_nest_pas_defait(self, atelier, ia, monkeypatch):
+        monkeypatch.setattr(ia, "_IA_DU_SERVEUR", True)
+        monkeypatch.setattr(ia, "_IA_URL", "https://fournisseur.test/v1")
+        monkeypatch.setattr(ia, "_IA_MODELE", "distant")
+        h, _ = atelier["compte"]("admin@exemple.fr", "admin")
+        r = atelier["client"].put("/api/admin/ia", headers=h, json={"modele": "qwen2.5:14b"})
+        assert r.status_code == 200 and r.json()["serveur"]["ia"] is True
+        assert (ia._IA_URL, ia._IA_MODELE) == ("https://fournisseur.test/v1", "distant")
