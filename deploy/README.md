@@ -210,8 +210,13 @@ Ce que le dispositif fait déjà pour vous, et qu'il ne faut pas défaire :
 
 Ce que le dispositif ne fait PAS pour vous :
 
-- **les sauvegardes de la base.** Un serveur qui porte la seule copie d'une base
-  de collecte est un accident en attente ;
+- **sortir les sauvegardes de la machine, ni les faire tourner.** Le moteur
+  copie la base avant d'y écrire (`collect_loop`, `qa_loop`, les scripts
+  d'entretien), par l'API de sauvegarde de SQLite — la base est en WAL, une
+  copie de fichier y perdrait les dernières écritures. Mais ces copies restent
+  sur le même disque, et rien ne les efface : un serveur qui porte la seule
+  copie d'une base de collecte est un accident en attente. Les rouvrir :
+  `python3 scripts/verifier_sauvegarde.py` ;
 - **la journalisation des accès** au-delà de celle de nginx ;
 - **la mise à jour du serveur.** Un atelier en ligne est une machine à tenir.
 
