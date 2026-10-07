@@ -84,6 +84,24 @@ lisent la même déclaration. Les variables `VIGIE_CIBLE`, `VIGIE_CIBLE_HOTE`,
 `VIGIE_CIBLE_CHEMIN`, `VIGIE_CIBLE_RSYNC_PATH` et `CF_PROJECT` restent
 prioritaires, pour une publication ponctuelle ailleurs.
 
+**Sur votre propre serveur (cibles `rsync` et `local`), il faut dire à nginx
+comment servir ces fichiers** — un hébergeur de sites statiques le fait sans le
+dire, un serveur ordinaire non. `deploy/nginx-site.conf` est le modèle, avec
+`deploy/nginx-site-entetes.conf` pour les en-têtes de sécurité ; trois choses y
+tiennent le site debout :
+
+- les pages sont écrites `budgets.html` et demandées `/budgets` : `try_files`
+  cherche **`$uri.html` en premier** (un dossier `budgets/` existe aussi, qui ne
+  contient que des données — le chercher d'abord rend un 403) ;
+- `_redirects` n'est pas envoyé au serveur, qui ne le lirait pas : chaque règle
+  de `public/static/_redirects` doit avoir son `location` dans le modèle ;
+- seul `/_app/immutable/` se garde en cache ; le reste se revalide, sans quoi
+  une publication n'atteint ses lecteurs qu'à l'expiration du cache.
+
+La mise en ligne pose les fichiers neufs à côté des anciens et ne les met en
+place qu'une fois tous reçus : une liaison coupée pendant le transfert ne
+change rien à ce qui est servi.
+
 Après le téléversement, **le script constate** : il relit `version.json` sur le
 site en ligne (`site_url`) et le compare à l'empreinte promue. Un envoi réussi
 dit que des fichiers sont partis, pas que le site les sert.

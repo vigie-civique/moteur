@@ -341,6 +341,32 @@ jobs:
           npm run build
           test -s dist/index.html
 
+  nginx:
+    # Le modèle de configuration du site public (cibles `rsync` et `local`) :
+    # nginx le charge-t-il ? Un modèle qu'on recopie sur un serveur sans l'avoir
+    # jamais donné à nginx casse le jour de l'installation. La version est celle
+    # de Debian 12, où `listen … http2` n'est pas encore déprécié.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t
+        run: |
+          mkdir -p /tmp/tls
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj "/CN=commune.example.org" \
+            -keyout /tmp/tls/privkey.pem -out /tmp/tls/fullchain.pem 2>/dev/null
+          chmod 644 /tmp/tls/*.pem
+          docker run --rm \
+            -v "$PWD/deploy/nginx-site.conf:/etc/nginx/conf.d/site.conf:ro" \
+            -v "$PWD/deploy/nginx-site-entetes.conf:/etc/nginx/snippets/vigie-site-entetes.conf:ro" \
+            -v /tmp/tls:/etc/letsencrypt/live/commune.example.org:ro \
+            nginx:1.22-alpine nginx -t
+          # Chaque règle de `_redirects` a son `location` dans le modèle.
+          grep -vE '^\s*(#|$)' public/static/_redirects | while read -r de vers code; do
+            grep -qF "location = $de " deploy/nginx-site.conf \
+              || { echo "✖ $de (→ $vers) n'est pas traduite dans deploy/nginx-site.conf"; exit 1; }
+          done
+
   dependances:
     # Les vulnérabilités CONNUES de ce que le dispositif installe. Depuis que
     # l'atelier se met en ligne (lot E, 02/10/2026), la couche HTTP est exposée :
