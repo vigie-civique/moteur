@@ -128,7 +128,7 @@ def main() -> int:
             return 0
         horo = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         copie = sauvegarder(_db.DB_PATH, ROOT / "audits" / "sauvegardes"
-                            / f"{_db.DB_PATH.stem}-{horo}-avant-purge-personnes.db")
+                            / f"{_db.DB_PATH.stem}-{horo}-avant-purge-personnes{_db.DB_PATH.suffix}")
         print(f"  sauvegarde : {copie}")
         conn.execute("BEGIN IMMEDIATE")
         n = purger(conn)
