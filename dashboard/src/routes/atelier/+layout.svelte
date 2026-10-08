@@ -59,7 +59,7 @@
   // existait sans entrée, et les liens présumés n'avaient aucune page.
   const NAV = [
     { href: '/atelier',                        label: "Aujourd'hui" },
-    { href: '/atelier/relations',              label: 'Liens présumés' },
+    { href: '/atelier/relations',              label: 'Liens présumés', min: 'validator', grise: true },
     { href: '/atelier/queue/websites',         label: 'Adresses de sites' },
     { href: '/atelier/geo',                    label: 'Points sur la carte' },
     { href: '/atelier/donnees',                label: 'Chiffres à confirmer' },

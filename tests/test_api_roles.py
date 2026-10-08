@@ -465,3 +465,37 @@ class TestBrancherUneIA:
         r = atelier["client"].put("/api/admin/ia", headers=h, json={"modele": "qwen2.5:14b"})
         assert r.status_code == 200 and r.json()["serveur"]["ia"] is True
         assert (ia._IA_URL, ia._IA_MODELE) == ("https://fournisseur.test/v1", "distant")
+
+
+# ─── Minimisation : ce qui porte sur des personnes se lit par qui le tranche ──
+
+class TestMinimisation:
+    def test_les_liens_presumes_ne_se_lisent_qu_en_validateur(self, atelier):
+        c = atelier["client"]
+        h_c, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        h_v, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        assert c.get("/api/candidates", headers=h_c).status_code == 403
+        assert c.get("/api/candidates", headers=h_v).status_code == 200
+
+    def test_les_notes_sur_une_personne_sont_reservees_aux_validateurs(self, atelier):
+        c = atelier["client"]
+        h_c, _ = atelier["compte"]("contrib@exemple.fr", "contributor")
+        h_v, _ = atelier["compte"]("valid@exemple.fr", "validator")
+        _, pid = atelier["sql"]("INSERT INTO entities(type, name) VALUES('person', 'Jeanne Exemple')")
+        asso = atelier["fiche"]()
+
+        r = c.post(f"/api/atelier/entities/{pid}/notes", headers=h_v, json={"note": "à recouper"})
+        assert r.status_code == 200, r.text
+        nid = r.json()["id"]
+        vu = c.get(f"/api/atelier/entities/{pid}", headers=h_v).json()
+        assert [n["note"] for n in vu["notes"]] == ["à recouper"] and not vu["notes_reservees"]
+
+        vu = c.get(f"/api/atelier/entities/{pid}", headers=h_c).json()
+        assert vu["notes"] == [] and vu["notes_reservees"] is True
+        assert c.post(f"/api/atelier/entities/{pid}/notes", headers=h_c,
+                      json={"note": "x"}).status_code == 403
+        assert c.put(f"/api/atelier/notes/{nid}", headers=h_c, json={"note": "x"}).status_code == 403
+        # Sur un organisme, rien ne change : le contributeur note.
+        assert c.post(f"/api/atelier/entities/{asso}/notes", headers=h_c,
+                      json={"note": "siège déplacé"}).status_code == 200
+        assert c.get(f"/api/atelier/entities/{asso}", headers=h_c).json()["notes_reservees"] is False
