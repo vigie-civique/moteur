@@ -91,7 +91,9 @@
           <div class="row"><span>Personne</span><span>{detail.firstname} {detail.lastname}</span></div>
         {/if}
         {#if detail.birth_year}
-          <div class="row"><span>Naissance</span><span>{detail.birth_year}</span></div>
+          <!-- L'âge, pas la naissance : c'est ce qui se montre d'une personne
+               publique (arbitré le 16/09/2026). À un an près, faute du jour. -->
+          <div class="row"><span>Âge</span><span>environ {new Date().getFullYear() - detail.birth_year} ans</span></div>
         {/if}
         {#if detail.osm_category}
           <div class="row"><span>OSM</span><span>{detail.osm_category} / {detail.osm_value}</span></div>
