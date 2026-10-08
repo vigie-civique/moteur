@@ -53,7 +53,7 @@ const PAGES = [
   ['/projets-approuves', 0.5], ['/carte', 0.5], ['/graphe', 0.5],
   ['/recherche', 0.5], ['/comprendre/budget', 0.6],
   ['/comprendre/intercommunalite', 0.6], ['/comprendre/mandats', 0.6],
-  ['/contact', 0.4], ['/mentions-legales', 0.3],
+  ['/soutenir', 0.4], ['/contact', 0.4], ['/mentions-legales', 0.3],
 ]
 
 export function GET() {
