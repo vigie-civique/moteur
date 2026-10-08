@@ -185,6 +185,7 @@
       <a href="/methode">Méthode &amp; sources</a>
       <a href="/corrections">Corrections</a>
       <a href="/repliquer">Répliquer</a>
+      <a href="/soutenir">Soutenir</a>
       <a href="/mentions-legales">Mentions légales</a>
       <a href="/contact">Droit de réponse</a>
     </nav>
