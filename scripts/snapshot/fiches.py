@@ -131,11 +131,25 @@ def nature_entreprise(row_data: dict) -> str:
     return "societe"
 
 
+def ids_retenus_par_un_fait(conn) -> set[int]:
+    """Les fiches qu'un fait PUBLIC désigne : de l'argent (flux), un marché, ou
+    une mention dans un acte. C'est ce qui retient en ligne un entrepreneur
+    individuel qui a cessé son activité (cf. `public_entity`)."""
+    return {r["id"] for r in rows(conn, """
+        SELECT from_id AS id FROM financial_flows WHERE from_id IS NOT NULL
+        UNION SELECT to_id FROM financial_flows WHERE to_id IS NOT NULL
+        UNION SELECT titulaire_id FROM marches_publics WHERE titulaire_id IS NOT NULL
+        UNION SELECT acheteur_id FROM marches_publics WHERE acheteur_id IS NOT NULL
+        UNION SELECT entity_id FROM event_entities WHERE entity_id IS NOT NULL
+    """)}
+
+
 def public_entity(
     row_data: dict,
     urls: list[dict],
     public_person_ids: set[int],
     ids_conseil_communautaire: set[int] = frozenset(),
+    ids_retenus: set[int] = frozenset(),
 ) -> tuple[dict | None, list[str]]:
     reasons: list[str] = []
     confidence = row_data.get("confidence")
@@ -150,6 +164,17 @@ def public_entity(
     if not publiable_dans_perimetre(perimetre, entity_type,
                                     row_data["id"] in ids_conseil_communautaire):
         return None, [f"hors_fiche_perimetre_{perimetre}"]
+
+    # Un entrepreneur individuel, c'est le NOM d'une personne. En activité, il
+    # fait partie de la vie économique qu'on décrit ; son activité cessée, il
+    # ne reste que ce nom — publié seulement si de l'argent public, un marché ou
+    # un acte le désigne (Julien, 08/10/2026 ; registre des traitements,
+    # point 9). La fiche reste en base. `actif` inconnu n'est pas « cessé ».
+    if (entity_type == "business"
+            and str(row_data.get("legal_form_code") or "") == "1000"
+            and etat_activite(row_data)[0] is False
+            and row_data["id"] not in ids_retenus):
+        return None, ["ei_activite_cessee"]
 
     lat = row_data.get("lat")
     lng = row_data.get("lng")
@@ -389,6 +414,7 @@ def etape_fiches(conn, revue, public_person_ids, ids_conseil_communautaire,
     # Entreprises individuelles : le lien « dirigeant » y est tautologique.
     ei_ids = {r["id"] for r in entity_rows
               if str(r.get("legal_form_code") or "") == "1000"}
+    ids_retenus = ids_retenus_par_un_fait(conn)
     public_entities: list[dict] = []
     entity_exclusions: list[dict] = []
     # Les entités MORALES écartées pour le seul périmètre : leurs flux
@@ -417,6 +443,7 @@ def etape_fiches(conn, revue, public_person_ids, ids_conseil_communautaire,
             confirmed_urls.get(entity["id"], []),
             public_person_ids,
             ids_conseil_communautaire,
+            ids_retenus,
         )
         if item is None:
             for reason in reasons:

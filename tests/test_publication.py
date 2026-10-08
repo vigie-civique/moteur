@@ -46,6 +46,32 @@ def test_confidence_publique_acceptee(bps, niveau):
     assert publiee is not None
 
 
+# ── Entrepreneur individuel : en activité, ou désigné par un fait public ─────
+
+def _ei(**kw):
+    return fiche(id=7, name="Jeanne Exemple", legal_form_code="1000", **kw)
+
+
+def test_un_entrepreneur_individuel_en_activite_reste_publie(bps):
+    publiee, _ = bps.public_entity(_ei(biz_status="A"), [], set())
+    assert publiee is not None and publiee["actif"] is True
+
+
+def test_un_entrepreneur_individuel_qui_a_cesse_n_est_plus_publie(bps):
+    publiee, motifs = bps.public_entity(_ei(biz_status="C"), [], set())
+    assert publiee is None and motifs == ["ei_activite_cessee"]
+
+
+def test_sauf_si_un_fait_public_le_designe(bps):
+    publiee, _ = bps.public_entity(_ei(biz_status="C"), [], set(), ids_retenus={7})
+    assert publiee is not None and publiee["actif"] is False
+
+
+def test_une_societe_qui_a_cesse_reste_publiee_et_un_registre_muet_n_est_pas_une_cessation(bps):
+    assert bps.public_entity(fiche(legal_form_code="5499", biz_status="C"), [], set())[0] is not None
+    assert bps.public_entity(_ei(), [], set())[0] is not None
+
+
 # ── Personnes : jamais sans rôle civique ─────────────────────────────────────
 
 def test_personne_sans_role_civique_rejetee(bps):
